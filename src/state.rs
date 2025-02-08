@@ -46,16 +46,16 @@ fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
 
 // static STATE: Lazy<Arc<Mutex<Option<State>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 
-thread_local! {
-    static STATE: OnceCell<Rc<RefCell<State>>> = OnceCell::new();
-}
+// thread_local! {
+//     static STATE: OnceCell<Rc<RefCell<State>>> = OnceCell::new();
+// }
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-pub struct State {
-    pub(crate) surface: wgpu::Surface<'static>,
+pub struct State <'a> {
+    pub(crate) surface: wgpu::Surface<'a>,
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
     pub(crate) config: wgpu::SurfaceConfiguration,
@@ -63,26 +63,31 @@ pub struct State {
     // The window must be declared after the surface so
     // it gets dropped after it as the surface contains
     // unsafe references to the window's resources.
-    window: &'static Window,
+    window: &'a Window,
     pub(crate) layout: Layout,
 }
 
-impl State {
-    pub async fn get_instance() -> Rc<RefCell<State>> {
-        STATE.with(|state| {
-            state.get().map(|s| s.clone()).unwrap()
-        })
+impl <'a> State<'a> {
+    // pub async fn get_instance() -> Rc<RefCell<State>> {
+    //     STATE.with(|state| {
+    //         state.get().map(|s| s.clone()).unwrap()
+    //     })
+    // }
+
+    // pub async fn set_instance(new_state: State) {
+    //     STATE.with(|state| {
+    //         if let Err(_) = state.set(Rc::new(RefCell::new(new_state))) {
+    //             panic!("Error when setting the State value");
+    //         }
+    //     });
+    // }
+    pub async fn new(window: &'a Window, vol: &CTVolume) -> State<'a> {
+        let mut state = State::initialize(window).await;
+        state.load_data_from_ct_volume(vol);
+        state
     }
 
-    pub async fn set_instance(new_state: State) {
-        STATE.with(|state| {
-            if let Err(_) = state.set(Rc::new(RefCell::new(new_state))) {
-                panic!("Error when setting the State value");
-            }
-        });
-    }
-
-    pub async fn initialize(window: &'static Window) {
+    pub async fn initialize(window: &'a Window) -> State<'a> {
         let size = window.inner_size();
 
         // The instance is a handle to our GPU
@@ -181,7 +186,9 @@ impl State {
             window,
             layout,
         };
-        Self::set_instance(state).await;
+        // Self::set_instance(state).await;
+
+        state
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -275,33 +282,19 @@ impl State {
         Ok(())
     }
 
-    pub fn load_data_from_repo(&mut self, repo: &DicomRepo, image_series_number: &str) {
-        let vol = {
-            let start_time = Instant::now();
-            let vol = repo
-                .generate_ct_volume(image_series_number)
-                .unwrap();
-            let elapsed_time = start_time.elapsed();
-            println!(
-                "CTVolume being generated in {:.1} ms.",
-                elapsed_time.as_millis_f32()
-            );
-            println!("CT Volume:\n{:#?}", vol);
-            vol
-        };
-        let texture = {
-            let voxel_data: Vec<u16> = vol.voxel_data.iter().map(|x| (*x + 1000) as u16).collect();
-            let voxel_data: &[u8] = bytemuck::cast_slice(&voxel_data);
+    pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume) {
+        let voxel_data: Vec<u16> = vol.voxel_data.iter().map(|x| (*x + 1000) as u16).collect();
+        let voxel_data: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
+        let texture = 
             RenderContent::from_bytes(
                 &self.device,
                 &self.queue,
-                voxel_data,
+                &voxel_data,
                 "CT Volume",
                 vol.dimensions.0 as u32,
                 vol.dimensions.1 as u32,
                 vol.dimensions.2 as u32,
-            ).unwrap()
-        };
+            ).unwrap();
     
         let transverse_view = TransverseView::new(&self.device, &texture, 0.00, 0.005 / 2.0, &vol, (0, 0), (900, 900));
         let sagittal_view = SagittalView::new(&self.device, &texture, 0.00, 0.005 / 2.0, &vol, (900, 0), (300, 300));
@@ -312,6 +305,11 @@ impl State {
         self.layout.add_view(Box::new(sagittal_view));
         self.layout.add_view(Box::new(coronal_view));
         self.layout.add_view(Box::new(oblique_view));
+    }
+
+    pub fn load_data_from_repo(&mut self, repo: &DicomRepo, image_series_number: &str) {
+        let vol = repo.generate_ct_volume(image_series_number).unwrap();
+        self.load_data_from_ct_volume(&vol);
     }
 }
 
