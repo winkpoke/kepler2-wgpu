@@ -53,7 +53,7 @@ fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+// #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct State <'a> {
     pub(crate) surface: wgpu::Surface<'a>,
     pub(crate) device: wgpu::Device,

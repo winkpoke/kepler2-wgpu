@@ -82,8 +82,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // let tex_coords_3d = (u_uniform_frag.mat * vec4<f32>(in.tex_coords.x, in.tex_coords.y, depth * 0.2 + 0.5, 1)).xyz;
     let tex_coords_3d = (u_uniform_frag.mat * vec4<f32>(in.tex_coords.x, in.tex_coords.y, depth, 1)).xyz;
 
-    // If the texture coordinates are out of bounds, return black (or transparent if you prefer)
-    if any(tex_coords_3d < vec3<f32>(0.0) || tex_coords_3d > vec3<f32>(1.0)) {
+    // Component-wise comparison for out-of-bounds check
+    let out_of_bounds = any(tex_coords_3d.x < 0.0 || tex_coords_3d.x > 1.0 ||
+                             tex_coords_3d.y < 0.0 || tex_coords_3d.y > 1.0 ||
+                             tex_coords_3d.z < 0.0 || tex_coords_3d.z > 1.0);
+
+
+    // If the texture coordinates are out of bounds, return black
+    if out_of_bounds {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);  // Black color for out-of-bound coordinates
     }
 

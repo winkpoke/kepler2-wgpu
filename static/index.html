@@ -22,9 +22,11 @@
     <input type="file" id="file" multiple>
     <div id="tree-container"></div>
     <script type="module">
-        import init from '../pkg/kepler_wgpu.js';
-        let wasm = await init();
-        
+        import init, {run, parse_dcm_files_wasm} from '../pkg/kepler_wgpu.js';
+        var repo;
+
+        await init();
+
         let series_id;
         let fileLists = [];
 
@@ -39,12 +41,11 @@
             treeContainer.appendChild(createTree(patient_list));
 
         })
-        await wasm.run();
 
         function get_tree(fileArray) {
             return new Promise(async (resolve, reject) => {
                 try {
-                    let repo = await wasm.parse_dcm_files_wasm(fileArray);
+                    repo = await parse_dcm_files_wasm(fileArray);
                     // 获取所有患者信息
                     let patients = JSON.parse(repo.get_all_patients());
                     let patient_list = [];
@@ -122,14 +123,8 @@
                 }else {
                     toggle.addEventListener('click', async() => {
                         series_id = toggle.innerHTML;
-                        console.log(series_id);
-                        let repo =  await wasm.parse_dcm_files_wasm(fileLists);
-                        console.log(repo);
-                        let res = await repo.get_images_by_series(series_id);
-                        console.log(res);
-                        console.log(wasm.load_data_from_repo_wasm);
-                        wasm.load_data_from_repo_wasm(series_id);
-                        
+                        let volume = repo.generate_ct_volume(series_id);
+                        run(volume);
                     })
                 }
 

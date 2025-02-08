@@ -16,13 +16,11 @@
 <body>
     <div id="wasm-example"></div>
     <script type="module">
-        import init from "../pkg/kepler_wgpu.js";
-        let kepler2 = await init();
-        kepler2.run();
-        //   init().then(() => {
-        //       run();
-        //       console.log("WASM Loaded");
-        //   });
+        import init, {run} from "../pkg/kepler_wgpu.js";
+        init().then(() => {
+            run();
+            console.log("WASM Loaded");
+        });
     </script>
 </body>
 

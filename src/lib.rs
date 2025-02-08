@@ -77,22 +77,8 @@ pub async fn run(vol: &CTVolume) {
             .expect("Couldn't append canvas to document body.");
     }
 
-    // Set the window size to 1200x900
-    let _ = window.request_inner_size(PhysicalSize::new(1200, 900));
-    // let mut state = State::initialize(&window).await;
-    
-    // #[cfg(not(target_arch = "wasm32"))]
-    // {
-    //     let seconds = 5;
-    //     println!("Waiting for {} seconds...", seconds);
-    //     // Sleep for `seconds` seconds (non-blocking)
-    //     // tokio::time::sleep(std::time::Duration::from_secs(seconds)).await;
-
-    //     // Call the delayed function after the sleep
-    //     // state.load_data().await;
-    //     state.load_data().await;
-    // }
-
+    // Set the window size to 900x900
+    let _ = window.request_inner_size(PhysicalSize::new(800, 800));
     let mut state = State::new(&window, &vol).await;
 
 
