@@ -78,7 +78,7 @@ pub async fn run(vol: &CTVolume) {
     }
 
     // Set the window size to 900x900
-    let _ = window.request_inner_size(PhysicalSize::new(800, 800));
+    let _ = window.request_inner_size(PhysicalSize::new(900, 900));
     let mut state = State::new(&window, &vol).await;
 
 

@@ -20,7 +20,7 @@ use async_lock::Mutex;
 use tokio::sync::Mutex;
 
 
-use crate::view::{CoronalView, Layout, ObliqueView, Renderable, SagittalView, TransverseView};
+use crate::view::{CoronalView, GridLayout, Layout, ObliqueView, Renderable, SagittalView, TransverseView};
 use crate::ct_volume::*;
 use crate::dicom::*;
 use crate::render_content::RenderContent;
@@ -64,7 +64,7 @@ pub struct State <'a> {
     // it gets dropped after it as the surface contains
     // unsafe references to the window's resources.
     window: &'a Window,
-    pub(crate) layout: Layout,
+    pub(crate) layout: Layout<GridLayout>,
 }
 
 impl <'a> State<'a> {
@@ -175,7 +175,7 @@ impl <'a> State<'a> {
         // };
 
         
-        let layout = Layout::new((800, 800));
+        let layout = Layout::new((800, 800), GridLayout { rows: 2, cols: 2, spacing: 10 });
 
         let state = Self {
             surface,
