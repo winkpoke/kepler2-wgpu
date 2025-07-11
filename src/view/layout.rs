@@ -36,7 +36,7 @@ impl LayoutStrategy for GridLayout {
 pub struct Layout <T: LayoutStrategy> {
     dim: (u32, u32),
     strategy: T,
-    pub(crate) views: Vec<Box<dyn Renderable>>, // A collection of views
+    pub(crate) views: Vec<Box<dyn View>>, // A collection of views
 }
 
 impl<T: LayoutStrategy> Layout<T> {

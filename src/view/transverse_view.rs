@@ -7,6 +7,8 @@ pub struct TransverseView {
     r_speed: f32,
     s_speed: f32,
 
+    slice: f32,
+
     pos: (i32, i32),
     dim: (u32, u32),
 }
@@ -23,14 +25,20 @@ impl TransverseView {
         println!("column major: {:?}", transform_matrix);
 
         let view = view::RenderContext::new(&device, &texture, transform_matrix);
+        let slice = 0.0;
 
         Self {
             view,
             r_speed,
             s_speed,
+            slice,
             pos,
             dim
         }
+    }
+
+    pub fn set_slice(&mut self, slice: f32) {
+        self.slice = slice;
     }
 }
 
@@ -39,11 +47,13 @@ impl view::Renderable for TransverseView {
         // Update the rotation angle, e.g., incrementing it over time
         self.view.uniforms.vert.rotation_angle_y += self.r_speed; //0.05; // Update rotation angle
         // self.view.uniforms.vert.rotation_angle_z += self.r_speed; //0.05; // Update rotation angle
-        if self.view.uniforms.frag.slice >= 1.0 {
-            self.view.uniforms.frag.slice = 0.0;
+        if self.slice >= 1.0 {
+            self.slice = 0.0;
         } else {
-            self.view.uniforms.frag.slice += self.s_speed; //0.005;
+            self.slice += self.s_speed; //0.005;
         }
+
+        self.view.uniforms.frag.slice = self.slice;
 
         queue.write_buffer(
             &self.view.uniform_vert_buffer,

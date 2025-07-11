@@ -296,10 +296,10 @@ impl <'a> State<'a> {
                 vol.dimensions.2 as u32,
             ).unwrap();
     
-        let transverse_view = TransverseView::new(&self.device, &texture, 0.00, 0.005 / 2.0, &vol, (0, 0), (900, 900));
-        let sagittal_view = SagittalView::new(&self.device, &texture, 0.00, 0.005 / 2.0, &vol, (900, 0), (300, 300));
-        let coronal_view = CoronalView::new(&self.device, &texture, 0.00, 0.005 / 2.0, &vol, (900, 300), (300, 300));
-        let oblique_view = ObliqueView::new(&self.device, &texture, 0.00, 0.005 / 2.0, &vol, (900, 600), (300, 300));
+        let transverse_view = TransverseView::new(&self.device, &texture, 0.00, 0.0005, &vol, (0, 0), (900, 900));
+        let sagittal_view = SagittalView::new(&self.device, &texture, 0.00, 0.0005, &vol, (900, 0), (300, 300));
+        let coronal_view = CoronalView::new(&self.device, &texture, 0.00, 0.0005, &vol, (900, 300), (300, 300));
+        let oblique_view = ObliqueView::new(&self.device, &texture, 0.00, 0.0005, &vol, (900, 600), (300, 300));
     
         self.layout.add_view(Box::new(transverse_view));
         self.layout.add_view(Box::new(sagittal_view));
