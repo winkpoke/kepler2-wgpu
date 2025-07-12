@@ -8,8 +8,7 @@ use wgpu::util::DeviceExt;
 pub struct UniformsVert {
     pub rotation_angle_y: f32,
     pub rotation_angle_z: f32,
-    pub scale: f32,
-    pub _padding: [f32; 1],
+    pub _padding: [f32; 2],
 }
 
 #[repr(C)]
@@ -91,7 +90,6 @@ impl RenderContext {
         let u_vert_data = UniformsVert {
             rotation_angle_y: 0.0,
             rotation_angle_z: 0.0,
-            scale: 1.0,
             ..Default::default()
         };
         let u_frag_data = UniformsFrag {

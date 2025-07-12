@@ -1,23 +1,51 @@
+use core::slice;
+
 use crate::geometry::GeometryBuilder;
 use crate::{view, CTVolume};
 use crate::render_content::RenderContent;
+use crate::coord::Matrix4x4;
 
 pub struct SagittalView {
     view: view::RenderContext,
     r_speed: f32,
     s_speed: f32,
+    slice: f32,
+    scale: f32,
+    translate: (f32, f32, f32),
 
     pos: (i32, i32),
     dim: (u32, u32),
 }
 
 impl SagittalView {
-    pub fn new(device: &wgpu::Device, texture: &RenderContent, r_speed: f32, s_speed: f32, vol: &CTVolume, pos: (i32, i32), dim: (u32, u32),) -> Self {
-        let base_screen = GeometryBuilder::build_sagittal_base(&vol);
+    pub fn new(device: &wgpu::Device, texture: &RenderContent, vol: &CTVolume, 
+               scale: f32, translate: (f32, f32, f32),
+               pos: (i32, i32), dim: (u32, u32),) -> Self {
+        let r_speed = 0.00;
+        let s_speed = 0.0005;
+
+        let scale = 2.0;
+        let scale_matrix = Matrix4x4::<f32>::from_array([
+              1.0/scale,   0.0, 0.0, 0.0,
+              0.0, 1.0/scale,  0.0, 0.0,
+              0.0, 0.0, 1.0, 0.0,
+              0.0, 0.0, 0.0, 1.0,]);
+
+        let translate_matrix = Matrix4x4::<f32>::from_array([
+              1.0, 0.0, 0.0, -0.0,
+              0.0, 1.0, 0.0, -0.0,
+              0.0, 0.0, 1.0, -0.0,
+              0.0, 0.0, 0.0, 1.0,]);
+
+
+        let mut base_screen = GeometryBuilder::build_sagittal_base(&vol);
         println!("base_screen:\n{:?}", &base_screen);
 
 
         let base_uv = GeometryBuilder::build_uv_base(&vol);
+
+        base_screen.matrix = translate_matrix.multiply(&base_screen.matrix);
+        base_screen.matrix = scale_matrix.multiply(&base_screen.matrix);
 
         let transform_matrix = base_screen.to_base(&base_uv);
         println!("row major:\n{:?}", transform_matrix);
@@ -26,14 +54,29 @@ impl SagittalView {
         println!("column major: {:?}", transform_matrix);
 
         let view = view::RenderContext::new(&device, &texture, transform_matrix);
-
+        let slice = 0.0;
         Self {
             view,
             r_speed,
             s_speed,
+            slice,
+            scale,
+            translate,
             pos,
             dim,
         }
+    }
+    
+    pub fn set_slice(&mut self, slice: f32) {
+        self.slice = slice;
+    }
+
+    pub fn set_scale(&mut self, scale: f32) {
+        self.scale = scale;
+    }
+
+    pub fn set_translate(&mut self, translate: (f32, f32, f32)) {
+        self.translate = translate;
     }
 }
 
@@ -42,11 +85,13 @@ impl view::Renderable for SagittalView {
         // Update the rotation angle, e.g., incrementing it over time
         self.view.uniforms.vert.rotation_angle_y += self.r_speed; //0.05; // Update rotation angle
         // self.view.uniforms.vert.rotation_angle_z += self.r_speed; //0.05; // Update rotation angle
-        if self.view.uniforms.frag.slice >= 1.0 {
-            self.view.uniforms.frag.slice = 0.0;
+        if self.slice >= 1.0 {
+            self.slice = 0.0;
         } else {
-            self.view.uniforms.frag.slice += self.s_speed; //0.005;
+            self.slice += self.s_speed; //0.005;
         }
+
+        self.view.uniforms.frag.slice = self.slice;
 
         queue.write_buffer(
             &self.view.uniform_vert_buffer,

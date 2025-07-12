@@ -3,8 +3,8 @@
 struct Uniforms {
     rotation_angle_y: f32,
     rotation_angle_z: f32,
-    scale: f32,
     _padding1: f32,
+    _padding2: f32,
 };
 
 @group(1) @binding(0)
@@ -28,7 +28,6 @@ fn vs_main(
 
     // Apply rotation (you may want to adjust this)
     let u_rotation_z = u_uniform.rotation_angle_z;
-    let scale = u_uniform.scale;
     let rotation_matrix_z = mat4x4<f32>(
         cos(u_rotation_z), sin(u_rotation_z), 0.0, 0.0,
        -sin(u_rotation_z), cos(u_rotation_z), 0.0, 0.0,
@@ -44,8 +43,8 @@ fn vs_main(
     );
 
     let scale_matrix = mat4x4<f32>(
-        scale, 0.0, 0.0, 0.0,
-        0.0, scale, 0.0, 0.0,
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 0.0,
         0.0, 0.0, 1.0, 0.0,
         0.0, 0.0, 0.0, 1.0,
     );
