@@ -91,8 +91,6 @@ impl view::Renderable for SagittalView {
             self.slice += self.s_speed; //0.005;
         }
 
-        self.view.uniforms.frag.slice = self.slice;
-
         queue.write_buffer(
             &self.view.uniform_vert_buffer,
             0,
