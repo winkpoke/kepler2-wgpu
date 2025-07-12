@@ -1,6 +1,7 @@
 use crate::geometry::GeometryBuilder;
 use crate::{view, CTVolume};
 use crate::render_content::RenderContent;
+use crate::coord::Matrix4x4;
 
 pub struct TransverseView {
     view: view::RenderContext,
@@ -15,8 +16,24 @@ pub struct TransverseView {
 
 impl TransverseView {
     pub fn new(device: &wgpu::Device, texture: &RenderContent, r_speed: f32, s_speed: f32, vol: &CTVolume, pos: (i32, i32), dim: (u32, u32)) -> Self {
-        let base_screen = GeometryBuilder::build_transverse_base(&vol);
+        let scale = 3.0;
+        let scale_matrix = Matrix4x4::<f32>::from_array([
+            1.0/scale,   0.0, 0.0, 0.0,
+              0.0, 1.0/scale, 0.0, 0.0,
+              0.0,   0.0, 1.0, 0.0,
+              0.0,   0.0, 0.0, 1.0,]);
+                let scale = 2.0;
+        let translate_matrix = Matrix4x4::<f32>::from_array([
+              1.0, 0.0, 0.0, 500.0,
+              0.0, 1.0, 0.0, 0.0,
+              0.0, 0.0, 1.0, 0.0,
+              0.0, 0.0, 0.0, 1.0,]);
+        
+        let mut base_screen = GeometryBuilder::build_transverse_base(&vol);
         let base_uv = GeometryBuilder::build_uv_base(&vol);
+
+        base_screen.matrix = translate_matrix.multiply(&base_screen.matrix);
+        base_screen.matrix = scale_matrix.multiply(&base_screen.matrix);
 
         let transform_matrix = base_screen.to_base(&base_uv);
         println!("row major: {:?}", transform_matrix);
@@ -54,7 +71,7 @@ impl view::Renderable for TransverseView {
         }
 
         self.view.uniforms.frag.slice = self.slice;
-        self.view.uniforms.vert.scale = 2.0;
+        self.view.uniforms.vert.scale = 1.0;
 
         queue.write_buffer(
             &self.view.uniform_vert_buffer,
