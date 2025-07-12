@@ -54,6 +54,7 @@ impl view::Renderable for TransverseView {
         }
 
         self.view.uniforms.frag.slice = self.slice;
+        self.view.uniforms.vert.scale = 2.0;
 
         queue.write_buffer(
             &self.view.uniform_vert_buffer,

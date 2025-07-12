@@ -3,7 +3,7 @@
 struct Uniforms {
     rotation_angle_y: f32,
     rotation_angle_z: f32,
-    _padding0: f32,
+    scale: f32,
     _padding1: f32,
 };
 
@@ -28,6 +28,7 @@ fn vs_main(
 
     // Apply rotation (you may want to adjust this)
     let u_rotation_z = u_uniform.rotation_angle_z;
+    let scale = u_uniform.scale;
     let rotation_matrix_z = mat4x4<f32>(
         cos(u_rotation_z), sin(u_rotation_z), 0.0, 0.0,
        -sin(u_rotation_z), cos(u_rotation_z), 0.0, 0.0,
@@ -42,9 +43,9 @@ fn vs_main(
         0.0,               0.0,  0.0,               1.0
     );
 
-    let scale = mat4x4<f32>(
-        2.0, 0.0, 0.0, 0.0,
-        0.0, 2.0, 0.0, 0.0,
+    let scale_matrix = mat4x4<f32>(
+        scale, 0.0, 0.0, 0.0,
+        0.0, scale, 0.0, 0.0,
         0.0, 0.0, 1.0, 0.0,
         0.0, 0.0, 0.0, 1.0,
     );
@@ -52,7 +53,7 @@ fn vs_main(
     // Set the output
     out.tex_coords = model.tex_coords;
     // out.clip_position = vec4<f32>(model.position, 1.0);
-    out.clip_position = rotation_matrix_z * rotation_matrix_y * scale * vec4<f32>(model.position, 1.0);
+    out.clip_position = rotation_matrix_z * rotation_matrix_y * scale_matrix * vec4<f32>(model.position, 1.0);
     out.clip_position.z += 0.5;
     return out;
 }
