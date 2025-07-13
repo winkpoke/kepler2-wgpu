@@ -1,4 +1,4 @@
-use std::{fmt, ops::{Mul, Add, Sub}};
+use std::{fmt, ops::{Mul, Add, Sub, Neg, Div}};
 
 #[derive(Copy, Clone)]
 pub struct Matrix4x4<T> {
@@ -313,6 +313,54 @@ where
         Self::new([self.data[0] - rhs.data[0],
             self.data[1] - rhs.data[1],
             self.data[2] - rhs.data[2],])
+    }
+}
+
+impl<T> Mul<T> for Vector3<T>
+where
+    T: Mul<Output = T> + Copy,
+{
+    type Output = Self;
+    fn mul(self, scalar: T) -> Self {
+        Self {
+            data: [
+                self.data[0] * scalar,
+                self.data[1] * scalar,
+                self.data[2] * scalar,
+            ],
+        }
+    }
+}
+
+impl<T> Div<T> for Vector3<T>
+where
+    T: Div<Output = T> + Copy,
+{
+    type Output = Self;
+    fn div(self, scalar: T) -> Self {
+        Self {
+            data: [
+                self.data[0] / scalar,
+                self.data[1] / scalar,
+                self.data[2] / scalar,
+            ],
+        }
+    }
+}
+
+impl<T> Neg for Vector3<T>
+where
+    T: Neg<Output = T> + Copy,
+{
+    type Output = Self;
+    fn neg(self) -> Self {
+        Self {
+            data: [
+                -self.data[0],
+                -self.data[1],
+                -self.data[2],
+            ],
+        }
     }
 }
 
