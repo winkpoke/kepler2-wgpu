@@ -26,11 +26,8 @@ impl TransverseView {
         let mut base_screen = GeometryBuilder::build_transverse_base(&vol);
         let base_uv = GeometryBuilder::build_uv_base(&vol);
 
-        // println!("Transverse Base before scaling:\n{:?}", &base_screen);
-        let mat = &mut base_screen.matrix;
-        GeometryBuilder::scale(mat, scale);
-        // println!("Transverse Base after scaling:\n{:?}", &base_screen);
-        GeometryBuilder::translate(mat, translate);
+        base_screen.scale(scale);
+        base_screen.translate(translate);
 
         let transform_matrix = base_screen.to_base(&base_uv);
         println!("row major: {:?}", transform_matrix);

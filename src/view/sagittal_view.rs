@@ -11,7 +11,7 @@ pub struct SagittalView {
     s_speed: f32,
     slice: f32,
     scale: f32,
-    translate: (f32, f32, f32),
+    translate: [f32;3],
 
     pos: (i32, i32),
     dim: (u32, u32),
@@ -19,12 +19,15 @@ pub struct SagittalView {
 
 impl SagittalView {
     pub fn new(device: &wgpu::Device, texture: &RenderContent, vol: &CTVolume, 
-               scale: f32, translate: (f32, f32, f32),
+               scale: f32, translate: [f32;3],
                pos: (i32, i32), dim: (u32, u32),) -> Self {
         let r_speed = 0.00;
         let s_speed = 0.0005;
-        let base_screen = GeometryBuilder::build_sagittal_base(&vol);
+        let mut base_screen = GeometryBuilder::build_sagittal_base(&vol);
         let base_uv = GeometryBuilder::build_uv_base(&vol);
+
+        base_screen.scale(scale);
+        base_screen.translate(translate);
 
         let transform_matrix = base_screen.to_base(&base_uv);
         println!("row major:\n{:?}", transform_matrix);
@@ -54,7 +57,7 @@ impl SagittalView {
         self.scale = scale;
     }
 
-    pub fn set_translate(&mut self, translate: (f32, f32, f32)) {
+    pub fn set_translate(&mut self, translate: [f32;3]) {
         self.translate = translate;
     }
 }

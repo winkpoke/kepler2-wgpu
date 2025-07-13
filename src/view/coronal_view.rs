@@ -8,14 +8,26 @@ pub struct CoronalView {
     r_speed: f32,
     s_speed: f32,
 
+    slice: f32,
+    scale: f32,
+    translate: [f32;3],
+
     pos: (i32, i32),
     dim: (u32, u32),
 }
 
 impl CoronalView {
-    pub fn new(device: &wgpu::Device, texture: &RenderContent, r_speed: f32, s_speed: f32, vol: &CTVolume, pos: (i32, i32), dim: (u32, u32),) -> Self {
-        let base_screen = GeometryBuilder::build_coronal_base(&vol);
+    pub fn new(device: &wgpu::Device, texture: &RenderContent, vol: &CTVolume, 
+               scale: f32, translate: [f32;3],
+               pos: (i32, i32), dim: (u32, u32),) -> Self {
+
+        let r_speed = 0.00;
+        let s_speed = 0.0005;
+        let mut base_screen = GeometryBuilder::build_coronal_base(&vol);
         let base_uv = GeometryBuilder::build_uv_base(&vol);
+
+        base_screen.scale(scale);
+        base_screen.translate(translate);
 
         let transform_matrix = base_screen.to_base(&base_uv);
         println!("row major: {:?}", transform_matrix);
@@ -24,14 +36,29 @@ impl CoronalView {
         println!("column major: {:?}", transform_matrix);
 
         let view = RenderContext::new(&device, &texture, transform_matrix);
-
+        let slice = 0.0;
         Self {
             view,
             r_speed,
             s_speed,
+            slice,
+            scale,
+            translate,
             pos,
             dim,
         }
+    }
+
+    pub fn set_slice(&mut self, slice: f32) {
+        self.slice = slice;
+    }
+
+    pub fn set_scale(&mut self, scale: f32) {
+        self.scale = scale;
+    }
+
+    pub fn set_translate(&mut self, translate: [f32;3]) {
+        self.translate = translate;
     }
 }
 

@@ -1380,6 +1380,7 @@ dependencies = [
  "js-sys",
  "log",
  "num",
+ "num-traits",
  "once_cell",
  "paste",
  "pollster",

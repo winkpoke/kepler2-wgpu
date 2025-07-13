@@ -1,4 +1,4 @@
-use crate::{coord::{Base, Matrix4x4}, dicom::DicomRepo, CTImage, CTVolume};
+use crate::{coord::{Base, Matrix4x4, Vector3}, dicom::DicomRepo, CTImage, CTVolume};
 use std::ops::{DivAssign, SubAssign};
 
 #[cfg(target_arch = "wasm32")]
@@ -22,20 +22,6 @@ impl <'a> GeometryBuilder<'a> {
         Self {
             repo: Some(repo),
             ..self
-        }
-    }
-
-    pub fn scale<T: DivAssign + Copy>(mat: &mut Matrix4x4<T>, scale: T) {
-        for i in 0..3 {
-            for j in 0..3 {
-                mat.data[i][j] /= scale;
-            }
-        }
-    }
-
-    pub fn translate<T: SubAssign + Copy>(mat: &mut Matrix4x4<T>, translate: [T; 3]) {
-        for i in 0..3 {
-            mat.data[i][3] -= translate[i];
         }
     }
 
@@ -98,12 +84,10 @@ impl <'a> GeometryBuilder<'a> {
         let d = f32::max(nx * space.0, ny * space.1);
         let dz = space.2 * nz;
 
-        let s = 1.5;
-        let t = 200.0;
         let matrix_screen = Matrix4x4::<f32>::from_array([
-            d/s,    0.0,  0.0, ox - t,
-            0.0,  0.0,  d / 4.0/s,  (oy + ny * space.1) / 2.0 - d / 2.8,
-            0.0,  -d/s,   0.0, oz + nz * space.2 / 2.0 + d/2.0 - t,
+            d,    0.0,  0.0, ox,
+            0.0,  0.0,  d / 4.0,  (oy + ny * space.1) / 2.0 - d / 2.8,
+            0.0,  -d,   0.0, oz + nz * space.2 / 2.0 + d/2.0,
             0.0,  0.0,  0.0, 1.0
         ]);
         let base_screen = Base::<f32> {
