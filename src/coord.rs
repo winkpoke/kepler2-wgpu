@@ -1,4 +1,4 @@
-use std::{fmt, ops::Mul};
+use std::{fmt, ops::{Mul, Add, Sub}};
 
 #[derive(Copy, Clone)]
 pub struct Matrix4x4<T> {
@@ -216,6 +216,20 @@ where
             unreachable!()
         }
     }
+
+    pub fn scale(&mut self, scale: T) {
+        for i in 0..3 {
+            for j in 0..3 {
+                self.matrix.data[i][j] /= scale;
+            }
+        }
+    }
+
+    pub fn translate(&mut self, translate: [T; 3]) {
+        for i in 0..3 {
+            self.matrix.data[i][3] -= translate[i];
+        }
+    }
 }
 
 impl<T> Default for Base<T>
@@ -263,6 +277,84 @@ pub fn slice_to_array<T>(slice: &[T; 16]) -> &[[T; 4]; 4] {
     // Safe to cast for the same reason
     unsafe { &*(slice as *const [T; 16] as *const [[T; 4]; 4]) }
 }
+
+// Vector3 type for convenience
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct Vector3<T> { 
+    data: [T; 3],
+}
+
+impl<T> Vector3<T> {
+    pub fn new(data: [T; 3]) -> Self {
+        Self { data }
+    }
+
+}
+
+// Vector3 Operations =======================================================
+impl<T> Add for Vector3<T>
+where
+    T: Add<Output = T> + Copy,
+{
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self {
+        Self::new([self.data[0] + rhs.data[0],
+            self.data[1] + rhs.data[1],
+            self.data[2] + rhs.data[2],])
+    }
+}
+
+impl<T> Sub for Vector3<T>
+where
+    T: Sub<Output = T> + Copy,
+{
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self {
+        Self::new([self.data[0] - rhs.data[0],
+            self.data[1] - rhs.data[1],
+            self.data[2] - rhs.data[2],])
+    }
+}
+
+impl<T> Vector3<T>
+where
+    T: Add<Output = T> + Mul<Output = T> + Sub<Output = T> + Copy,
+{
+    pub fn dot(self, rhs: Self) -> T {
+        self.data[0] * rhs.data[0] + self.data[1] * rhs.data[1] + self.data[2] * rhs.data[2]
+    }
+
+    pub fn cross(self, rhs: Self) -> Self {
+        Self {
+            data: [self.data[1] * rhs.data[2] - self.data[2] * rhs.data[1],
+                   self.data[2] * rhs.data[0] - self.data[0] * rhs.data[2],
+                   self.data[0] * rhs.data[1] - self.data[1] * rhs.data[0],]
+        }
+    }
+
+    pub fn magnitude_squared(self) -> T {
+        self.dot(self)
+    }
+}
+
+
+// impl<T> Vector3<T>
+// where
+//     T: Float,
+// {
+//     pub fn magnitude(self) -> T {
+//         self.magnitude_squared().sqrt()
+//     }
+
+//     pub fn normalize(self) -> Self {
+//         let mag = self.magnitude();
+//         if mag < T::epsilon() {
+//             Self::new(T::zero(), T::zero(), T::zero())
+//         } else {
+//             self * (T::one() / mag)
+//         }
+//     }
+// }
 
 #[cfg(test)]
 mod tests {

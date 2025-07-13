@@ -10,7 +10,7 @@ pub struct TransverseView {
 
     slice: f32,
     scale: f32,
-    translate: (f32, f32, f32),
+    translate: [f32;3],
 
     pos: (i32, i32),
     dim: (u32, u32),
@@ -18,29 +18,19 @@ pub struct TransverseView {
 
 impl TransverseView {
     pub fn new(device: &wgpu::Device, texture: &RenderContent, 
-               vol: &CTVolume, scale: f32, translate: (f32, f32, f32), 
+               vol: &CTVolume, scale: f32, translate: [f32;3], 
                pos: (i32, i32), dim: (u32, u32)) -> Self {
-        // let scale = 3.0;
         let r_speed = 0.00;
         let s_speed = 0.0005;
-
-        let scale_matrix = Matrix4x4::<f32>::from_array([
-            1.0/scale,   0.0, 0.0, 0.0,
-              0.0, 1.0/scale, 0.0, 0.0,
-              0.0,   0.0, 1.0, 0.0,
-              0.0,   0.0, 0.0, 1.0,]);
-                let scale = 2.0;
-        let translate_matrix = Matrix4x4::<f32>::from_array([
-              1.0, 0.0, 0.0, -translate.0,
-              0.0, 1.0, 0.0, -translate.1,
-              0.0, 0.0, 1.0, -0.0,
-              0.0, 0.0, 0.0, 1.0,]);
         
         let mut base_screen = GeometryBuilder::build_transverse_base(&vol);
         let base_uv = GeometryBuilder::build_uv_base(&vol);
 
-        base_screen.matrix = translate_matrix.multiply(&base_screen.matrix);
-        base_screen.matrix = scale_matrix.multiply(&base_screen.matrix);
+        // println!("Transverse Base before scaling:\n{:?}", &base_screen);
+        let mat = &mut base_screen.matrix;
+        GeometryBuilder::scale(mat, scale);
+        // println!("Transverse Base after scaling:\n{:?}", &base_screen);
+        GeometryBuilder::translate(mat, translate);
 
         let transform_matrix = base_screen.to_base(&base_uv);
         println!("row major: {:?}", transform_matrix);
@@ -71,7 +61,7 @@ impl TransverseView {
         self.scale = scale;
     }
 
-    pub fn set_translate(&mut self, translate: (f32, f32, f32)) {
+    pub fn set_translate(&mut self, translate: [f32;3]) {
         self.translate = translate;
     }
 }

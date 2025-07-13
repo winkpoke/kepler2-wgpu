@@ -23,29 +23,8 @@ impl SagittalView {
                pos: (i32, i32), dim: (u32, u32),) -> Self {
         let r_speed = 0.00;
         let s_speed = 0.0005;
-
-        let scale = 2.0;
-        let scale_matrix = Matrix4x4::<f32>::from_array([
-              1.0/scale,   0.0, 0.0, 0.0,
-              0.0, 1.0/scale,  0.0, 0.0,
-              0.0, 0.0, 1.0, 0.0,
-              0.0, 0.0, 0.0, 1.0,]);
-
-        let translate_matrix = Matrix4x4::<f32>::from_array([
-              1.0, 0.0, 0.0, -0.0,
-              0.0, 1.0, 0.0, -0.0,
-              0.0, 0.0, 1.0, -0.0,
-              0.0, 0.0, 0.0, 1.0,]);
-
-
-        let mut base_screen = GeometryBuilder::build_sagittal_base(&vol);
-        println!("base_screen:\n{:?}", &base_screen);
-
-
+        let base_screen = GeometryBuilder::build_sagittal_base(&vol);
         let base_uv = GeometryBuilder::build_uv_base(&vol);
-
-        base_screen.matrix = translate_matrix.multiply(&base_screen.matrix);
-        base_screen.matrix = scale_matrix.multiply(&base_screen.matrix);
 
         let transform_matrix = base_screen.to_base(&base_uv);
         println!("row major:\n{:?}", transform_matrix);
@@ -90,6 +69,7 @@ impl view::Renderable for SagittalView {
         } else {
             self.slice += self.s_speed; //0.005;
         }
+        self.view.uniforms.frag.slice = self.slice;
 
         queue.write_buffer(
             &self.view.uniform_vert_buffer,
