@@ -1,6 +1,7 @@
 #![feature(duration_millis_float)]
 
 use log::{debug, error, info, warn};
+use winit::event_loop;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::LazyLock;
@@ -51,14 +52,14 @@ pub async fn init() {
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-pub async fn run(vol: &CTVolume) {
+pub async fn get_glcanvas(vol: &CTVolume) -> GLCanvas {
     #[cfg(not(target_arch = "wasm32"))]
     env_logger::init();
 
     warn!("Start the program ...");
 
     let event_loop = EventLoop::new().unwrap();
-    let window = WindowBuilder::new().build(&event_loop).unwrap();
+    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -79,7 +80,43 @@ pub async fn run(vol: &CTVolume) {
 
     // Set the window size to 900x900
     let _ = window.request_inner_size(PhysicalSize::new(900, 900));
-    let mut state = State::new(&window, &vol).await;
+    let state = State::new(window.clone(), &vol).await;
+
+    GLCanvas { state, event_loop }
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub async fn run(gl_canvas: GLCanvas) {
+    // #[cfg(not(target_arch = "wasm32"))]
+    // env_logger::init();
+
+    // warn!("Start the program ...");
+
+    // let event_loop = EventLoop::new().unwrap();
+    // let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
+
+    // #[cfg(target_arch = "wasm32")]
+    // {
+    //     // Winit prevents sizing with CSS, so we have to set
+    //     // the size manually when on web.
+    //     use winit::dpi::PhysicalSize;
+    //     use winit::platform::web::WindowExtWebSys;
+    //     web_sys::window()
+    //         .and_then(|win| win.document())
+    //         .and_then(|doc| {
+    //             let dst = doc.get_element_by_id("wasm-example")?;
+    //             let canvas = web_sys::Element::from(window.canvas()?);
+    //             dst.append_child(&canvas).ok()?;
+    //             Some(())
+    //         })
+    //         .expect("Couldn't append canvas to document body.");
+    // }
+
+    // // Set the window size to 900x900
+    // let _ = window.request_inner_size(PhysicalSize::new(900, 900));
+    // let mut state = State::new(window.clone(), &vol).await;
+    let mut state = gl_canvas.state;
+    let event_loop = gl_canvas.event_loop;
 
 
     let mut surface_configured = false;

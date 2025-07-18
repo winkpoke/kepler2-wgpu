@@ -22,7 +22,7 @@
     <input type="file" id="file" multiple>
     <div id="tree-container"></div>
     <script type="module">
-        import init, {run, parse_dcm_files_wasm} from '../pkg/kepler_wgpu.js';
+        import init, {run, parse_dcm_files_wasm, get_glcanvas} from '../pkg/kepler_wgpu.js';
         var repo;
 
         await init();
@@ -124,7 +124,10 @@
                     toggle.addEventListener('click', async() => {
                         series_id = toggle.innerHTML;
                         let volume = repo.generate_ct_volume(series_id);
-                        run(volume);
+                        let gl_canvas = await get_glcanvas(volume);
+                        console.log("GLCanvas:")
+                        console.log(gl_canvas);
+                        run(gl_canvas);
                     })
                 }
 

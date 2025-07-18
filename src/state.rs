@@ -27,6 +27,8 @@ use crate::render_content::RenderContent;
 
 
 
+
+
 fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
     let mut file_paths = Vec::new();
 
@@ -54,8 +56,8 @@ fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
 use wasm_bindgen::prelude::*;
 
 // #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-pub struct State <'a> {
-    pub(crate) surface: wgpu::Surface<'a>,
+pub struct State {
+    pub(crate) surface: wgpu::Surface<'static>,
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
     pub(crate) config: wgpu::SurfaceConfiguration,
@@ -63,11 +65,11 @@ pub struct State <'a> {
     // The window must be declared after the surface so
     // it gets dropped after it as the surface contains
     // unsafe references to the window's resources.
-    window: &'a Window,
+    window: Arc<Window>,
     pub(crate) layout: Layout<GridLayout>,
 }
 
-impl <'a> State<'a> {
+impl State {
     // pub async fn get_instance() -> Rc<RefCell<State>> {
     //     STATE.with(|state| {
     //         state.get().map(|s| s.clone()).unwrap()
@@ -81,13 +83,13 @@ impl <'a> State<'a> {
     //         }
     //     });
     // }
-    pub async fn new(window: &'a Window, vol: &CTVolume) -> State<'a> {
+    pub async fn new(window: Arc<Window>, vol: &CTVolume) -> State {
         let mut state = State::initialize(window).await;
         state.load_data_from_ct_volume(vol);
         state
     }
 
-    pub async fn initialize(window: &'a Window) -> State<'a> {
+    pub async fn initialize(window: Arc<Window>) -> State {
         let size = window.inner_size();
 
         // The instance is a handle to our GPU
@@ -102,7 +104,7 @@ impl <'a> State<'a> {
             ..Default::default()
         });
 
-        let surface = instance.create_surface(window).unwrap();
+        let surface = instance.create_surface(window.clone()).unwrap();
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -330,3 +332,8 @@ pub fn load_data_from_repo_wasm(/*repo: &DicomRepo,*/ image_series_number: &str)
 
 
 
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub struct GLCanvas {
+    pub(crate) state: State,
+    pub(crate) event_loop: winit::event_loop::EventLoop<()>,
+}
