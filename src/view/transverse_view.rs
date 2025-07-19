@@ -19,7 +19,8 @@ pub struct TransverseView {
 impl TransverseView {
     pub fn new(device: &wgpu::Device, texture: &RenderContent, 
                vol: &CTVolume, scale: f32, translate: [f32;3], 
-               pos: (i32, i32), dim: (u32, u32)) -> Self {
+            //    pos: (i32, i32), dim: (u32, u32)
+            ) -> Self {
         let r_speed = 0.00;
         let s_speed = 0.006;
         
@@ -37,6 +38,9 @@ impl TransverseView {
 
         let view = view::RenderContext::new(&device, &texture, transform_matrix);
         let slice = 0.0;
+
+        let pos = (0, 0); // Default position
+        let dim = (800, 800); // Default dimensions
 
         Self {
             view,
@@ -60,6 +64,16 @@ impl TransverseView {
 
     pub fn set_translate(&mut self, translate: [f32;3]) {
         self.translate = translate;
+    }
+
+    pub fn set_slice_speed(&mut self, speed: f32) {
+        log::info!("TransverseView set_slice_speed: {}", speed);
+        self.s_speed = speed;
+        log::info!("TransverseView slice_speed set to: {}", self.s_speed);
+    }
+
+    pub fn set_window_level(&mut self, window_level: f32) {
+        self.view.uniforms.frag.level = window_level;
     }
 }
 
@@ -124,9 +138,11 @@ impl view::View for TransverseView {
         self.dim = dim;
     }
     
-    fn set_slice_speed(&mut self, speed: f32) {
-        log::info!("TransverseView set_slice_speed: {}", speed);
-        self.s_speed = speed;
-        log::info!("TransverseView slice_speed set to: {}", self.s_speed);
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 }

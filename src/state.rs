@@ -70,19 +70,6 @@ pub struct State {
 }
 
 impl State {
-    // pub async fn get_instance() -> Rc<RefCell<State>> {
-    //     STATE.with(|state| {
-    //         state.get().map(|s| s.clone()).unwrap()
-    //     })
-    // }
-
-    // pub async fn set_instance(new_state: State) {
-    //     STATE.with(|state| {
-    //         if let Err(_) = state.set(Rc::new(RefCell::new(new_state))) {
-    //             panic!("Error when setting the State value");
-    //         }
-    //     });
-    // }
     pub async fn new(window: Arc<Window>, vol: &CTVolume) -> State {
         let mut state = State::initialize(window).await;
         state.load_data_from_ct_volume(vol);
@@ -177,7 +164,7 @@ impl State {
         // };
 
         
-        let layout = Layout::new((800, 800), GridLayout { rows: 2, cols: 2, spacing: 10 });
+        let layout = Layout::new((800, 800), GridLayout { rows: 2, cols: 2, spacing: 3 });
 
         let state = Self {
             surface,
@@ -298,7 +285,7 @@ impl State {
                 vol.dimensions.2 as u32,
             ).unwrap();
     
-        let transverse_view = TransverseView::new(&self.device, &texture, &vol, 2.0, [-153.91, -126.75, 0.0], (0, 0), (900, 900));
+        let transverse_view = TransverseView::new(&self.device, &texture, &vol, 2.0, [-153.91, -126.75, 0.0]);
         let sagittal_view = SagittalView::new(&self.device, &texture, &vol, 1.5, [100.0, 0.0, 100.0], (900, 0), (300, 300));
         let coronal_view = CoronalView::new(&self.device, &texture, &vol, 1.7, [0.0, 100.0, 100.0], (900, 300), (300, 300));
         let oblique_view = ObliqueView::new(&self.device, &texture, &vol, 1.5, [150.0, 0.0, 0.0], (900, 600), (300, 300));
@@ -315,8 +302,16 @@ impl State {
     }
 
     pub fn set_slice_speed(&mut self, speed: f32) {
-        for view in self.layout.views.iter_mut() {
-            view.set_slice_speed(speed);
+        let view = self.layout.views.get_mut(0).unwrap();
+        if let Some(transverse_view) = view.as_any_mut().downcast_mut::<TransverseView>() {
+            transverse_view.set_slice_speed(speed);
+        }
+    }
+
+    pub fn set_window_level(&mut self, window_level: f32) {
+        let view = self.layout.views.get_mut(0).unwrap();
+        if let Some(transverse_view) = view.as_any_mut().downcast_mut::<TransverseView>() {
+            transverse_view.set_window_level(window_level);
         }
     }
 }

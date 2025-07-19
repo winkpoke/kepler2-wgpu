@@ -52,6 +52,10 @@ impl RenderApp {
                     state.set_slice_speed(speed);
                     log::warn!("Slice speed set to: {}", speed);
                 }
+                Event::UserEvent(UserEvent::SetWindowLevel(window_level)) => {
+                    state.set_window_level(window_level);
+                    log::warn!("Window level set to: {}", window_level);
+                }
                 Event::WindowEvent {
                     ref event,
                     window_id,
@@ -130,7 +134,26 @@ pub struct AppState {
 #[derive(Debug)]
 pub enum UserEvent {
     SetSliceSpeed(f32),
+    SetWindowLevel(f32),
     // ... add more events as needed
+}
+
+#[macro_export]
+macro_rules! impl_user_event_senders_for_glcanvas {
+    ($( $fn_name:ident => $variant:ident($arg:ident : $arg_ty:ty) ),* $(,)?) => {
+        #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+        impl GLCanvas {
+            $(
+                pub fn $fn_name(&self, $arg: $arg_ty) {
+                    if let Err(e) = self.proxy.send_event(UserEvent::$variant($arg)) {
+                        log::error!("Failed to send {} event: {:?}", stringify!($variant), e);
+                    } else {
+                        log::info!("Sent {} event: {:?}", stringify!($variant), $arg);
+                    }
+                }
+            )*
+        }
+    };
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -138,13 +161,7 @@ pub struct GLCanvas {
     pub(crate) proxy: EventLoopProxy<UserEvent>,
 }
 
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-impl GLCanvas {
-    pub fn set_slice_speed(&self, speed: f32) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetSliceSpeed(speed)) {
-            log::error!("Failed to send slice speed event: {:?}", e);
-        } else {
-            log::info!("Sent slice speed event: {}", speed);
-        }
-    }
+impl_user_event_senders_for_glcanvas! {
+    set_slice_speed => SetSliceSpeed(speed: f32),
+    set_window_level => SetWindowLevel(window_level: f32),
 }

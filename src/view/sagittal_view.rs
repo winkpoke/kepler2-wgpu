@@ -122,8 +122,12 @@ impl view::View for SagittalView {
     fn resize(&mut self, dim: (u32, u32)) {
         self.dim = dim;
     }
-        
-    fn set_slice_speed(&mut self, speed: f32) {
-        self.s_speed = speed;
+    
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 }

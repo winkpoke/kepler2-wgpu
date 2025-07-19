@@ -1,3 +1,4 @@
+use std::any::Any;
 use super::{Renderable, View};
 
 pub trait LayoutStrategy {
@@ -55,6 +56,14 @@ impl<T: LayoutStrategy> Layout<T> {
         view.move_to(pos);
         view.resize(size);
         self.views.push(view);
+    }
+
+    pub fn get_view_by_index(&self, index: usize) -> Option<&Box<dyn View>> {
+        // check if the index is within bounds
+        if index >= self.views.len() {
+            return None;
+        }
+        self.views.get(index)
     }
 }
 
