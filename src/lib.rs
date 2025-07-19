@@ -30,7 +30,7 @@ mod view;
 
 use ct_volume::CTVolume;
 use state::State;
-use gl_canvas::GLCanvas;
+use gl_canvas::RenderApp;
 
 
 #[cfg(target_arch = "wasm32")]
@@ -49,7 +49,7 @@ pub async fn init() {
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-pub async fn get_glcanvas(vol: &CTVolume) -> GLCanvas {
+pub async fn get_render_app(vol: &CTVolume) -> RenderApp {
     #[cfg(not(target_arch = "wasm32"))]
     env_logger::init();
 
@@ -79,86 +79,5 @@ pub async fn get_glcanvas(vol: &CTVolume) -> GLCanvas {
     // Set the window size to 900x900
     let _ = window.request_inner_size(PhysicalSize::new(900, 900));
     let state = State::new(window.clone(), &vol).await;
-    GLCanvas::new(state, event_loop, proxy)
+    RenderApp::new(state, event_loop, proxy)
 }
-
-// #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-// pub fn run(gl_canvas: GLCanvas) {
-//     let mut state = gl_canvas.state;
-//     let event_loop = gl_canvas.event_loop;
-
-
-//     let mut surface_configured = false;
-
-//     log::info!("Starting the event loop ...");
-//     event_loop.run(move |event, control_flow| {
-//         match event {
-//             Event::WindowEvent {
-//                 ref event,
-//                 window_id,
-//             } if window_id == state.window().id() => {
-//                 if !state.input(event) {
-//                     // UPDATED!
-//                     match event {
-//                         WindowEvent::CloseRequested
-//                         | WindowEvent::KeyboardInput {
-//                             event:
-//                                 KeyEvent {
-//                                     state: ElementState::Pressed,
-//                                     physical_key: PhysicalKey::Code(KeyCode::Escape),
-//                                     ..
-//                                 },
-//                             ..
-//                         } => control_flow.exit(),
-//                         WindowEvent::Resized(physical_size) => {
-//                             log::info!("physical_size: {physical_size:?}");
-//                             surface_configured = true;
-//                             state.resize(*physical_size);
-//                         }
-//                         WindowEvent::KeyboardInput {
-//                             event:
-//                                 KeyEvent {
-//                                     state: ElementState::Pressed,
-//                                     physical_key: PhysicalKey::Code(KeyCode::KeyR),
-//                                     ..
-//                                 },
-//                             ..
-//                         } => {
-//                             // state = State::initialize(&window).await;
-//                             println!("R key pressed");
-//                         }
-//                         WindowEvent::RedrawRequested => {
-//                             // This tells winit that we want another frame after this one
-//                             state.window().request_redraw();
-
-//                             if (!surface_configured) {
-//                                 return;
-//                             }
-
-//                             state.update();
-//                             match state.render() {
-//                                 Ok(_) => {}
-//                                 // Reconfigure the surface if it's lost or outdated
-//                                 Err(
-//                                     wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
-//                                 ) => state.resize(state.size),
-//                                 // The system is out of memory, we should probably quit
-//                                 Err(wgpu::SurfaceError::OutOfMemory) => {
-//                                     log::error!("OutOfMemory");
-//                                     control_flow.exit();
-//                                 }
-
-//                                 // This happens when the a frame takes too long to present
-//                                 Err(wgpu::SurfaceError::Timeout) => {
-//                                     log::warn!("Surface timeout")
-//                                 }
-//                             }
-//                         }
-//                         _ => {}
-//                     }
-//                 }
-//             }
-//             _ => {}
-//         }
-//     }).unwrap();
-// }

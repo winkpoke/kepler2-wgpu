@@ -14,15 +14,15 @@ use winit::event_loop::EventLoopProxy;
 use wasm_bindgen::prelude::*;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-pub struct GLCanvas {
+pub struct RenderApp {
     pub(crate) state: State,
     pub(crate) event_loop: Option<EventLoop<UserEvent>>,
     pub(crate) proxy: Option<EventLoopProxy<UserEvent>>,
 }
 
-impl GLCanvas {
+impl RenderApp {
     pub fn new(state: State, event_loop: EventLoop<UserEvent>, proxy: EventLoopProxy<UserEvent>) -> Self {
-        GLCanvas {
+        RenderApp {
             state,
             event_loop: Some(event_loop),
             proxy: Some(proxy),
@@ -31,9 +31,9 @@ impl GLCanvas {
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-impl GLCanvas {
-    pub fn get_glcanvas_wasm(&self) -> GLCanvasWasm {
-        GLCanvasWasm {
+impl RenderApp {
+    pub fn get_glcanvas(&self) -> GLCanvas {
+        GLCanvas {
             proxy: self.proxy.clone().unwrap(),
         }
     }
@@ -134,12 +134,12 @@ pub enum UserEvent {
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-pub struct GLCanvasWasm {
+pub struct GLCanvas {
     pub(crate) proxy: EventLoopProxy<UserEvent>,
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-impl GLCanvasWasm {
+impl GLCanvas {
     pub fn set_slice_speed(&self, speed: f32) {
         if let Err(e) = self.proxy.send_event(UserEvent::SetSliceSpeed(speed)) {
             log::error!("Failed to send slice speed event: {:?}", e);

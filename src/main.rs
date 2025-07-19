@@ -1,12 +1,10 @@
-use kepler_wgpu::{get_glcanvas, ct_volume::CTVolumeGenerator, dicom::fileio};
+use kepler_wgpu::{get_render_app, ct_volume::CTVolumeGenerator, dicom::fileio};
 // use kepler_wgpu::gl_canvas::GLCanvas;
 
 
 #[cfg(not(target_arch="wasm32"))]
 #[tokio::main]
-async fn main() {
-    use kepler_wgpu::get_glcanvas;
-   
+async fn main() {  
     let dicom_folders = vec![
         "C:\\share\\imrt",
         "C:\\share\\head_mold",
@@ -16,6 +14,6 @@ async fn main() {
     let vol = repo.generate_ct_volume(image_series_code).unwrap();
 
     // pollster::block_on(run());
-    let mut gl_canvas = get_glcanvas(&vol).await;
-    gl_canvas.run().await;
+    let mut render_app = get_render_app(&vol).await;
+    render_app.run().await;
 }

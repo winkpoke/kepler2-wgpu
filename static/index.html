@@ -27,10 +27,10 @@
         <button id="scale-submit">Submit</button>
     </div>
     <script type="module">
-        import init, {parse_dcm_files_wasm, get_glcanvas} from '../pkg/kepler_wgpu.js';
+        import init, {parse_dcm_files_wasm, get_render_app} from '../pkg/kepler_wgpu.js';
         var repo;
+        let render_app = null;
         let gl_canvas = null;
-        let gl_canvas_wasm = null;
 
         await init();
 
@@ -50,10 +50,10 @@
                 alert('Please select a series first!');
                 return;
             }
-            console.log('Scale value:', scaleValue);
-            console.log('GLCanvas before setting scale:', gl_canvas);
-            console.log('GLCanvasWASM:', gl_canvas_wasm);
-            gl_canvas_wasm.set_slice_speed(scaleValue);
+            // console.log('Scale value:', scaleValue);
+            // console.log('GLCanvas before setting scale:', gl_canvas);
+            // console.log('GLCanvasWASM:', gl_canvas_wasm);
+            gl_canvas.set_slice_speed(scaleValue);
             console.log('Submitted scale:', scaleValue);
             // Here you can call a WASM function or update AppState, e.g.:
             // appState.scale = scaleValue;
@@ -154,11 +154,9 @@
                     toggle.addEventListener('click', async() => {
                         series_id = toggle.innerHTML;
                         let volume = repo.generate_ct_volume(series_id);
-                        gl_canvas = await get_glcanvas(volume);
-                        gl_canvas_wasm = gl_canvas.get_glcanvas_wasm();
-                        console.log("GLCanvas:")
-                        console.log(gl_canvas);
-                        gl_canvas.run();
+                        render_app = await get_render_app(volume);
+                        gl_canvas = gl_canvas.get_glcanvas();
+                        render_app.run();
                     })
                 }
 
