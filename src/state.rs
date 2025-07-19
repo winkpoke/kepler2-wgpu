@@ -285,9 +285,9 @@ impl State {
                 vol.dimensions.2 as u32,
             ).unwrap();
     
-        let transverse_view = TransverseView::new(&self.device, &texture, &vol, 2.0, [-153.91, -126.75, 0.0]);
-        let sagittal_view = SagittalView::new(&self.device, &texture, &vol, 1.5, [100.0, 0.0, 100.0], (900, 0), (300, 300));
-        let coronal_view = CoronalView::new(&self.device, &texture, &vol, 1.7, [0.0, 100.0, 100.0], (900, 300), (300, 300));
+        let transverse_view = TransverseView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0]);
+        let sagittal_view = SagittalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 0), (300, 300));
+        let coronal_view = CoronalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 300), (300, 300));
         let oblique_view = ObliqueView::new(&self.device, &texture, &vol, 1.5, [150.0, 0.0, 0.0], (900, 600), (300, 300));
     
         self.layout.add_view(Box::new(transverse_view));
