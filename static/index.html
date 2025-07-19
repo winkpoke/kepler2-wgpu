@@ -30,6 +30,7 @@
         import init, {parse_dcm_files_wasm, get_glcanvas} from '../pkg/kepler_wgpu.js';
         var repo;
         let gl_canvas = null;
+        let gl_canvas_wasm = null;
 
         await init();
 
@@ -51,7 +52,8 @@
             }
             console.log('Scale value:', scaleValue);
             console.log('GLCanvas before setting scale:', gl_canvas);
-            gl_canvas.send_slice_speed(scaleValue);
+            console.log('GLCanvasWASM:', gl_canvas_wasm);
+            gl_canvas_wasm.set_slice_speed(scaleValue);
             console.log('Submitted scale:', scaleValue);
             // Here you can call a WASM function or update AppState, e.g.:
             // appState.scale = scaleValue;
@@ -153,6 +155,7 @@
                         series_id = toggle.innerHTML;
                         let volume = repo.generate_ct_volume(series_id);
                         gl_canvas = await get_glcanvas(volume);
+                        gl_canvas_wasm = gl_canvas.get_glcanvas_wasm();
                         console.log("GLCanvas:")
                         console.log(gl_canvas);
                         gl_canvas.run();

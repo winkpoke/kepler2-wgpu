@@ -21,7 +21,7 @@ impl TransverseView {
                vol: &CTVolume, scale: f32, translate: [f32;3], 
                pos: (i32, i32), dim: (u32, u32)) -> Self {
         let r_speed = 0.00;
-        let s_speed = 0.0005;
+        let s_speed = 0.006;
         
         let mut base_screen = GeometryBuilder::build_transverse_base(&vol);
         let base_uv = GeometryBuilder::build_uv_base(&vol);
@@ -125,6 +125,8 @@ impl view::View for TransverseView {
     }
     
     fn set_slice_speed(&mut self, speed: f32) {
+        log::info!("TransverseView set_slice_speed: {}", speed);
         self.s_speed = speed;
+        log::info!("TransverseView slice_speed set to: {}", self.s_speed);
     }
 }

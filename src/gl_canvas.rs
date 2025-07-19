@@ -18,7 +18,6 @@ pub struct GLCanvas {
     pub(crate) state: State,
     pub(crate) event_loop: Option<EventLoop<UserEvent>>,
     pub(crate) proxy: Option<EventLoopProxy<UserEvent>>,
-    pub slice_speed: f32,
 }
 
 impl GLCanvas {
@@ -27,26 +26,15 @@ impl GLCanvas {
             state,
             event_loop: Some(event_loop),
             proxy: Some(proxy),
-            slice_speed: 0.0005,
         }
     }
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 impl GLCanvas {
-    pub fn set_slice_speed(&mut self, speed: f32) {
-        self.slice_speed = speed;
-        self.state.set_slice_speed(speed);
-    }
-
-    pub fn send_slice_speed(&self, speed: f32) {
-        if let Some(proxy) = &self.proxy {
-            match proxy.send_event(UserEvent::SetSliceSpeed(speed)) {
-                Ok(()) => log::info!("Sent slice speed event: {}", speed),
-                Err(e) => log::error!("Failed to send slice speed event: {:?}", e),
-            }
-        } else {
-            log::warn!("No proxy available to send slice speed event");
+    pub fn get_glcanvas_wasm(&self) -> GLCanvasWasm {
+        GLCanvasWasm {
+            proxy: self.proxy.clone().unwrap(),
         }
     }
 
@@ -56,7 +44,6 @@ impl GLCanvas {
         let mut state = &mut self.state;
 
         let mut surface_configured = false;
-        let slice_speed = self.slice_speed;
 
         log::info!("Starting the event loop ...");
         event_loop.run(move |event, control_flow| {
@@ -106,7 +93,6 @@ impl GLCanvas {
                                 if (!surface_configured) {
                                     return;
                                 }
-                                state.set_slice_speed(slice_speed);
                                 state.update();
                                 match state.render() {
                                     Ok(_) => {}
@@ -145,4 +131,20 @@ pub struct AppState {
 pub enum UserEvent {
     SetSliceSpeed(f32),
     // ... add more events as needed
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub struct GLCanvasWasm {
+    pub(crate) proxy: EventLoopProxy<UserEvent>,
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+impl GLCanvasWasm {
+    pub fn set_slice_speed(&self, speed: f32) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetSliceSpeed(speed)) {
+            log::error!("Failed to send slice speed event: {:?}", e);
+        } else {
+            log::info!("Sent slice speed event: {}", speed);
+        }
+    }
 }
