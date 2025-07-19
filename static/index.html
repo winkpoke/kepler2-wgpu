@@ -155,7 +155,7 @@
                         series_id = toggle.innerHTML;
                         let volume = repo.generate_ct_volume(series_id);
                         render_app = await get_render_app(volume);
-                        gl_canvas = gl_canvas.get_glcanvas();
+                        gl_canvas = render_app.get_glcanvas();
                         render_app.run();
                     })
                 }
