@@ -1,4 +1,5 @@
-use kepler_wgpu::{run, get_glcanvas, state::GLCanvas, ct_volume::CTVolumeGenerator, dicom::fileio};
+use kepler_wgpu::{run, get_glcanvas, ct_volume::CTVolumeGenerator, dicom::fileio};
+// use kepler_wgpu::gl_canvas::GLCanvas;
 
 
 #[cfg(not(target_arch="wasm32"))]
@@ -15,6 +16,6 @@ async fn main() {
     let vol = repo.generate_ct_volume(image_series_code).unwrap();
 
     // pollster::block_on(run());
-    let gl_canvas = get_glcanvas(&vol).await;
-    run(gl_canvas).await;
+    let mut gl_canvas = get_glcanvas(&vol).await;
+    gl_canvas.run();
 }

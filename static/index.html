@@ -21,14 +21,42 @@
     <div id="wasm-example"></div>
     <input type="file" id="file" multiple>
     <div id="tree-container"></div>
+    <div>
+        <label for="scale-input">Scale:</label>
+        <input type="number" id="scale-input" step="0.01" value="0.1">
+        <button id="scale-submit">Submit</button>
+    </div>
     <script type="module">
-        import init, {run, parse_dcm_files_wasm, get_glcanvas} from '../pkg/kepler_wgpu.js';
+        import init, {parse_dcm_files_wasm, get_glcanvas} from '../pkg/kepler_wgpu.js';
         var repo;
+        let gl_canvas = null;
 
         await init();
 
         let series_id;
         let fileLists = [];
+
+        let scaleValue = 0.1;
+
+        document.getElementById('scale-submit').addEventListener('click', () => {
+            const input = document.getElementById('scale-input');
+            scaleValue = parseFloat(input.value);
+            if (isNaN(scaleValue)) {
+                alert('Please enter a valid number');
+                return;
+            }
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return;
+            }
+            console.log('Scale value:', scaleValue);
+            console.log('GLCanvas before setting scale:', gl_canvas);
+            gl_canvas.send_slice_speed(scaleValue);
+            console.log('Submitted scale:', scaleValue);
+            // Here you can call a WASM function or update AppState, e.g.:
+            // appState.scale = scaleValue;
+            // update_scale(appState);
+        });
 
         document.querySelector('#file').addEventListener('change', async () => {
             const files = document.querySelector('input[type="file"]').files;
@@ -124,10 +152,10 @@
                     toggle.addEventListener('click', async() => {
                         series_id = toggle.innerHTML;
                         let volume = repo.generate_ct_volume(series_id);
-                        let gl_canvas = await get_glcanvas(volume);
+                        gl_canvas = await get_glcanvas(volume);
                         console.log("GLCanvas:")
                         console.log(gl_canvas);
-                        run(gl_canvas);
+                        gl_canvas.run();
                     })
                 }
 

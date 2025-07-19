@@ -1,4 +1,4 @@
-use crate::{coord::{Base, Matrix4x4, Vector3}, dicom::DicomRepo, CTImage, CTVolume};
+use crate::{coord::{Base, Matrix4x4, Vector3}, dicom::{DicomRepo, CTImage}, CTVolume};
 use std::ops::{DivAssign, SubAssign};
 
 #[cfg(target_arch = "wasm32")]

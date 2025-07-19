@@ -123,4 +123,8 @@ impl view::View for TransverseView {
     fn resize(&mut self, dim: (u32, u32)) {
         self.dim = dim;
     }
+    
+    fn set_slice_speed(&mut self, speed: f32) {
+        self.s_speed = speed;
+    }
 }

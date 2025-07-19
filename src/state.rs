@@ -313,6 +313,12 @@ impl State {
         let vol = repo.generate_ct_volume(image_series_number).unwrap();
         self.load_data_from_ct_volume(&vol);
     }
+
+    pub fn set_slice_speed(&mut self, speed: f32) {
+        for view in self.layout.views.iter_mut() {
+            view.set_slice_speed(speed);
+        }
+    }
 }
 
 // ---------------------------------------- WASM ---------------------------------------------
@@ -328,12 +334,4 @@ pub fn load_data_from_repo_wasm(/*repo: &DicomRepo,*/ image_series_number: &str)
     warn!("Image Series Number: {image_series_number}");
     // let state = State::get_instance().await;
     // state.borrow_mut().load_data_from_repo(repo, image_series_number);
-}
-
-
-
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-pub struct GLCanvas {
-    pub(crate) state: State,
-    pub(crate) event_loop: winit::event_loop::EventLoop<()>,
 }
