@@ -27,10 +27,11 @@ pub mod gl_canvas;
 pub mod state;
 mod render_content;
 mod view;
+mod render_app;
 
 use ct_volume::CTVolume;
 use state::State;
-use gl_canvas::RenderApp;
+use render_app::RenderApp;
 
 
 #[cfg(target_arch = "wasm32")]
