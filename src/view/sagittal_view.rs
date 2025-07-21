@@ -60,6 +60,10 @@ impl SagittalView {
     pub fn set_translate(&mut self, translate: [f32;3]) {
         self.translate = translate;
     }
+
+    pub fn set_window_level(&mut self, window_level: f32) {
+        self.view.uniforms.frag.level = window_level;
+    }
 }
 
 impl view::Renderable for SagittalView {

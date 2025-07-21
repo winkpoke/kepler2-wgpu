@@ -23,6 +23,7 @@
     <div id="tree-container"></div>
     <div>
         <label for="scale-input">Scale:</label>
+        <input type="number" id="index-input" step="1.0" value="0.0">
         <input type="number" id="scale-input" step="10.0" value="1140.0">
         <button id="scale-submit">Submit</button>
     </div>
@@ -42,6 +43,8 @@
         document.getElementById('scale-submit').addEventListener('click', () => {
             const input = document.getElementById('scale-input');
             scaleValue = parseFloat(input.value);
+            const input_index = document.getElementById('index-input');
+            const indexValue = parseInt(input_index.value);  
             if (isNaN(scaleValue)) {
                 alert('Please enter a valid number');
                 return;
@@ -50,11 +53,7 @@
                 alert('Please select a series first!');
                 return;
             }
-            // console.log('Scale value:', scaleValue);
-            // console.log('GLCanvas before setting scale:', gl_canvas);
-            // console.log('GLCanvasWASM:', gl_canvas_wasm);
-            // gl_canvas.set_slice_speed(scaleValue);
-            gl_canvas.set_window_level(scaleValue);
+            gl_canvas.set_window_level(indexValue, scaleValue);
             console.log('Submitted scale:', scaleValue);
             // Here you can call a WASM function or update AppState, e.g.:
             // appState.scale = scaleValue;
