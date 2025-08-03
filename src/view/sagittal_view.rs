@@ -61,9 +61,9 @@ impl SagittalView {
         self.translate = translate;
     }
 
-    pub fn set_window_level(&mut self, window_level: f32) {
-        self.view.uniforms.frag.level = window_level;
-    }
+    // pub fn set_window_level(&mut self, window_level: f32) {
+    //     self.view.uniforms.frag.level = window_level;
+    // }
 }
 
 impl view::Renderable for SagittalView {
@@ -109,7 +109,6 @@ impl view::Renderable for SagittalView {
     }
 }
 
-
 impl view::View for SagittalView {
     fn position(&self) -> (i32, i32) {
         self.pos
@@ -133,5 +132,15 @@ impl view::View for SagittalView {
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
+    }
+    
+    fn as_mpr(&mut self) -> Option<&mut dyn view::MPRView> {
+        Some(self)
+    }
+}
+
+impl view::MPRView for SagittalView {
+    fn set_window_level(&mut self, window_level: f32) {
+        self.view.uniforms.frag.level = window_level;
     }
 }

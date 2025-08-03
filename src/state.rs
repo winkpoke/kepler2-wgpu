@@ -20,7 +20,7 @@ use async_lock::Mutex;
 use tokio::sync::Mutex;
 
 
-use crate::view::{CoronalView, GridLayout, Layout, ObliqueView, Renderable, SagittalView, TransverseView};
+use crate::view::{CoronalView, GridLayout, Layout, MPRView, ObliqueView, Renderable, SagittalView, TransverseView};
 use crate::ct_volume::*;
 use crate::dicom::*;
 use crate::render_content::RenderContent;
@@ -310,13 +310,14 @@ impl State {
 
     pub fn set_window_level(&mut self, index: usize, window_level: f32) {
         let view = self.layout.views.get_mut(index).unwrap();
-        if let Some(transverse_view) = view.as_any_mut().downcast_mut::<TransverseView>() {
-            transverse_view.set_window_level(window_level);
+        if let Some(mpr_view) = view.as_mpr() {
+            mpr_view.set_window_level(window_level);
             log::info!("TransverseView set_window_level: {}", window_level);
-        } else if let Some(sagittal_view) = view.as_any_mut().downcast_mut::<SagittalView>() {
-            log::info!("SagittalView set_window_level: {}", window_level);
-            sagittal_view.set_window_level(window_level);
         }
+        // if let Some(view) = view.as_any_mut().downcast_mut::<MPRView>() {
+        //     view.set_window_level(window_level);
+        //     log::info!("TransverseView set_window_level: {}", window_level);
+        // }
     }
 }
 

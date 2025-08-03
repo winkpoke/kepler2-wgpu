@@ -72,9 +72,9 @@ impl TransverseView {
         log::info!("TransverseView slice_speed set to: {}", self.s_speed);
     }
 
-    pub fn set_window_level(&mut self, window_level: f32) {
-        self.view.uniforms.frag.level = window_level;
-    }
+    // pub fn set_window_level(&mut self, window_level: f32) {
+    //     self.view.uniforms.frag.level = window_level;
+    // }
 }
 
 impl view::Renderable for TransverseView {
@@ -144,5 +144,15 @@ impl view::View for TransverseView {
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
+    }
+
+    fn as_mpr(&mut self) -> Option<&mut dyn view::MPRView> {
+        Some(self)
+    }
+}
+
+impl view::MPRView for TransverseView {
+    fn set_window_level(&mut self, window_level: f32) {
+        self.view.uniforms.frag.level = window_level;
     }
 }

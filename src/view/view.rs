@@ -8,4 +8,13 @@ pub trait View: Renderable + Any {
     fn resize(&mut self, dim: (u32, u32));
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;
+
+    fn as_mpr(&mut self) -> Option<&mut dyn MPRView> {
+        None
+    }
+}
+
+pub trait MPRView: View {
+    // fn set_slice(&mut self, slice: u32);
+    fn set_window_level(&mut self, window_level: f32);
 }
