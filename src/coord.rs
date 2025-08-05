@@ -307,7 +307,7 @@ pub fn slice_to_array<T>(slice: &[T; 16]) -> &[[T; 4]; 4] {
 // Vector3 type for convenience
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Vector3<T> { 
-    data: [T; 3],
+    pub data: [T; 3],
 }
 
 impl<T> Vector3<T> {
