@@ -141,6 +141,9 @@ impl view::View for SagittalView {
 
 impl view::MPRView for SagittalView {
     fn set_window_level(&mut self, window_level: f32) {
-        self.view.uniforms.frag.level = window_level;
+        self.view.uniforms.frag.window_level = window_level;
+    }
+    fn set_window_width(&mut self, window_width: f32) {
+        self.view.uniforms.frag.window_width = window_width;
     }
 }

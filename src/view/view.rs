@@ -17,4 +17,5 @@ pub trait View: Renderable + Any {
 pub trait MPRView: View {
     // fn set_slice(&mut self, slice: u32);
     fn set_window_level(&mut self, window_level: f32);
+    fn set_window_width(&mut self, window_width: f32);
 }
