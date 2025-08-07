@@ -22,7 +22,7 @@ impl TransverseView {
             //    pos: (i32, i32), dim: (u32, u32)
             ) -> Self {
         let r_speed = 0.00;
-        let s_speed = 0.006;
+        let s_speed = 0.0005;
         
         let mut base_screen = GeometryBuilder::build_transverse_base(&vol);
         let base_uv = GeometryBuilder::build_uv_base(&vol);
