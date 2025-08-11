@@ -24,7 +24,8 @@ impl <'a> GeometryBuilder<'a> {
             ..self
         }
     }
-    pub fn build_plane_from_points(vol: &CTVolume, x: Vector3<f32>, y: Vector3<f32>, translate: Vector3<f32>) -> Base<f32> {
+
+    pub fn  create_plane_transform_matrix(vol: &CTVolume, x: Vector3<f32>, y: Vector3<f32>, translate: Vector3<f32>) -> Base<f32> {
         let (nx, ny, nz) = ( 
                 vol.dimensions.0 as f32,
                 vol.dimensions.1 as f32,
@@ -40,9 +41,9 @@ impl <'a> GeometryBuilder<'a> {
         println!("z :{:?}",z);
 
         let matrix = Matrix4x4::from_array([
-                        x.data[0]*scale,   y.data[0] *scale,  -z.data[0] *scale,   translate.data[0],
-                        x.data[1]*scale,   y.data[1] *scale,  z.data[1] *scale,    translate.data[1],
-                        x.data[2]*scale,   y.data[2] *scale,  z.data[2] *scale_z,  translate.data[2],
+                        x.data[0] * scale,   y.data[0] * scale,  -z.data[0] * scale,   translate.data[0],
+                        x.data[1] * scale,   y.data[1] * scale,  z.data[1] * scale,    translate.data[1],
+                        x.data[2] * scale,   y.data[2] * scale,  z.data[2] * scale_z,  translate.data[2],
                         0.0,   0.0,    0.0,    1.0,]);
 
         Base { matrix, label: "Plane".into() }
@@ -98,63 +99,14 @@ impl <'a> GeometryBuilder<'a> {
 
     }
 
-    // pub fn build_transverse_base(vol: &CTVolume) -> Base<f32> {        
-    //     let (nx, ny, nz) = (
-    //         vol.dimensions.0 as f32,
-    //         vol.dimensions.1 as f32,
-    //         vol.dimensions.2 as f32,
-    //     );
-
-    //     let space = vol.voxel_spacing;
-
-    //     let [ox, oy, oz, _] = vol.base.matrix.get_column(3);
-
-    //     let d = f32::max(nx * space.0, ny * space.1);
-    //     let dz = space.2 * nz;
-
-    //     let matrix_screen = Matrix4x4::<f32>::from_array([
-    //           d,  0.0,  0.0, ox,
-    //         0.0,    d,  0.0, oy,
-    //         0.0,  0.0,   dz, oz,
-    //         0.0,  0.0,  0.0, 1.0
-    //     ]);
-    //     let base_screen = Base::<f32> {
-    //         label: "CT Volume: screen".to_string(),
-    //         matrix: matrix_screen,
-    //     };
-    //     base_screen
-    // }
     pub fn build_transverse_base(vol: &CTVolume) -> Base<f32> {
         let [ox, oy, oz, _] = vol.base.matrix.get_column(3); 
         let p0 = Vector3::new([ox, oy, oz]);
         let x = Vector3::new([1.0, 0.0, 0.0]);
         let y = Vector3::new([0.0, 1.0, 0.0]);
-        Self::build_plane_from_points(vol, x, y,p0)
+        Self::create_plane_transform_matrix(vol, x, y,p0)
     }
 
-    // pub fn build_coronal_base(vol: &CTVolume) -> Base<f32> {
-    //     let (nx, ny, nz) = (
-    //         vol.dimensions.0 as f32,
-    //         vol.dimensions.1 as f32,
-    //         vol.dimensions.2 as f32,
-    //     );
-
-    //     let space = vol.voxel_spacing;
-    //     let [ox, oy, oz, _] = vol.base.matrix.get_column(3);
-    //     let d = f32::max(nx * space.0, ny * space.1);
-
-    //     let matrix_screen = Matrix4x4::<f32>::from_array([
-    //         d,    0.0,  0.0, ox,
-    //         0.0,  0.0,  d,   oy + ny * space.1 / 2.0,
-    //         0.0,  -d,   0.0, oz + nz * space.2 / 2.0 + d / 2.0,
-    //         0.0,  0.0,  0.0, 1.0
-    //     ]);
-    //     let base_screen = Base::<f32> {
-    //         label: "CT Volume: screen".to_string(),
-    //         matrix: matrix_screen,
-    //     };
-    //     base_screen
-    // }
     pub fn build_coronal_base(vol: &CTVolume) -> Base<f32> {
         let (nx, ny, nz) = (
             vol.dimensions.0 as f32,
@@ -164,37 +116,16 @@ impl <'a> GeometryBuilder<'a> {
 
         let space = vol.voxel_spacing;
         let [ox, oy, oz, _] = vol.base.matrix.get_column(3);
-        let d = f32::max(nx * space.0, ny * space.1);
+        let max_half_span = f32::max(nx * space.0, ny * space.1)/2.0;
+        let half_scale_y = (nx * space.1)/2.0;
+        let half_scale_z = (nz * space.2)/2.0;
 
-        let p0 = Vector3::new([ox,oy + ny * space.1 / 2.0,  oz + nz * space.2 / 2.0 + d / 2.0]);
+        let p0 = Vector3::new([ox,oy + half_scale_y,  oz + half_scale_z + max_half_span]);
         let x = Vector3::new([1.0, 0.0, 0.0]);
         let y = Vector3::new([0.0, 0.0, -1.0]);
-        Self::build_plane_from_points(vol, x, y,p0)
+        Self::create_plane_transform_matrix(vol, x, y,p0)
     }
 
-    // pub fn build_sagittal_base(vol: &CTVolume) -> Base<f32> {   
-    //     let (nx, ny, nz) = (
-    //         vol.dimensions.0 as f32,
-    //         vol.dimensions.1 as f32,
-    //         vol.dimensions.2 as f32,
-    //     );
-
-    //     let space = vol.voxel_spacing;
-    //     let [ox, oy, oz, _] = vol.base.matrix.get_column(3);
-    //     let d = f32::max(nx * space.0, ny * space.1);
-
-    //     let matrix_screen = Matrix4x4::<f32>::from_array([
-    //         0.0, 0.0,   d, ox + nx * space.0 / 2.0,
-    //           d, 0.0, 0.0, oy,
-    //         0.0,  -d, 0.0, oz + nz * space.2 / 2.0 + d / 2.0,
-    //         0.0, 0.0, 0.0, 1.0
-    //     ]);
-    //     let base_screen = Base::<f32> {
-    //         label: "CT Volume: screen".to_string(),
-    //         matrix: matrix_screen,
-    //     };
-    //     base_screen
-    // }
     pub fn build_sagittal_base(vol: &CTVolume) -> Base<f32> {
         let (nx, ny, nz) = (
             vol.dimensions.0 as f32,
@@ -204,12 +135,14 @@ impl <'a> GeometryBuilder<'a> {
 
         let space = vol.voxel_spacing;
         let [ox, oy, oz, _] = vol.base.matrix.get_column(3);
-        let d = f32::max(nx * space.0, ny * space.1);
+        let max_half_span = f32::max(nx * space.0, ny * space.1)/2.0;
+        let half_scale_x = (nx * space.0)/2.0;
+        let half_scale_z = (nz * space.2)/2.0;
 
-        let p0 = Vector3::new([ox + nx * space.0 / 2.0,oy,  oz + nz * space.2 / 2.0 + d / 2.0]);
+        let p0 = Vector3::new([ox + half_scale_x,oy ,  oz + half_scale_z + max_half_span]);
         let y = Vector3::new([0.0, 0.0, -1.0]);
         let x = Vector3::new([0.0, 1.0, 0.0]);
-        Self::build_plane_from_points(vol, x, y,p0)
+        Self::create_plane_transform_matrix(vol, x, y,p0)
     }
 
     // pub fn build_oblique_base(vol: &CTVolume) -> Base<f32> { 
@@ -222,7 +155,7 @@ impl <'a> GeometryBuilder<'a> {
     //     let space = vol.voxel_spacing;
     //     let [ox, oy, oz, _] = vol.base.matrix.get_column(3);
     //     let d = f32::max(nx * space.0, ny * space.1);
-    //     let m_screen = [0.0,  0.0,    d/2.0, (ox + nx*space.0)/2.0 - d/2.0,
+    //     let m_screen = [0.0,  0.0,    d, ox + nx*space.0/2.0 - d/2.0,
     //                     d,  0.0,    0.0, oy,
     //                     0.0,  -d,   0.0, oz + nz * space.2 / 2.0 + d / 2.0,
     //                     0.0,  0.0,  0.0, 1.0];
@@ -249,12 +182,14 @@ impl <'a> GeometryBuilder<'a> {
 
         let space = vol.voxel_spacing;
         let [ox, oy, oz, _] = vol.base.matrix.get_column(3);
-        let d = f32::max(nx * space.0, ny * space.1);
+        let max_half_span = f32::max(nx * space.0, ny * space.1)/2.0;
+        let half_scale_x = (nx * space.0)/2.0;
+        let half_scale_z = (nz * space.2)/2.0;
 
-        let p0 = Vector3::new([(ox + nx*space.0)/2.0 - d/2.0,oy ,  oz + nz * space.2 / 2.0 + d / 2.0]);
+        let p0 = Vector3::new([ox + half_scale_x ,oy ,  oz + half_scale_z + max_half_span]);
         let x = Vector3::new([0.3085, 0.9330, 0.1853]);
         let y = Vector3::new([-0.1853, 0.2500, -0.9504]);
-        Self::build_plane_from_points(vol, x, y,p0)
+        Self::create_plane_transform_matrix(vol, x, y,p0)
     }
 }
 
@@ -364,6 +299,7 @@ mod tests {
         };
 
         let result = GeometryBuilder::build_oblique_base(&volume_1);
-        println!("oblique Base:\n{:?}", result);
+        // println!("oblique Base:\n{:?}", result);
+        assert_eq!(result.matrix.data[1][3], (5.0+512.0*0.5/2.0));
     }
 }
