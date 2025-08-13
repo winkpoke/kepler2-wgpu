@@ -138,7 +138,7 @@ impl <'a> GeometryBuilder<'a> {
         let d = f32::max(nx * space.0, ny * space.1);
 
         let matrix_screen = Matrix4x4::<f32>::from_array([
-            0.0, 0.0,   d, ox + nx * space.0 / 2.0,
+            0.0, 0.0,  -d, ox + nx * space.0 / 2.0,
               d, 0.0, 0.0, oy,
             0.0,  -d, 0.0, oz + nz * space.2 / 2.0 + d / 2.0,
             0.0, 0.0, 0.0, 1.0
@@ -170,7 +170,8 @@ impl <'a> GeometryBuilder<'a> {
                             0.0,     0.0,     0.0, 1.0,]; 
         let matrix_screen = Matrix4x4::<f32>::from_array(m_screen);
         let matrix_rot = Matrix4x4::<f32>::from_array(rotation);
-        let matrix_screen = matrix_screen * matrix_rot;
+        // let matrix_screen = matrix_screen * matrix_rot;
+        let matrix_screen = matrix_rot * matrix_screen;
         let base_screen = Base::<f32> {
             label: "CT Volume: screen".to_string(),
             matrix: matrix_screen,
