@@ -52,7 +52,17 @@ impl<T: LayoutStrategy> Layout<T> {
     pub fn add_view(&mut self, mut view: Box<dyn View>) {
         let idx = self.views.len() as u32;
         let total_views = (self.views.len() + 1) as u32;
-        let (pos, size) = self.strategy.calculate_position_and_size(idx, total_views, self.dim);
+        // 可以在这里自定义布局策略
+        let (pos, size) = match idx {
+            0 => {
+                // 第一个transverse_view使用自定义大小
+                ((0, 0), (800, 800))  // 自定义位置和大小
+            },
+            _ => {
+                // 其他视图使用默认
+                self.strategy.calculate_position_and_size(idx, total_views, self.dim)
+            }
+        };
         view.move_to(pos);
         view.resize(size);
         self.views.push(view);
