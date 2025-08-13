@@ -1,9 +1,11 @@
 use std::{fmt, ops::{Add, AddAssign, Div, Mul, Neg, Sub}};
 use num::Float;
 
+
+/// A generic 4x4 matrix struct, stored in **row-major** order.
 #[derive(Copy, Clone)]
 pub struct Matrix4x4<T> {
-    pub data: [[T; 4]; 4], // row major
+    pub data: [[T; 4]; 4], // Each row is a [T; 4] array
 }
 
 impl<
@@ -16,17 +18,20 @@ impl<
             + std::ops::SubAssign,
     > Matrix4x4<T>
 {
+    /// Creates a 4x4 matrix from a flat array of 16 elements (row-major order).
     pub fn from_array(data: [T; 16]) -> Self {
         Self {
             data: *slice_to_array(&data),
         }
     }
 
+    /// Multiplies two 4x4 matrices and returns the resulting matrix.
     pub fn multiply(&self, other: &Matrix4x4<T>) -> Matrix4x4<T> {
         let mut result = Matrix4x4 {
             data: [[T::zero(); 4]; 4],
         };
 
+        // Standard triple-nested loop for matrix multiplication
         for i in 0..4 {
             for j in 0..4 {
                 for k in 0..4 {
@@ -38,6 +43,8 @@ impl<
         result
     }
 
+    /// Computes the inverse of the matrix using Gaussian elimination.
+    /// Returns `None` if the matrix is singular (non-invertible).
     pub fn inv(&self) -> Option<Matrix4x4<T>> {
         let mut augmented = [[T::zero(); 8]; 4]; // Augmented matrix [A | I]
     
@@ -95,10 +102,11 @@ impl<
         Some(Matrix4x4 { data: inverse })
     }
     
-
+    /// Applies the matrix to a 4D vector and returns the transformed vector.
     pub fn apply(&self, v: &[T; 4]) -> [T; 4] {
         let mut result = [T::zero(); 4]; // Initialize result vector with zeros
     
+        // Perform matrix-vector multiplication
         for i in 0..4 {
             result[i] = self.data[i][0] * v[0]
                 + self.data[i][1] * v[1]
@@ -109,6 +117,7 @@ impl<
         result
     }
 
+    /// Returns a 4x4 identity matrix.
     pub fn eye() -> Matrix4x4<T> {
         Self {
             data: [
@@ -120,8 +129,8 @@ impl<
         }
     }
     
-     // Transpose the matrix (swap rows and columns)
-     pub fn transpose(&self) -> Matrix4x4<T> {
+    /// Returns the transpose of the matrix (swap rows and columns).
+    pub fn transpose(&self) -> Matrix4x4<T> {
         let mut transposed_data = [[T::zero(); 4]; 4]; // Initialize a 4x4 matrix with zeros
 
         // Swap rows and columns
@@ -136,12 +145,12 @@ impl<
         }
     }
 
-    // Get the nth row of the matrix
+    /// Returns the nth row of the matrix as a 4-element array.
     pub fn get_row(&self, n: usize) -> [T; 4] {
         self.data[n]
     }
 
-    // Get the nth column of the matrix
+    /// Returns the nth column of the matrix as a 4-element array.
     pub fn get_column(&self, n: usize) -> [T; 4] {
         [
             self.data[0][n],
