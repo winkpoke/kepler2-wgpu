@@ -286,16 +286,16 @@ impl State {
             ).unwrap();
     
         let transverse_view = TransverseView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0]);
-        let sagittal_view = SagittalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 0), (300, 300));
-        let coronal_view = CoronalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 300), (300, 300));
-        let oblique_view = ObliqueView::new(&self.device, &texture, &vol, 1.5, [150.0, 0.0, 0.0], (900, 600), (300, 300));
+        //let sagittal_view = SagittalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 0), (300, 300));
+        //let coronal_view = CoronalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 300), (300, 300));
+        //let oblique_view = ObliqueView::new(&self.device, &texture, &vol, 1.5, [150.0, 0.0, 0.0], (900, 600), (300, 300));
         
         let total_views: u32 = 1;
-        
+
         self.layout.add_view(Box::new(transverse_view), total_views);
-        self.layout.add_view(Box::new(sagittal_view), total_views);
-        self.layout.add_view(Box::new(coronal_view), total_views);
-        self.layout.add_view(Box::new(oblique_view), total_views);
+        //self.layout.add_view(Box::new(sagittal_view), total_views);
+        //self.layout.add_view(Box::new(coronal_view), total_views);
+        //self.layout.add_view(Box::new(oblique_view), total_views);
     }
 
     pub fn load_data_from_repo(&mut self, repo: &DicomRepo, image_series_number: &str) {

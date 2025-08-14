@@ -93,6 +93,7 @@ impl RenderContext {
             ..Default::default()
         };
         let u_frag_data = UniformsFrag {
+            //窗宽窗位
             window_width: 350.,
             window_level: 1140.,
             slice: 0.0,
