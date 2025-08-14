@@ -22,7 +22,7 @@ impl TransverseView {
             //    pos: (i32, i32), dim: (u32, u32)
             ) -> Self {
         let r_speed = 0.00;
-        let s_speed = 0.006;
+        let s_speed = 0.0006;
         
         let mut base_screen = GeometryBuilder::build_transverse_base(&vol);
         let base_uv = GeometryBuilder::build_uv_base(&vol);
@@ -36,7 +36,7 @@ impl TransverseView {
         let transform_matrix = transform_matrix.transpose(); // row major to column major
         println!("column major: {:?}", transform_matrix);
 
-        let view = view::RenderContext::new(&device, &texture, transform_matrix);
+        let view: view::RenderContext = view::RenderContext::new(&device, &texture, transform_matrix);
         let slice = 0.0;
 
         let pos = (0, 0); // Default position

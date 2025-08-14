@@ -301,12 +301,12 @@ impl State {
         self.load_data_from_ct_volume(&vol);
     }
 
-    pub fn set_slice_speed(&mut self, index: usize, speed: f32) {
-        let view = self.layout.views.get_mut(index).unwrap();
-        if let Some(transverse_view) = view.as_any_mut().downcast_mut::<TransverseView>() {
-            transverse_view.set_slice_speed(speed);
-        }
-    }
+    // pub fn set_slice_speed(&mut self, index: usize, speed: f32) {
+    //     let view = self.layout.views.get_mut(index).unwrap();
+    //     if let Some(transverse_view) = view.as_any_mut().downcast_mut::<TransverseView>() {
+    //         transverse_view.set_slice_speed(speed);
+    //     }
+    // }
 
     pub fn set_window_level(&mut self, index: usize, window_level: f32) {
         let view = self.layout.views.get_mut(index).unwrap();

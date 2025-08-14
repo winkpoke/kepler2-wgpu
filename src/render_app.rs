@@ -49,10 +49,10 @@ impl RenderApp {
         log::info!("Starting the event loop ...");
         event_loop.run(move |event, control_flow| {
             match event {
-                Event::UserEvent(UserEvent::SetSliceSpeed(index, speed)) => {
-                    state.set_slice_speed(index, speed);
-                    log::warn!("Slice speed set to: {}", speed);
-                }
+                // Event::UserEvent(UserEvent::SetSliceSpeed(index, speed)) => {
+                //     state.set_slice_speed(index, speed);
+                //     log::warn!("Slice speed set to: {}", speed);
+                // }
                 Event::UserEvent(UserEvent::SetWindowLevel(index, window_level)) => {
                     state.set_window_level(index, window_level);
                     log::warn!("Window level set to: {}", window_level);
@@ -91,6 +91,29 @@ impl RenderApp {
                                 // state = State::initialize(&window).await;
                                 println!("R key pressed");
                             }
+
+                            // 在这里添加鼠标滚轮事件处理
+                            // WindowEvent::MouseWheel { delta, .. } => {
+                            //     match delta {
+                            //         winit::event::MouseScrollDelta::LineDelta(_, y) => {
+                            //             if *y > 0.0 {
+                            //                 // 向上滚动，显示上一层
+                            //                 state.previous_slice();
+                            //             } else if *y < 0.0 {
+                            //                 // 向下滚动，显示下一层
+                            //                 state.next_slice();
+                            //             }
+                            //         }
+                            //         winit::event::MouseScrollDelta::PixelDelta(pos) => {
+                            //             if pos.y > 0.0 {
+                            //                 state.previous_slice();
+                            //             } else if pos.y < 0.0 {
+                            //                 state.next_slice();
+                            //             }
+                            //         }
+                            //     }
+                            // }
+
                             WindowEvent::RedrawRequested => {
                                 // This tells winit that we want another frame after this one
                                 state.window().request_redraw();
