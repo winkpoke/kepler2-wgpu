@@ -49,7 +49,7 @@ To build and run the project for WebAssembly, follow these steps:
 2. Build the project for WebAssembly:
 
     ```sh
-    wasm-pack build
+    wasm-pack build --target web --no-opt
     ```
 
 3. Serve the static files using a web server. For example, you can use `http-server`:
