@@ -34,6 +34,27 @@ impl LayoutStrategy for GridLayout {
     }
 }
 
+pub struct OneCellLayout {
+    pub rows: u32,
+    pub cols: u32,
+    pub spacing: u32,
+}
+
+impl LayoutStrategy for OneCellLayout {
+    fn calculate_position_and_size(
+        &self,
+        index: u32,
+        total_views: u32,
+        parent_dim: (u32, u32),
+    ) -> ((i32, i32), (u32, u32)) {
+        if total_views <= 1 || index == 0 {
+            ((0, 0),  parent_dim)
+        } else {
+            // When there are multiple views, other views are not displayed.
+            ((-1000, -1000), (1, 1))
+        }
+    }
+}
 pub struct Layout <T: LayoutStrategy> {
     dim: (u32, u32),
     strategy: T,
