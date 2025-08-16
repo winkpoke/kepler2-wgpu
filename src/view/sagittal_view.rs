@@ -157,4 +157,9 @@ impl view::MPRView for SagittalView {
         }
         self.slice = slice;
     }
+
+    fn set_scale(&mut self, scale: f32) {
+        self.scale = scale;
+        log::info!("SagittalView set_scale: scale set to {}", scale);
+    }
 }

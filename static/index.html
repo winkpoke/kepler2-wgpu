@@ -53,7 +53,7 @@
                 alert('Please select a series first!');
                 return;
             }
-            gl_canvas.set_window_level(indexValue, scaleValue);
+            gl_canvas.set_scale(indexValue, scaleValue);
             console.log('Submitted scale:', scaleValue);
             // Here you can call a WASM function or update AppState, e.g.:
             // appState.scale = scaleValue;

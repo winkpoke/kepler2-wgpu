@@ -328,6 +328,14 @@ impl State {
             log::info!("TransverseView set_slice: {}", slice);
         }
     }
+
+    pub fn set_scale(&mut self, index: usize, scale: f32) {
+        let view = self.layout.views.get_mut(index).unwrap();
+        if let Some(mpr_view) = view.as_mpr() {
+            mpr_view.set_scale(scale);
+            log::info!("TransverseView set_scale: {}", scale);
+        }
+    }
 }
 
 // ---------------------------------------- WASM ---------------------------------------------

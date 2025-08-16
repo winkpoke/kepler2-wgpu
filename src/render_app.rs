@@ -61,6 +61,10 @@ impl RenderApp {
                     state.set_slice(index, slice);
                     log::info!("Slice set to: {}", slice);
                 }
+                Event::UserEvent(UserEvent::SetScale(index, scale)) => {
+                    state.set_scale(index, scale);
+                    log::info!("Scale set to: {}", scale);
+                }
                 Event::WindowEvent {
                     ref event,
                     window_id,

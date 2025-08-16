@@ -1,7 +1,7 @@
 use crate::geometry::GeometryBuilder;
 use crate::{view, CTVolume};
 use crate::render_content::RenderContent;
-use crate::coord::Matrix4x4;
+use crate::coord::{array_to_slice, Base, Matrix4x4};
 
 pub struct TransverseView {
     view: view::RenderContext,
@@ -9,6 +9,8 @@ pub struct TransverseView {
     s_speed: f32,
 
     slice: f32,
+    base_screen: Base<f32>,
+    base_uv: Base<f32>,
     scale: f32,
     translate: [f32;3],
 
@@ -24,13 +26,15 @@ impl TransverseView {
         let r_speed = 0.00;
         let s_speed = 0.006;
         
-        let mut base_screen = GeometryBuilder::build_transverse_base(&vol);
+        let base_screen = GeometryBuilder::build_transverse_base(&vol);
         let base_uv = GeometryBuilder::build_uv_base(&vol);
 
-        base_screen.scale(scale);
-        base_screen.translate(translate);
+        let mut base_screen_with_scale = base_screen.clone();
+        base_screen_with_scale.scale(scale);
+        let mut base_screen_with_translate = base_screen_with_scale.clone();
+        base_screen_with_translate.translate(translate);
 
-        let transform_matrix = base_screen.to_base(&base_uv);
+        let transform_matrix = base_screen_with_translate.to_base(&base_uv);
         println!("row major: {:?}", transform_matrix);
 
         let transform_matrix = transform_matrix.transpose(); // row major to column major
@@ -47,15 +51,13 @@ impl TransverseView {
             r_speed,
             s_speed,
             slice,
+            base_screen,
+            base_uv,
             scale,
             translate,
             pos,
             dim
         }
-    }
-
-    pub fn set_scale(&mut self, scale: f32) {
-        self.scale = scale;
     }
 
     pub fn set_translate(&mut self, translate: [f32;3]) {
@@ -83,6 +85,14 @@ impl view::Renderable for TransverseView {
         // } else {
         //     self.slice += self.s_speed; //0.005;
         // }
+
+        let mut base_screen_with_scale = self.base_screen.clone();
+        base_screen_with_scale.scale(self.scale);
+        let mut base_screen_with_translate = base_screen_with_scale.clone();
+        base_screen_with_translate.translate(self.translate);
+        let transform_matrix = base_screen_with_translate.to_base(&self.base_uv);
+        let transform_matrix = transform_matrix.transpose(); 
+        self.view.uniforms.frag.mat = *array_to_slice(&transform_matrix.data);
 
         self.view.uniforms.frag.slice = self.slice;
 
@@ -166,5 +176,10 @@ impl view::MPRView for TransverseView {
             log::info!("TransverseView set_slice: slice value less than 0.0, setting to 0.0");
         }
         self.slice = slice;
+    }
+
+    fn set_scale(&mut self, scale: f32) {
+        self.scale = scale;
+        log::info!("TransverseView set_scale: scale set to {}", scale);
     }
 }
