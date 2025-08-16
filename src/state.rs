@@ -320,6 +320,14 @@ impl State {
         //     log::info!("TransverseView set_window_level: {}", window_level);
         // }
     }
+
+    pub fn set_slice(&mut self, index: usize, slice: f32) {
+        let view = self.layout.views.get_mut(index).unwrap();
+        if let Some(mpr_view) = view.as_mpr() {
+            mpr_view.set_slice(slice);
+            log::info!("TransverseView set_slice: {}", slice);
+        }
+    }
 }
 
 // ---------------------------------------- WASM ---------------------------------------------

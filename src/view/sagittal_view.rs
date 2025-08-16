@@ -48,10 +48,6 @@ impl SagittalView {
             dim,
         }
     }
-    
-    pub fn set_slice(&mut self, slice: f32) {
-        self.slice = slice;
-    }
 
     pub fn set_scale(&mut self, scale: f32) {
         self.scale = scale;
@@ -143,7 +139,22 @@ impl view::MPRView for SagittalView {
     fn set_window_level(&mut self, window_level: f32) {
         self.view.uniforms.frag.window_level = window_level;
     }
+    
     fn set_window_width(&mut self, window_width: f32) {
         self.view.uniforms.frag.window_width = window_width;
+    }
+    
+    fn set_slice(&mut self, slice: f32) {
+        // check the value of slice
+        // it shall no more than 1.0 and no less than 0.0
+        let mut slice = slice;
+        if slice > 1.0 {
+            slice = 1.0;
+            log::info!("TransverseView set_slice: slice value exceeded 1.0, setting to 1.0");
+        } else if slice < 0.0 {
+            slice = 0.0;
+            log::info!("TransverseView set_slice: slice value less than 0.0, setting to 0.0");
+        }
+        self.slice = slice;
     }
 }

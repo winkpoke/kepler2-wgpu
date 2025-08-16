@@ -51,11 +51,15 @@ impl RenderApp {
             match event {
                 Event::UserEvent(UserEvent::SetSliceSpeed(index, speed)) => {
                     state.set_slice_speed(index, speed);
-                    log::warn!("Slice speed set to: {}", speed);
+                    log::info!("Slice speed set to: {}", speed);
                 }
                 Event::UserEvent(UserEvent::SetWindowLevel(index, window_level)) => {
                     state.set_window_level(index, window_level);
-                    log::warn!("Window level set to: {}", window_level);
+                    log::info!("Window level set to: {}", window_level);
+                }
+                Event::UserEvent(UserEvent::SetSlice(index, slice)) => {
+                    state.set_slice(index, slice);
+                    log::info!("Slice set to: {}", slice);
                 }
                 Event::WindowEvent {
                     ref event,

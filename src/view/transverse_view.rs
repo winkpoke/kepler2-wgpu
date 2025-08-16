@@ -54,10 +54,6 @@ impl TransverseView {
         }
     }
 
-    pub fn set_slice(&mut self, slice: f32) {
-        self.slice = slice;
-    }
-
     pub fn set_scale(&mut self, scale: f32) {
         self.scale = scale;
     }
@@ -82,11 +78,11 @@ impl view::Renderable for TransverseView {
         // Update the rotation angle, e.g., incrementing it over time
         self.view.uniforms.vert.rotation_angle_y += self.r_speed; //0.05; // Update rotation angle
         // self.view.uniforms.vert.rotation_angle_z += self.r_speed; //0.05; // Update rotation angle
-        if self.slice >= 1.0 {
-            self.slice = 0.0;
-        } else {
-            self.slice += self.s_speed; //0.005;
-        }
+        // if self.slice >= 1.0 {
+        //     self.slice = 0.0;
+        // } else {
+        //     self.slice += self.s_speed; //0.005;
+        // }
 
         self.view.uniforms.frag.slice = self.slice;
 
@@ -157,5 +153,18 @@ impl view::MPRView for TransverseView {
     }
     fn set_window_width(&mut self, window_width: f32) {
         self.view.uniforms.frag.window_width = window_width;
+    }
+    fn set_slice(&mut self, slice: f32) {
+        // check the value of slice
+        // it shall no more than 1.0 and no less than 0.0
+        let mut slice = slice;
+        if slice > 1.0 {
+            slice = 1.0;
+            log::info!("TransverseView set_slice: slice value exceeded 1.0, setting to 1.0");
+        } else if slice < 0.0 {
+            slice = 0.0;
+            log::info!("TransverseView set_slice: slice value less than 0.0, setting to 0.0");
+        }
+        self.slice = slice;
     }
 }
