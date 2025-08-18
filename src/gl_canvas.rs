@@ -10,9 +10,30 @@ pub enum UserEvent {
     SetWindowLevel(usize, f32),
     SetSlice(usize, f32),
     SetScale(usize, f32),
+    SetTranslate(usize, Vec<f32>),
     // ... add more events as needed
 }
 
+// #[macro_export]
+// macro_rules! impl_user_event_senders_for_glcanvas {
+//     (
+//         $( $fn_name:ident => $variant:ident($arg:ident : $arg_ty:ty) ),* $(,)?
+//     ) => {
+//         #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+//         impl GLCanvas {
+//             $(
+//                 /// Sends a `UserEvent::$variant` targeted to a specific window index.
+//                 pub fn $fn_name(&self, index: usize, $arg: $arg_ty) {
+//                     if let Err(e) = self.proxy.send_event(UserEvent::$variant(index, $arg)) {
+//                         log::error!("Failed to send {} event for window {}: {:?}", stringify!($variant), index, e);
+//                     } else {
+//                         log::info!("Sent {} event for window {}: {:?}", stringify!($variant), index, $arg);
+//                     }
+//                 }
+//             )*
+//         }
+//     };
+// }
 #[macro_export]
 macro_rules! impl_user_event_senders_for_glcanvas {
     (
@@ -23,17 +44,15 @@ macro_rules! impl_user_event_senders_for_glcanvas {
             $(
                 /// Sends a `UserEvent::$variant` targeted to a specific window index.
                 pub fn $fn_name(&self, index: usize, $arg: $arg_ty) {
+                    log::info!("Sending {} event for window {}: {:?}", stringify!($variant), index, $arg);
                     if let Err(e) = self.proxy.send_event(UserEvent::$variant(index, $arg)) {
                         log::error!("Failed to send {} event for window {}: {:?}", stringify!($variant), index, e);
-                    } else {
-                        log::info!("Sent {} event for window {}: {:?}", stringify!($variant), index, $arg);
                     }
                 }
             )*
         }
     };
 }
-
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct GLCanvas {
     pub(crate) proxy: EventLoopProxy<UserEvent>,
@@ -44,4 +63,5 @@ impl_user_event_senders_for_glcanvas! {
     set_window_level => SetWindowLevel(window_level: f32),
     set_slice => SetSlice(slice: f32),
     set_scale => SetScale(scale: f32),
+    set_translate => SetTranslate(translate: Vec<f32>),
 }

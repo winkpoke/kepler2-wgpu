@@ -9,7 +9,7 @@ pub struct ObliqueView {
 
     slice: f32,
     scale: f32,
-    translate: [f32;3],    
+    translate: Vec<f32>,    
     
     pos: (i32, i32),
     dim: (u32, u32),
@@ -17,8 +17,8 @@ pub struct ObliqueView {
 
 impl ObliqueView {
     pub fn new(device: &wgpu::Device, texture: &RenderContent, vol: &CTVolume, 
-               scale: f32, translate: [f32;3],
-               pos: (i32, i32), dim: (u32, u32),) -> Self {
+           scale: f32, translate: Vec<f32>,
+           pos: (i32, i32), dim: (u32, u32),) -> Self {
         let r_speed = 0.00;
         let s_speed = 0.0005;
         
@@ -26,12 +26,13 @@ impl ObliqueView {
         let base_uv = GeometryBuilder::build_uv_base(&vol);
         
         base_screen.scale(scale);
-        base_screen.translate(translate);
+        //base_screen.translate(translate);
+        base_screen.translate(translate.clone()); // 克隆用于方法调用
 
         let transform_matrix = base_screen.to_base(&base_uv);
         println!("row major: {:?}", transform_matrix);
 
-        let transform_matrix = transform_matrix.transpose(); // row major to column major
+        let transform_matrix = transform_matrix.transpose();
         println!("column major: {:?}", transform_matrix);
 
         let view = view::RenderContext::new(&device, &texture, transform_matrix);
@@ -42,12 +43,12 @@ impl ObliqueView {
             s_speed,
             slice,
             scale,
-            translate,
+            translate, // 原始值用于存储
             pos,
             dim
         }
     }
-        
+
     pub fn set_slice(&mut self, slice: f32) {
         self.slice = slice;
     }
@@ -56,7 +57,7 @@ impl ObliqueView {
         self.scale = scale;
     }
 
-    pub fn set_translate(&mut self, translate: [f32;3]) {
+    pub fn set_translate(&mut self, translate: Vec<f32>) {
         self.translate = translate;
     }
 }

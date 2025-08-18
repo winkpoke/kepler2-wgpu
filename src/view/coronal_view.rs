@@ -10,7 +10,7 @@ pub struct CoronalView {
 
     slice: f32,
     scale: f32,
-    translate: [f32;3],
+    translate: Vec<f32>,
 
     pos: (i32, i32),
     dim: (u32, u32),
@@ -18,7 +18,7 @@ pub struct CoronalView {
 
 impl CoronalView {
     pub fn new(device: &wgpu::Device, texture: &RenderContent, vol: &CTVolume, 
-               scale: f32, translate: [f32;3],
+               scale: f32, translate: Vec<f32>,
                pos: (i32, i32), dim: (u32, u32),) -> Self {
 
         let r_speed = 0.00;
@@ -27,12 +27,13 @@ impl CoronalView {
         let base_uv = GeometryBuilder::build_uv_base(&vol);
 
         base_screen.scale(scale);
-        base_screen.translate(translate);
+        //base_screen.translate(translate);
+        base_screen.translate(translate.clone()); // 克隆用于方法调用
 
         let transform_matrix = base_screen.to_base(&base_uv);
         println!("row major: {:?}", transform_matrix);
 
-        let transform_matrix = transform_matrix.transpose(); // row major to column major
+        let transform_matrix = transform_matrix.transpose();
         println!("column major: {:?}", transform_matrix);
 
         let view = RenderContext::new(&device, &texture, transform_matrix);
@@ -43,7 +44,7 @@ impl CoronalView {
             s_speed,
             slice,
             scale,
-            translate,
+            translate, // 原始值用于存储
             pos,
             dim,
         }
@@ -57,7 +58,7 @@ impl CoronalView {
         self.scale = scale;
     }
 
-    pub fn set_translate(&mut self, translate: [f32;3]) {
+    pub fn set_translate(&mut self, translate: Vec<f32>) {
         self.translate = translate;
     }
 }

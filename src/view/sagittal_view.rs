@@ -11,7 +11,7 @@ pub struct SagittalView {
     s_speed: f32,
     slice: f32,
     scale: f32,
-    translate: [f32;3],
+    translate: Vec<f32>,
 
     pos: (i32, i32),
     dim: (u32, u32),
@@ -19,7 +19,7 @@ pub struct SagittalView {
 
 impl SagittalView {
     pub fn new(device: &wgpu::Device, texture: &RenderContent, vol: &CTVolume, 
-               scale: f32, translate: [f32;3],
+               scale: f32, translate: Vec<f32>,
                pos: (i32, i32), dim: (u32, u32),) -> Self {
         let r_speed = 0.00;
         let s_speed = 0.0005;
@@ -27,8 +27,8 @@ impl SagittalView {
         let base_uv = GeometryBuilder::build_uv_base(&vol);
 
         base_screen.scale(scale);
-        base_screen.translate(translate);
-
+        //base_screen.translate(translate);
+        base_screen.translate(translate.clone()); // 克隆用于方法调用
         let transform_matrix = base_screen.to_base(&base_uv);
         println!("row major:\n{:?}", transform_matrix);
 
@@ -53,7 +53,7 @@ impl SagittalView {
         self.scale = scale;
     }
 
-    pub fn set_translate(&mut self, translate: [f32;3]) {
+    pub fn set_translate(&mut self, translate: Vec<f32>) {
         self.translate = translate;
     }
 
@@ -161,5 +161,10 @@ impl view::MPRView for SagittalView {
     fn set_scale(&mut self, scale: f32) {
         self.scale = scale;
         log::info!("SagittalView set_scale: scale set to {}", scale);
+    }
+
+    fn set_translate(&mut self, translate: Vec<f32>) {
+        log::info!("SagittalView set_translate: translate set to {:#?}", translate);
+        self.translate = translate;
     }
 }

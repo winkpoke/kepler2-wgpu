@@ -12,7 +12,7 @@ pub struct TransverseView {
     base_screen: Base<f32>,
     base_uv: Base<f32>,
     scale: f32,
-    translate: [f32;3],
+    translate: Vec<f32>,
 
     pos: (i32, i32),
     dim: (u32, u32),
@@ -20,7 +20,7 @@ pub struct TransverseView {
 
 impl TransverseView {
     pub fn new(device: &wgpu::Device, texture: &RenderContent, 
-               vol: &CTVolume, scale: f32, translate: [f32;3], 
+               vol: &CTVolume, scale: f32, translate: Vec<f32>, 
             //    pos: (i32, i32), dim: (u32, u32)
             ) -> Self {
         let r_speed = 0.00;
@@ -32,7 +32,9 @@ impl TransverseView {
         let mut base_screen_with_scale = base_screen.clone();
         base_screen_with_scale.scale(scale);
         let mut base_screen_with_translate = base_screen_with_scale.clone();
-        base_screen_with_translate.translate(translate);
+        //base_screen_with_translate.translate(translate);
+        let translate_for_storage = translate.clone(); // 保存用于存储
+        base_screen_with_translate.translate(translate); // 移动给方法
 
         let transform_matrix = base_screen_with_translate.to_base(&base_uv);
         println!("row major: {:?}", transform_matrix);
@@ -54,13 +56,13 @@ impl TransverseView {
             base_screen,
             base_uv,
             scale,
-            translate,
+            translate: translate_for_storage,
             pos,
             dim
         }
     }
 
-    pub fn set_translate(&mut self, translate: [f32;3]) {
+    pub fn set_translate(&mut self, translate: Vec<f32>) {
         self.translate = translate;
     }
 
@@ -89,7 +91,8 @@ impl view::Renderable for TransverseView {
         let mut base_screen_with_scale = self.base_screen.clone();
         base_screen_with_scale.scale(self.scale);
         let mut base_screen_with_translate = base_screen_with_scale.clone();
-        base_screen_with_translate.translate(self.translate);
+        //base_screen_with_translate.translate(self.translate);
+        base_screen_with_translate.translate(self.translate.clone()); // 克隆
         let transform_matrix = base_screen_with_translate.to_base(&self.base_uv);
         let transform_matrix = transform_matrix.transpose(); 
         self.view.uniforms.frag.mat = *array_to_slice(&transform_matrix.data);
@@ -181,5 +184,9 @@ impl view::MPRView for TransverseView {
     fn set_scale(&mut self, scale: f32) {
         self.scale = scale;
         log::info!("TransverseView set_scale: scale set to {}", scale);
+    }
+    fn set_translate(&mut self, translate: Vec<f32>) {
+        log::info!("TransverseView set_translate: translate set to {:#?}", translate);
+        self.translate = translate;
     }
 }

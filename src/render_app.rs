@@ -65,6 +65,10 @@ impl RenderApp {
                     state.set_scale(index, scale);
                     log::info!("Scale set to: {}", scale);
                 }
+                Event::UserEvent(UserEvent::SetTranslate(index, translate)) => {
+                    log::info!("Translate set to: {:#?}", translate);
+                    state.set_translate(index, translate);
+                }
                 Event::WindowEvent {
                     ref event,
                     window_id,

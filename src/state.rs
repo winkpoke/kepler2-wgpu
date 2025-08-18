@@ -286,7 +286,7 @@ impl State {
                 vol.dimensions.2 as u32,
             ).unwrap();
     
-        let transverse_view = TransverseView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0]);
+        let transverse_view = TransverseView::new(&self.device, &texture, &vol, 1.0, vec![200.0, 10.0, 0.0]);
         // let sagittal_view = SagittalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 0), (300, 300));
         // let coronal_view = CoronalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 300), (300, 300));
         // let oblique_view = ObliqueView::new(&self.device, &texture, &vol, 1.5, [150.0, 0.0, 0.0], (900, 600), (300, 300));
@@ -334,6 +334,13 @@ impl State {
         if let Some(mpr_view) = view.as_mpr() {
             mpr_view.set_scale(scale);
             log::info!("TransverseView set_scale: {}", scale);
+        }
+    }
+    pub fn set_translate(&mut self, index: usize, translate: Vec<f32>) {
+        let view = self.layout.views.get_mut(index).unwrap();
+        if let Some(mpr_view) = view.as_mpr() {
+            log::info!("TransverseView translate: {:#?}", translate);
+            mpr_view.set_translate(translate);
         }
     }
 }

@@ -260,7 +260,11 @@ where
         }
     }
 
-    pub fn translate(&mut self, translate: [T; 3]) {
+    pub fn translate(&mut self, translate: Vec<T>) {
+        if translate.len() != 3 {
+            log::error!("Invalid translate vector length: expected 3, got {}", translate.len());
+            return;
+        }
         for i in 0..3 {
             self.matrix.data[i][3] -= translate[i];
         }
