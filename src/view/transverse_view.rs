@@ -70,9 +70,15 @@ impl TransverseView {
         log::info!("TransverseView slice_speed set to: {}", self.s_speed);
     }
 
-    // pub fn set_window_level(&mut self, window_level: f32) {
-    //     self.view.uniforms.frag.level = window_level;
-    // }
+    fn update_transform_matrix(&mut self) {
+        let mut base_screen_with_scale = self.base_screen.clone();
+        base_screen_with_scale.scale(self.scale);
+        let mut base_screen_with_translate = base_screen_with_scale.clone();
+        base_screen_with_translate.translate(self.translate);
+        let transform_matrix = base_screen_with_translate.to_base(&self.base_uv);
+        let transform_matrix = transform_matrix.transpose(); 
+        self.view.uniforms.frag.mat = *array_to_slice(&transform_matrix.data);
+    }
 }
 
 impl view::Renderable for TransverseView {
@@ -86,13 +92,7 @@ impl view::Renderable for TransverseView {
         //     self.slice += self.s_speed; //0.005;
         // }
 
-        let mut base_screen_with_scale = self.base_screen.clone();
-        base_screen_with_scale.scale(self.scale);
-        let mut base_screen_with_translate = base_screen_with_scale.clone();
-        base_screen_with_translate.translate(self.translate);
-        let transform_matrix = base_screen_with_translate.to_base(&self.base_uv);
-        let transform_matrix = transform_matrix.transpose(); 
-        self.view.uniforms.frag.mat = *array_to_slice(&transform_matrix.data);
+        self.update_transform_matrix();
 
         self.view.uniforms.frag.slice = self.slice;
 
