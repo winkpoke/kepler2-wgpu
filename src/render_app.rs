@@ -57,6 +57,10 @@ impl RenderApp {
                     state.set_window_level(index, window_level);
                     log::info!("Window level set to: {}", window_level);
                 }
+                Event::UserEvent(UserEvent::SetWindowWidth(index, window_width)) => {
+                    state.set_window_width(index, window_width);
+                    log::info!("Window width set to: {}", window_width);
+                }
                 Event::UserEvent(UserEvent::SetSlice(index, slice)) => {
                     state.set_slice(index, slice);
                     log::info!("Slice set to: {}", slice);

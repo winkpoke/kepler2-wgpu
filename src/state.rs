@@ -286,7 +286,7 @@ impl State {
                 vol.dimensions.2 as u32,
             ).unwrap();
     
-        let transverse_view = TransverseView::new(&self.device, &texture, &vol, 1.0, vec![200.0, 10.0, 0.0]);
+        let transverse_view = TransverseView::new(&self.device, &texture, &vol, 1.0, vec![0.0, 0.0, 0.0]);
         // let sagittal_view = SagittalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 0), (300, 300));
         // let coronal_view = CoronalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 300), (300, 300));
         // let oblique_view = ObliqueView::new(&self.device, &texture, &vol, 1.5, [150.0, 0.0, 0.0], (900, 600), (300, 300));
@@ -314,6 +314,18 @@ impl State {
         if let Some(mpr_view) = view.as_mpr() {
             mpr_view.set_window_level(window_level);
             log::info!("TransverseView set_window_level: {}", window_level);
+        }
+        // if let Some(view) = view.as_any_mut().downcast_mut::<MPRView>() {
+        //     view.set_window_level(window_level);
+        //     log::info!("TransverseView set_window_level: {}", window_level);
+        // }
+    }
+
+    pub fn set_window_width(&mut self, index: usize, window_width: f32) {
+        let view = self.layout.views.get_mut(index).unwrap();
+        if let Some(mpr_view) = view.as_mpr() {
+            mpr_view.set_window_width(window_width);
+            log::info!("TransverseView set_window_width: {}", window_width);
         }
         // if let Some(view) = view.as_any_mut().downcast_mut::<MPRView>() {
         //     view.set_window_level(window_level);

@@ -8,6 +8,7 @@ use wasm_bindgen::prelude::*;
 pub enum UserEvent {
     SetSliceSpeed(usize, f32),
     SetWindowLevel(usize, f32),
+    SetWindowWidth(usize, f32),
     SetSlice(usize, f32),
     SetScale(usize, f32),
     SetTranslate(usize, Vec<f32>),
@@ -61,6 +62,7 @@ pub struct GLCanvas {
 impl_user_event_senders_for_glcanvas! {
     set_slice_speed => SetSliceSpeed(speed: f32),
     set_window_level => SetWindowLevel(window_level: f32),
+    set_window_width => SetWindowWidth(window_width: f32),
     set_slice => SetSlice(slice: f32),
     set_scale => SetScale(scale: f32),
     set_translate => SetTranslate(translate: Vec<f32>),
