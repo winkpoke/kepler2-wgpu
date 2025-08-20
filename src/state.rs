@@ -70,6 +70,8 @@ pub struct State {
     // pub(crate) layout: Layout<GridLayout>,
 }
 
+const HU_OFFSET: f32 = 1000.0;
+
 impl State {
     pub async fn new(window: Arc<Window>, vol: &CTVolume) -> State {
         let mut state = State::initialize(window).await;
@@ -273,7 +275,7 @@ impl State {
     }
 
     pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume) {
-        let voxel_data: Vec<u16> = vol.voxel_data.iter().map(|x| (*x + 1000) as u16).collect();
+        let voxel_data: Vec<u16> = vol.voxel_data.iter().map(|x| (*x + HU_OFFSET as i16) as u16).collect();
         let voxel_data: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
         let texture = 
             RenderContent::from_bytes(
@@ -312,7 +314,7 @@ impl State {
     pub fn set_window_level(&mut self, index: usize, window_level: f32) {
         let view = self.layout.views.get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_mpr() {
-            mpr_view.set_window_level(window_level + 1000.0);
+            mpr_view.set_window_level(window_level + HU_OFFSET);
             log::info!("TransverseView set_window_level: {}", window_level);
         }
     }
