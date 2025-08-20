@@ -92,9 +92,8 @@ impl view::Renderable for TransverseView {
         //     self.slice += self.s_speed; //0.005;
         // }
 
-        self.update_transform_matrix();
-
         self.view.uniforms.frag.slice = self.slice;
+        self.update_transform_matrix();
 
         queue.write_buffer(
             &self.view.uniform_vert_buffer,
