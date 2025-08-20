@@ -312,7 +312,7 @@ impl State {
     pub fn set_window_level(&mut self, index: usize, window_level: f32) {
         let view = self.layout.views.get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_mpr() {
-            mpr_view.set_window_level(window_level);
+            mpr_view.set_window_level(window_level + 1000.0);
             log::info!("TransverseView set_window_level: {}", window_level);
         }
     }
