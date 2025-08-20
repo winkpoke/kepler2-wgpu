@@ -57,6 +57,10 @@ impl RenderApp {
                     state.set_window_level(index, window_level);
                     log::info!("Window level set to: {}", window_level);
                 }
+                Event::UserEvent(UserEvent::SetWindowWidth(index, window_width)) => {
+                    state.set_window_width(index, window_width);
+                    log::info!("Window width set to: {}", window_width);
+                }
                 Event::UserEvent(UserEvent::SetSlice(index, slice)) => {
                     state.set_slice(index, slice);
                     log::info!("Slice set to: {}", slice);
@@ -64,6 +68,11 @@ impl RenderApp {
                 Event::UserEvent(UserEvent::SetScale(index, scale)) => {
                     state.set_scale(index, scale);
                     log::info!("Scale set to: {}", scale);
+                }
+                Event::UserEvent(UserEvent::SetTranslate(index, dx, dy, dz)) => {
+                    let translate = [dx, dy, dz];
+                    log::info!("Translate set to: {:#?}", translate);
+                    state.set_translate(index, translate);
                 }
                 Event::WindowEvent {
                     ref event,

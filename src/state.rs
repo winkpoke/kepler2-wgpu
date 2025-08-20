@@ -315,10 +315,14 @@ impl State {
             mpr_view.set_window_level(window_level);
             log::info!("TransverseView set_window_level: {}", window_level);
         }
-        // if let Some(view) = view.as_any_mut().downcast_mut::<MPRView>() {
-        //     view.set_window_level(window_level);
-        //     log::info!("TransverseView set_window_level: {}", window_level);
-        // }
+    }
+
+    pub fn set_window_width(&mut self, index: usize, window_width: f32) {
+        let view = self.layout.views.get_mut(index).unwrap();
+        if let Some(mpr_view) = view.as_mpr() {
+            mpr_view.set_window_width(window_width);
+            log::info!("TransverseView set_window_width: {}", window_width);
+        }
     }
 
     pub fn set_slice(&mut self, index: usize, slice: f32) {
@@ -334,6 +338,14 @@ impl State {
         if let Some(mpr_view) = view.as_mpr() {
             mpr_view.set_scale(scale);
             log::info!("TransverseView set_scale: {}", scale);
+        }
+    }
+    
+    pub fn set_translate(&mut self, index: usize, translate: [f32;3]) {
+        let view = self.layout.views.get_mut(index).unwrap();
+        if let Some(mpr_view) = view.as_mpr() {
+            log::info!("TransverseView translate: {:#?}", translate);
+            mpr_view.set_translate(translate);
         }
     }
 }

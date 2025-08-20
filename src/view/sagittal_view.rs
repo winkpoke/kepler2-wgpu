@@ -162,4 +162,9 @@ impl view::MPRView for SagittalView {
         self.scale = scale;
         log::info!("SagittalView set_scale: scale set to {}", scale);
     }
+
+    fn set_translate(&mut self, translate: [f32; 3]) {
+        self.set_translate(translate);
+        log::info!("TransverseView set_translate: translate set to {:?}", translate);
+    }
 }
