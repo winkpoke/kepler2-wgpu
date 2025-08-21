@@ -176,10 +176,22 @@ impl DicomRepo {
         let total_voxels = rows as usize * columns as usize * ct_images.len();
         let mut voxel_data: Vec<i16> = Vec::with_capacity(total_voxels);
 
-        // Collect voxel data from each CTImage sequentially
+        // Collect voxel data from each CTImage sequentially and apply rescale slope + intercept
         for img in &ct_images {
-            let data = img.get_pixel_data().map_err(|e| e.to_string())?; // Retrieve pixel data for the image
-            voxel_data.extend(data); // Append the data to the voxel_data vector
+            let raw_data = img.get_pixel_data().map_err(|e| e.to_string())?;
+
+            let slope = img.rescale_slope.unwrap_or(1.0);
+            let intercept = img.rescale_intercept.unwrap_or(0.0);
+
+            // Only apply slope/intercept if they actually modify the values
+            if (slope - 1.0).abs() > f32::EPSILON || (intercept.abs() > f32::EPSILON) {
+                for &raw_val in &raw_data {
+                    let hu = (raw_val as f32 * slope + intercept).round() as i16;
+                    voxel_data.push(hu);
+                }
+            } else {
+                voxel_data.extend(raw_data);
+            }
         }
 
         // Extract ImageOrientationPatient and compute the Base matrix
@@ -240,12 +252,6 @@ impl DicomRepo {
             .multiply(&translation_matrix)
             .multiply(&scaling_matrix);
 
-        // let base_matrix = Matrix4x4::from_array([
-        //     row_direction.0, column_direction.0, slice_direction.0, image_position_patient.0,
-        //     row_direction.1, column_direction.1, slice_direction.1, image_position_patient.1,
-        //     row_direction.2, column_direction.2, slice_direction.2, image_position_patient.2,
-        //     0.0, 0.0, 0.0, 1.0,
-        // ]);
         // Return the constructed CTVolume
         Ok(CTVolume {
             dimensions: (rows as usize, columns as usize, ct_images.len()),

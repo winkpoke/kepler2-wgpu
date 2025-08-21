@@ -237,12 +237,8 @@ where
         let col0 = self.matrix.get_column(0);
         let dx = Vector3::<T>::new([col0[0], col0[1], col0[2]]);
 
-        println!("------------------{:?}", [col0[0], col0[1], col0[2]]);
-
         let col1 = self.matrix.get_column(1);
         let dy = Vector3::<T>::new([col1[0], col1[1], col1[2]]);
-
-        println!("------------------{:?}", [col1[0], col1[1], col1[2]]);
         
         let two = T::from(2.0).unwrap();
         let center = dx * T::one() / two + dy * T::one() / two + p;
