@@ -76,7 +76,7 @@ impl_user_event_senders_for_glcanvas! {
     set_slice_speed => SetSliceSpeed(speed: f32),
     set_window_level => SetWindowLevel(window_level: f32),
     set_window_width => SetWindowWidth(window_width: f32),
-    set_slice => SetSlice(slice: f32),
+    // set_slice => SetSlice(slice: f32),
     set_scale => SetScale(scale: f32),
     set_translate => SetTranslate(dx: f32, dy: f32, dz: f32),
 }
