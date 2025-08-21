@@ -70,7 +70,7 @@ pub struct State {
     // pub(crate) layout: Layout<GridLayout>,
 }
 
-const HU_OFFSET: f32 = 1000.0;
+const HU_OFFSET: f32 = 1100.0;
 
 impl State {
     pub async fn new(window: Arc<Window>, vol: &CTVolume) -> State {

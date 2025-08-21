@@ -176,22 +176,10 @@ impl DicomRepo {
         let total_voxels = rows as usize * columns as usize * ct_images.len();
         let mut voxel_data: Vec<i16> = Vec::with_capacity(total_voxels);
 
-        // Collect voxel data from each CTImage sequentially and apply rescale slope + intercept
+        // Collect voxel data from each CTImage sequentially
         for img in &ct_images {
-            let raw_data = img.get_pixel_data().map_err(|e| e.to_string())?;
-
-            let slope = img.rescale_slope.unwrap_or(1.0);
-            let intercept = img.rescale_intercept.unwrap_or(0.0);
-
-            // Only apply slope/intercept if they actually modify the values
-            if (slope - 1.0).abs() > f32::EPSILON || (intercept.abs() > f32::EPSILON) {
-                for &raw_val in &raw_data {
-                    let hu = (raw_val as f32 * slope + intercept).round() as i16;
-                    voxel_data.push(hu);
-                }
-            } else {
-                voxel_data.extend(raw_data);
-            }
+            let data = img.get_pixel_data().map_err(|e| e.to_string())?; // Retrieve pixel data for the image
+            voxel_data.extend(data); // Append the data to the voxel_data vector
         }
 
         // Extract ImageOrientationPatient and compute the Base matrix
