@@ -3,6 +3,8 @@ use winit::event_loop::EventLoopProxy;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+use crate::ct_volume::CTVolume;
+
 
 #[derive(Debug)]
 pub enum UserEvent {
@@ -12,6 +14,7 @@ pub enum UserEvent {
     SetSlice(usize, f32),
     SetScale(usize, f32),
     SetTranslate(usize, f32, f32, f32),  // translate in 3D space
+    LoadDataFromCTVolume(usize, CTVolume), 
     // ... add more events as needed
 }
 
@@ -65,6 +68,17 @@ macro_rules! impl_user_event_senders_for_glcanvas {
             )*
         }
     };
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+impl GLCanvas {
+    pub fn load_data_from_ct_volume(&self, index: usize, volume: &CTVolume) {
+        if let Err(e) = self.proxy.send_event(UserEvent::LoadDataFromCTVolume(index, volume.clone())) {
+            log::error!("Failed to send LoadDataFromCTVolume event for window {}: {:?}", index, e);
+        } else {
+            log::info!("Sent LoadDataFromCTVolume event for window {}", index);
+        }
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]

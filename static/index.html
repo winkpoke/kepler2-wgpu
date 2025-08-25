@@ -29,6 +29,11 @@
         <button id="scale-submit">Submit</button>
     </div>
     <div>
+        <label for="slice-input">slice:</label>
+        <input type="number" id="slice-input" step="0.01" value="0.0">
+        <button id="slice-submit">Submit</button>
+    </div>
+    <div>
         <label for="translate-input">translate:</label>
         <label for="trans-x">x:</label> <input type="number" id="trans-x" step="10.0" value="0.0" placeholder="x">
         <label for="trans-y">y:</label><input type="number" id="trans-y" step="10.0" value="0.0" placeholder="y">
@@ -40,9 +45,16 @@
         <label for="level">level:</label><input type="number" id="level" step="10.0" value="0.0">
         <button id="winlev-submit">Submit</button>
     </div>
+    <button id="rerender">render</button>
     <script type="module">
         import init, { parse_dcm_files_wasm, get_render_app } from '../pkg/kepler_wgpu.js';
         var repo;
+        let state = {
+            render_app: null,
+            gl_canvas: null,
+        };
+
+
         let render_app = null;
         let gl_canvas = null;
 
@@ -50,10 +62,33 @@
 
         let series_id;
         let fileLists = [];
-
+        let flag = true;
         let scaleValue = 0.1;
-
-
+        let volume;
+        // function reRender() {
+        //    gl_canvas.load_data_from_ct_volume(0, volume);
+        // }
+        document.getElementById('rerender').addEventListener('click', () => {
+            if (gl_canvas && volume) {
+                gl_canvas.load_data_from_ct_volume(0, volume);
+            } else {
+                alert('Please select a series first!');
+            }
+        })
+        document.getElementById('slice-submit').addEventListener('click', () => {
+            const sliceValue = document.getElementById('slice-input').value;
+            const input_index = document.getElementById('index-input');
+            const indexValue = parseInt(input_index.value);
+            if (isNaN(sliceValue)) {
+                alert('Please enter a valid number');
+                return;
+            }
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return;
+            }
+            gl_canvas.set_slice(indexValue, sliceValue);
+        })
 
         document.getElementById('scale-submit').addEventListener('click', () => {
             const input = document.getElementById('scale-input');
@@ -107,6 +142,13 @@
             lev && gl_canvas.set_window_level(indexValue, lev);
         });
         document.querySelector('#file').addEventListener('change', async () => {
+
+            if (state.render_app) {
+                delete state.render_app;
+                delete state.gl_canvas;
+            }
+
+
             const files = document.querySelector('input[type="file"]').files;
             fileLists = files;
             const fileArray = Array.from(files);
@@ -198,10 +240,17 @@
                 } else {
                     toggle.addEventListener('click', async () => {
                         series_id = toggle.innerHTML;
-                        let volume = repo.generate_ct_volume(series_id);
-                        render_app = await get_render_app(volume);
-                        gl_canvas = render_app.get_glcanvas();
-                        render_app.run();
+                        let vol = repo.generate_ct_volume(series_id);
+                        volume = vol;
+                        if (flag == true) {
+                            render_app = await get_render_app(vol);
+                            gl_canvas = render_app.get_glcanvas();
+                            render_app.run();
+                            flag = false;
+                        } else {
+                            gl_canvas.load_data_from_ct_volume(0, volume);
+                        }
+
                     })
                 }
 

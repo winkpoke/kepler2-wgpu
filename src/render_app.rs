@@ -74,6 +74,10 @@ impl RenderApp {
                     log::info!("Translate set to: {:#?}", translate);
                     state.set_translate(index, translate);
                 }
+                Event::UserEvent(UserEvent::LoadDataFromCTVolume(index, volume)) => {
+                    state.load_data_from_ct_volume(&volume);
+                    log::info!("Loaded data from CTVolume for window {}", index);
+                }
                 Event::WindowEvent {
                     ref event,
                     window_id,

@@ -288,6 +288,8 @@ impl State {
                 vol.dimensions.2 as u32,
             ).unwrap();
     
+        self.layout.remove_all();
+
         let transverse_view = TransverseView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0]);
         // let sagittal_view = SagittalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 0), (300, 300));
         // let coronal_view = CoronalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 300), (300, 300));

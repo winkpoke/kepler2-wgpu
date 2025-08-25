@@ -86,6 +86,10 @@ impl<T: LayoutStrategy> Layout<T> {
         }
         self.views.get(index)
     }
+
+    pub fn remove_all(&mut self) {
+        self.views.clear();
+    }
 }
 
 impl<T: LayoutStrategy> Renderable for Layout<T> {
