@@ -21,7 +21,7 @@ pub struct TransverseView {
 impl TransverseView {
     pub fn new(device: &wgpu::Device, texture: &RenderContent, 
                vol: &CTVolume, scale: f32, translate: [f32;3], 
-            //    pos: (i32, i32), dim: (u32, u32)
+               pos: (i32, i32), dim: (u32, u32)
             ) -> Self {
         let r_speed = 0.00;
         let s_speed = 0.006;
@@ -42,9 +42,6 @@ impl TransverseView {
 
         let view = view::RenderContext::new(&device, &texture, transform_matrix);
         let slice = 0.0;
-
-        let pos = (0, 0); // Default position
-        let dim = (800, 800); // Default dimensions
 
         Self {
             view,

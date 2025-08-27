@@ -1,10 +1,16 @@
+use log::{debug, error, info, warn};
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::{fs, io, time::Instant};
-use std::path::{Path, PathBuf};
-use log::{debug, error, info, warn};
 
 // use wgpu::util::DeviceExt;
+#[cfg(target_arch = "wasm32")]
+use async_lock::Mutex;
+use once_cell::sync::Lazy;
+use std::cell::{LazyCell, OnceCell, RefCell};
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::sync::Mutex;
 use winit::{
     dpi::PhysicalSize,
     event::*,
@@ -12,22 +18,14 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowBuilder},
 };
-use once_cell::sync::Lazy;
-use std::cell::{LazyCell, OnceCell, RefCell};
-#[cfg(target_arch = "wasm32")]
-use async_lock::Mutex;
-#[cfg(not(target_arch = "wasm32"))]
-use tokio::sync::Mutex;
 
-
-use crate::view::{CoronalView, GridLayout, OneCellLayout, Layout, MPRView, ObliqueView, Renderable, SagittalView, TransverseView};
 use crate::ct_volume::*;
 use crate::dicom::*;
 use crate::render_content::RenderContent;
-
-
-
-
+use crate::view::{
+    CoronalView, GridLayout, Layout, MPRView, ObliqueView, OneCellLayout, Renderable, SagittalView,
+    TransverseView,
+};
 
 fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
     let mut file_paths = Vec::new();
@@ -66,8 +64,8 @@ pub struct State {
     // it gets dropped after it as the surface contains
     // unsafe references to the window's resources.
     window: Arc<Window>,
-    pub(crate) layout: Layout<OneCellLayout>,
-    // pub(crate) layout: Layout<GridLayout>,
+    // pub(crate) layout: Layout<OneCellLayout>,
+    pub(crate) layout: Layout<GridLayout>,
 }
 
 const HU_OFFSET: f32 = 1100.0;
@@ -166,8 +164,14 @@ impl State {
         //     repo
         // };
 
-        
-        let layout = Layout::new((800, 800), OneCellLayout { rows: 1, cols: 1, spacing: 0 });
+        let layout = Layout::new(
+            (800, 800),
+            GridLayout {
+                rows: 2,
+                cols: 2,
+                spacing: 0,
+            },
+        );
 
         let state = Self {
             surface,
@@ -190,12 +194,10 @@ impl State {
             let start_time = Instant::now();
 
             let file_names = list_files_in_directory("C:\\share\\imrt").unwrap();
-            let repo = fileio::parse_dcm_directories(vec![
-                "C:\\share\\imrt",
-                "C:\\share\\head_mold",
-            ])
-            .await
-            .unwrap();
+            let repo =
+                fileio::parse_dcm_directories(vec!["C:\\share\\imrt", "C:\\share\\head_mold"])
+                    .await
+                    .unwrap();
             println!("DicomRepo:\n{}", repo.to_string());
             println!("Patients:\n{:?}", repo.get_all_patients());
             // Stop the timer
@@ -209,7 +211,10 @@ impl State {
             );
             repo
         };
-        self.load_data_from_repo(&repo, "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.964561");
+        self.load_data_from_repo(
+            &repo,
+            "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.964561",
+        );
     }
 
     pub fn window(&self) -> &Window {
@@ -275,30 +280,35 @@ impl State {
     }
 
     pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume) {
-        let voxel_data: Vec<u16> = vol.voxel_data.iter().map(|x| (*x + HU_OFFSET as i16) as u16).collect();
+        let voxel_data: Vec<u16> = vol
+            .voxel_data
+            .iter()
+            .map(|x| (*x + HU_OFFSET as i16) as u16)
+            .collect();
         let voxel_data: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
-        let texture = 
-            RenderContent::from_bytes(
-                &self.device,
-                &self.queue,
-                &voxel_data,
-                "CT Volume",
-                vol.dimensions.0 as u32,
-                vol.dimensions.1 as u32,
-                vol.dimensions.2 as u32,
-            ).unwrap();
-    
+        let texture = RenderContent::from_bytes(
+            &self.device,
+            &self.queue,
+            &voxel_data,
+            "CT Volume",
+            vol.dimensions.0 as u32,
+            vol.dimensions.1 as u32,
+            vol.dimensions.2 as u32,
+        )
+        .unwrap();
+
         self.layout.remove_all();
 
-        let transverse_view = TransverseView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0]);
-        // let sagittal_view = SagittalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 0), (300, 300));
-        // let coronal_view = CoronalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 300), (300, 300));
-        // let oblique_view = ObliqueView::new(&self.device, &texture, &vol, 1.5, [150.0, 0.0, 0.0], (900, 600), (300, 300));
-    
+        let transverse_view =
+            TransverseView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (0, 0), (400, 400));
+        let sagittal_view = SagittalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (0, 400), (400, 400));
+        let coronal_view = CoronalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (400, 0), (400, 400));
+        let oblique_view = ObliqueView::new(&self.device, &texture, &vol, 1.5, [150.0, 0.0, 0.0], (400, 400), (400, 400));
+
         self.layout.add_view(Box::new(transverse_view));
-        // self.layout.add_view(Box::new(sagittal_view));
-        // self.layout.add_view(Box::new(coronal_view));
-        // self.layout.add_view(Box::new(oblique_view));
+        self.layout.add_view(Box::new(sagittal_view));
+        self.layout.add_view(Box::new(coronal_view));
+        self.layout.add_view(Box::new(oblique_view));
     }
 
     pub fn load_data_from_repo(&mut self, repo: &DicomRepo, image_series_number: &str) {
@@ -317,7 +327,7 @@ impl State {
         let view = self.layout.views.get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_mpr() {
             mpr_view.set_window_level(window_level + HU_OFFSET);
-            log::info!("TransverseView set_window_level: {}", window_level);
+            log::info!("View {} set_window_level: {}", index, window_level);
         }
     }
 
@@ -325,7 +335,7 @@ impl State {
         let view = self.layout.views.get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_mpr() {
             mpr_view.set_window_width(window_width);
-            log::info!("TransverseView set_window_width: {}", window_width);
+            log::info!("View {} set_window_width: {}", index, window_width);
         }
     }
 
@@ -341,14 +351,14 @@ impl State {
         let view = self.layout.views.get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_mpr() {
             mpr_view.set_scale(scale);
-            log::info!("TransverseView set_scale: {}", scale);
+            log::info!("View {} set_scale: {}", index, scale);
         }
     }
-    
-    pub fn set_translate(&mut self, index: usize, translate: [f32;3]) {
+
+    pub fn set_translate(&mut self, index: usize, translate: [f32; 3]) {
         let view = self.layout.views.get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_mpr() {
-            log::info!("TransverseView translate: {:#?}", translate);
+            log::info!("View {} translate: {:#?}", index, translate);
             mpr_view.set_translate(translate);
         }
     }
@@ -358,7 +368,6 @@ impl State {
 
 #[cfg(target_arch = "wasm32")]
 use js_sys::Array;
-
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[cfg(target_arch = "wasm32")]
