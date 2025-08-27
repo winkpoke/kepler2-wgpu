@@ -2,11 +2,15 @@ use crate::geometry::GeometryBuilder;
 use crate::view::RenderContext;
 use crate::{view, CTVolume};
 use crate::render_content::RenderContent;
+use crate::coord::{array_to_slice, Base, Matrix4x4};
 
 pub struct CoronalView {
     view: RenderContext,
     r_speed: f32,
     s_speed: f32,
+
+    base_screen: Base<f32>,
+    base_uv: Base<f32>,
 
     slice: f32,
     scale: f32,
@@ -23,13 +27,20 @@ impl CoronalView {
 
         let r_speed = 0.00;
         let s_speed = 0.0005;
-        let mut base_screen = GeometryBuilder::build_coronal_base(&vol);
+        let base_screen = GeometryBuilder::build_coronal_base(&vol);
         let base_uv = GeometryBuilder::build_uv_base(&vol);
 
-        base_screen.scale(scale);
-        base_screen.translate(translate);
+        // base_screen.scale(scale);
+        // base_screen.translate(translate);
 
-        let transform_matrix = base_screen.to_base(&base_uv);
+        // let transform_matrix = base_screen.to_base(&base_uv);
+        // println!("row major: {:?}", transform_matrix);
+        let mut base_screen_with_scale = base_screen.clone();
+        base_screen_with_scale.scale(scale);
+        let mut base_screen_with_translate = base_screen_with_scale.clone();
+        base_screen_with_translate.translate(translate);
+
+        let transform_matrix = base_screen_with_translate.to_base(&base_uv);
         println!("row major: {:?}", transform_matrix);
 
         let transform_matrix = transform_matrix.transpose(); // row major to column major
@@ -41,12 +52,24 @@ impl CoronalView {
             view,
             r_speed,
             s_speed,
+            base_screen,
+            base_uv,
             slice,
             scale,
             translate,
             pos,
             dim,
         }
+    }
+
+    fn update_transform_matrix(&mut self) {
+        let mut base_screen_with_scale = self.base_screen.clone();
+        base_screen_with_scale.scale(self.scale);
+        let mut base_screen_with_translate = base_screen_with_scale.clone();
+        base_screen_with_translate.translate(self.translate);
+        let transform_matrix = base_screen_with_translate.to_base(&self.base_uv);
+        let transform_matrix = transform_matrix.transpose(); 
+        self.view.uniforms.frag.mat = *array_to_slice(&transform_matrix.data);
     }
 
     pub fn set_slice(&mut self, slice: f32) {
@@ -67,11 +90,13 @@ impl view::Renderable for CoronalView {
         // Update the rotation angle, e.g., incrementing it over time
         self.view.uniforms.vert.rotation_angle_y += self.r_speed; //0.05; // Update rotation angle
         // self.view.uniforms.vert.rotation_angle_z += self.r_speed; //0.05; // Update rotation angle
-        if self.view.uniforms.frag.slice >= 1.0 {
-            self.view.uniforms.frag.slice = 0.0;
-        } else {
-            self.view.uniforms.frag.slice += self.s_speed; //0.005;
-        }
+        // if self.view.uniforms.frag.slice >= 1.0 {
+        //     self.view.uniforms.frag.slice = 0.0;
+        // } else {
+        //     self.view.uniforms.frag.slice += self.s_speed; //0.005;
+        // }
+        self.view.uniforms.frag.slice = self.slice;
+        self.update_transform_matrix();
 
         queue.write_buffer(
             &self.view.uniform_vert_buffer,
@@ -127,5 +152,43 @@ impl view::View for CoronalView {
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
+    }
+
+    fn as_mpr(&mut self) -> Option<&mut dyn view::MPRView> {
+        Some(self)
+    }
+}
+
+impl view::MPRView for CoronalView {
+    fn set_window_level(&mut self, window_level: f32) {
+        self.view.uniforms.frag.window_level = window_level;
+    }
+    
+    fn set_window_width(&mut self, window_width: f32) {
+        self.view.uniforms.frag.window_width = window_width;
+    }
+    
+    fn set_slice(&mut self, slice: f32) {
+        // check the value of slice
+        // it shall no more than 1.0 and no less than 0.0
+        let mut slice = slice;
+        if slice > 1.0 {
+            slice = 1.0;
+            log::info!("CoronalView set_slice: slice value exceeded 1.0, setting to 1.0");
+        } else if slice < 0.0 {
+            slice = 0.0;
+            log::info!("CoronalView set_slice: slice value less than 0.0, setting to 0.0");
+        }
+        self.slice = slice;
+    }
+
+    fn set_scale(&mut self, scale: f32) {
+        self.scale = scale;
+        log::info!("CoronalView set_scale: scale set to {}", scale);
+    }
+
+    fn set_translate(&mut self, translate: [f32; 3]) {
+        self.set_translate(translate);
+        log::info!("CoronalView set_translate: translate set to {:?}", translate);
     }
 }

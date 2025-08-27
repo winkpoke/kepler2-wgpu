@@ -20,7 +20,7 @@ use async_lock::Mutex;
 use tokio::sync::Mutex;
 
 
-use crate::view::{CoronalView, GridLayout, OneCellLayout, Layout, MPRView, ObliqueView, Renderable, SagittalView, TransverseView};
+use crate::view::{GridLayout, OneCellLayout, Layout, MPRView, Renderable, TransverseView, SagittalView, CoronalView, ObliqueView};
 use crate::ct_volume::*;
 use crate::dicom::*;
 use crate::render_content::RenderContent;
@@ -66,8 +66,8 @@ pub struct State {
     // it gets dropped after it as the surface contains
     // unsafe references to the window's resources.
     window: Arc<Window>,
-    pub(crate) layout: Layout<OneCellLayout>,
-    // pub(crate) layout: Layout<GridLayout>,
+    //pub(crate) layout: Layout<OneCellLayout>,
+    pub(crate) layout: Layout<GridLayout>,
 }
 
 const HU_OFFSET: f32 = 1100.0;
@@ -167,7 +167,7 @@ impl State {
         // };
 
         
-        let layout = Layout::new((800, 800), OneCellLayout { rows: 1, cols: 1, spacing: 0 });
+        let layout = Layout::new((800, 800), GridLayout { rows: 2, cols: 2, spacing: 0 });
 
         let state = Self {
             surface,
@@ -291,14 +291,14 @@ impl State {
         self.layout.remove_all();
 
         let transverse_view = TransverseView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0]);
-        // let sagittal_view = SagittalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 0), (300, 300));
-        // let coronal_view = CoronalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 300), (300, 300));
-        // let oblique_view = ObliqueView::new(&self.device, &texture, &vol, 1.5, [150.0, 0.0, 0.0], (900, 600), (300, 300));
+        let sagittal_view = SagittalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 0), (300, 300));
+        let coronal_view = CoronalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 300), (300, 300));
+        let oblique_view = ObliqueView::new(&self.device, &texture, &vol, 1.5, [150.0, 0.0, 0.0], (900, 600), (300, 300));
     
         self.layout.add_view(Box::new(transverse_view));
-        // self.layout.add_view(Box::new(sagittal_view));
-        // self.layout.add_view(Box::new(coronal_view));
-        // self.layout.add_view(Box::new(oblique_view));
+        self.layout.add_view(Box::new(sagittal_view));
+        self.layout.add_view(Box::new(coronal_view));
+        self.layout.add_view(Box::new(oblique_view));
     }
 
     pub fn load_data_from_repo(&mut self, repo: &DicomRepo, image_series_number: &str) {
@@ -348,7 +348,7 @@ impl State {
     pub fn set_translate(&mut self, index: usize, translate: [f32;3]) {
         let view = self.layout.views.get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_mpr() {
-            log::info!("TransverseView translate: {:#?}", translate);
+            log::info!("{} translate: {:#?}", index, translate);
             mpr_view.set_translate(translate);
         }
     }
