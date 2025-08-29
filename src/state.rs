@@ -358,8 +358,47 @@ impl State {
     pub fn set_translate(&mut self, index: usize, translate: [f32; 3]) {
         let view = self.layout.views.get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_mpr() {
-            log::info!("View {} translate: {:#?}", index, translate);
-            mpr_view.set_translate(translate);
+            let final_translate = if index == 1 {
+                // for index=1
+                let mut result = translate;
+                
+                // align X rot -90 (y, z) -> (z, -y)
+                let temp_y = result[1];
+                let temp_z = result[2];
+                result[1] = temp_z;      // new y = old z
+                result[2] = -temp_y;     // new z = -old y
+                // x stay
+                
+                //align Z rot 90 (x, y) -> (-y, x)
+                let temp_x_after = result[0];
+                let temp_y_after = result[1];
+                result[0] = -temp_y_after; // new x = -old y
+                result[1] = temp_x_after;  // new y = oldx
+                // z stay
+                
+                log::info!("{} original translate: {:#?}", index, translate);
+                log::info!("{} transformed translate: {:#?}", index, result);
+                result
+            } else if index == 2 {
+                // for index=2
+                let mut result = translate;
+                
+                // align X rot-90 (y, z) -> (z, -y)
+                let temp_y = result[1];
+                let temp_z = result[2];
+                result[1] = temp_z;      // new y = old z
+                result[2] = -temp_y;     // new z = -old y
+                // x stay
+                
+                log::info!("{} original translate: {:#?}", index, translate);
+                log::info!("{} transformed translate: {:#?}", index, result);
+                result
+            }else {
+                log::info!("{} translate: {:#?}", index, translate);
+                translate
+            };
+            
+            mpr_view.set_translate(final_translate);
         }
     }
 }
