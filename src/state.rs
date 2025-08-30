@@ -303,7 +303,7 @@ impl State {
             TransverseView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (0, 0), (400, 400));
         let sagittal_view = SagittalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (0, 400), (400, 400));
         let coronal_view = CoronalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (400, 0), (400, 400));
-        let oblique_view = ObliqueView::new(&self.device, &texture, &vol, 1.5, [150.0, 0.0, 0.0], (400, 400), (400, 400));
+        let oblique_view = ObliqueView::new(&self.device, &texture, &vol, 1.5, [0.0, 0.0, 0.0], (400, 400), (400, 400));
 
         self.layout.add_view(Box::new(transverse_view));
         self.layout.add_view(Box::new(sagittal_view));
@@ -360,6 +360,14 @@ impl State {
         if let Some(mpr_view) = view.as_mpr() {
             log::info!("View {} translate: {:#?}", index, translate);
             mpr_view.set_translate(translate);
+        }
+    }
+
+    pub fn set_translate_in_screen_coord(&mut self, index: usize, translate: [f32; 3]) {
+        let view = self.layout.views.get_mut(index).unwrap();
+        if let Some(mpr_view) = view.as_mpr() {
+            log::info!("View {} move to: {:#?}", index, translate);
+            mpr_view.set_translate_in_screen_coord(translate);
         }
     }
 }
