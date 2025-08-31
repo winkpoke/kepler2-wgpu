@@ -22,10 +22,7 @@ use winit::{
 use crate::ct_volume::*;
 use crate::dicom::*;
 use crate::render_content::RenderContent;
-use crate::view::{
-    CoronalView, GridLayout, Layout, MPRView, ObliqueView, OneCellLayout, Renderable, SagittalView,
-    TransverseView,
-};
+use crate::view::*;
 
 fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
     let mut file_paths = Vec::new();
@@ -300,10 +297,10 @@ impl State {
         self.layout.remove_all();
 
         let transverse_view =
-            TransverseView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (0, 0), (400, 400));
-        let sagittal_view = SagittalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (0, 400), (400, 400));
-        let coronal_view = CoronalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (400, 0), (400, 400));
-        let oblique_view = ObliqueView::new(&self.device, &texture, &vol, 1.5, [0.0, 0.0, 0.0], (400, 400), (400, 400));
+            TransverseView::new(&self.device, &texture, &vol, Orientation::Transverse, 1.0, [0.0, 0.0, 0.0], (0, 0), (400, 400));
+        let sagittal_view = SagittalView::new(&self.device, &texture, &vol, Orientation::Sagittal, 1.0, [0.0, 0.0, 0.0], (0, 400), (400, 400));
+        let coronal_view = CoronalView::new(&self.device, &texture, &vol, Orientation::Coronal, 1.0, [0.0, 0.0, 0.0], (400, 0), (400, 400));
+        let oblique_view = ObliqueView::new(&self.device, &texture, &vol, Orientation::Oblique, 1.0, [0.0, 0.0, 0.0], (400, 400), (400, 400));
 
         self.layout.add_view(Box::new(transverse_view));
         self.layout.add_view(Box::new(sagittal_view));
