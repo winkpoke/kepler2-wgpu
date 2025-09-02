@@ -83,6 +83,11 @@ impl RenderApp {
                     state.load_data_from_ct_volume(&volume);
                     log::info!("Loaded data from CTVolume for window {}", index);
                 }
+                Event::UserEvent(UserEvent::Resize(width, height)) => {
+                    log::info!("Resizing to width: {}, height: {}", width, height);
+                    state.resize(PhysicalSize { width, height });
+                    surface_configured = true;
+                }
                 Event::WindowEvent {
                     ref event,
                     window_id,

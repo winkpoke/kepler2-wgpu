@@ -16,6 +16,7 @@ pub enum UserEvent {
     SetTranslateInScreenCoord(usize, f32, f32, f32),
     SetTranslate(usize, f32, f32, f32),  // translate in 3D space
     LoadDataFromCTVolume(usize, CTVolume), 
+    Resize(u32, u32), // width, height
     // ... add more events as needed
 }
 
@@ -78,6 +79,14 @@ impl GLCanvas {
             log::error!("Failed to send LoadDataFromCTVolume event for window {}: {:?}", index, e);
         } else {
             log::info!("Sent LoadDataFromCTVolume event for window {}", index);
+        }
+    }
+
+    pub fn resize(&self, width: u32, height: u32) {
+        if let Err(e) = self.proxy.send_event(UserEvent::Resize(width, height)) {
+            log::error!("Failed to send Resize event: {:?}", e);
+        } else {
+            log::info!("Sent Resize event: width={}, height={}", width, height);
         }
     }
 }
