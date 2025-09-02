@@ -13,6 +13,7 @@ pub enum UserEvent {
     SetWindowWidth(usize, f32),
     SetSlice(usize, f32),
     SetScale(usize, f32),
+    SetTranslateInScreenCoord(usize, f32, f32, f32),
     SetTranslate(usize, f32, f32, f32),  // translate in 3D space
     LoadDataFromCTVolume(usize, CTVolume), 
     // ... add more events as needed
@@ -93,4 +94,5 @@ impl_user_event_senders_for_glcanvas! {
     // set_slice => SetSlice(slice: f32),
     set_scale => SetScale(scale: f32),
     set_translate => SetTranslate(dx: f32, dy: f32, dz: f32),
+    set_translate_in_screen_coord => SetTranslateInScreenCoord(x: f32, y: f32, z: f32),
 }

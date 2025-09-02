@@ -14,6 +14,7 @@ pub struct SagittalView {
     base_uv: Base<f32>,
     scale: f32,
     translate: [f32;3],
+    move_to: [f32;3],
 
     pos: (i32, i32),
     dim: (u32, u32),
@@ -41,6 +42,9 @@ impl SagittalView {
 
         let view = view::RenderContext::new(&device, &texture, transform_matrix);
         let slice = 0.0;
+
+        let move_to = [0.0, 0.0, 0.0];
+
         Self {
             view,
             r_speed,
@@ -50,15 +54,21 @@ impl SagittalView {
             slice,
             scale,
             translate,
+            move_to,
             pos,
             dim,
         }
+    }
+
+    pub fn set_move_to(&mut self, translate: [f32;3]) {
+        self.move_to = translate;
     }
 
     fn update_transform_matrix(&mut self) {
         let mut base_screen_with_scale = self.base_screen.clone();
         base_screen_with_scale.scale(self.scale);
         let mut base_screen_with_translate = base_screen_with_scale.clone();
+        base_screen_with_translate.translate_in_screen_coord(self.move_to);
         base_screen_with_translate.translate(self.translate);
         let transform_matrix = base_screen_with_translate.to_base(&self.base_uv);
         let transform_matrix = transform_matrix.transpose(); 
@@ -183,5 +193,10 @@ impl view::MPRView for SagittalView {
     fn set_translate(&mut self, translate: [f32; 3]) {
         self.set_translate(translate);
         log::info!("SagittalView set_translate: translate set to {:?}", translate);
+    }
+
+    fn set_translate_in_screen_coord(&mut self, translate: [f32; 3]) {
+        self.set_move_to(translate);
+        log::info!("SagittalView move_to: move_to set to {:?}", translate);
     }
 }

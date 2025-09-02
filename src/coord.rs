@@ -261,6 +261,17 @@ where
             self.matrix.data[i][3] -= translate[i];
         }
     }
+
+    pub fn translate_in_screen_coord(&mut self, translate: [T; 3]) {
+        let mut trans = [T::one(); 4];
+        for i in 0..3 {
+            trans[i] = -translate[i];
+        }
+        let transformed = self.matrix.apply(&trans);
+        for i in 0..3 {    
+            self.matrix.data[i][3] = transformed[i];
+        }
+    }
 }
 
 impl<T> Default for Base<T>

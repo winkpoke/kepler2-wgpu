@@ -21,4 +21,5 @@ pub trait MPRView: View {
     fn set_slice(&mut self, slice: f32);
     fn set_scale(&mut self, scale: f32);
     fn set_translate(&mut self, translate: [f32; 3]);
+    fn set_translate_in_screen_coord(&mut self, translate: [f32; 3]);
 }

@@ -74,6 +74,11 @@ impl RenderApp {
                     log::info!("Translate set to: {:#?}", translate);
                     state.set_translate(index, translate);
                 }
+                Event::UserEvent(UserEvent::SetTranslateInScreenCoord(index, dx, dy, dz)) => {
+                    let translate = [dx, dy, dz];
+                    log::info!("Move to: {:#?}", translate);
+                    state.set_translate_in_screen_coord(index, translate);
+                }
                 Event::UserEvent(UserEvent::LoadDataFromCTVolume(index, volume)) => {
                     state.load_data_from_ct_volume(&volume);
                     log::info!("Loaded data from CTVolume for window {}", index);

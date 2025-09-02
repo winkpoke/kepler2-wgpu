@@ -125,7 +125,7 @@
                 alert('Please select a series first!');
                 return;
             }
-            gl_canvas.set_translate(indexValue, x, y, z);
+            gl_canvas.set_translate_in_screen_coord(indexValue, x, y, z);
         });
 
         document.getElementById('winlev-submit').addEventListener('click', () => {
