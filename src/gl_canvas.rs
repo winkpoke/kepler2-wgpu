@@ -11,7 +11,7 @@ pub enum UserEvent {
     SetSliceSpeed(usize, f32),
     SetWindowLevel(usize, f32),
     SetWindowWidth(usize, f32),
-    SetSlice(usize, f32),
+    SetSliceMM(usize, f32),
     SetScale(usize, f32),
     SetTranslateInScreenCoord(usize, f32, f32, f32),
     SetPan(usize, f32, f32), // pan in screen space
@@ -102,7 +102,7 @@ impl_user_event_senders_for_glcanvas! {
     set_slice_speed => SetSliceSpeed(speed: f32),
     set_window_level => SetWindowLevel(window_level: f32),
     set_window_width => SetWindowWidth(window_width: f32),
-    // set_slice => SetSlice(slice: f32),
+    set_slice_mm => SetSliceMM(slice: f32),
     set_scale => SetScale(scale: f32),
     set_translate => SetTranslate(dx: f32, dy: f32, dz: f32),
     set_translate_in_screen_coord => SetTranslateInScreenCoord(x: f32, y: f32, z: f32),

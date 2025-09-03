@@ -23,7 +23,7 @@ pub trait MPRView: View {
     // fn set_slice(&mut self, slice: u32);
     fn set_window_level(&mut self, window_level: f32);
     fn set_window_width(&mut self, window_width: f32);
-    fn set_slice(&mut self, slice: f32);
+    fn set_slice_mm(&mut self, z: f32);
     fn set_scale(&mut self, scale: f32);
     fn set_translate(&mut self, translate: [f32; 3]);
     fn set_translate_in_screen_coord(&mut self, translate: [f32; 3]);
@@ -195,8 +195,9 @@ impl MPRView for GenericMPRView {
     fn set_window_width(&mut self, window_width: f32) {
         self.view.uniforms.frag.window_width = window_width;
     }
-    fn set_slice(&mut self, slice: f32) {
-        self.slice = slice.clamp(0.0, 1.0);
+    fn set_slice_mm(&mut self, z: f32) {
+        let [_, _, scale_z] = self.base_screen.get_scale_factors();
+        self.pan[2] = z / scale_z;
     }
     fn set_scale(&mut self, scale: f32) {
         self.scale = scale;

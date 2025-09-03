@@ -349,11 +349,11 @@ impl State {
         }
     }
 
-    pub fn set_slice(&mut self, index: usize, slice: f32) {
+    pub fn set_slice_mm(&mut self, index: usize, z: f32) {
         let view = self.layout.views.get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_mpr() {
-            mpr_view.set_slice(slice);
-            log::info!("TransverseView set_slice: {}", slice);
+            mpr_view.set_slice_mm(z);
+            log::info!("View {} set_slice: {}", index, z);
         }
     }
 

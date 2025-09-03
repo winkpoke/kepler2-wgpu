@@ -61,9 +61,9 @@ impl RenderApp {
                     state.set_window_width(index, window_width);
                     log::info!("Window width set to: {}", window_width);
                 }
-                Event::UserEvent(UserEvent::SetSlice(index, slice)) => {
-                    state.set_slice(index, slice);
-                    log::info!("Slice set to: {}", slice);
+                Event::UserEvent(UserEvent::SetSliceMM(index, z)) => {
+                    state.set_slice_mm(index, z);
+                    log::info!("Slice set to: {} mm", z);
                 }
                 Event::UserEvent(UserEvent::SetScale(index, scale)) => {
                     state.set_scale(index, scale);
