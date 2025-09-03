@@ -76,9 +76,15 @@ pub async fn get_render_app(vol: &CTVolume) -> RenderApp {
             })
             .expect("Couldn't append canvas to document body.");
     }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        // Set the window size to 800x800
+        // the request_inner_size function sets the style width and height of the window canvas
+        // in web, the size then is controlled by CSS, which blocks the resize on the web platform.
+        let _ = window.request_inner_size(PhysicalSize::new(800, 800));
+    }
 
-    // Set the window size to 900x900
-    let _ = window.request_inner_size(PhysicalSize::new(800, 800));
-    let state = State::new(window.clone(), &vol).await;
+    let mut state = State::new(window.clone(), &vol).await;
+    state.resize(PhysicalSize::new(800, 800));
     RenderApp::new(state, event_loop, proxy)
 }

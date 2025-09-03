@@ -57,7 +57,7 @@ impl LayoutStrategy for OneCellLayout {
 }
 pub struct Layout <T: LayoutStrategy> {
     dim: (u32, u32),
-    strategy: T,
+    pub(crate) strategy: T,
     pub(crate) views: Vec<Box<dyn View>>, // A collection of views
 }
 

@@ -219,10 +219,23 @@ impl State {
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+        println!("Resizing to: {}, {}", new_size.width, new_size.height);
         if new_size.width > 0 && new_size.height > 0 {
             self.size = new_size;
             self.config.width = new_size.width;
             self.config.height = new_size.height;
+
+            // enumerate through self.layout.views and adjust their sizes and positions
+            let total_views = self.layout.views.len() as u32;
+            for (i, view) in self.layout.views.iter_mut().enumerate() {
+                let (pos, size) = self.layout.strategy.calculate_position_and_size(
+                    i as u32,
+                    total_views,
+                    (self.config.width, self.config.height),
+                );
+                view.move_to(pos);
+                view.resize(size);
+            }
             self.surface.configure(&self.device, &self.config);
         }
     }
