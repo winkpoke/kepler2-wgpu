@@ -14,6 +14,8 @@ pub enum UserEvent {
     SetSlice(usize, f32),
     SetScale(usize, f32),
     SetTranslateInScreenCoord(usize, f32, f32, f32),
+    SetPan(usize, f32, f32), // pan in screen space
+    SetPanMM(usize, f32, f32), // pan in mm
     SetTranslate(usize, f32, f32, f32),  // translate in 3D space
     LoadDataFromCTVolume(usize, CTVolume), 
     Resize(u32, u32), // width, height
@@ -104,4 +106,6 @@ impl_user_event_senders_for_glcanvas! {
     set_scale => SetScale(scale: f32),
     set_translate => SetTranslate(dx: f32, dy: f32, dz: f32),
     set_translate_in_screen_coord => SetTranslateInScreenCoord(x: f32, y: f32, z: f32),
+    set_pan => SetPan(dx: f32, dy: f32),
+    set_pan_mm => SetPanMM(dx_mm: f32, dy_mm: f32),
 }

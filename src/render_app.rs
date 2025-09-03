@@ -88,6 +88,14 @@ impl RenderApp {
                     state.resize(PhysicalSize { width, height });
                     surface_configured = true;
                 }
+                Event::UserEvent(UserEvent::SetPan(index, dx, dy)) => {
+                    state.set_pan(index, dx, dy);
+                    log::info!("Pan set to: dx={}, dy={}", dx, dy);
+                }
+                Event::UserEvent(UserEvent::SetPanMM(index, dx_mm, dy_mm)) => {
+                    state.set_pan_mm(index, dx_mm, dy_mm);
+                    log::info!("PanMM set to: dx_mm={}, dy_mm={}", dx_mm, dy_mm);
+                }
                 Event::WindowEvent {
                     ref event,
                     window_id,

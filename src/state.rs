@@ -380,6 +380,22 @@ impl State {
             mpr_view.set_translate_in_screen_coord(translate);
         }
     }
+
+    pub fn set_pan(&mut self, index: usize, x: f32, y: f32 ) {
+        let view = self.layout.views.get_mut(index).unwrap();
+        if let Some(mpr_view) = view.as_mpr() {
+            log::info!("View {} move to: {:#?}", index, (x, y));
+            mpr_view.set_pan(x, y);
+        }
+    }
+
+    pub fn set_pan_mm(&mut self, index: usize, x_mm: f32, y_mm: f32 ) {
+        let view = self.layout.views.get_mut(index).unwrap();
+        if let Some(mpr_view) = view.as_mpr() {
+            log::info!("View {} move to mm: {:#?}", index, (x_mm, y_mm));
+            mpr_view.set_pan(x_mm, y_mm);
+        }
+    }
 }
 
 // ---------------------------------------- WASM ---------------------------------------------

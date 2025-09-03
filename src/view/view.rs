@@ -27,6 +27,8 @@ pub trait MPRView: View {
     fn set_scale(&mut self, scale: f32);
     fn set_translate(&mut self, translate: [f32; 3]);
     fn set_translate_in_screen_coord(&mut self, translate: [f32; 3]);
+    fn set_pan(&mut self, x: f32, y: f32); // pan in screen space
+    fn set_pan_mm(&mut self, x_mm: f32, y_mm: f32); // pan in mm
 }
 
 pub enum Orientation {
@@ -63,7 +65,7 @@ pub struct GenericMPRView {
     base_uv: Base<f32>,
     scale: f32,
     translate: [f32; 3],
-    screen_offset: [f32; 3],
+    pan: [f32; 3],
     pos: (i32, i32),
     dim: (u32, u32),
 }
@@ -103,7 +105,7 @@ impl GenericMPRView {
             base_uv,
             scale,
             translate,
-            screen_offset: [0.0, 0.0, 0.0],
+            pan: [0.0, 0.0, 0.0],
             pos,
             dim,
         }
@@ -118,7 +120,7 @@ impl GenericMPRView {
         let mut base_screen_with_scale = self.base_screen.clone();
         base_screen_with_scale.scale(self.scale);
         let mut base_screen_with_translate = base_screen_with_scale.clone();
-        base_screen_with_translate.translate_in_screen_coord(self.screen_offset);
+        base_screen_with_translate.translate_in_screen_coord(self.pan);
         base_screen_with_translate.translate(self.translate);
         let transform_matrix = base_screen_with_translate
             .to_base(&self.base_uv)
@@ -203,7 +205,16 @@ impl MPRView for GenericMPRView {
         self.translate = translate;
     }
     fn set_translate_in_screen_coord(&mut self, translate: [f32; 3]) {
-        self.screen_offset = translate;
+        self.pan = translate;
+    }
+    fn set_pan(&mut self, x: f32, y: f32) {
+        self.pan[0] = x;
+        self.pan[1] = y;
+    }
+    fn set_pan_mm(&mut self, x_mm: f32, y_mm: f32) {
+        let [scale_x, scale_y, _] = self.base_screen.get_scale_factors();
+        self.pan[0] = x_mm / scale_x;
+        self.pan[1] = y_mm / scale_y;
     }
 }
 

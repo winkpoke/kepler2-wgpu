@@ -215,6 +215,7 @@ where
         + num::Zero
         + num::One
         + num::Signed
+        + num::Float
         + PartialOrd
         + std::ops::DivAssign
         + std::ops::SubAssign
@@ -228,6 +229,18 @@ where
         } else {
             unreachable!()
         }
+    }
+
+    pub fn get_scale_factors(&self) -> [T; 3] {
+        let col0 = self.matrix.get_column(0);
+        let col1 = self.matrix.get_column(1);
+        let col2 = self.matrix.get_column(2);
+
+        let sx = (col0[0] * col0[0] + col0[1] * col0[1] + col0[2] * col0[2]).sqrt();
+        let sy = (col1[0] * col1[0] + col1[1] * col1[1] + col1[2] * col1[2]).sqrt();
+        let sz = (col2[0] * col2[0] + col2[1] * col2[1] + col2[2] * col2[2]).sqrt();
+
+        [sx, sy, sz]
     }
 
     pub fn scale(&mut self, scale: T) {
