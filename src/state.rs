@@ -236,6 +236,11 @@ impl State {
                 view.move_to(pos);
                 view.resize(size);
             }
+            #[cfg(target_arch = "wasm32")]
+            {
+                // sets the style width and height of the window canvas
+                let _ = self.window.request_inner_size(new_size); 
+            }
             self.surface.configure(&self.device, &self.config);
         }
     }

@@ -45,6 +45,12 @@
         <label for="level">level:</label><input type="number" id="level" step="10.0" value="0.0">
         <button id="winlev-submit">Submit</button>
     </div>
+        <div>
+        <label for="resize-input">resize:</label>
+        <label for="width">width:</label><input type="number" id="width" step="10.0" value="0.0" placeholder="800">
+        <label for="height">height:</label><input type="number" id="height" step="10.0" value="0.0" placeholder="800">
+        <button id="resize-submit">Submit</button>
+    </div>
     <button id="rerender">render</button>
     <script type="module">
         import init, { parse_dcm_files_wasm, get_render_app } from '../pkg/kepler_wgpu.js';
@@ -88,6 +94,20 @@
                 return;
             }
             gl_canvas.set_slice_mm(indexValue, sliceValue);
+                    })
+        document.getElementById('resize-submit').addEventListener('click', () => {
+            const width = document.getElementById('width').value;
+            const height = document.getElementById('height').value;
+            const input_index = document.getElementById('index-input');
+            if (isNaN(width) || isNaN(height)) {
+                alert('Please enter a valid number');
+                return;
+            }
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return;
+            }
+            gl_canvas.resize( width, height);
         })
 
         document.getElementById('scale-submit').addEventListener('click', () => {
