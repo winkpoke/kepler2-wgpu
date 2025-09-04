@@ -81,10 +81,12 @@ pub async fn get_render_app(vol: &CTVolume) -> RenderApp {
         // Set the window size to 800x800
         // the request_inner_size function sets the style width and height of the window canvas
         // in web, the size then is controlled by CSS, which blocks the resize on the web platform.
-        let _ = window.request_inner_size(PhysicalSize::new(800, 800));
+        // let _ = window.request_inner_size(PhysicalSize::new(800, 800));
     }
 
+    // this sets the style width and height of the canvas
+    let _ = window.request_inner_size(PhysicalSize::new(800, 800)); 
     let mut state = State::new(window.clone(), &vol).await;
-    state.resize(PhysicalSize::new(800, 800));
+    // state.resize(PhysicalSize::new(800, 800));
     RenderApp::new(state, event_loop, proxy)
 }
