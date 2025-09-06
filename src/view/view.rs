@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::sync::Arc;
 use super::Renderable;
 use crate::coord::{array_to_slice, Base};
 use crate::geometry::GeometryBuilder;
@@ -66,6 +67,7 @@ impl Orientation {
 
 pub struct GenericMPRView {
     view: RenderContext,
+    texture: Arc<RenderContent>,
     r_speed: f32,
     s_speed: f32,
     slice: f32,
@@ -81,7 +83,7 @@ pub struct GenericMPRView {
 impl GenericMPRView {
     pub fn new(
         device: &wgpu::Device,
-        texture: &RenderContent,
+        texture: Arc<RenderContent>,
         vol: &CTVolume,
         orientation: Orientation,
         scale: f32,
@@ -108,6 +110,7 @@ impl GenericMPRView {
             orientation, scale, translate, pos, dim);
         Self {
             view,
+            texture,
             r_speed,
             s_speed,
             slice: 0.0,

@@ -292,7 +292,7 @@ impl State {
             .map(|x| (*x + HU_OFFSET as i16) as u16)
             .collect();
         let voxel_data: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
-        let texture = RenderContent::from_bytes(
+        let texture = Arc::new(RenderContent::from_bytes(
             &self.device,
             &self.queue,
             &voxel_data,
@@ -301,7 +301,7 @@ impl State {
             vol.dimensions.1 as u32,
             vol.dimensions.2 as u32,
         )
-        .unwrap();
+        .unwrap());
 
         self.layout.remove_all();
 
@@ -314,7 +314,7 @@ impl State {
             info!("Adding view at position: {:?}, size: {:?}", pos, size);
             let view = GenericMPRView::new(
                 &self.device,
-                &texture,
+                texture.clone(),
                 &vol,
                 *orietation,
                 1.0,
