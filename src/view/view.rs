@@ -31,12 +31,20 @@ pub trait MPRView: View {
     fn set_pan_mm(&mut self, x_mm: f32, y_mm: f32); // pan in mm
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum Orientation {
     Oblique,
     Sagittal,
     Coronal,
     Transverse,
 }
+
+pub const ALL_ORIENTATIONS: [Orientation; 4] = [
+    Orientation::Transverse,
+    Orientation::Coronal,
+    Orientation::Sagittal,
+    Orientation::Oblique,
+];
 
 impl Orientation {
     fn build_base(&self, vol: &CTVolume) -> Base<f32> {
@@ -96,6 +104,8 @@ impl GenericMPRView {
 
         let view = RenderContext::new(&device, &texture, transform_matrix);
 
+        log::trace!("Created GenericMPRView with orientation: {:?}, scale: {}, translate: {:#?}, pos: {:#?}, dim: {:#?}",
+            orientation, scale, translate, pos, dim);
         Self {
             view,
             r_speed,
@@ -126,6 +136,12 @@ impl GenericMPRView {
             .to_base(&self.base_uv)
             .transpose();
         self.view.uniforms.frag.mat = *array_to_slice(&transform_matrix.data);
+    }
+}
+
+impl Drop for GenericMPRView {
+    fn drop(&mut self) {
+        log::info!("Dropping GenericMPRView");
     }
 }
 
@@ -166,15 +182,19 @@ impl Renderable for GenericMPRView {
 
 impl View for GenericMPRView {
     fn position(&self) -> (i32, i32) {
+        log::trace!("View position: {:#?}", self.pos);
         self.pos
     }
     fn dimensions(&self) -> (u32, u32) {
+        log::trace!("View dimensions: {:#?}", self.dim);
         self.dim
     }
     fn move_to(&mut self, pos: (i32, i32)) {
+        log::trace!("View move_to: {:#?}", pos);
         self.pos = pos;
     }
     fn resize(&mut self, dim: (u32, u32)) {
+        log::trace!("View resize: {:#?}", dim);
         self.dim = dim;
     }
     fn as_any(&self) -> &dyn std::any::Any {

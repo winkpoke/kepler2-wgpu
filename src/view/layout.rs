@@ -74,6 +74,7 @@ impl<T: LayoutStrategy> Layout<T> {
         let idx = self.views.len() as u32;
         let total_views = (self.views.len() + 1) as u32;
         let (pos, size) = self.strategy.calculate_position_and_size(idx, total_views, self.dim);
+        log::info!("Adding view at position: {:#?} with size: {:#?}", pos, size);
         view.move_to(pos);
         view.resize(size);
         self.views.push(view);
@@ -89,6 +90,16 @@ impl<T: LayoutStrategy> Layout<T> {
 
     pub fn remove_all(&mut self) {
         self.views.clear();
+    }
+
+    pub fn resize(&mut self, dim: (u32, u32)) {
+        self.dim = dim;
+        let total_views = self.views.len() as u32;
+        for (i, view) in self.views.iter_mut().enumerate() {
+            let (pos, size) = self.strategy.calculate_position_and_size(i as u32, total_views, self.dim);
+            view.move_to(pos);
+            view.resize(size);
+        }
     }
 }
 

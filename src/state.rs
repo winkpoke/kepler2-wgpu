@@ -225,17 +225,8 @@ impl State {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
 
-            // enumerate through self.layout.views and adjust their sizes and positions
-            let total_views = self.layout.views.len() as u32;
-            for (i, view) in self.layout.views.iter_mut().enumerate() {
-                let (pos, size) = self.layout.strategy.calculate_position_and_size(
-                    i as u32,
-                    total_views,
-                    (self.config.width, self.config.height),
-                );
-                view.move_to(pos);
-                view.resize(size);
-            }
+            self.layout.resize((new_size.width, new_size.height));
+
             #[cfg(target_arch = "wasm32")]
             {
                 // sets the style width and height of the window canvas
@@ -314,16 +305,36 @@ impl State {
 
         self.layout.remove_all();
 
-        let transverse_view =
-            TransverseView::new(&self.device, &texture, &vol, Orientation::Transverse, 1.0, [0.0, 0.0, 0.0], (0, 0), (400, 400));
-        let sagittal_view = SagittalView::new(&self.device, &texture, &vol, Orientation::Sagittal, 1.0, [0.0, 0.0, 0.0], (0, 400), (400, 400));
-        let coronal_view = CoronalView::new(&self.device, &texture, &vol, Orientation::Coronal, 1.0, [0.0, 0.0, 0.0], (400, 0), (400, 400));
-        let oblique_view = ObliqueView::new(&self.device, &texture, &vol, Orientation::Oblique, 1.0, [0.0, 0.0, 0.0], (400, 400), (400, 400));
+        for orietation in ALL_ORIENTATIONS.iter() {
+            let (pos, size) = self.layout.strategy.calculate_position_and_size(
+                self.layout.views.len() as u32,
+                (self.layout.views.len() + 1) as u32,
+                (self.config.width, self.config.height),
+            );
+            info!("Adding view at position: {:?}, size: {:?}", pos, size);
+            let view = GenericMPRView::new(
+                &self.device,
+                &texture,
+                &vol,
+                *orietation,
+                1.0,
+                [0.0, 0.0, 0.0],
+                pos,
+                size,
+            );
+            self.layout.add_view(Box::new(view));
+        }
 
-        self.layout.add_view(Box::new(transverse_view));
-        self.layout.add_view(Box::new(sagittal_view));
-        self.layout.add_view(Box::new(coronal_view));
-        self.layout.add_view(Box::new(oblique_view));
+        // let transverse_view =
+        //     TransverseView::new(&self.device, &texture, &vol, Orientation::Transverse, 1.0, [0.0, 0.0, 0.0], (0, 0), (400, 400));
+        // let sagittal_view = SagittalView::new(&self.device, &texture, &vol, Orientation::Sagittal, 1.0, [0.0, 0.0, 0.0], (0, 400), (400, 400));
+        // let coronal_view = CoronalView::new(&self.device, &texture, &vol, Orientation::Coronal, 1.0, [0.0, 0.0, 0.0], (400, 0), (400, 400));
+        // let oblique_view = ObliqueView::new(&self.device, &texture, &vol, Orientation::Oblique, 1.0, [0.0, 0.0, 0.0], (400, 400), (400, 400));
+
+        // self.layout.add_view(Box::new(transverse_view));
+        // self.layout.add_view(Box::new(sagittal_view));
+        // self.layout.add_view(Box::new(coronal_view));
+        // self.layout.add_view(Box::new(oblique_view));
     }
 
     pub fn load_data_from_repo(&mut self, repo: &DicomRepo, image_series_number: &str) {
