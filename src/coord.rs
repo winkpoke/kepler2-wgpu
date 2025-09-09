@@ -243,36 +243,25 @@ where
         [sx, sy, sz]
     }
 
-    pub fn scale(&mut self, scale: T) {
-        let col = self.matrix.get_column(3);
-        let p = Vector3::<T>::new([col[0], col[1], col[2]]);
-        
-        let col0 = self.matrix.get_column(0);
-        let dx = Vector3::<T>::new([col0[0], col0[1], col0[2]]);
+    pub fn scale(&mut self, scale: [T; 3]) {
+        let one = T::one();
+        let zero = T::zero();
 
-        let col1 = self.matrix.get_column(1);
-        let dy = Vector3::<T>::new([col1[0], col1[1], col1[2]]);
-        
-        let two = T::from(2.0).unwrap();
-        let center = dx * T::one() / two + dy * T::one() / two + p;
-
-        let new_p = center - (center - p) / scale;
-
-        for i in 0..3 {
-            for j in 0..3 {
-                self.matrix.data[i][j] /= scale;
-            }
-        }
-
-        for i in 0..3 {
-            self.matrix.data[i][3] = new_p.data[i];
-        }
+        let s = Matrix4x4::from_array([one / scale[0], zero, zero, zero,
+                                       zero, one / scale[1], zero, zero,
+                                       zero, zero, one / scale[2], zero,
+                                       zero, zero, zero, one]);
+        self.matrix = self.matrix.multiply(&s);
     }
 
     pub fn translate(&mut self, translate: [T; 3]) {
-        for i in 0..3 {
-            self.matrix.data[i][3] -= translate[i];
-        }
+        let one = T::one();
+        let zero = T::zero();
+        let t = Matrix4x4::from_array([one, zero, zero, translate[0],
+                                       zero, one, zero, translate[1],
+                                       zero, zero, one, translate[2],
+                                       zero, zero, zero, one]);
+        self.matrix = self.matrix.multiply(&t);
     }
 
     pub fn translate_in_screen_coord(&mut self, translate: [T; 3]) {

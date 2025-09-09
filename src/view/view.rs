@@ -97,12 +97,16 @@ impl GenericMPRView {
         let base_screen = orientation.build_base(vol);
         let base_uv = GeometryBuilder::build_uv_base(vol);
 
-        let mut base_screen_with_scale = base_screen.clone();
-        base_screen_with_scale.scale(scale);
-        let mut base_screen_with_translate = base_screen_with_scale.clone();
-        base_screen_with_translate.translate(translate);
+        let pan = [0.0, 0.0, 0.0];
+        let slice = 0.0;
 
-        let transform_matrix = base_screen_with_translate.to_base(&base_uv).transpose();
+        let mut base_screen_cloned = base_screen.clone();
+        base_screen_cloned.translate([-pan[0], -pan[1], -pan[2]]); 
+        base_screen_cloned.translate([0.5, 0.5, 0.0]); // move back
+        base_screen_cloned.scale([scale, scale, 1.0]);
+        base_screen_cloned.translate([-0.5, -0.5, 0.0]); // move to center
+
+        let transform_matrix = base_screen_cloned.to_base(&base_uv).transpose();
 
         let view = RenderContext::new(&device, &texture, transform_matrix);
 
@@ -113,12 +117,12 @@ impl GenericMPRView {
             texture,
             r_speed,
             s_speed,
-            slice: 0.0,
+            slice,
             base_screen,
             base_uv,
             scale,
             translate,
-            pan: [0.0, 0.0, 0.0],
+            pan,
             pos,
             dim,
         }
@@ -130,12 +134,13 @@ impl GenericMPRView {
     }
 
     fn update_transform_matrix(&mut self) {
-        let mut base_screen_with_scale = self.base_screen.clone();
-        base_screen_with_scale.scale(self.scale);
-        let mut base_screen_with_translate = base_screen_with_scale.clone();
-        base_screen_with_translate.translate_in_screen_coord(self.pan);
-        base_screen_with_translate.translate(self.translate);
-        let transform_matrix = base_screen_with_translate
+        let mut base_screen_cloned = self.base_screen.clone();
+        base_screen_cloned.translate([-self.pan[0], -self.pan[1], -self.pan[2]]); 
+        base_screen_cloned.translate([0.5, 0.5, 0.0]); // move back
+        base_screen_cloned.scale([self.scale, self.scale, 1.0]);
+        base_screen_cloned.translate([-0.5, -0.5, 0.0]); // move to center
+
+        let transform_matrix = base_screen_cloned
             .to_base(&self.base_uv)
             .transpose();
         self.view.uniforms.frag.mat = *array_to_slice(&transform_matrix.data);
