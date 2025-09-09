@@ -9,7 +9,7 @@ define_dicom_struct!(StudySet, {
     (study_id, String, "(0020,0010) StudyID", false),           // StudyID is required
     (uid, String, "(0020,000D) StudyInstanceUID", false),     // StudyInstanceUID is required
     (patient_id, String, "(0010,0020) PatientID", false),           // PatientID is required
-    (date, String, "(0020,000D) StudyDate", false),       // StudyDate is required
+    (date, String, "(0008,0020) StudyDate", false),       // StudyDate is required
     (description, String, "(0008,1030) StudyDescription", true) // StudyDescription is optional
 });
 
