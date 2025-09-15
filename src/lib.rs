@@ -32,6 +32,7 @@ mod render_app;
 use ct_volume::CTVolume;
 use state::State;
 use render_app::RenderApp;
+use gl_canvas::UserEvent;
 
 
 #[cfg(target_arch = "wasm32")]
@@ -56,7 +57,7 @@ pub async fn get_render_app(vol: &CTVolume) -> RenderApp {
 
     warn!("Start the program ...");
 
-    let event_loop = EventLoopBuilder::<gl_canvas::UserEvent>::with_user_event().build().unwrap();
+    let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build().unwrap();
     let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
     let proxy = event_loop.create_proxy();
 
@@ -89,4 +90,9 @@ pub async fn get_render_app(vol: &CTVolume) -> RenderApp {
     let mut state = State::new(window.clone(), &vol).await;
     // state.resize(PhysicalSize::new(800, 800));
     RenderApp::new(state, event_loop, proxy)
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub fn drop_render_app(app: RenderApp) {
+    drop(app);
 }

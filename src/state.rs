@@ -144,22 +144,12 @@ impl State {
             desired_maximum_frame_latency: 2,
             view_formats: vec![],
         };
-        println!("format: {:?}", surface_format);
 
-        error!("size: {}, {}", size.width, size.height);
-        println!("print size: {}, {}", size.width, size.height);
         if size.width > 0 && size.height > 0 {
             surface.configure(&device, &config);
         }
-        println!("supported texture formats: {:?}", surface_caps.formats);
-        println!("format: {:?}", config.format);
-
-        // #[cfg(target_arch = "wasm32")]
-        // let repo = {
-        //     let files = dicom::fileio::create_files_from_arrays(FILES);
-        //     let repo = dicom::fileio::parse_dcm_files_wasm(files).await.unwrap();
-        //     repo
-        // };
+        // println!("supported texture formats: {:?}", surface_caps.formats);
+        // println!("format: {:?}", config.format);
 
         let layout = Layout::new(
             (800, 800),

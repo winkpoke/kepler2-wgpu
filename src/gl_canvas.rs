@@ -19,6 +19,7 @@ pub enum UserEvent {
     SetTranslate(usize, f32, f32, f32),  // translate in 3D space
     LoadDataFromCTVolume(usize, CTVolume), 
     Resize(u32, u32), // width, height
+    Quit,
     // ... add more events as needed
 }
 
@@ -89,6 +90,14 @@ impl GLCanvas {
             log::error!("Failed to send Resize event: {:?}", e);
         } else {
             log::info!("Sent Resize event: width={}, height={}", width, height);
+        }
+    }
+
+    pub fn quit(&self) {
+        if let Err(e) = self.proxy.send_event(UserEvent::Quit) {
+            log::error!("Failed to send Quit event: {:?}", e);
+        } else {
+            log::info!("Sent Quit event");
         }
     }
 }

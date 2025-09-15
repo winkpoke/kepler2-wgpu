@@ -96,6 +96,10 @@ impl RenderApp {
                     state.set_pan_mm(index, dx_mm, dy_mm);
                     log::info!("PanMM set to: dx_mm={}, dy_mm={}", dx_mm, dy_mm);
                 }
+                Event::UserEvent(UserEvent::Quit) => {
+                    log::info!("Quit event received. Exiting event loop.");
+                    control_flow.exit();
+                }
                 Event::WindowEvent {
                     ref event,
                     window_id,
