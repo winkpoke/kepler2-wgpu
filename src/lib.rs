@@ -51,7 +51,7 @@ pub async fn init() {
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-pub async fn get_render_app(vol: &CTVolume) -> RenderApp {
+pub async fn get_render_app(/* vol: &CTVolume */) -> RenderApp {
     #[cfg(not(target_arch = "wasm32"))]
     env_logger::init();
 
@@ -87,7 +87,7 @@ pub async fn get_render_app(vol: &CTVolume) -> RenderApp {
 
     // this sets the style width and height of the canvas
     let _ = window.request_inner_size(PhysicalSize::new(800, 800)); 
-    let mut state = State::new(window.clone(), &vol).await;
+    let mut state = State::new(window.clone()).await;
     // state.resize(PhysicalSize::new(800, 800));
     RenderApp::new(state, event_loop, proxy)
 }

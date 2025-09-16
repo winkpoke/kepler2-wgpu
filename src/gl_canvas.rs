@@ -17,7 +17,7 @@ pub enum UserEvent {
     SetPan(usize, f32, f32), // pan in screen space
     SetPanMM(usize, f32, f32), // pan in mm
     SetTranslate(usize, f32, f32, f32),  // translate in 3D space
-    LoadDataFromCTVolume(usize, CTVolume), 
+    LoadDataFromCTVolume(CTVolume), 
     Resize(u32, u32), // width, height
     Quit,
     // ... add more events as needed
@@ -77,11 +77,11 @@ macro_rules! impl_user_event_senders_for_glcanvas {
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 impl GLCanvas {
-    pub fn load_data_from_ct_volume(&self, index: usize, volume: &CTVolume) {
-        if let Err(e) = self.proxy.send_event(UserEvent::LoadDataFromCTVolume(index, volume.clone())) {
-            log::error!("Failed to send LoadDataFromCTVolume event for window {}: {:?}", index, e);
+    pub fn load_data_from_ct_volume(&self, volume: &CTVolume) {
+        if let Err(e) = self.proxy.send_event(UserEvent::LoadDataFromCTVolume(volume.clone())) {
+            log::error!("Failed to send LoadDataFromCTVolume event {:?}", e);
         } else {
-            log::info!("Sent LoadDataFromCTVolume event for window {}", index);
+            log::info!("Sent LoadDataFromCTVolume event");
         }
     }
 

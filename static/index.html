@@ -62,7 +62,8 @@
 
 
         let render_app = null;
-        let gl_canvas = null;
+        let gl_canvas0 = null;
+        let gl_canvas1 = null;
 
         await init();
 
@@ -75,8 +76,8 @@
         //    gl_canvas.load_data_from_ct_volume(0, volume);
         // }
         document.getElementById('rerender').addEventListener('click', () => {
-            if (gl_canvas && volume) {
-                gl_canvas.load_data_from_ct_volume(0, volume);
+            if (gl_canvas0 && volume) {
+                gl_canvas0.load_data_from_ct_volume(volume);
             } else {
                 alert('Please select a series first!');
             }
@@ -89,11 +90,11 @@
                 alert('Please enter a valid number');
                 return;
             }
-            if (!gl_canvas) {
+            if (!gl_canvas0) {
                 alert('Please select a series first!');
                 return;
             }
-            gl_canvas.set_slice_mm(indexValue, sliceValue);
+            gl_canvas0.set_slice_mm(indexValue, sliceValue);
                     })
         document.getElementById('resize-submit').addEventListener('click', () => {
             const width = document.getElementById('width').value;
@@ -103,11 +104,11 @@
                 alert('Please enter a valid number');
                 return;
             }
-            if (!gl_canvas) {
+            if (!gl_canvas0) {
                 alert('Please select a series first!');
                 return;
             }
-            gl_canvas.resize( width, height);
+            gl_canvas0.resize( width, height);
         })
 
         document.getElementById('scale-submit').addEventListener('click', () => {
@@ -119,11 +120,11 @@
                 alert('Please enter a valid number');
                 return;
             }
-            if (!gl_canvas) {
+            if (!gl_canvas0) {
                 alert('Please select a series first!');
                 return;
             }
-            gl_canvas.set_scale(indexValue, scaleValue);
+            gl_canvas0.set_scale(indexValue, scaleValue);
             console.log('Submitted scale:', scaleValue);
             // Here you can call a WASM function or update AppState, e.g.:
             // appState.scale = scaleValue;
@@ -141,11 +142,11 @@
                 alert('Please enter a valid number');
                 return;
             }
-            if (!gl_canvas) {
+            if (!gl_canvas0) {
                 alert('Please select a series first!');
                 return;
             }
-            gl_canvas.set_pan(indexValue, x, y, z);
+            gl_canvas0.set_pan(indexValue, x, y, z);
         });
 
         document.getElementById('winlev-submit').addEventListener('click', () => {
@@ -154,12 +155,13 @@
             const input_index = document.getElementById('index-input');
             const indexValue = parseInt(input_index.value);
 
-            if (!gl_canvas) {
+            if (!gl_canvas1) {
                 alert('Please select a series first!');
                 return;
             }
-            win && gl_canvas.set_window_width(indexValue, win);
-            lev && gl_canvas.set_window_level(indexValue, lev);
+            win && gl_canvas1.set_window_width(indexValue, win);
+            lev && gl_canvas1.set_window_level(indexValue, lev);
+            render_app.drop_state();
         });
         document.querySelector('#file').addEventListener('change', async () => {
 
@@ -264,11 +266,13 @@
                         volume = vol;
                         if (flag == true) {
                             render_app = await get_render_app(vol);
-                            gl_canvas = render_app.get_glcanvas();
+                            gl_canvas0 = render_app.get_glcanvas();
+                            gl_canvas0.load_data_from_ct_volume(volume);
+                            gl_canvas1 = render_app.get_glcanvas();
                             render_app.run();
                             flag = false;
                         } else {
-                            gl_canvas.load_data_from_ct_volume(0, volume);
+                            gl_canvas0.load_data_from_ct_volume(volume);
                         }
 
                     })

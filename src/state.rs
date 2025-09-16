@@ -50,31 +50,16 @@ fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-// #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-pub struct State {
+pub struct Graphics {
+    window: Arc<Window>,
     pub(crate) surface: wgpu::Surface<'static>,
+    pub(crate) surface_config: wgpu::SurfaceConfiguration,
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
-    pub(crate) config: wgpu::SurfaceConfiguration,
-    pub(crate) size: winit::dpi::PhysicalSize<u32>,
-    // The window must be declared after the surface so
-    // it gets dropped after it as the surface contains
-    // unsafe references to the window's resources.
-    window: Arc<Window>,
-    // pub(crate) layout: Layout<OneCellLayout>,
-    pub(crate) layout: Layout<GridLayout>,
 }
 
-const HU_OFFSET: f32 = 1100.0;
-
-impl State {
-    pub async fn new(window: Arc<Window>, vol: &CTVolume) -> State {
-        let mut state = State::initialize(window).await;
-        state.load_data_from_ct_volume(vol);
-        state
-    }
-
-    pub async fn initialize(window: Arc<Window>) -> State {
+impl Graphics {
+    pub async fn initialize(window: Arc<Window>) -> Graphics {
         let size = window.inner_size();
 
         // The instance is a handle to our GPU
@@ -133,7 +118,7 @@ impl State {
             .copied()
             .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
-        let config = wgpu::SurfaceConfiguration {
+        let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             // format: surface_format,
             format: wgpu::TextureFormat::Rgba8Unorm,
@@ -146,8 +131,67 @@ impl State {
         };
 
         if size.width > 0 && size.height > 0 {
-            surface.configure(&device, &config);
+            surface.configure(&device, &surface_config);
         }
+
+        Self {
+            surface,
+            surface_config,
+            device,
+            queue,
+            window,
+        }
+    }
+
+    pub async fn new(window: Arc<Window>) -> Graphics {
+        Self::initialize(window).await
+    }
+}
+
+pub struct AppModel {
+    pub(crate) vol: Option<CTVolume>,
+    pub(crate) app: Arc<App>,
+}
+
+pub struct AppView {
+    pub(crate) graphics: Graphics,
+    pub(crate) layout: Layout<GridLayout>,
+    pub(crate) app: Arc<App>,
+}
+
+pub struct App {
+    pub(crate) view: Arc<AppView>,
+    pub(crate) doc: Arc<AppModel>,
+}
+
+// #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub struct State {
+    // pub(crate) surface: wgpu::Surface<'static>,
+    // pub(crate) device: wgpu::Device,
+    // pub(crate) queue: wgpu::Queue,
+    // pub(crate) config: wgpu::SurfaceConfiguration,
+    // pub(crate) size: winit::dpi::PhysicalSize<u32>,
+    // The window must be declared after the surface so
+    // it gets dropped after it as the surface contains
+    // unsafe references to the window's resources.
+    // window: Arc<Window>,
+
+
+    pub(crate) graphics: Graphics,
+    // pub(crate) layout: Layout<OneCellLayout>,
+    pub(crate) layout: Layout<GridLayout>,
+}
+
+const HU_OFFSET: f32 = 1100.0;
+
+impl State {
+    pub async fn new(window: Arc<Window>) -> State {
+        let state = State::initialize(window).await;
+        state
+    }
+
+    pub async fn initialize(window: Arc<Window>) -> State {
+        let graphics = Graphics::new(window.clone()).await;
         // println!("supported texture formats: {:?}", surface_caps.formats);
         // println!("format: {:?}", config.format);
 
@@ -161,12 +205,13 @@ impl State {
         );
 
         let state = Self {
-            surface,
-            device,
-            queue,
-            config,
-            size,
-            window,
+            // surface,
+            // device,
+            // queue,
+            // config,
+            // size,
+            graphics,
+            // window,
             layout,
         };
         // Self::set_instance(state).await;
@@ -205,24 +250,24 @@ impl State {
     }
 
     pub fn window(&self) -> &Window {
-        &self.window
+        &self.graphics.window
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         println!("Resizing to: {}, {}", new_size.width, new_size.height);
         if new_size.width > 0 && new_size.height > 0 {
-            self.size = new_size;
-            self.config.width = new_size.width;
-            self.config.height = new_size.height;
+            // self.size = new_size;
+            self.graphics.surface_config.width = new_size.width;
+            self.graphics.surface_config.height = new_size.height;
 
             self.layout.resize((new_size.width, new_size.height));
 
             #[cfg(target_arch = "wasm32")]
             {
                 // sets the style width and height of the window canvas
-                let _ = self.window.request_inner_size(new_size); 
+                let _ = self.graphics.window.request_inner_size(new_size); 
             }
-            self.surface.configure(&self.device, &self.config);
+            self.graphics.surface.configure(&self.graphics.device, &self.graphics.surface_config);
         }
     }
 
@@ -232,17 +277,17 @@ impl State {
     }
 
     pub fn update(&mut self) {
-        self.layout.update(&self.queue);
+        self.layout.update(&self.graphics.queue);
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let frame = self.surface.get_current_texture()?;
+        let frame = self.graphics.surface.get_current_texture()?;
         let frame_view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         let mut encoder = self
-            .device
+            .graphics.device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
@@ -269,7 +314,7 @@ impl State {
 
             self.layout.render(&mut render_pass)?;
         }
-        self.queue.submit(std::iter::once(encoder.finish()));
+        self.graphics.queue.submit(std::iter::once(encoder.finish()));
         frame.present();
 
         Ok(())
@@ -283,8 +328,8 @@ impl State {
             .collect();
         let voxel_data: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
         let texture = Arc::new(RenderContent::from_bytes(
-            &self.device,
-            &self.queue,
+            &self.graphics.device,
+            &self.graphics.queue,
             &voxel_data,
             "CT Volume",
             vol.dimensions.0 as u32,
@@ -299,11 +344,11 @@ impl State {
             let (pos, size) = self.layout.strategy.calculate_position_and_size(
                 self.layout.views.len() as u32,
                 (self.layout.views.len() + 1) as u32,
-                (self.config.width, self.config.height),
+                (self.graphics.surface_config.width, self.graphics.surface_config.height),
             );
             info!("Adding view at position: {:?}, size: {:?}", pos, size);
             let view = GenericMPRView::new(
-                &self.device,
+                &self.graphics.device,
                 texture.clone(),
                 &vol,
                 *orietation,

@@ -16,7 +16,7 @@ use wasm_bindgen::prelude::*;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct RenderApp {
-    pub(crate) state: State,
+    pub(crate) state: Option<State>,
     pub(crate) event_loop: Option<EventLoop<UserEvent>>,
     pub(crate) proxy: Option<EventLoopProxy<UserEvent>>,
 }
@@ -24,7 +24,7 @@ pub struct RenderApp {
 impl RenderApp {
     pub fn new(state: State, event_loop: EventLoop<UserEvent>, proxy: EventLoopProxy<UserEvent>) -> Self {
         RenderApp {
-            state,
+            state: Some(state),
             event_loop: Some(event_loop),
             proxy: Some(proxy),
         }
@@ -39,10 +39,15 @@ impl RenderApp {
         }
     }
 
+    pub fn drop_state(&mut self) {
+        drop(self.state.take());
+        self.state = None;
+    }
+
     pub async fn run(&mut self) {
         // Take the event_loop out before borrowing self.state
         let event_loop = self.event_loop.take().unwrap();
-        let mut state = &mut self.state;
+        let mut state = &mut self.state.take().unwrap();
 
         let mut surface_configured = false;
 
@@ -79,9 +84,9 @@ impl RenderApp {
                     log::info!("Move to: {:#?}", translate);
                     state.set_translate_in_screen_coord(index, translate);
                 }
-                Event::UserEvent(UserEvent::LoadDataFromCTVolume(index, volume)) => {
+                Event::UserEvent(UserEvent::LoadDataFromCTVolume(volume)) => {
                     state.load_data_from_ct_volume(&volume);
-                    log::info!("Loaded data from CTVolume for window {}", index);
+                    log::info!("Loaded data from CTVolume");
                 }
                 Event::UserEvent(UserEvent::Resize(width, height)) => {
                     log::info!("Resizing to width: {}, height: {}", width, height);
@@ -147,7 +152,12 @@ impl RenderApp {
                                     // Reconfigure the surface if it's lost or outdated
                                     Err(
                                         wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
-                                    ) => state.resize(state.size),
+                                    ) => {
+                                        let width = state.graphics.surface_config.width;
+                                        let height = state.graphics.surface_config.height;
+                                        let size = PhysicalSize::<u32> {width, height};
+                                        state.resize(size);
+                                    }
                                     // The system is out of memory, we should probably quit
                                     Err(wgpu::SurfaceError::OutOfMemory) => {
                                         log::error!("OutOfMemory");

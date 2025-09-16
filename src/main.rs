@@ -14,6 +14,8 @@ async fn main() {
     let vol = repo.generate_ct_volume(image_series_code).unwrap();
 
     // pollster::block_on(run());
-    let mut render_app = get_render_app(&vol).await;
+    let mut render_app = get_render_app().await;
+    let gl_canvase = render_app.get_glcanvas();
+    gl_canvase.load_data_from_ct_volume(0, &vol);
     render_app.run().await;
 }
