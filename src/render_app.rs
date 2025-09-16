@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use winit::{
     dpi::PhysicalSize,
     event::*,
@@ -6,7 +8,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::state::State;
+use crate::state::{Graphics, State};
 use crate::gl_canvas::{GLCanvas, UserEvent};
 use winit::event_loop::EventLoopProxy;
 
@@ -22,11 +24,19 @@ pub struct RenderApp {
 }
 
 impl RenderApp {
-    pub fn new(state: State, event_loop: EventLoop<UserEvent>, proxy: EventLoopProxy<UserEvent>) -> Self {
+    pub fn new(state: State, event_loop: EventLoop<UserEvent>) -> Self {
+        let proxy = event_loop.create_proxy();
         RenderApp {
             state: Some(state),
             event_loop: Some(event_loop),
             proxy: Some(proxy),
+        }
+    }
+    
+    pub async fn set_window(&mut self, window: Arc<Window>) {
+        if let Some(state) = &mut self.state {
+            let graphics = Graphics::new(window.clone()).await;
+            state.swap_graphics(graphics);
         }
     }
 }

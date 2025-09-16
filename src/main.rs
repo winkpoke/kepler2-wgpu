@@ -16,6 +16,6 @@ async fn main() {
     // pollster::block_on(run());
     let mut render_app = get_render_app().await;
     let gl_canvase = render_app.get_glcanvas();
-    gl_canvase.load_data_from_ct_volume(0, &vol);
+    gl_canvase.load_data_from_ct_volume(&vol);
     render_app.run().await;
 }

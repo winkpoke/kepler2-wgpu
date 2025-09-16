@@ -59,7 +59,7 @@ pub async fn get_render_app(/* vol: &CTVolume */) -> RenderApp {
 
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build().unwrap();
     let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
-    let proxy = event_loop.create_proxy();
+    // let proxy = event_loop.create_proxy();
 
     #[cfg(target_arch = "wasm32")]
     {
@@ -87,9 +87,13 @@ pub async fn get_render_app(/* vol: &CTVolume */) -> RenderApp {
 
     // this sets the style width and height of the canvas
     let _ = window.request_inner_size(PhysicalSize::new(800, 800)); 
-    let mut state = State::new(window.clone()).await;
+    let state = State::new(window.clone()).await;
     // state.resize(PhysicalSize::new(800, 800));
-    RenderApp::new(state, event_loop, proxy)
+    let mut render_app = RenderApp::new(state, event_loop);
+    // info!("RenderApp created.");
+    // render_app.set_window(window.clone()).await;
+    // info!("Window set to RenderApp.");
+    return render_app;
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]

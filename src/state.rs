@@ -50,8 +50,9 @@ fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct Graphics {
-    window: Arc<Window>,
+    pub(crate) window: Arc<Window>,
     pub(crate) surface: wgpu::Surface<'static>,
     pub(crate) surface_config: wgpu::SurfaceConfiguration,
     pub(crate) device: wgpu::Device,
@@ -166,17 +167,6 @@ pub struct App {
 
 // #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct State {
-    // pub(crate) surface: wgpu::Surface<'static>,
-    // pub(crate) device: wgpu::Device,
-    // pub(crate) queue: wgpu::Queue,
-    // pub(crate) config: wgpu::SurfaceConfiguration,
-    // pub(crate) size: winit::dpi::PhysicalSize<u32>,
-    // The window must be declared after the surface so
-    // it gets dropped after it as the surface contains
-    // unsafe references to the window's resources.
-    // window: Arc<Window>,
-
-
     pub(crate) graphics: Graphics,
     // pub(crate) layout: Layout<OneCellLayout>,
     pub(crate) layout: Layout<GridLayout>,
@@ -204,19 +194,18 @@ impl State {
             },
         );
 
-        let state = Self {
-            // surface,
-            // device,
-            // queue,
-            // config,
-            // size,
+        Self {
             graphics,
-            // window,
             layout,
-        };
-        // Self::set_instance(state).await;
+        }
+    }
 
-        state
+    pub fn swap_graphics(&mut self, new_graphics: Graphics) {
+        self.graphics = new_graphics;
+        self.resize(winit::dpi::PhysicalSize {
+            width: self.graphics.surface_config.width,
+            height: self.graphics.surface_config.height,
+        });
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -359,17 +348,6 @@ impl State {
             );
             self.layout.add_view(Box::new(view));
         }
-
-        // let transverse_view =
-        //     TransverseView::new(&self.device, &texture, &vol, Orientation::Transverse, 1.0, [0.0, 0.0, 0.0], (0, 0), (400, 400));
-        // let sagittal_view = SagittalView::new(&self.device, &texture, &vol, Orientation::Sagittal, 1.0, [0.0, 0.0, 0.0], (0, 400), (400, 400));
-        // let coronal_view = CoronalView::new(&self.device, &texture, &vol, Orientation::Coronal, 1.0, [0.0, 0.0, 0.0], (400, 0), (400, 400));
-        // let oblique_view = ObliqueView::new(&self.device, &texture, &vol, Orientation::Oblique, 1.0, [0.0, 0.0, 0.0], (400, 400), (400, 400));
-
-        // self.layout.add_view(Box::new(transverse_view));
-        // self.layout.add_view(Box::new(sagittal_view));
-        // self.layout.add_view(Box::new(coronal_view));
-        // self.layout.add_view(Box::new(oblique_view));
     }
 
     pub fn load_data_from_repo(&mut self, repo: &DicomRepo, image_series_number: &str) {
