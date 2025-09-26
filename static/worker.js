@@ -73,18 +73,20 @@ let param = new ReconstructionParameter();
 const absIn = "C:/Users/admin/Documents/dicom_fromimage/src/38-CBCT";
 const absOutDir = "C:/Users/admin/Documents/dicom_fromimage/src/38-CBCT";
 const absOutFile = "C:/share/input/CT_new.mha";
+const mhdIn = "projections_corrected.mhd";
 
 setString(param.hnd_path, absIn);
 setString(param.output_path, absOutDir);
 setString(param.output_file, absOutFile);
+setString(param.regexp, mhdIn);
 
 param.spacing[0] = 0.5;
-param.spacing[1] = 0.5;
-param.spacing[2] = 0.85;
+param.spacing[1] = 0.85;
+param.spacing[2] = 0.5;
 
 param.dimension[0] = 512;
-param.dimension[1] = 512;
-param.dimension[2] = 300;
+param.dimension[1] = 300;
+param.dimension[2] = 512;
 
 param.origin[0] = -127.0;
 param.origin[1] = 127.0;
@@ -92,7 +94,10 @@ param.origin[2] = -127.0;
 
 param.use_gpu = true;
 
-param.direction = [1,0,0,0,1,0,0,0,1];
+const identity = [0,0,1,1,0,0,0,-1,0];
+for (let i = 0; i < 9; i++) {
+  param.direction[i] = identity[i];
+}
 
 // ========== 调 DLL ==========
 let ret = myDll.rtkfdk(param.ref(), geom.ref());
