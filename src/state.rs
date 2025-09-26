@@ -51,6 +51,7 @@ fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
 use wasm_bindgen::prelude::*;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+#[derive(Debug)]
 pub struct Graphics {
     pub(crate) window: Arc<Window>,
     pub(crate) surface: wgpu::Surface<'static>,
@@ -202,10 +203,10 @@ impl State {
 
     pub fn swap_graphics(&mut self, new_graphics: Graphics) {
         self.graphics = new_graphics;
-        self.resize(winit::dpi::PhysicalSize {
-            width: self.graphics.surface_config.width,
-            height: self.graphics.surface_config.height,
-        });
+        // self.resize(winit::dpi::PhysicalSize {
+        //     width: self.graphics.surface_config.width,
+        //     height: self.graphics.surface_config.height,
+        // });
     }
 
     #[cfg(not(target_arch = "wasm32"))]

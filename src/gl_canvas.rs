@@ -3,7 +3,7 @@ use winit::event_loop::EventLoopProxy;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use crate::ct_volume::CTVolume;
+use crate::{ct_volume::CTVolume, state::Graphics};
 
 
 #[derive(Debug)]
@@ -20,6 +20,9 @@ pub enum UserEvent {
     LoadDataFromCTVolume(CTVolume), 
     Resize(u32, u32), // width, height
     Quit,
+    SetWindowByDivId(String, CTVolume),
+    GraphicsReady(Graphics, CTVolume),
+    ClearLayout,
     // ... add more events as needed
 }
 
@@ -98,6 +101,21 @@ impl GLCanvas {
             log::error!("Failed to send Quit event: {:?}", e);
         } else {
             log::info!("Sent Quit event");
+        }
+    }
+
+    pub fn set_window_by_div_id(&self, div_id: String, volume: &CTVolume) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetWindowByDivId(div_id.clone(), volume.clone())) {
+            log::error!("Failed to send SetWindowByDivId event for div_id {}: {:?}", div_id, e);
+        } else {
+            log::info!("Sent SetWindowByDivId event for div_id {}", div_id);
+        }
+    }
+    pub fn clear_layout(&self) {
+        if let Err(e) = self.proxy.send_event(UserEvent::ClearLayout) {
+            log::error!("Failed to send ClearLayout event: {:?}", e);
+        } else {
+            log::info!("Sent ClearLayout event");
         }
     }
 }

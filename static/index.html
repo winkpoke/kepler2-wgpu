@@ -52,8 +52,9 @@
         <button id="resize-submit">Submit</button>
     </div>
     <button id="rerender">render</button>
+    <div id="render_app"></div>
     <script type="module">
-        import init, { parse_dcm_files_wasm, get_render_app } from '../pkg/kepler_wgpu.js';
+        import init, { parse_dcm_files_wasm, get_render_app, get_render_app_by_div_id, create_graphics_by_div_id } from '../pkg/kepler_wgpu.js';
         var repo;
         let state = {
             render_app: null,
@@ -78,6 +79,7 @@
         document.getElementById('rerender').addEventListener('click', () => {
             if (gl_canvas0 && volume) {
                 gl_canvas0.load_data_from_ct_volume(volume);
+                // gl_canvas0.clear_layout();
             } else {
                 alert('Please select a series first!');
             }
@@ -264,12 +266,24 @@
                         series_id = toggle.innerHTML;
                         let vol = repo.generate_ct_volume(series_id);
                         volume = vol;
-                        if (flag == true) {
-                            render_app = await get_render_app(vol);
-                            gl_canvas0 = render_app.get_glcanvas();
-                            gl_canvas0.load_data_from_ct_volume(volume);
-                            gl_canvas1 = render_app.get_glcanvas();
-                            render_app.run();
+                        if (true) {
+                            if (render_app == null) {
+                                render_app = await get_render_app();
+                                gl_canvas0 = render_app.get_glcanvas();
+                                gl_canvas0.load_data_from_ct_volume(volume);
+                                gl_canvas1 = render_app.get_glcanvas();
+                                render_app.run();
+                            } else {
+                                // gl_canvas0.quit();
+                                console.log('render_app:', render_app);
+                                // get_render_app_by_div_id(render_app, 'render_app'); // 绑定到 div
+                                // gl_canvas0.load_data_from_ct_volume(volume);
+                                // let graphics = create_graphics_by_div_id('render_app').await;
+                                // console.log('graphics:', graphics);
+                                gl_canvas0.set_window_by_div_id('render_app', volume);
+                                console.log(vol);
+                                // gl_canvas0.load_data_from_ct_volume(volume);
+                            }
                             flag = false;
                         } else {
                             gl_canvas0.load_data_from_ct_volume(volume);
