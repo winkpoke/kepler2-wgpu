@@ -1,10 +1,16 @@
+use log::{debug, error, info, warn};
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::{fs, io, time::Instant};
-use std::path::{Path, PathBuf};
-use log::{debug, error, info, warn};
 
 // use wgpu::util::DeviceExt;
+#[cfg(target_arch = "wasm32")]
+use async_lock::Mutex;
+use once_cell::sync::Lazy;
+use std::cell::{LazyCell, OnceCell, RefCell};
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::sync::Mutex;
 use winit::{
     dpi::PhysicalSize,
     event::*,
@@ -12,22 +18,11 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowBuilder},
 };
-use once_cell::sync::Lazy;
-use std::cell::{LazyCell, OnceCell, RefCell};
-#[cfg(target_arch = "wasm32")]
-use async_lock::Mutex;
-#[cfg(not(target_arch = "wasm32"))]
-use tokio::sync::Mutex;
 
-
-use crate::view::{CoronalView, GridLayout, Layout, MPRView, ObliqueView, Renderable, SagittalView, TransverseView};
 use crate::ct_volume::*;
 use crate::dicom::*;
 use crate::render_content::RenderContent;
-
-
-
-
+use crate::view::*;
 
 fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
     let mut file_paths = Vec::new();
@@ -55,28 +50,18 @@ fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-// #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-pub struct State {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+#[derive(Debug)]
+pub struct Graphics {
+    pub(crate) window: Arc<Window>,
     pub(crate) surface: wgpu::Surface<'static>,
+    pub(crate) surface_config: wgpu::SurfaceConfiguration,
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
-    pub(crate) config: wgpu::SurfaceConfiguration,
-    pub(crate) size: winit::dpi::PhysicalSize<u32>,
-    // The window must be declared after the surface so
-    // it gets dropped after it as the surface contains
-    // unsafe references to the window's resources.
-    window: Arc<Window>,
-    pub(crate) layout: Layout<GridLayout>,
 }
 
-impl State {
-    pub async fn new(window: Arc<Window>, vol: &CTVolume) -> State {
-        let mut state = State::initialize(window).await;
-        state.load_data_from_ct_volume(vol);
-        state
-    }
-
-    pub async fn initialize(window: Arc<Window>) -> State {
+impl Graphics {
+    pub async fn initialize(window: Arc<Window>) -> Graphics {
         let size = window.inner_size();
 
         // The instance is a handle to our GPU
@@ -135,7 +120,7 @@ impl State {
             .copied()
             .find(|f| f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
-        let config = wgpu::SurfaceConfiguration {
+        let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             // format: surface_format,
             format: wgpu::TextureFormat::Rgba8Unorm,
@@ -146,38 +131,82 @@ impl State {
             desired_maximum_frame_latency: 2,
             view_formats: vec![],
         };
-        println!("format: {:?}", surface_format);
 
-        error!("size: {}, {}", size.width, size.height);
-        println!("print size: {}, {}", size.width, size.height);
         if size.width > 0 && size.height > 0 {
-            surface.configure(&device, &config);
+            surface.configure(&device, &surface_config);
         }
-        println!("supported texture formats: {:?}", surface_caps.formats);
-        println!("format: {:?}", config.format);
 
-        // #[cfg(target_arch = "wasm32")]
-        // let repo = {
-        //     let files = dicom::fileio::create_files_from_arrays(FILES);
-        //     let repo = dicom::fileio::parse_dcm_files_wasm(files).await.unwrap();
-        //     repo
-        // };
-
-        
-        let layout = Layout::new((800, 800), GridLayout { rows: 2, cols: 2, spacing: 3 });
-
-        let state = Self {
+        Self {
             surface,
+            surface_config,
             device,
             queue,
-            config,
-            size,
             window,
-            layout,
-        };
-        // Self::set_instance(state).await;
+        }
+    }
 
+    pub async fn new(window: Arc<Window>) -> Graphics {
+        Self::initialize(window).await
+    }
+}
+
+pub struct AppModel {
+    pub(crate) vol: Option<CTVolume>,
+    pub(crate) app: Arc<App>,
+}
+
+pub struct AppView {
+    pub(crate) graphics: Graphics,
+    pub(crate) layout: Layout<GridLayout>,
+    pub(crate) app: Arc<App>,
+}
+
+pub struct App {
+    pub(crate) view: Arc<AppView>,
+    pub(crate) doc: Arc<AppModel>,
+}
+
+// #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub struct State {
+    pub(crate) graphics: Graphics,
+    // pub(crate) layout: Layout<OneCellLayout>,
+    pub(crate) layout: Layout<GridLayout>,
+}
+
+const HU_OFFSET: f32 = 1100.0;
+
+impl State {
+    pub async fn new(window: Arc<Window>) -> State {
+        let state = State::initialize(window).await;
         state
+    }
+
+    pub async fn initialize(window: Arc<Window>) -> State {
+        let graphics = Graphics::new(window.clone()).await;
+        // println!("supported texture formats: {:?}", surface_caps.formats);
+        // println!("format: {:?}", config.format);
+
+        let layout = Layout::new(
+            (800, 800),
+            GridLayout {
+                rows: 2,
+                cols: 2,
+                spacing: 0,
+            },
+        );
+
+        Self {
+            graphics,
+            layout,
+        }
+    }
+
+    pub fn swap_graphics(&mut self, new_graphics: Graphics) {
+        self.graphics = new_graphics;
+        // self.resize(winit::dpi::PhysicalSize {
+        //     width: self.graphics.surface_config.width,
+        //     height: self.graphics.surface_config.height,
+        // });
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -187,12 +216,10 @@ impl State {
             let start_time = Instant::now();
 
             let file_names = list_files_in_directory("C:\\share\\imrt").unwrap();
-            let repo = fileio::parse_dcm_directories(vec![
-                "C:\\share\\imrt",
-                "C:\\share\\head_mold",
-            ])
-            .await
-            .unwrap();
+            let repo =
+                fileio::parse_dcm_directories(vec!["C:\\share\\imrt", "C:\\share\\head_mold"])
+                    .await
+                    .unwrap();
             println!("DicomRepo:\n{}", repo.to_string());
             println!("Patients:\n{:?}", repo.get_all_patients());
             // Stop the timer
@@ -206,19 +233,31 @@ impl State {
             );
             repo
         };
-        self.load_data_from_repo(&repo, "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.964561");
+        self.load_data_from_repo(
+            &repo,
+            "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.964561",
+        );
     }
 
     pub fn window(&self) -> &Window {
-        &self.window
+        &self.graphics.window
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+        println!("Resizing to: {}, {}", new_size.width, new_size.height);
         if new_size.width > 0 && new_size.height > 0 {
-            self.size = new_size;
-            self.config.width = new_size.width;
-            self.config.height = new_size.height;
-            self.surface.configure(&self.device, &self.config);
+            // self.size = new_size;
+            self.graphics.surface_config.width = new_size.width;
+            self.graphics.surface_config.height = new_size.height;
+
+            self.layout.resize((new_size.width, new_size.height));
+
+            #[cfg(target_arch = "wasm32")]
+            {
+                // sets the style width and height of the window canvas
+                let _ = self.graphics.window.request_inner_size(new_size); 
+            }
+            self.graphics.surface.configure(&self.graphics.device, &self.graphics.surface_config);
         }
     }
 
@@ -228,17 +267,17 @@ impl State {
     }
 
     pub fn update(&mut self) {
-        self.layout.update(&self.queue);
+        self.layout.update(&self.graphics.queue);
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let frame = self.surface.get_current_texture()?;
+        let frame = self.graphics.surface.get_current_texture()?;
         let frame_view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         let mut encoder = self
-            .device
+            .graphics.device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
@@ -265,35 +304,51 @@ impl State {
 
             self.layout.render(&mut render_pass)?;
         }
-        self.queue.submit(std::iter::once(encoder.finish()));
+        self.graphics.queue.submit(std::iter::once(encoder.finish()));
         frame.present();
 
         Ok(())
     }
 
     pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume) {
-        let voxel_data: Vec<u16> = vol.voxel_data.iter().map(|x| (*x + 1000) as u16).collect();
+        let voxel_data: Vec<u16> = vol
+            .voxel_data
+            .iter()
+            .map(|x| (*x + HU_OFFSET as i16) as u16)
+            .collect();
         let voxel_data: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
-        let texture = 
-            RenderContent::from_bytes(
-                &self.device,
-                &self.queue,
-                &voxel_data,
-                "CT Volume",
-                vol.dimensions.0 as u32,
-                vol.dimensions.1 as u32,
-                vol.dimensions.2 as u32,
-            ).unwrap();
-    
-        let transverse_view = TransverseView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0]);
-        let sagittal_view = SagittalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 0), (300, 300));
-        let coronal_view = CoronalView::new(&self.device, &texture, &vol, 1.0, [0.0, 0.0, 0.0], (900, 300), (300, 300));
-        let oblique_view = ObliqueView::new(&self.device, &texture, &vol, 1.5, [150.0, 0.0, 0.0], (900, 600), (300, 300));
-    
-        self.layout.add_view(Box::new(transverse_view));
-        self.layout.add_view(Box::new(sagittal_view));
-        self.layout.add_view(Box::new(coronal_view));
-        self.layout.add_view(Box::new(oblique_view));
+        let texture = Arc::new(RenderContent::from_bytes(
+            &self.graphics.device,
+            &self.graphics.queue,
+            &voxel_data,
+            "CT Volume",
+            vol.dimensions.0 as u32,
+            vol.dimensions.1 as u32,
+            vol.dimensions.2 as u32,
+        )
+        .unwrap());
+
+        self.layout.remove_all();
+
+        for orietation in ALL_ORIENTATIONS.iter() {
+            let (pos, size) = self.layout.strategy.calculate_position_and_size(
+                self.layout.views.len() as u32,
+                (self.layout.views.len() + 1) as u32,
+                (self.graphics.surface_config.width, self.graphics.surface_config.height),
+            );
+            info!("Adding view at position: {:?}, size: {:?}", pos, size);
+            let view = GenericMPRView::new(
+                &self.graphics.device,
+                texture.clone(),
+                &vol,
+                *orietation,
+                1.0,
+                [0.0, 0.0, 0.0],
+                pos,
+                size,
+            );
+            self.layout.add_view(Box::new(view));
+        }
     }
 
     pub fn load_data_from_repo(&mut self, repo: &DicomRepo, image_series_number: &str) {
@@ -311,13 +366,65 @@ impl State {
     pub fn set_window_level(&mut self, index: usize, window_level: f32) {
         let view = self.layout.views.get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_mpr() {
-            mpr_view.set_window_level(window_level);
-            log::info!("TransverseView set_window_level: {}", window_level);
+            mpr_view.set_window_level(window_level + HU_OFFSET);
+            log::info!("View {} set_window_level: {}", index, window_level);
         }
-        // if let Some(view) = view.as_any_mut().downcast_mut::<MPRView>() {
-        //     view.set_window_level(window_level);
-        //     log::info!("TransverseView set_window_level: {}", window_level);
-        // }
+    }
+
+    pub fn set_window_width(&mut self, index: usize, window_width: f32) {
+        let view = self.layout.views.get_mut(index).unwrap();
+        if let Some(mpr_view) = view.as_mpr() {
+            mpr_view.set_window_width(window_width);
+            log::info!("View {} set_window_width: {}", index, window_width);
+        }
+    }
+
+    pub fn set_slice_mm(&mut self, index: usize, z: f32) {
+        let view = self.layout.views.get_mut(index).unwrap();
+        if let Some(mpr_view) = view.as_mpr() {
+            mpr_view.set_slice_mm(z);
+            log::info!("View {} set_slice: {}", index, z);
+        }
+    }
+
+    pub fn set_scale(&mut self, index: usize, scale: f32) {
+        let view = self.layout.views.get_mut(index).unwrap();
+        if let Some(mpr_view) = view.as_mpr() {
+            mpr_view.set_scale(scale);
+            log::info!("View {} set_scale: {}", index, scale);
+        }
+    }
+
+    pub fn set_translate(&mut self, index: usize, translate: [f32; 3]) {
+        let view = self.layout.views.get_mut(index).unwrap();
+        if let Some(mpr_view) = view.as_mpr() {
+            log::info!("View {} translate: {:#?}", index, translate);
+            mpr_view.set_translate(translate);
+        }
+    }
+
+    pub fn set_translate_in_screen_coord(&mut self, index: usize, translate: [f32; 3]) {
+        let view = self.layout.views.get_mut(index).unwrap();
+        if let Some(mpr_view) = view.as_mpr() {
+            log::info!("View {} move to: {:#?}", index, translate);
+            mpr_view.set_translate_in_screen_coord(translate);
+        }
+    }
+
+    pub fn set_pan(&mut self, index: usize, x: f32, y: f32 ) {
+        let view = self.layout.views.get_mut(index).unwrap();
+        if let Some(mpr_view) = view.as_mpr() {
+            log::info!("View {} move to: {:#?}", index, (x, y));
+            mpr_view.set_pan(x, y);
+        }
+    }
+
+    pub fn set_pan_mm(&mut self, index: usize, x_mm: f32, y_mm: f32 ) {
+        let view = self.layout.views.get_mut(index).unwrap();
+        if let Some(mpr_view) = view.as_mpr() {
+            log::info!("View {} move to mm: {:#?}", index, (x_mm, y_mm));
+            mpr_view.set_pan(x_mm, y_mm);
+        }
     }
 }
 
@@ -325,7 +432,6 @@ impl State {
 
 #[cfg(target_arch = "wasm32")]
 use js_sys::Array;
-
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[cfg(target_arch = "wasm32")]

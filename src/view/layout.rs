@@ -34,9 +34,30 @@ impl LayoutStrategy for GridLayout {
     }
 }
 
+pub struct OneCellLayout {
+    pub rows: u32,
+    pub cols: u32,
+    pub spacing: u32,
+}
+
+impl LayoutStrategy for OneCellLayout {
+    fn calculate_position_and_size(
+        &self,
+        index: u32,
+        total_views: u32,
+        parent_dim: (u32, u32),
+    ) -> ((i32, i32), (u32, u32)) {
+        if total_views <= 1 || index == 0 {
+            ((0, 0),  parent_dim)
+        } else {
+            // When there are multiple views, other views are not displayed.
+            ((-1000, -1000), (1, 1))
+        }
+    }
+}
 pub struct Layout <T: LayoutStrategy> {
     dim: (u32, u32),
-    strategy: T,
+    pub(crate) strategy: T,
     pub(crate) views: Vec<Box<dyn View>>, // A collection of views
 }
 
@@ -53,6 +74,7 @@ impl<T: LayoutStrategy> Layout<T> {
         let idx = self.views.len() as u32;
         let total_views = (self.views.len() + 1) as u32;
         let (pos, size) = self.strategy.calculate_position_and_size(idx, total_views, self.dim);
+        log::info!("Adding view at position: {:#?} with size: {:#?}", pos, size);
         view.move_to(pos);
         view.resize(size);
         self.views.push(view);
@@ -64,6 +86,20 @@ impl<T: LayoutStrategy> Layout<T> {
             return None;
         }
         self.views.get(index)
+    }
+
+    pub fn remove_all(&mut self) {
+        self.views.clear();
+    }
+
+    pub fn resize(&mut self, dim: (u32, u32)) {
+        self.dim = dim;
+        let total_views = self.views.len() as u32;
+        for (i, view) in self.views.iter_mut().enumerate() {
+            let (pos, size) = self.strategy.calculate_position_and_size(i as u32, total_views, self.dim);
+            view.move_to(pos);
+            view.resize(size);
+        }
     }
 }
 

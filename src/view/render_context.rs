@@ -14,8 +14,8 @@ pub struct UniformsVert {
 #[repr(C)]
 #[derive(Copy, Clone, Default, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct UniformsFrag {
-    pub window: f32,
-    pub level: f32,
+    pub window_width: f32,
+    pub window_level: f32,
     pub slice: f32,
     pub _padding: [f32; 1],
     pub mat: [f32; 16],
@@ -93,8 +93,8 @@ impl RenderContext {
             ..Default::default()
         };
         let u_frag_data = UniformsFrag {
-            window: 350.,
-            level: 1140.,
+            window_width: 350.,
+            window_level: 1140.,
             slice: 0.0,
             mat: *array_to_slice(&transform_matrix.data),
             ..Default::default()

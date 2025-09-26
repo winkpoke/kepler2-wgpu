@@ -1,9 +1,11 @@
 use std::{fmt, ops::{Add, AddAssign, Div, Mul, Neg, Sub}};
 use num::Float;
 
+
+/// A generic 4x4 matrix struct, stored in **row-major** order.
 #[derive(Copy, Clone)]
 pub struct Matrix4x4<T> {
-    pub data: [[T; 4]; 4], // row major
+    pub data: [[T; 4]; 4], // Each row is a [T; 4] array
 }
 
 impl<
@@ -16,17 +18,20 @@ impl<
             + std::ops::SubAssign,
     > Matrix4x4<T>
 {
+    /// Creates a 4x4 matrix from a flat array of 16 elements (row-major order).
     pub fn from_array(data: [T; 16]) -> Self {
         Self {
             data: *slice_to_array(&data),
         }
     }
 
+    /// Multiplies two 4x4 matrices and returns the resulting matrix.
     pub fn multiply(&self, other: &Matrix4x4<T>) -> Matrix4x4<T> {
         let mut result = Matrix4x4 {
             data: [[T::zero(); 4]; 4],
         };
 
+        // Standard triple-nested loop for matrix multiplication
         for i in 0..4 {
             for j in 0..4 {
                 for k in 0..4 {
@@ -38,6 +43,8 @@ impl<
         result
     }
 
+    /// Computes the inverse of the matrix using Gaussian elimination.
+    /// Returns `None` if the matrix is singular (non-invertible).
     pub fn inv(&self) -> Option<Matrix4x4<T>> {
         let mut augmented = [[T::zero(); 8]; 4]; // Augmented matrix [A | I]
     
@@ -95,10 +102,11 @@ impl<
         Some(Matrix4x4 { data: inverse })
     }
     
-
+    /// Applies the matrix to a 4D vector and returns the transformed vector.
     pub fn apply(&self, v: &[T; 4]) -> [T; 4] {
         let mut result = [T::zero(); 4]; // Initialize result vector with zeros
     
+        // Perform matrix-vector multiplication
         for i in 0..4 {
             result[i] = self.data[i][0] * v[0]
                 + self.data[i][1] * v[1]
@@ -109,6 +117,7 @@ impl<
         result
     }
 
+    /// Returns a 4x4 identity matrix.
     pub fn eye() -> Matrix4x4<T> {
         Self {
             data: [
@@ -120,8 +129,8 @@ impl<
         }
     }
     
-     // Transpose the matrix (swap rows and columns)
-     pub fn transpose(&self) -> Matrix4x4<T> {
+    /// Returns the transpose of the matrix (swap rows and columns).
+    pub fn transpose(&self) -> Matrix4x4<T> {
         let mut transposed_data = [[T::zero(); 4]; 4]; // Initialize a 4x4 matrix with zeros
 
         // Swap rows and columns
@@ -136,12 +145,12 @@ impl<
         }
     }
 
-    // Get the nth row of the matrix
+    /// Returns the nth row of the matrix as a 4-element array.
     pub fn get_row(&self, n: usize) -> [T; 4] {
         self.data[n]
     }
 
-    // Get the nth column of the matrix
+    /// Returns the nth column of the matrix as a 4-element array.
     pub fn get_column(&self, n: usize) -> [T; 4] {
         [
             self.data[0][n],
@@ -206,6 +215,7 @@ where
         + num::Zero
         + num::One
         + num::Signed
+        + num::Float
         + PartialOrd
         + std::ops::DivAssign
         + std::ops::SubAssign
@@ -221,39 +231,47 @@ where
         }
     }
 
-    pub fn scale(&mut self, scale: T) {
-        let col = self.matrix.get_column(3);
-        let p = Vector3::<T>::new([col[0], col[1], col[2]]);
-        
+    pub fn get_scale_factors(&self) -> [T; 3] {
         let col0 = self.matrix.get_column(0);
-        let dx = Vector3::<T>::new([col0[0], col0[1], col0[2]]);
-
-        println!("------------------{:?}", [col0[0], col0[1], col0[2]]);
-
         let col1 = self.matrix.get_column(1);
-        let dy = Vector3::<T>::new([col1[0], col1[1], col1[2]]);
+        let col2 = self.matrix.get_column(2);
 
-        println!("------------------{:?}", [col1[0], col1[1], col1[2]]);
-        
-        let two = T::from(2.0).unwrap();
-        let center = dx * T::one() / two + dy * T::one() / two + p;
+        let sx = (col0[0] * col0[0] + col0[1] * col0[1] + col0[2] * col0[2]).sqrt();
+        let sy = (col1[0] * col1[0] + col1[1] * col1[1] + col1[2] * col1[2]).sqrt();
+        let sz = (col2[0] * col2[0] + col2[1] * col2[1] + col2[2] * col2[2]).sqrt();
 
-        let new_p = center - (center - p) / scale;
+        [sx, sy, sz]
+    }
 
-        for i in 0..3 {
-            for j in 0..3 {
-                self.matrix.data[i][j] /= scale;
-            }
-        }
+    pub fn scale(&mut self, scale: [T; 3]) {
+        let one = T::one();
+        let zero = T::zero();
 
-        for i in 0..3 {
-            self.matrix.data[i][3] = new_p.data[i];
-        }
+        let s = Matrix4x4::from_array([one / scale[0], zero, zero, zero,
+                                       zero, one / scale[1], zero, zero,
+                                       zero, zero, one / scale[2], zero,
+                                       zero, zero, zero, one]);
+        self.matrix = self.matrix.multiply(&s);
     }
 
     pub fn translate(&mut self, translate: [T; 3]) {
+        let one = T::one();
+        let zero = T::zero();
+        let t = Matrix4x4::from_array([one, zero, zero, translate[0],
+                                       zero, one, zero, translate[1],
+                                       zero, zero, one, translate[2],
+                                       zero, zero, zero, one]);
+        self.matrix = self.matrix.multiply(&t);
+    }
+
+    pub fn translate_in_screen_coord(&mut self, translate: [T; 3]) {
+        let mut trans = [T::one(); 4];
         for i in 0..3 {
-            self.matrix.data[i][3] -= translate[i];
+            trans[i] = -translate[i];
+        }
+        let transformed = self.matrix.apply(&trans);
+        for i in 0..3 {    
+            self.matrix.data[i][3] = transformed[i];
         }
     }
 }
@@ -307,7 +325,7 @@ pub fn slice_to_array<T>(slice: &[T; 16]) -> &[[T; 4]; 4] {
 // Vector3 type for convenience
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Vector3<T> { 
-    pub(crate)  data: [T; 3],
+    data: [T; 3],
 }
 
 impl<T> Vector3<T> {

@@ -9,6 +9,7 @@ define_dicom_struct!(ImageSeries, {
     (uid, String, "(0020,000E) SeriesInstanceUID", false),  // SeriesID is required
     (study_uid, String, "(0020,000D) StudyInstanceUID", false),     // StudyInstanceUID is required
     (modality, String, "(0008,0060) Modality", false),     // Modality is required
+    (patient_position, String, "(0018,5100) PatientPosition", true), // PatientPosition is optional
     (description, String, "(0008,103E) SeriesDescription", true) // SeriesDescription is optional
 });
 
@@ -33,6 +34,7 @@ impl ImageSeries {
         }
 
         // Optional fields
+        let patient_position = get_value::<String>(&dicom_obj, "PatientPosition");
         let description = get_value::<String>(&dicom_obj, "SeriesDescription");
 
         // Return the populated struct
@@ -40,6 +42,7 @@ impl ImageSeries {
             uid: series_uid,
             study_uid: studyset_uid,
             modality,
+            patient_position,
             description,
         })
     }

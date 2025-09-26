@@ -76,6 +76,7 @@ impl DicomRepo {
                 {
                     result.push_str(&format!("    ImageSeries: {}\n", image_series.uid));
                     result.push_str(&format!("      Modality: {}\n", image_series.modality));
+                    result.push_str(&format!("      Patient Position: {:?}\n", image_series.patient_position));
                     result.push_str(&format!(
                         "      Description: {:?}\n",
                         image_series.description
@@ -131,8 +132,8 @@ impl DicomRepo {
         });
 
         // Validate consistency of rows, columns, and retrieve metadata from the first image
-        let rows = ct_images[0].rows;
         let columns = ct_images[0].columns;
+        let rows = ct_images[0].rows;
         let pixel_spacing = ct_images[0]
             .pixel_spacing
             .ok_or_else(|| "PixelSpacing is missing in the first CTImage".to_string())?;
@@ -188,12 +189,12 @@ impl DicomRepo {
             .ok_or_else(|| "ImageOrientationPatient is missing in the first CTImage".to_string())?;
 
         // Row and column direction vectors
-        let row_direction = (
+        let column_direction = (
             image_orientation_patient.0,
             image_orientation_patient.1,
             image_orientation_patient.2,
         );
-        let column_direction = (
+        let row_direction = (
             image_orientation_patient.3,
             image_orientation_patient.4,
             image_orientation_patient.5,
@@ -201,9 +202,9 @@ impl DicomRepo {
 
         // Slice direction (cross product of row and column directions)
         let slice_direction = (
-            row_direction.1 * column_direction.2 - row_direction.2 * column_direction.1,
-            row_direction.2 * column_direction.0 - row_direction.0 * column_direction.2,
-            row_direction.0 * column_direction.1 - row_direction.1 * column_direction.0,
+            column_direction.1 * row_direction.2 - column_direction.2 * row_direction.1,
+            column_direction.2 * row_direction.0 - column_direction.0 * row_direction.2,
+            column_direction.0 * row_direction.1 - column_direction.1 * row_direction.0,
         );
 
         // Image position patient (origin of the base matrix)
@@ -221,9 +222,9 @@ impl DicomRepo {
 
         // Define the direction matrix (row, column, slice directions)
         let direction_matrix = Matrix4x4::from_array([
-            row_direction.0, column_direction.0, slice_direction.0, 0.0,
-            row_direction.1, column_direction.1, slice_direction.1, 0.0,
-            row_direction.2, column_direction.2, slice_direction.2, 0.0,
+            column_direction.0, row_direction.0, slice_direction.0, 0.0,
+            column_direction.1, row_direction.1, slice_direction.1, 0.0,
+            column_direction.2, row_direction.2, slice_direction.2, 0.0,
             0.0, 0.0, 0.0, 1.0,
         ]);
 
@@ -240,15 +241,9 @@ impl DicomRepo {
             .multiply(&translation_matrix)
             .multiply(&scaling_matrix);
 
-        // let base_matrix = Matrix4x4::from_array([
-        //     row_direction.0, column_direction.0, slice_direction.0, image_position_patient.0,
-        //     row_direction.1, column_direction.1, slice_direction.1, image_position_patient.1,
-        //     row_direction.2, column_direction.2, slice_direction.2, image_position_patient.2,
-        //     0.0, 0.0, 0.0, 1.0,
-        // ]);
         // Return the constructed CTVolume
         Ok(CTVolume {
-            dimensions: (rows as usize, columns as usize, ct_images.len()),
+            dimensions: (columns as usize, rows as usize, ct_images.len()),
             voxel_spacing,
             voxel_data,
             base: Base {
