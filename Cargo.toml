@@ -73,6 +73,7 @@ web-sys = { version = "0.3", features = [
 ]}
 js-sys = "0.3.22"
 uuid = { version = "1.16", features = ["js"] }
+png = "0.17"
 
 [[bin]]
 name = "kepler"

@@ -89,12 +89,12 @@ param.dimension[1] = 300;
 param.dimension[2] = 512;
 
 param.origin[0] = -127.0;
-param.origin[1] = 127.0;
+param.origin[1] = -127.0;
 param.origin[2] = -127.0;
 
 param.use_gpu = true;
 
-const identity = [0,0,1,1,0,0,0,-1,0];
+const identity = [0,0,1,1,0,0,0,1,0];
 for (let i = 0; i < 9; i++) {
   param.direction[i] = identity[i];
 }

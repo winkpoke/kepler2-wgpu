@@ -1493,6 +1493,7 @@ dependencies = [
  "num-traits",
  "once_cell",
  "paste",
+ "png",
  "pollster",
  "rayon",
  "serde",

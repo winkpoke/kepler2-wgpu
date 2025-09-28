@@ -44,6 +44,31 @@
         //     ]),
         // };
         
+// CTVolume
+        // let direction_matrix = match self.element_type.as_str() {
+        //     "MET_SHORT" | "MET_INT16" => Matrix4x4::from_array([
+        //         self.transform[0], self.transform[1], self.transform[2], 0.0,
+        //         self.transform[3], self.transform[4], self.transform[5], 0.0,
+        //         self.transform[6], self.transform[7], self.transform[8], 0.0,
+        //         0.0, 0.0, 0.0, 1.0,
+        //     ]),
+        //     "MET_FLOAT" =>Matrix4x4::from_array([
+        //         self.transform[2], self.transform[0], self.transform[1], 0.0,
+        //         self.transform[5], self.transform[3], self.transform[4], 0.0,
+        //         self.transform[8], self.transform[6], - self.transform[7], 0.0,
+        //         0.0, 0.0, 0.0, 1.0,
+        //     ]),
+        //     other => return Err(format!("Unsupported ElementType: {}", other)),
+        // };
+
+// EXPORT_DICOM
+//     match header.element_type.as_str() {
+//             "MET_SHORT" | "MET_INT16" => {
+//         //     "MET_FLOAT" => {
+        //         let transform: &[f32] = &header.transform;
+        //         let (row_dir, slice_dir,col_dir) =orientation_dirs(transform);
+        //         (col_dir, row_dir, slice_dir)
+
                 // let col = self.dim[2]; // x:512
                 // let row = self.dim[0]; // y:512
                 // let depth = self.dim[1]; // z:300

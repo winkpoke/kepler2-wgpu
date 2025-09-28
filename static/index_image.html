@@ -188,17 +188,17 @@
           <button id="analyzeBtn">分析MHA</button>
           <button id="rerender">视图显示</button>
         </div>
-      <label for="index-input">viewIndex:</label>
+      <label for="index-input">操作视图窗口:</label>
       <input type="number" id="index-input" step="1.0" value="0.0">
-      <div>
-        <label for="scale-input">Scale:</label>
-        <input type="number" id="scale-input" step="10.0" value="1.0">
-        <button id="scale-submit">Submit</button>
-      </div>
       <div>
         <label for="slice-input">slice:</label>
         <input type="number" id="slice-input" step="0.5" value="0.0">
         <button id="slice-submit">Submit</button>
+      </div>
+      <div>
+        <label for="scale-input">Scale:</label>
+        <input type="number" id="scale-input" step="10.0" value="1.0">
+        <button id="scale-submit">Submit</button>
       </div>
       <div>
         <label for="translate-input">translate:</label>
@@ -208,8 +208,8 @@
         <button id="trans-submit">Submit</button>
       </div>
       <div>
-        <label for="window">window:</label><input type="number" id="window" step="10.0" value="0.0">
-        <label for="level">level:</label><input type="number" id="level" step="10.0" value="0.0">
+        <label for="window">window width:</label><input type="number" id="window" step="10.0" value="0.0">
+        <label for="level">window level:</label><input type="number" id="level" step="10.0" value="0.0">
         <button id="winlev-submit">Submit</button>
       </div>
       <div>
@@ -237,12 +237,13 @@
           <div id="spacing">—</div>
           <div>像素类型：</div>
           <div id="elemType">—</div>
-          <select id="exportOptions">
-            <option value="dicom">导出 DICOM</option>
-            <option value="mha">导出 MHA</option>
-            <option value="png">导出 PNG</option>
-          </select>
           <button id="convertBtn">导出</button>
+          <select id="exportOptions" style="width: 400px">
+            <option value="dicom">导出当前序列DICOM</option>
+            <option value="mha">导出重建完成的MHA</option>
+            <option value="png">导出当前选择的图像PNG</option>
+            <option value="pnglist">导出当前序列PNG</option>
+          </select>
         </div>
         <div class="scroll">
           <h3 class="small">日志</h3>
@@ -253,6 +254,7 @@
         </div>
         <div id="tree-container"></div>
         <div id="wasm-example"></div>
+        <div id="render_app"></div>
       </div>
     </section>
   </main>
@@ -267,6 +269,26 @@
 
     // ========= 快捷选择器 =========
     const byId = (id) => document.getElementById(id);
+
+    // ========= 状态管理 =========
+    var repo;
+    const state = {
+      files: [],
+      dat:null,
+      mhd: null,
+      raws: [],
+      mha: null,
+      wasmModule: null,
+      len: null,
+      render_app: null,
+    };
+
+    let gl_canvas = null;
+    let series_id;
+    let fileLists = [];
+    let flag = true;
+    let scaleValue = 0.1;
+    let volume;
 
     // ========= 确保WASM模块加载 =========
     async function ensureWasm() {
@@ -283,42 +305,18 @@
       return state.wasmModule;
     }
 
-    // ========= 状态管理 =========
-    var repo;
-    const state = {
-      files: [],
-      dat:null,
-      mhd: null,
-      raws: [],
-      mha: null,
-      dcms: [],
-      wasmModule: null,
-      render_app: null,
-      gl_canvas: null,
-      vol: null,
-      len: null,
-    };
-
-    let render_app = null;
-    let gl_canvas = null;
-    let series_id;
-    let fileLists = [];
-    let flag = true;
-    let scaleValue = 0.1;
-    let volume;
-
     function toUint8Array(obj) {
         const json = JSON.stringify(obj);
         const enc = new TextEncoder();
         return enc.encode(json);
-      }
-      const info = {
-        kv: 100.0,
-        mAs: 70.0,
-        slope: 1612.903,
-        intercept: - 1016.129,
-      }
-      const infoUint8 = toUint8Array(info);
+    }
+    const info = {
+      kv: 100.0,
+      mAs: 70.0,
+      slope: 1612.903,
+      intercept: - 1016.129,
+    }
+    const infoUint8 = toUint8Array(info);
     
     // ========= 文件选择处理 =========
     byId("mhaInput").addEventListener("change", async (e) => {
@@ -372,31 +370,39 @@
     byId('rerender').addEventListener('click', async () => {
       log("开始渲染！")
       if (!state.mha) {
-        alert('请先选择MHA文件！');
+          alert('请先选择MHA文件！');
       }
 
       await ensureWasm();
-      if (gl_canvas && volume) {
-        let volume = await state.wasmModule.parse_mha_files_wasm(state.files,infoUint8);
+      volume = await state.wasmModule.parse_mha_files_wasm(state.files, infoUint8);
+      if (state.render_app == null){
+        state.render_app = await state.wasmModule.get_render_app();
+        gl_canvas = state.render_app.get_glcanvas();
         gl_canvas.load_data_from_ct_volume(volume);
-      } else {
-        alert('Please select a series first!');
+        gl_canvas = state.render_app.get_glcanvas();
+        state.render_app.run();
+      }
+      else{
+        console.log('render_app:', state.render_app);
+        gl_canvas.set_window_by_div_id('render_app', volume);
       }
     })
 
+    // 切层
     byId('slice-submit').addEventListener('click', () => {
-        const sliceValue = byId('slice-input').value;
-        const input_index = byId('index-input');
-        const indexValue = parseInt(input_index.value);
-        if (isNaN(sliceValue)) {
-            alert('Please enter a valid number');
-            return;
-        }
-        if (!gl_canvas) {
-            alert('Please select a series first!');
-            return;
-        }
-        gl_canvas.set_slice_mm(indexValue, sliceValue);
+      const sliceValue = byId('slice-input').value;
+      const input_index = byId('index-input');
+
+      const indexValue = parseInt(input_index.value);
+      if (isNaN(sliceValue)) {
+          alert('Please enter a valid number');
+          return;
+      }
+      if (!gl_canvas) {
+          alert('Please select a series first!');
+          return;
+      }
+      gl_canvas.set_slice_mm(indexValue, sliceValue);
     })
 
     byId('resize-submit').addEventListener('click', () => {
@@ -624,22 +630,24 @@
 
           case "mha":
             log("开始导出 MHA ...");
-            downloadBlob(new Blob([mhaUint8Array]), "volume.mha");
+            downloadBlob(new Blob([mhaUint8Array]), "CT_volume.mha");
             log("✅ MHA 导出成功！");
             break;
 
           case "png":
-            log("开始导出 PNG (示例只取第一帧)...");
-            // ⚠️ 这里需要你写 CTVolume → 图像切片 → PNG 的逻辑
-            const canvas = document.createElement("canvas");
-            const ctx = canvas.getContext("2d");
-            // TODO: 把 mhaUint8Array 转成像素画到 canvas
-            canvas.toBlob(blob => {
-              downloadBlob(blob, "slice.png");
-            });
+            log("开始导出 PNG ...");
+            const sliceIndex = byId('slice-input').value;
+            log("当前层数:" + sliceIndex);
+            const orientation = byId('index-input').value;
+            log("当前方向值: " + orientation);
+            const ww = byId('window').value;
+            const wc = byId('level').value;
+
+            const pngBytes = await state.wasmModule.export_slice_png(mhaUint8Array, sliceIndex, orientation, ww, wc, info.slope, info.intercept);
+            const blob_png = new Blob([pngBytes], { type: "image/png" });
+            downloadBlob(blob_png, "dicom.png");
             log("✅ PNG 导出成功！");
             break;
-
           default:
             log("未知导出选项: " + option);
         }
@@ -741,11 +749,17 @@
                 let vol = repo.generate_ct_volume(series_id);
                 volume = vol;
                 if (flag == true) {
-                  render_app = await state.wasmModule.get_render_app();
-                  gl_canvas = render_app.get_glcanvas();
-                  gl_canvas.load_data_from_ct_volume(volume);
-                  gl_canvas = render_app.get_glcanvas();
-                  render_app.run();
+                  if (state.render_app == null) {
+                    state.render_app = await state.wasmModule.get_render_app();
+                    gl_canvas = state.render_app.get_glcanvas();
+                    gl_canvas.load_data_from_ct_volume(volume);
+                    gl_canvas = state.render_app.get_glcanvas();
+                    state.render_app.run();
+                  } else {
+                    console.log('render_app:', state.render_app);
+                    gl_canvas.set_window_by_div_id('render_app', volume);
+                    console.log(vol);
+                  }
                   flag = false;
                 } else {
                   gl_canvas.load_data_from_ct_volume(volume);

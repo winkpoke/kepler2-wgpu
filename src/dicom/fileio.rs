@@ -162,6 +162,7 @@ use js_sys::{Array, Promise, Uint8Array};
 use web_sys::{File, FileReader, ProgressEvent};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsValue;
+use image::{GrayImage, Luma};
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[cfg(target_arch = "wasm32")]
@@ -238,23 +239,6 @@ pub async fn parse_dcm_files_wasm(files: Array) -> Result<DicomRepo, JsValue> {
     let repo = repo.lock().map_err(|e| JsValue::from(e.to_string()))?;
     Ok(repo.clone())
 }
-
-// #[wasm_bindgen]
-// pub struct VolumeResult {
-//     preview: Float32Array,
-//     volume: CTVolume,
-// }
-// #[wasm_bindgen]
-// impl VolumeResult {
-//     #[wasm_bindgen(getter)]
-//     pub fn preview(&self) -> Float32Array {
-//         self.preview.clone()
-//     }
-//     #[wasm_bindgen(getter)]
-//     pub fn volume(&self) -> CTVolume {
-//         self.volume.clone()
-//     }
-// }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[cfg(target_arch = "wasm32")]
@@ -455,4 +439,115 @@ pub async fn build_ct_dicom_wasm(
     }
 
     Ok(js_array.into())
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+#[cfg(target_arch = "wasm32")]
+pub async fn export_slice_png(
+    mha_bytes: js_sys::Uint8Array, // MHA 文件内容
+    slice_index: usize,            // 切片索引
+    orientation: u32,              // 0=axial, 1=coronal, 2=sagittal
+    ww: f32,                       // window width
+    wc: f32,                       // window center
+    slope: f32,
+    intercept: f32,
+) -> Result<Vec<u8>, JsValue> {
+    // 1. 读取 mha
+    let mut buf = vec![0u8; mha_bytes.length() as usize];
+    mha_bytes.copy_to(&mut buf[..]);
+    let mha = MHDHeader::from_bytes(&buf, slope, intercept).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let ct_volume = mha.generate_ct_volume_mha() .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let width = ct_volume.dimensions.0;
+    let height = ct_volume.dimensions.1;
+    let depth = ct_volume.dimensions.2;
+    log::info!("w:{:?},h:{:?},d:{:?}",width,height,depth);
+    let data = &ct_volume.voxel_data; // i16 数组 (体素数据)
+
+    // 2. 抽取切片
+    let slice: Vec<i16> = match orientation {
+        0 => {
+            // axial: 固定 z
+            if slice_index >= depth {
+                log::info!("slice_index:{:?},d:{:?}",slice_index,depth);
+                return Err(JsValue::from_str("axial index out of range"));
+            }
+            let mut v = Vec::with_capacity(width * height);
+            for y in 0..height {
+                for x in 0..width {
+                    v.push(data[slice_index * width * height + y * width + x]);
+                }
+            }
+            v
+        }
+        1 => {
+            // coronal: 固定 y
+            if slice_index >= height {
+                return Err(JsValue::from_str("coronal index out of range"));
+            }
+            let mut v = Vec::with_capacity(width * depth);
+            for z in 0..depth {
+                for x in 0..width {
+                    v.push(data[z * width * height + slice_index * width + x]);
+                }
+            }
+            v
+        }
+        2 => {
+            // sagittal: 固定 x
+            if slice_index >= width {
+                return Err(JsValue::from_str("sagittal index out of range"));
+            }
+            let mut v = Vec::with_capacity(height * depth);
+            for z in 0..depth {
+                for y in 0..height {
+                    v.push(data[z * width * height + y * width + slice_index]);
+                }
+            }
+            v
+        }
+        _ => return Err(JsValue::from_str("invalid orientation")),
+    };
+
+    // 3. 应用窗宽窗位
+    let ww = ww.max(1.0);
+    let wc = wc;
+    let min_hu = wc - ww / 2.0;
+    let max_hu = wc + ww / 2.0;
+
+    let mut buf_u8 = Vec::with_capacity(slice.len());
+    for &val in slice.iter() {
+        let hu = val as f32;
+        let norm = if hu <= min_hu {
+            0
+        } else if hu >= max_hu {
+            255
+        } else {
+            (((hu - min_hu) / ww) * 255.0).round() as u8
+        };
+        buf_u8.push(norm);
+    }
+
+    // 4. 构造 GrayImage
+    let (w, h) = match orientation {
+        0 => (width as u32, height as u32),
+        1 => (width as u32, depth as u32),
+        2 => (height as u32, depth as u32),
+        _ => unreachable!(),
+    };
+
+    let img = image::GrayImage::from_raw(w, h, buf_u8)
+        .ok_or_else(|| JsValue::from_str("构造 GrayImage 失败"))?;
+
+    // 5. 编码 PNG 到内存
+    let mut png_buf: Vec<u8> = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut png_buf, w, h);
+        encoder.set_color(png::ColorType::Grayscale);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().unwrap();
+        writer.write_image_data(img.as_raw()).unwrap();
+    }
+
+    Ok(png_buf)
 }
