@@ -1,6 +1,5 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-use wasm_bindgen_futures::spawn_local;
 use winit::{
     dpi::PhysicalSize,
     event::*,
@@ -16,12 +15,10 @@ use winit::event_loop::EventLoopProxy;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_futures::spawn_local;
 
 pub async fn create_graphics(window: Arc<Window>) -> Graphics {
-    #[cfg(not(target_arch = "wasm32"))]
-    Graphics::new(window);
-
-    #[cfg(target_arch = "wasm32")]
     Graphics::new(window).await
 }
 
