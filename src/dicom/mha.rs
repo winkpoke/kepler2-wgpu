@@ -58,9 +58,9 @@ fn parse_floats(s: &str) -> Result<Vec<f32>> {
 pub fn orientation_dirs(transform: &[f32]) -> ([f32; 3], [f32; 3], [f32; 3]) {
     match transform.len() {
         9 => {
-            let col= [transform[0], transform[3], transform[6]]; // x 轴
-            let row = [transform[1], transform[4], transform[7]]; // y 轴
-            let slice = [transform[2], transform[5], transform[8]]; // z 轴
+            let col= [transform[0], transform[1], transform[2]]; // x 轴
+            let row = [transform[3], transform[4], transform[5]]; // y 轴
+            let slice = [transform[6], transform[7], transform[8]]; // z 轴
             (col, row, slice)
         }
         6 => {
