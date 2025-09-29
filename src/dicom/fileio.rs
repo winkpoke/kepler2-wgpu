@@ -301,10 +301,10 @@ pub async fn parse_mha_files_wasm(files: Array,info: js_sys::Uint8Array,) -> Res
                         let buffer = uint8_array.to_vec();
                         
                         // Parse MHA and generate CTVolume
-                        let mha = MHDHeader::from_bytes(&buffer, slope, intercept)
+                        let mha = MHXVolume::from_bytes(&buffer)
                             .map_err(|e| JsValue::from_str(&e.to_string()))?;
                         
-                        let ct_volume = mha.generate_ct_volume_mha()
+                        let ct_volume = mha.generate_ct_volume_mha(slope, intercept)
                             .map_err(|e| JsValue::from_str(&e.to_string()))?;
                         
                         // store the result
@@ -455,8 +455,8 @@ pub async fn export_slice_png(
     // 1. 读取 mha
     let mut buf = vec![0u8; mha_bytes.length() as usize];
     mha_bytes.copy_to(&mut buf[..]);
-    let mha = MHDHeader::from_bytes(&buf, slope, intercept).map_err(|e| JsValue::from_str(&e.to_string()))?;
-    let ct_volume = mha.generate_ct_volume_mha() .map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let mha = MHXVolume::from_bytes(&buf).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let ct_volume = mha.generate_ct_volume_mha(slope, intercept) .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
     let width = ct_volume.dimensions.0;
     let height = ct_volume.dimensions.1;

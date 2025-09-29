@@ -1,25 +1,44 @@
 use crate::coord::{Base, Matrix4x4};
 use crate::ct_volume::CTVolume;
-
 use anyhow::{anyhow, Context, Result};
-use byteorder::{LittleEndian, ReadBytesExt};
 use std::collections::HashMap;
+use std::fmt;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
-// ------------------------ MHD Header ------------------------
+// ------------------------ MHD ------------------------
 #[derive(Debug, Clone)]
-pub struct MHDHeader {
+pub enum  PatientPosition{
+    /// Head First Supine (头先进仰卧位)
+    HFS,
+    /// Head First Prone (头先进俯卧位)
+    HFP,
+    /// Feet First Supine (脚先进仰卧位)
+    FFS,
+    /// Feet First Prone (脚先进俯卧位)
+    FFP,
+    /// Head First Decubitus Right (头先进右侧卧位)
+    HFDR,
+    /// Head First Decubitus Left (头先进左侧卧位)
+    HFDL,
+    /// Feet First Decubitus Right (脚先进右侧卧位)
+    FFDR,
+    /// Feet First Decubitus Left (脚先进左侧卧位)
+    FFDL,
+    Unknown,
+}
+#[derive(Debug, Clone)]
+pub struct MHXVolume {
     pub dim: Vec<usize>,             // cols(nx), rows(ny), slices(nz)
     pub element_type: String,        // 只处理 MET_FLOAT
     pub element_data_file: String,   // ElementDataFile
     pub spacing: Vec<f32>,           // ElementSpacing = [dx, dy, dz]
     pub offset: Vec<f32>,            // Offset = [ox, oy, oz]
     pub transform: Vec<f32>,         // TransformMatrix = 6 or 9
-    pub patient_position: String,
+    pub patient_position: PatientPosition,
     pub data_offset: Option<u64>,    // 如果是 .mha，这里保存数据在文件中的偏移
-    pub data:Vec<i16>,
+    pub data: Vec<u8>,
 }
 
 // ------------------------ read functions ------------------------
@@ -54,8 +73,8 @@ pub fn orientation_dirs(transform: &[f32]) -> ([f32; 3], [f32; 3], [f32; 3]) {
     }
 }
 
-impl  MHDHeader{
-    pub fn from_bytes(data: &[u8], slope:f32, intercept: f32) -> Result<Self> {
+impl  MHXVolume{
+    pub fn from_bytes(data: &[u8]) -> Result<Self> {
         let mut kv: HashMap<String, String> = HashMap::new();
         let mut data_offset: Option<usize> = None;
 
@@ -108,7 +127,6 @@ impl  MHDHeader{
             .map(|s| parse_floats(s.as_str()))
             .transpose()?
             .unwrap_or_else(|| vec![0.0, 0.0, 0.0]);
-        log::info!("Offset: {:?}", offset);
         let transform = kv
             .get("TransformMatrix")
             .map(|s| parse_floats(s.as_str()))
@@ -123,45 +141,23 @@ impl  MHDHeader{
             .get("AnatomicalOrientation")
             .ok_or_else(|| anyhow!("Missing AnatomicalOrientation"))?
             .to_string();
-        
-        let patient_position: String = match anatomical_orientation.as_str() {
-            "IRP" => "HFS".to_string(),
-            "ILP" => "HFP".to_string(),
-            "SRP" => "FFS".to_string(),
-            "SLP" => "FFP".to_string(),
-            _ => "UNKNOWN".to_string(), // Default case for unhandled orientations
+
+        let patient_position = match anatomical_orientation.as_str() {
+            "IRP" => PatientPosition::HFS,
+            "ILP" => PatientPosition::HFP,
+            "SRP" => PatientPosition::FFS,
+            "SLP" => PatientPosition::FFP,
+            _ => PatientPosition::Unknown, // Default case for unhandled orientations
         };
 
         let data_offset_u64 = data_offset.map(|v| v as u64);
 
         // read voxel data
-        let (nx, ny, nz) = (dim[0], dim[1], *dim.get(2).unwrap_or(&1));
-        let voxel_count = nx * ny * nz;
+            let start = data_offset.ok_or_else(|| anyhow!("Missing data_offset"))?;
+            let raw = &data[start..];
+            let voxels = raw.to_vec();
 
-        let start = data_offset.ok_or_else(|| anyhow!("Missing data_offset"))?;
-        let raw = &data[start..];
-
-        let mut voxels = Vec::with_capacity(voxel_count);
-
-        // analyze raw data according to ElementType
-        match element_type.as_str() {
-            "MET_SHORT" | "MET_INT16" => {
-                for chunk in raw.chunks_exact(2).take(voxel_count) {
-                    let val = i16::from_le_bytes([chunk[0], chunk[1]]);
-                    voxels.push(val);
-                }
-            }
-            "MET_FLOAT" => {
-                for chunk in raw.chunks_exact(4).take(voxel_count) {
-                    let val = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-                    let val = (val * slope + intercept).round() as i16;
-                    voxels.push(val);
-                }
-            }
-            other => return Err(anyhow!("Unsupported ElementType: {}", other)),
-        }
-
-        Ok(MHDHeader {
+        Ok(MHXVolume {
             dim,
             element_type,
             element_data_file,
@@ -172,10 +168,10 @@ impl  MHDHeader{
             data_offset: data_offset_u64,
             data: voxels,
         })
-        }
+    }
 
-    // ------------------------ read MHD ------------------------
-    pub fn read_mhd_or_mha<P: AsRef<Path>>(path: P) -> Result<Self> {
+    // ------------------------ read MHX ------------------------
+    pub fn read_mhd_head<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref();
         let f = File::open(path).with_context(|| format!("open {:?}", path))?;
         let mut r = BufReader::new(&f);
@@ -233,14 +229,14 @@ impl  MHDHeader{
             .get("AnatomicalOrientation")
             .ok_or_else(|| anyhow!("Missing AnatomicalOrientation"))?
             .to_string();
-        let patient_position: String = match anatomical_orientation.as_str() {
-            "IRP" => "HFS".to_string(),
-            "ILP" => "HFP".to_string(),
-            "SRP" => "FFS".to_string(),
-            "SLP" => "FFP".to_string(),
-            _ => "UNKNOWN".to_string(), // Default case for unhandled orientations
+        let patient_position = match anatomical_orientation.as_str() {
+            "IRP" => PatientPosition::HFS,
+            "ILP" => PatientPosition::HFP,
+            "SRP" => PatientPosition::FFS,
+            "SLP" => PatientPosition::FFP,
+            _ => PatientPosition::Unknown, // Default case for unhandled orientations
         };
-        Ok(MHDHeader {
+        Ok(MHXVolume {
             dim,
             element_type,
             element_data_file,
@@ -253,8 +249,8 @@ impl  MHDHeader{
         })
     }
 
-    // ------------------------ resd RAW（MET_FLOAT） ------------------------
-    pub fn add_data(&self,path:PathBuf) -> Result<Vec<f32>> {
+    // ------------------------ read RAW------------------------
+    pub fn add_data(&self,path:PathBuf) -> Result<Vec<u8>> {
         let (nx, ny, nz) = (self.dim[0], self.dim[1], *self.dim.get(2).unwrap_or(&1));
         let n = nx * ny * nz;
         let mut buf = vec![0u8; n * 4];
@@ -268,22 +264,38 @@ impl  MHDHeader{
             f = File::open(&raw_path)?;
         }
         f.read_exact(&mut buf)?;
-        let mut data = Vec::with_capacity(n);
-        let mut rdr = BufReader::new(&buf[..]);
-        for _ in 0..n {
-            data.push(rdr.read_f32::<LittleEndian>()?);
-        }
         
-        Ok(data)
+        Ok(buf)
     }
 
     // ------------------------ 将图像数据转换为CTVolume -----------------
-    pub fn generate_ct_volume_mha(&self) -> Result<CTVolume, String> {
+    pub fn generate_ct_volume_mha(&self, slope:f32, intercept:f32) -> Result<CTVolume, String> {
         let col = self.dim[0]; // x
         let row = self.dim[1]; // y
         let depth = self.dim[2]; // z
         let data = &self.data;
-        let mut voxel_data = data.clone();
+        let raw = data.clone();
+
+        let voxel_count = col * row * depth;
+        let mut voxel_data = Vec::with_capacity(voxel_count);
+
+        // analyze raw data according to ElementType
+        match self.element_type.as_str() {
+            "MET_SHORT" | "MET_INT16" => {
+                for chunk in raw.chunks_exact(2).take(voxel_count) {
+                    let val = i16::from_le_bytes([chunk[0], chunk[1]]);
+                    voxel_data.push(val);
+                }
+            }
+            "MET_FLOAT" => {
+                for chunk in raw.chunks_exact(4).take(voxel_count) {
+                    let val = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+                    let val = (val * slope + intercept).round() as i16;
+                    voxel_data.push(val);
+                }
+            }
+            other => return Err(format!("Unsupported ElementType: {}", other)),
+        }
 
         for value in &mut voxel_data {
             if *value < -1024 {
@@ -346,21 +358,33 @@ impl  MHDHeader{
     }
 }
 
-use std::fs;
-pub fn read_file_as_bytes(path: &str) -> Result<Vec<u8>, std::io::Error> {
-    fs::read(path)
+impl fmt::Display for PatientPosition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            PatientPosition::HFS => "HFS",
+            PatientPosition::HFP => "HFP",
+            PatientPosition::FFS => "FFS",
+            PatientPosition::FFP => "FFP",
+            PatientPosition::HFDR => "HFDR",
+            PatientPosition::HFDL => "HFDL",
+            PatientPosition::FFDR => "FFDR",
+            PatientPosition::FFDL => "FFDL",
+            PatientPosition::Unknown => "Unknown",
+        };
+        write!(f, "{}", s)
+    }
 }
 
 //------------------------------ test Code -------------------------------------
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ndarray::Array3;
+    use std::fs;
 
     #[test]
-    fn test_read_mha_or_mhd() -> Result<()> {
-        let path = "C:/share/input/CT.mha";
-        let header = MHDHeader::read_mhd_or_mha(path)?;
+    fn test_read_mhd() -> Result<()> {
+        let path = "C:/share/input/CT.mhd";
+        let header = MHXVolume::read_mhd_head(path)?;
         println!("=== MHDHeader 解析结果 ===");
         println!("维度 (DimSize): {:?}", header.dim);
         println!("体素间距 (ElementSpacing): {:?}", header.spacing);
@@ -371,25 +395,18 @@ mod tests {
         println!("数据偏移 (data_offset，仅 .mha 有): {:?}", header.data_offset);
 
         let path_raw = PathBuf::from(path);
-        let data = MHDHeader::add_data(&header,path_raw)?;
-        let arr = Array3::from_shape_vec((header.dim[2], header.dim[1], header.dim[0]), data.clone())
-            .map_err(|e| anyhow!("reshape to (nz,ny,nx) failed: {}", e))?;
-        let data: Vec<f32> = arr.iter().cloned().collect();
-
+        let data = MHXVolume::add_data(&header,path_raw)?;
         println!("前 10 个体素值: {:?}", &data[..10]);
-
-        assert_eq!(data.len(), header.dim.iter().product::<usize>());
         Ok(())
     }
 
     #[test]
-    fn test_forbytes()-> Result<(), std::io::Error> {
-        let data = read_file_as_bytes("C:/share/input/CT.mha")?;
-        let bytes_slice: &[u8] = &data;
-        let slope = 1612.903;
-        let intercept = -1016.129;
+    fn test_read_mha()-> Result<(), std::io::Error> {
+        let path = "C:/share/input/CT.mha";
+        let data = fs::read(path);
+        let bytes_slice: &[u8] = data.as_ref().map(|v| v.as_slice()).unwrap();
 
-        let header = MHDHeader::from_bytes(bytes_slice, slope, intercept).unwrap();
+        let header = MHXVolume::from_bytes(bytes_slice).unwrap();
         println!("=== MHDHeader 解析结果 ===");
         println!("维度 (DimSize): {:?}", header.dim);
         println!("体素间距 (ElementSpacing): {:?}", header.spacing);

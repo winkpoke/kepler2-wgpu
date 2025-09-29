@@ -1,5 +1,5 @@
 use super::{
-    mha::{MHDHeader, orientation_dirs},
+    mha::{MHXVolume, orientation_dirs},
     patient::Patient,
     studyset::StudySet
 };
@@ -144,8 +144,8 @@ fn inject_image<S: DicomSink>(
     sink: &mut S,
 ) -> Result<()> {
     // 读取 mha
-    let header = MHDHeader::from_bytes(mha_path, slope, intercept).unwrap();
-    let ct_volume = header.generate_ct_volume_mha().unwrap();
+    let header = MHXVolume::from_bytes(mha_path).unwrap();
+    let ct_volume = header.generate_ct_volume_mha(slope, intercept).unwrap();
 
     let col = ct_volume.dimensions.0; 
     let row = ct_volume.dimensions.1; 
@@ -167,12 +167,12 @@ fn inject_image<S: DicomSink>(
         let start = z * col * row * (16 as usize / 8);
         let end = start + col * row * (16 as usize / 8);
         let buf = &buffer[start..end];
-        let buf_vec = buf.to_vec();
+        let buf_vec: Vec<u8> = buf.to_vec();
 
         // 每张切片生成一个新的 SOPInstanceUID
         let sop_instance_uid = change_dicom_uid(&series_uid,false);
         obj.put(DataElement::new(tags::SOP_INSTANCE_UID, VR::UI, PrimitiveValue::from(sop_instance_uid.clone())));
-        obj.put(DataElement::new(tags::PATIENT_POSITION, VR::CS, PrimitiveValue::from(header.patient_position.clone())));
+        obj.put(DataElement::new(tags::PATIENT_POSITION, VR::CS, PrimitiveValue::from(header.patient_position.to_string())));
         
         // 更新文件元信息中的 MEDIA_STORAGE_SOP_INSTANCE_UID
         let new_meta = FileMetaTableBuilder::from(meta.clone())
@@ -186,7 +186,7 @@ fn inject_image<S: DicomSink>(
         let dz = *spacing.get(2).unwrap_or(&1.0);
         let instance_no = (z + 1) as i32;
         let slice_loc = (z as f32) * dz;
-        let base = [ct_volume.base.matrix.data[0][3], ct_volume.base.matrix.data[1][3], ct_volume.base.matrix.data[2][3]];
+        let base = ct_volume.base.matrix.get_column(3);
         let (col_dir,row_dir, slice_dir) =match header.element_type.as_str() {
             "MET_SHORT" | "MET_INT16" => {
                 let transform: &[f32] = &header.transform;
@@ -347,7 +347,7 @@ impl DicomSink for MemSink {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dicom::read_file_as_bytes;
+    use std::fs;
     use std::path::Path;
 
     #[test]
@@ -365,8 +365,9 @@ mod tests {
     #[test]
     fn test_build_ct_dicom() {
         // 测试路径
-        let data = read_file_as_bytes("C:/share/input/CT.mha").unwrap();
-        let mha_path: &[u8] = &data;
+        let path = "C:/share/input/CT.mha";
+        let data = fs::read(path);
+        let mha_path = data.as_ref().map(|v| v.as_slice()).unwrap();
         let out_dir = Path::new("C:/share").join(Local::now().format("%Y-%m-%d").to_string());
         std::fs::create_dir_all(&out_dir).unwrap();
 
