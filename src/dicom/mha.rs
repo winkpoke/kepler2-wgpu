@@ -10,21 +10,13 @@ use std::path::{Path, PathBuf};
 // ------------------------ MHD ------------------------
 #[derive(Debug, Clone)]
 pub enum  PatientPosition{
-    /// Head First Supine (头先进仰卧位)
     HFS,
-    /// Head First Prone (头先进俯卧位)
     HFP,
-    /// Feet First Supine (脚先进仰卧位)
     FFS,
-    /// Feet First Prone (脚先进俯卧位)
     FFP,
-    /// Head First Decubitus Right (头先进右侧卧位)
     HFDR,
-    /// Head First Decubitus Left (头先进左侧卧位)
     HFDL,
-    /// Feet First Decubitus Right (脚先进右侧卧位)
     FFDR,
-    /// Feet First Decubitus Left (脚先进左侧卧位)
     FFDL,
     Unknown,
 }
@@ -70,6 +62,76 @@ pub fn orientation_dirs(transform: &[f32]) -> ([f32; 3], [f32; 3], [f32; 3]) {
             (col, row, slice)
         }
         _ => ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]),
+    }
+}
+
+fn create_patient_position(anatomical_orientation: &str)-> PatientPosition{
+    match anatomical_orientation {
+        "HFS" => PatientPosition::HFS,  // Head First-Supine (头先进仰卧)
+        "HFP" => PatientPosition::HFP,  // Head First-Prone (头先进俯卧) 
+        "FFS" => PatientPosition::FFS,  // Feet First-Supine (脚先进仰卧)
+        "FFP" => PatientPosition::FFP,  // Feet First-Prone (脚先进俯卧)
+        "HFDR" => PatientPosition::HFDR, // Head First-Decubitus Right (头先进右侧卧)
+        "HFDL" => PatientPosition::HFDL, // Head First-Decubitus Left (头先进左侧卧)
+        "FFDR" => PatientPosition::FFDR, // Feet First-Decubitus Right (脚先进右侧卧)
+        "FFDL" => PatientPosition::FFDL, // Feet First-Decubitus Left (脚先进左侧卧)
+        // ========================
+        // 解剖方向到标准体位的映射
+        // ========================
+        // 仰卧位 (Supine) - 头先进
+        "RAI" => PatientPosition::HFS,  // 右前上 -> 头先进仰卧
+        "LPS" => PatientPosition::HFS,  // 左后上 -> 头先进仰卧
+        "LAI" => PatientPosition::HFS,  // 左前上 -> 头先进仰卧
+        "RPS" => PatientPosition::HFS,  // 右后上 -> 头先进仰卧
+
+        // 俯卧位 (Prone) - 头先进  
+        "RPI" => PatientPosition::HFP,  // 右后上 -> 头先进俯卧
+        "LAS" => PatientPosition::HFP,  // 左前下 -> 头先进俯卧
+        "LPI" => PatientPosition::HFP,  // 左后上 -> 头先进俯卧
+        "RAS" => PatientPosition::HFP,  // 右前下 -> 头先进俯卧
+
+        // 仰卧位 (Supine) - 脚先进
+        "RSA" => PatientPosition::FFS,  // 右上前 -> 脚先进仰卧
+        "LSP" => PatientPosition::FFS,  // 左上后 -> 脚先进仰卧
+        "LSA" => PatientPosition::FFS,  // 左上前 -> 脚先进仰卧
+        "RSP" => PatientPosition::FFS,  // 右上后 -> 脚先进仰卧
+
+        // 俯卧位 (Prone) - 脚先进
+        "RPA" => PatientPosition::FFP,  // 右后前 -> 脚先进俯卧
+        "LIA" => PatientPosition::FFP,  // 左下前 -> 脚先进俯卧
+        "LPA" => PatientPosition::FFP,  // 左后前 -> 脚先进俯卧
+        "RIA" => PatientPosition::FFP,  // 右下前 -> 脚先进俯卧
+
+        // ========================
+        // 侧卧位 (Decubitus)
+        // ========================
+        // 右侧卧位
+        "ARI" => PatientPosition::HFDR, // 前右上 -> 头先进右侧卧
+        "PRI" => PatientPosition::HFDR, // 后右上 -> 头先进右侧卧
+        "ARS" => PatientPosition::FFDR, // 前右下 -> 脚先进右侧卧
+        "PRS" => PatientPosition::FFDR, // 后右下 -> 脚先进右侧卧
+
+        // 左侧卧位
+        "ALI" => PatientPosition::HFDL, // 前左上 -> 头先进左侧卧
+        "PLI" => PatientPosition::HFDL, // 后左上 -> 头先进左侧卧
+        "ALS" => PatientPosition::FFDL, // 前左下 -> 脚先进左侧卧
+        "PLS" => PatientPosition::FFDL, // 后左下 -> 脚先进左侧卧
+
+        // ========================
+        // 特殊情况
+        // ========================
+        "AIL" => PatientPosition::HFS,  // 前上左 -> 头先进仰卧
+        "PIL" => PatientPosition::HFS,  // 后上左 -> 头先进仰卧
+        "AIR" => PatientPosition::HFS,  // 前上右 -> 头先进仰卧
+        "PIR" => PatientPosition::HFS,  // 后上右 -> 头先进仰卧
+
+        // ========================
+        // 默认情况
+        // ========================
+        _ => {
+            log::info!("Unknown anatomical orientation: {}, defaulting to HFS", anatomical_orientation);
+            PatientPosition::HFS
+        }
     }
 }
 
@@ -142,13 +204,8 @@ impl  MHXVolume{
             .ok_or_else(|| anyhow!("Missing AnatomicalOrientation"))?
             .to_string();
 
-        let patient_position = match anatomical_orientation.as_str() {
-            "IRP" => PatientPosition::HFS,
-            "ILP" => PatientPosition::HFP,
-            "SRP" => PatientPosition::FFS,
-            "SLP" => PatientPosition::FFP,
-            _ => PatientPosition::Unknown, // Default case for unhandled orientations
-        };
+        let anatomical_orientation = anatomical_orientation.as_str();
+        let patient_position = create_patient_position(anatomical_orientation);
 
         let data_offset_u64 = data_offset.map(|v| v as u64);
 
@@ -229,13 +286,9 @@ impl  MHXVolume{
             .get("AnatomicalOrientation")
             .ok_or_else(|| anyhow!("Missing AnatomicalOrientation"))?
             .to_string();
-        let patient_position = match anatomical_orientation.as_str() {
-            "IRP" => PatientPosition::HFS,
-            "ILP" => PatientPosition::HFP,
-            "SRP" => PatientPosition::FFS,
-            "SLP" => PatientPosition::FFP,
-            _ => PatientPosition::Unknown, // Default case for unhandled orientations
-        };
+        let anatomical_orientation = anatomical_orientation.as_str();
+        let patient_position = create_patient_position(anatomical_orientation);
+
         Ok(MHXVolume {
             dim,
             element_type,
@@ -323,11 +376,11 @@ impl  MHXVolume{
         ]);
 
         let direction_matrix = Matrix4x4::from_array([
-                self.transform[0], self.transform[1], self.transform[2], 0.0,
-                self.transform[3], self.transform[4], self.transform[5], 0.0,
-                self.transform[6], self.transform[7], self.transform[8], 0.0,
-                0.0, 0.0, 0.0, 1.0,
-            ]);
+            self.transform[0], self.transform[1], self.transform[2], 0.0,
+            self.transform[3], self.transform[4], self.transform[5], 0.0,
+            self.transform[6], self.transform[7], self.transform[8], 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        ]);
 
         // Multiply the scaling, direction, and translation matrices
         let base_matrix = direction_matrix
@@ -402,7 +455,7 @@ mod tests {
 
     #[test]
     fn test_read_mha()-> Result<(), std::io::Error> {
-        let path = "C:/share/input/CT.mha";
+        let path = "C:/share/input/CT_new.mha";
         let data = fs::read(path);
         let bytes_slice: &[u8] = data.as_ref().map(|v| v.as_slice()).unwrap();
 
