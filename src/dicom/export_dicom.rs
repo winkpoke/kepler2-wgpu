@@ -146,6 +146,7 @@ fn inject_image<S: DicomSink>(
     // 读取 mha
     let header = MHXVolume::from_bytes(mha_path).unwrap();
     let ct_volume = header.generate_ct_volume_mha(slope, intercept).unwrap();
+    let  patient_position = header.patient_position.to_string();
 
     let col = ct_volume.dimensions.0; 
     let row = ct_volume.dimensions.1; 
@@ -157,10 +158,38 @@ fn inject_image<S: DicomSink>(
     ];
 
     // 转成小端字节序
-    let mut buffer = Vec::with_capacity(ct_volume.voxel_data.len() * 2);
-    for val in ct_volume.voxel_data {
-        buffer.extend_from_slice(&val.to_le_bytes());
-    }
+    let vol = ct_volume.voxel_data;
+    let mut buffer = Vec::with_capacity(vol.len() * 2);
+    let buffer = match header.element_type.as_str() {
+        "MET_SHORT" | "MET_INT16" => {
+            for val in vol{
+                buffer.extend_from_slice(&val.to_le_bytes());
+            }
+            buffer
+        }
+        "MET_FLOAT" => {
+            let mut rotated_i16 = vec![0i16; row * col * depth];
+            for new_x in 0..depth {
+                for new_y in 0..row {
+                    for new_z in 0..col{
+                        // 绕y轴顺时针旋转90度的坐标映射
+                        let old_x = new_z; 
+                        let old_y = new_y; 
+                        let old_z = new_x;
+                        
+                        let old_idx = old_z * (row * col) + old_y * col + old_x;
+                        let new_idx = new_z * (row * depth) + new_y * depth + new_x;
+                        rotated_i16[new_idx] = vol[old_idx];
+                    }
+                }
+            }
+            for val in rotated_i16 {
+                buffer.extend_from_slice(&val.to_le_bytes());
+            }
+            buffer
+        }
+        _ => return Err(anyhow!("不支持的 mha element type: {}", header.element_type)),
+    };
     
     // 遍历每个 slice
     for z in 0..depth {
@@ -171,54 +200,57 @@ fn inject_image<S: DicomSink>(
 
         // 每张切片生成一个新的 SOPInstanceUID
         let sop_instance_uid = change_dicom_uid(&series_uid,false);
-        obj.put(DataElement::new(tags::SOP_INSTANCE_UID, VR::UI, PrimitiveValue::from(sop_instance_uid.clone())));
-        obj.put(DataElement::new(tags::PATIENT_POSITION, VR::CS, PrimitiveValue::from(header.patient_position.to_string())));
-        
-        // 更新文件元信息中的 MEDIA_STORAGE_SOP_INSTANCE_UID
-        let new_meta = FileMetaTableBuilder::from(meta.clone())
-            .media_storage_sop_instance_uid(sop_instance_uid.clone())
-            .build()
-            .unwrap();
-
-        *obj.meta_mut() = new_meta;
 
         // 计算切片位置和方向
         let dz = *spacing.get(2).unwrap_or(&1.0);
         let instance_no = (z + 1) as i32;
         let slice_loc = (z as f32) * dz;
         let base = ct_volume.base.matrix.get_column(3);
-        let (col_dir,row_dir, slice_dir) =match header.element_type.as_str() {
+        let (col_dir,row_dir, pos) = match header.element_type.as_str() {
             "MET_SHORT" | "MET_INT16" => {
                 let transform: &[f32] = &header.transform;
                 let (col_dir,row_dir, slice_dir) = orientation_dirs(&transform);
-                (col_dir, row_dir, slice_dir)
+                let pos = [
+                    base[0] + slice_loc * slice_dir[0],
+                    base[1] + slice_loc * slice_dir[1],
+                    base[2] + slice_loc * slice_dir[2],
+                ];
+                (col_dir, row_dir, pos)
             }
             "MET_FLOAT" => {
-                let transform: &[f32] = &header.transform;
-                let (row_dir, slice_dir,col_dir) =orientation_dirs(transform);
-                (col_dir, row_dir, slice_dir)
+                let col_dir=[1.0, 0.0, 0.0];
+                let row_dir=[0.0, 1.0, 0.0];
+                let pos = [
+                    base[0] ,
+                    base[1] ,
+                    base[2] + slice_loc,
+                ];
+                (col_dir, row_dir, pos)
             }
             _ => return Err(anyhow!("不支持的 mha element type: {}", header.element_type)),
         };
-
-        let pos = [
-            base[0] + slice_loc * slice_dir[0],
-            base[1] + slice_loc * slice_dir[1],
-            base[2] + slice_loc * slice_dir[2],
-        ];
 
         // 仅打印第 5 张切片的信息
         if z == 5 {
             log::info!("➡️ CT 切片维度：col={}, row={}, depth={}", col, row, depth);
             log::info!("➡️ CT 切片体素间距：dx={:.3}, dy={:.3}, dz={:.3}", spacing[0], spacing[1], spacing[2]);
-            log::info!("➡️ CT 切片位置：base={:?}, col_dir={:?}, row_dir={:?}, slice_dir={:?}", base, col_dir, row_dir, slice_dir);
+            log::info!("➡️ CT 切片位置：base={:?}, col_dir={:?}, row_dir={:?}", base, col_dir, row_dir);
             log::info!("➡️ CT 切片位置起点：pos={:?}", pos);
+        }
+        if z == 5 {
+            println!("➡️ CT 切片维度：col={}, row={}, depth={}", col, row, depth);
+            println!("➡️ CT 切片体素间距：dx={:.3}, dy={:.3}, dz={:.3}", spacing[0], spacing[1], spacing[2]);
+            println!("➡️ CT 切片位置：base={:?}, col_dir={:?}, row_dir={:?}", base, col_dir, row_dir);
+            println!("➡️ CT 切片位置起点：pos={:?}", pos);
         }
 
         // save DICOM 切片
         let filename = format!("CT_{:04}.dcm", z + 1);
         write_ct_dicom_slice(
             obj.clone(),
+            &mut meta.clone(),
+            sop_instance_uid,
+            patient_position.clone(),
             row, 
             col,
             spacing,
@@ -239,6 +271,9 @@ fn inject_image<S: DicomSink>(
 // ------------------------ 写入 DICOM 切片 ------------------------
 fn write_ct_dicom_slice<S: DicomSink>(
     mut base: DefaultDicomObject,
+    meta: &mut FileMetaTableBuilder,
+    sop_instance_uid: String,
+    patient_position: String,
     rows: usize,
     cols: usize,
     spacing: &[f32],    // [dx, dy, dz]
@@ -255,6 +290,15 @@ fn write_ct_dicom_slice<S: DicomSink>(
     let intercept=0.0;
     let win_center = (0.0 + 1.0) / 2.0;
     let win_width = f32::max(1.0 - 0.0, 1.0);
+ 
+    // 更新文件元信息中的 MEDIA_STORAGE_SOP_INSTANCE_UID
+    base.put(DataElement::new(tags::SOP_INSTANCE_UID, VR::UI, PrimitiveValue::from(sop_instance_uid.clone())));
+    let new_meta = FileMetaTableBuilder::from(meta.clone())
+        .media_storage_sop_instance_uid(sop_instance_uid.clone())
+        .build()
+        .unwrap();
+
+    *base.meta_mut() = new_meta;
     
     // 像素结构（16 位有符号）
     base.put(DataElement::new(tags::ROWS, VR::US, PrimitiveValue::from(rows as u16)));
@@ -274,6 +318,7 @@ fn write_ct_dicom_slice<S: DicomSink>(
     base.put(DataElement::new(tags::SLICE_THICKNESS, VR::DS, PrimitiveValue::from(format!("{:.3}", dz))));
 
     // orientation/position
+    base.put(DataElement::new(tags::PATIENT_POSITION, VR::CS, PrimitiveValue::from(patient_position.clone())));
     base.put(DataElement::new(
         tags::IMAGE_ORIENTATION_PATIENT,
         VR::DS,
@@ -365,7 +410,7 @@ mod tests {
     #[test]
     fn test_build_ct_dicom() {
         // 测试路径
-        let path = "C:/share/input/CT.mha";
+        let path = "C:/share/input/CT_new.mha";
         let data = fs::read(path);
         let mha_path = data.as_ref().map(|v| v.as_slice()).unwrap();
         let out_dir = Path::new("C:/share").join(Local::now().format("%Y-%m-%d").to_string());
