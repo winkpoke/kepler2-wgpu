@@ -1,11 +1,10 @@
 use crate::coord::{Base, Matrix4x4};
 use crate::ct_volume::CTVolume;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
-use std::path::{Path, PathBuf};
+use std::io::Read;
 
 // ------------------------ MHD ------------------------
 #[derive(Debug, Clone)]
@@ -29,7 +28,7 @@ pub struct MHXVolume {
     pub offset: Vec<f32>,            // Offset = [ox, oy, oz]
     pub transform: Vec<f32>,         // TransformMatrix = 6 or 9
     pub patient_position: PatientPosition,
-    pub data_offset: Option<u64>,    // 如果是 .mha，这里保存数据在文件中的偏移
+    pub data_offset: Option<usize>,    // 如果是 .mha，这里保存数据在文件中的偏移
     pub data: Vec<u8>,
 }
 
@@ -136,12 +135,13 @@ fn create_patient_position(anatomical_orientation: &str)-> PatientPosition{
 }
 
 impl  MHXVolume{
+    // ------------------------ read MHX ------------------------
     pub fn from_bytes(data: &[u8]) -> Result<Self> {
         let mut kv: HashMap<String, String> = HashMap::new();
         let mut data_offset: Option<usize> = None;
 
         // find header lines
-        let max_size = 64 * 1024; //最多读前 64KB，避免把整个大体积数据读进来
+        let max_size = 64 * 1024;
         let header_region = &data[..std::cmp::min(data.len(), max_size)];
         let mut cursor: usize = 0;
         for (line_no, raw_line) in header_region.split(|&b| b == b'\n').enumerate() {
@@ -207,87 +207,8 @@ impl  MHXVolume{
         let anatomical_orientation = anatomical_orientation.as_str();
         let patient_position = create_patient_position(anatomical_orientation);
 
-        let data_offset_u64 = data_offset.map(|v| v as u64);
-
         // read voxel data
-            let start = data_offset.ok_or_else(|| anyhow!("Missing data_offset"))?;
-            let raw = &data[start..];
-            let voxels = raw.to_vec();
-
-        Ok(MHXVolume {
-            dim,
-            element_type,
-            element_data_file,
-            spacing,
-            offset,
-            transform,
-            patient_position,
-            data_offset: data_offset_u64,
-            data: voxels,
-        })
-    }
-
-    // ------------------------ read MHX ------------------------
-    pub fn read_mhd_head<P: AsRef<Path>>(path: P) -> Result<Self> {
-        let path = path.as_ref();
-        let f = File::open(path).with_context(|| format!("open {:?}", path))?;
-        let mut r = BufReader::new(&f);
-        let mut kv = HashMap::<String, String>::new();
-        let mut header_bytes: u64 = 0;
-        let mut line_buf = String::new();
-        let mut data_offset: Option<u64> = None;
-        loop {
-            line_buf.clear();
-            let len = r.read_line(&mut line_buf)?;
-            if len == 0 {
-                break; 
-            }
-            header_bytes += len as u64;
-            let l = line_buf.split('#').next().unwrap_or("").trim();
-            if l.is_empty() {
-                continue;
-            }
-            if let Some((k, v)) = l.split_once('=') {
-                let key = k.trim();
-                let val = v.trim();
-                kv.insert(key.to_string(), val.to_string());
-                // 如果是 .mha，ElementDataFile=LOCAL，记录偏移并停止 header 解析
-                if key.eq_ignore_ascii_case("ElementDataFile") && val.eq_ignore_ascii_case("LOCAL") {
-                    data_offset = Some(header_bytes);
-                    break;
-                }
-            }
-        }
-        let dim = parse_ints(kv
-            .get("DimSize")
-            .ok_or_else(|| anyhow!("Missing DimSize"))?)?;
-        let element_type = kv
-            .get("ElementType")
-            .ok_or_else(|| anyhow!("Missing ElementType"))?
-            .to_string();
-        let spacing = parse_floats(kv
-            .get("ElementSpacing")
-            .ok_or_else(|| anyhow!("Missing ElementSpacing"))?)?;
-        let offset = kv
-            .get("Offset")
-            .map(|s| parse_floats(s.as_str()))
-            .transpose()?
-            .unwrap_or_else(|| vec![0.0, 0.0, 0.0]);
-        let transform = kv
-            .get("TransformMatrix")
-            .map(|s| parse_floats(s.as_str()))
-            .transpose()?
-            .unwrap_or_else(|| vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0]);
-        let element_data_file = kv
-            .get("ElementDataFile")
-            .ok_or_else(|| anyhow!("Missing ElementDataFile"))?
-            .to_string();
-        let anatomical_orientation = kv
-            .get("AnatomicalOrientation")
-            .ok_or_else(|| anyhow!("Missing AnatomicalOrientation"))?
-            .to_string();
-        let anatomical_orientation = anatomical_orientation.as_str();
-        let patient_position = create_patient_position(anatomical_orientation);
+        let voxels = Self::add_data(data, data_offset,dim.clone()).unwrap();
 
         Ok(MHXVolume {
             dim,
@@ -298,25 +219,28 @@ impl  MHXVolume{
             transform,
             patient_position,
             data_offset,
-            data:vec![],
+            data: voxels,
         })
     }
 
-    // ------------------------ read RAW------------------------
-    pub fn add_data(&self,path:PathBuf) -> Result<Vec<u8>> {
-        let (nx, ny, nz) = (self.dim[0], self.dim[1], *self.dim.get(2).unwrap_or(&1));
-        let n = nx * ny * nz;
-        let mut buf = vec![0u8; n * 4];
-        let mut f = File::open(&path)?;
-        if let Some(offset) = self.data_offset {
+    // ------------------------ read data------------------------
+    pub fn add_data(data: &[u8], data_offset: Option<usize>, dim: Vec<usize>) -> Result<Vec<u8>> {
+        let buf;
+
+        if let Some(_offset) = data_offset {
             // .mha
-            f.seek(SeekFrom::Start(offset))?;
+            let start = data_offset.ok_or_else(|| anyhow!("Missing data_offset"))?;
+            let raw: &[u8] = &data[start..];
+            buf = raw.to_vec();
         } else {
             // .mhd
-            let raw_path = path.parent().unwrap().join(&self.element_data_file);
-            f = File::open(&raw_path)?;
+            let (nx, ny, nz) = (dim[0], dim[1], *dim.get(2).unwrap_or(&1));
+            let n = nx * ny * nz;
+            let mut temp_buf = vec![0u8; n * 4];
+            let mut f = File::open("C:/share/input/CT.raw")?;
+            f.read_exact(&mut temp_buf)?;
+            buf = temp_buf;
         }
-        f.read_exact(&mut buf)?;
         
         Ok(buf)
     }
@@ -435,27 +359,8 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn test_read_mhd() -> Result<()> {
-        let path = "C:/share/input/CT.mhd";
-        let header = MHXVolume::read_mhd_head(path)?;
-        println!("=== MHDHeader 解析结果 ===");
-        println!("维度 (DimSize): {:?}", header.dim);
-        println!("体素间距 (ElementSpacing): {:?}", header.spacing);
-        println!("数据类型 (ElementType): {}", header.element_type);
-        println!("数据文件 (ElementDataFile): {}", header.element_data_file);
-        println!("原点偏移 (Offset): {:?}", header.offset);
-        println!("方向矩阵 (TransformMatrix): {:?}", header.transform);
-        println!("数据偏移 (data_offset，仅 .mha 有): {:?}", header.data_offset);
-
-        let path_raw = PathBuf::from(path);
-        let data = MHXVolume::add_data(&header,path_raw)?;
-        println!("前 10 个体素值: {:?}", &data[..10]);
-        Ok(())
-    }
-
-    #[test]
     fn test_read_mha()-> Result<(), std::io::Error> {
-        let path = "C:/share/input/CT_new.mha";
+        let path = "C:/share/input/CT.mha";
         let data = fs::read(path);
         let bytes_slice: &[u8] = data.as_ref().map(|v| v.as_slice()).unwrap();
 
