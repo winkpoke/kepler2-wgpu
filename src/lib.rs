@@ -89,11 +89,7 @@ pub async fn get_render_app() -> RenderApp {
     // this sets the style width and height of the canvas
     let _ = window.request_inner_size(PhysicalSize::new(800, 800)); 
     let state = State::new(window.clone()).await;
-    // state.resize(PhysicalSize::new(800, 800));
     let mut render_app = RenderApp::new(state, event_loop);
-    // info!("RenderApp created.");
-    // render_app.set_window(window.clone()).await;
-    // info!("Window set to RenderApp.");
     return render_app;
 }
 
@@ -101,51 +97,3 @@ pub async fn get_render_app() -> RenderApp {
 pub fn drop_render_app(app: RenderApp) {
     drop(app);
 }
-
-// #[cfg(target_arch = "wasm32")]
-// #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-// pub async fn get_render_app_by_div_id(render_app: &mut RenderApp, div_id: &str) {
-//     let window = Arc::new(WindowBuilder::new().build(&render_app.event_loop.as_ref().unwrap()).unwrap());
-//     #[cfg(target_arch = "wasm32")]
-//     {
-//         // Winit prevents sizing with CSS, so we have to set
-//         // the size manually when on web.
-//         use winit::dpi::PhysicalSize;
-//         use winit::platform::web::WindowExtWebSys;
-//         web_sys::window()
-//             .and_then(|win| win.document())
-//             .and_then(|doc| {
-//                 let dst = doc.get_element_by_id(div_id)?;
-//                 let canvas = web_sys::Element::from(window.canvas()?);
-//                 dst.append_child(&canvas).ok()?;
-//                 Some(())
-//             })
-//             .expect("Couldn't append canvas to document body.");
-//     }
-//     render_app.set_window(window.clone()).await;
-// }
-
-// #[cfg(target_arch = "wasm32")]
-// #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-// pub async fn create_graphics_by_div_id(div_id: &str) -> Graphics {
-//     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build().unwrap();
-//     let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
-//     #[cfg(target_arch = "wasm32")]
-//     {
-//         // Winit prevents sizing with CSS, so we have to set
-//         // the size manually when on web.
-//         use winit::dpi::PhysicalSize;
-//         use winit::platform::web::WindowExtWebSys;
-//         web_sys::window()
-//             .and_then(|win| win.document())
-//             .and_then(|doc| {
-//                 let dst = doc.get_element_by_id(div_id)?;
-//                 let canvas = web_sys::Element::from(window.canvas()?);
-//                 dst.append_child(&canvas).ok()?;
-//                 Some(())
-//             })
-//             .expect("Couldn't append canvas to document body.");
-//     }
-//     let graphics = Graphics::new(window.clone()).await;
-//     return graphics;
-// }
