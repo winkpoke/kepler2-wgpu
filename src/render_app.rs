@@ -198,8 +198,20 @@ impl RenderApp {
                                     },
                                 ..
                             } => {
-                                // state = State::initialize(&window).await;
                                 println!("R key pressed");
+                            }
+                            WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyF),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                // Toggle float volume texture path (Rg8Unorm <-> R16Float)
+                                state.toggle_float_volume_texture();
+                                println!("F key pressed: toggled float volume texture");
                             }
                             WindowEvent::RedrawRequested => {
                                 // This tells winit that we want another frame after this one

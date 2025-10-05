@@ -17,7 +17,7 @@ pub struct UniformsFrag {
     pub window_width: f32,
     pub window_level: f32,
     pub slice: f32,
-    pub _padding: [f32; 1],
+    pub is_packed_rg8: f32,
     pub mat: [f32; 16],
 }
 
@@ -96,6 +96,7 @@ impl RenderContext {
             window_width: 350.,
             window_level: 1140.,
             slice: 0.0,
+            is_packed_rg8: if matches!(texture.texture_format, wgpu::TextureFormat::Rg8Unorm) { 1.0 } else { 0.0 },
             mat: *array_to_slice(&transform_matrix.data),
             ..Default::default()
         };

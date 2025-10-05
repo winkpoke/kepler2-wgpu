@@ -33,6 +33,7 @@ once_cell = "1.7"    # used for singleton pattern
 # async-std = "1.0"
 async-lock = "3.4.1"
 num-traits = "0.2.19"
+half = "2"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1.47.1", features = ["full"] }

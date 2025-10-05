@@ -173,6 +173,8 @@ pub struct State {
     pub(crate) graphics: Graphics,
     // pub(crate) layout: Layout<OneCellLayout>,
     pub(crate) layout: Layout<GridLayout>,
+    pub(crate) enable_float_volume_texture: bool,
+    pub(crate) last_volume: Option<CTVolume>,
 }
 
 const HU_OFFSET: f32 = 1100.0;
@@ -199,6 +201,8 @@ impl State {
         Ok(Self {
             graphics,
             layout,
+            enable_float_volume_texture: false,
+            last_volume: None,
         })
     }
 
@@ -312,22 +316,43 @@ impl State {
     }
 
     pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume) {
-        let voxel_data: Vec<u16> = vol
-            .voxel_data
-            .iter()
-            .map(|x| (*x + HU_OFFSET as i16) as u16)
-            .collect();
-        let voxel_data: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
-        let texture = Arc::new(RenderContent::from_bytes(
-            &self.graphics.device,
-            &self.graphics.queue,
-            &voxel_data,
-            "CT Volume",
-            vol.dimensions.0 as u32,
-            vol.dimensions.1 as u32,
-            vol.dimensions.2 as u32,
-        )
-        .unwrap());
+        self.last_volume = Some(vol.clone());
+        let texture = if self.enable_float_volume_texture {
+            // Convert voxel i16 values to half-float bytes
+            let bytes: Vec<u8> = {
+                let voxels_f16_bits: Vec<u16> = vol
+                    .voxel_data
+                    .iter()
+                    .map(|&x| half::f16::from_f32(x as f32).to_bits())
+                    .collect();
+                bytemuck::cast_slice(&voxels_f16_bits).to_vec()
+            };
+            Arc::new(RenderContent::from_bytes_r16f(
+                &self.graphics.device,
+                &self.graphics.queue,
+                &bytes,
+                "CT Volume",
+                vol.dimensions.0 as u32,
+                vol.dimensions.1 as u32,
+                vol.dimensions.2 as u32,
+            ).unwrap())
+        } else {
+            let voxel_data: Vec<u16> = vol
+                .voxel_data
+                .iter()
+                .map(|x| (*x + HU_OFFSET as i16) as u16)
+                .collect();
+            let voxel_data: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
+            Arc::new(RenderContent::from_bytes(
+                &self.graphics.device,
+                &self.graphics.queue,
+                &voxel_data,
+                "CT Volume",
+                vol.dimensions.0 as u32,
+                vol.dimensions.1 as u32,
+                vol.dimensions.2 as u32,
+            ).unwrap())
+        };
 
         self.layout.remove_all();
 
@@ -367,7 +392,13 @@ impl State {
     pub fn set_window_level(&mut self, index: usize, window_level: f32) {
         let view = self.layout.views.get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_mpr() {
-            mpr_view.set_window_level(window_level + HU_OFFSET);
+            if self.enable_float_volume_texture {
+                // Float path uses native HU values
+                mpr_view.set_window_level(window_level);
+            } else {
+                // Packed RG8 path uses offset
+                mpr_view.set_window_level(window_level + HU_OFFSET);
+            }
             log::info!("View {} set_window_level: {}", index, window_level);
         }
     }
@@ -425,6 +456,20 @@ impl State {
         if let Some(mpr_view) = view.as_mpr() {
             log::info!("View {} move to mm: {:#?}", index, (x_mm, y_mm));
             mpr_view.set_pan(x_mm, y_mm);
+        }
+    }
+
+    pub fn toggle_float_volume_texture(&mut self) {
+        self.enable_float_volume_texture = !self.enable_float_volume_texture;
+        log::info!(
+            "Toggled enable_float_volume_texture to {}",
+            self.enable_float_volume_texture
+        );
+        if let Some(vol) = self.last_volume.clone() {
+            // Clone to avoid borrowing self immutably while mutably reloading
+            self.load_data_from_ct_volume(&vol);
+        } else {
+            log::warn!("No cached CTVolume to reload after toggle.");
         }
     }
 }

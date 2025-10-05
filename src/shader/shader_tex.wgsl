@@ -68,7 +68,7 @@ struct UniformsFrag {
     window: f32,
     level: f32,
     slice: f32,
-    _padding: f32,
+    is_packed_rg8: f32,
 	mat: mat4x4<f32>,
 }
 
@@ -96,11 +96,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Sample the texture using the 3D coordinates
     let sampled_value: vec4<f32> = textureSample(t_diffuse, s_diffuse, tex_coords_3d);
 
-    // Unpack the two unsigned bytes back to a signed int16 (if needed)
-    let unpacked_value: f32 = (sampled_value.g * 256.0 + sampled_value.r) * 255.0;
+    // Conditionally decode depending on texture format
+    var value: f32;
+    if (u_uniform_frag.is_packed_rg8 > 0.5) {
+        // Packed RG8 path: decode to scalar value
+        value = (sampled_value.g * 256.0 + sampled_value.r) * 255.0;
+    } else {
+        // Native float path (R16Float/R32Float): use the red channel
+        value = sampled_value.r;
+    }
 
     // Compute the final value with clamping based on window and level
-    let v: f32 = clamp((unpacked_value - (u_uniform_frag.level - u_uniform_frag.window / 2.0)) / u_uniform_frag.window, 0.0, 1.0);
+    let v: f32 = clamp((value - (u_uniform_frag.level - u_uniform_frag.window / 2.0)) / u_uniform_frag.window, 0.0, 1.0);
 
     // Return the final computed color
     return vec4<f32>(vec3<f32>(v), 1.0);
