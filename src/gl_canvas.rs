@@ -23,6 +23,8 @@ pub enum UserEvent {
     SetWindowByDivId(String, CTVolume),
     GraphicsReady(Graphics, CTVolume),
     ClearLayout,
+    #[cfg(feature = "mesh")]
+    SetEnableMesh(bool),
     // ... add more events as needed
 }
 
@@ -95,6 +97,15 @@ impl GLCanvas {
             log::error!("Failed to send ClearLayout event: {:?}", e);
         } else {
             log::info!("Sent ClearLayout event");
+        }
+    }
+
+    #[cfg(feature = "mesh")]
+    pub fn enable_mesh(&self, enabled: bool) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetEnableMesh(enabled)) {
+            log::error!("Failed to send SetEnableMesh event: {:?}", e);
+        } else {
+            log::info!("Sent SetEnableMesh event: enabled={}", enabled);
         }
     }
 }

@@ -32,6 +32,10 @@ mod render_content;
 mod view;
 mod render_app;
 
+// Mesh module is opt-in via Cargo feature `mesh`
+#[cfg(feature = "mesh")]
+pub mod mesh;
+
 use ct_volume::CTVolume;
 use state::State;
 use render_app::RenderApp;

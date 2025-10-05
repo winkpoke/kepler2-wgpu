@@ -63,6 +63,12 @@ web-sys = { version = "0.3", features = [
 ]}
 js-sys = "0.3.22"
 
+[features]
+# Default features remain empty to avoid enabling mesh inadvertently
+default = []
+# Opt-in 3D mesh feature gate
+mesh = []
+
 [[bin]]
 name = "kepler"
 path = "src/main.rs"

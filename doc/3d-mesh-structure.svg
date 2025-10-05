@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="900" viewBox="0 0 1200 900" role="img" aria-label="3D Mesh Implementation – Structure &amp; Dependencies">
+  <defs>
+    <style>
+      .box { fill: #f8f9fb; stroke: #1f2937; stroke-width: 1.5; rx: 8; }
+      .cluster { fill: #eef2ff; stroke: #3730a3; stroke-width: 1.5; rx: 10; }
+      .title { font: 700 22px/1.2 Inter, Arial, sans-serif; fill: #111827; }
+      .label { font: 600 16px/1.3 Inter, Arial, sans-serif; fill: #111827; }
+      .mono { font: 13px/1.3 Consolas, Menlo, monospace; fill: #1f2937; }
+      .note { font: 12px/1.3 Inter, Arial, sans-serif; fill: #374151; }
+      .arrow { stroke: #111827; stroke-width: 1.5; fill: none; }
+    </style>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#111827" />
+    </marker>
+  </defs>
+
+  <text x="40" y="50" class="title">3D Mesh Implementation – Structure &amp; Dependencies</text>
+
+  <rect x="480" y="80" width="240" height="100" class="box" />
+  <text x="500" y="105" class="label">Build-time Feature Gate</text>
+  <text x="500" y="130" class="mono">Cargo.toml</text>
+  <text x="500" y="150" class="note">Defines feature: "mesh"</text>
+
+  <rect x="780" y="80" width="300" height="100" class="box" />
+  <text x="800" y="105" class="label">View Integration (conditional)</text>
+  <text x="800" y="130" class="mono">src/view/mod.rs</text>
+  <text x="800" y="150" class="note">pub use MeshView when feature=mesh</text>
+
+  <rect x="40" y="220" width="520" height="300" class="cluster" />
+  <text x="60" y="245" class="label">Mesh Module (guarded by cfg(feature="mesh"))</text>
+
+  <rect x="60" y="260" width="240" height="120" class="box" />
+  <text x="75" y="285" class="label">Core Types</text>
+  <text x="75" y="308" class="mono">src/mesh/mod.rs</text>
+  <text x="75" y="326" class="mono">src/mesh/mesh.rs</text>
+  <text x="75" y="344" class="mono">src/mesh/material.rs</text>
+
+  <rect x="320" y="260" width="220" height="120" class="box" />
+  <text x="335" y="285" class="label">Camera &amp; Lighting</text>
+  <text x="335" y="308" class="mono">src/mesh/camera.rs</text>
+  <text x="335" y="326" class="mono">src/mesh/lighting.rs</text>
+
+  <rect x="60" y="390" width="240" height="110" class="box" />
+  <text x="75" y="415" class="label">View Implementation</text>
+  <text x="75" y="438" class="mono">src/mesh/mesh_view.rs</text>
+  <text x="75" y="456" class="note">Implements View (initially inert)</text>
+
+  <rect x="320" y="390" width="220" height="110" class="box" />
+  <text x="335" y="415" class="label">GPU Context</text>
+  <text x="335" y="438" class="mono">src/mesh/mesh_render_context.rs</text>
+  <text x="335" y="456" class="note">Pipelines (guarded), depth setup</text>
+
+  <rect x="600" y="220" width="280" height="160" class="cluster" />
+  <text x="620" y="245" class="label">Shader Assets (inert until enabled)</text>
+  <rect x="620" y="260" width="240" height="110" class="box" />
+  <text x="635" y="285" class="label">Mesh Shaders</text>
+  <text x="635" y="308" class="mono">src/shader/mesh.wgsl</text>
+  <text x="635" y="326" class="mono">src/shader/mesh_depth.wgsl</text>
+
+  <rect x="910" y="220" width="250" height="160" class="cluster" />
+  <text x="930" y="245" class="label">Shared Helpers &amp; Math</text>
+  <rect x="930" y="260" width="210" height="110" class="box" />
+  <text x="945" y="285" class="label">Utilities</text>
+  <text x="945" y="308" class="mono">src/texture.rs (Depth32Float)</text>
+  <text x="945" y="326" class="mono">src/coord.rs (matrices)</text>
+
+  <rect x="40" y="550" width="540" height="140" class="cluster" />
+  <text x="60" y="575" class="label">Runtime Control &amp; Orchestration</text>
+  <rect x="60" y="590" width="240" height="80" class="box" />
+  <text x="75" y="615" class="label">State Flag</text>
+  <text x="75" y="638" class="mono">src/state.rs (enable_mesh)</text>
+
+  <rect x="320" y="590" width="240" height="80" class="box" />
+  <text x="335" y="615" class="label">Render Loop</text>
+  <text x="335" y="638" class="mono">src/render_app.rs</text>
+
+  <rect x="600" y="550" width="560" height="140" class="cluster" />
+  <text x="620" y="575" class="label">2D Slice Pipeline (unchanged)</text>
+  <rect x="620" y="590" width="520" height="80" class="box" />
+  <text x="635" y="615" class="label">Existing 2D Pass</text>
+  <text x="635" y="638" class="mono">src/view/render_context.rs + src/shader/shader_tex.wgsl</text>
+
+  <line x1="600" y1="180" x2="300" y2="220" class="arrow" marker-end="url(#arrowhead)" />
+  <text x="470" y="205" class="note">cfg(feature="mesh")</text>
+
+  <line x1="600" y1="180" x2="880" y2="180" class="arrow" marker-end="url(#arrowhead)" />
+  <text x="700" y="170" class="note">conditional export</text>
+
+  <line x1="180" y1="500" x2="320" y2="500" class="arrow" marker-end="url(#arrowhead)" />
+  <text x="230" y="520" class="note">owns GPU state</text>
+
+  <line x1="430" y1="445" x2="600" y2="360" class="arrow" marker-end="url(#arrowhead)" />
+  <text x="520" y="420" class="note">vertex/fragment</text>
+
+  <line x1="540" y1="445" x2="910" y2="360" class="arrow" marker-end="url(#arrowhead)" />
+  <text x="720" y="420" class="note">depth + matrices</text>
+
+  <line x1="300" y1="630" x2="320" y2="630" class="arrow" marker-end="url(#arrowhead)" />
+  <text x="240" y="670" class="note">enable_mesh controls instantiation</text>
+
+  <line x1="560" y1="630" x2="600" y2="630" class="arrow" marker-end="url(#arrowhead)" />
+  <text x="560" y="650" class="note">2D pass unchanged; runs after mesh</text>
+
+  <text x="40" y="740" class="label">Stability Constraints</text>
+  <text x="40" y="765" class="note">• Mesh code is fully gated (build-time feature + runtime flag), ensuring default builds and behavior remain unchanged.</text>
+  <text x="40" y="785" class="note">• 2D slice pipeline is structurally independent from all mesh modules.</text>
+  <text x="40" y="805" class="note">• Mesh pass executes only when enabled; otherwise it is fully skipped.</text>
+</svg>

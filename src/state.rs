@@ -178,6 +178,8 @@ pub struct State {
     pub(crate) enable_float_volume_texture: bool,
     pub(crate) toggle_enabled: bool,
     pub(crate) last_volume: Option<CTVolume>,
+    #[cfg(feature = "mesh")]
+    pub(crate) enable_mesh: bool,
 }
 
 const HU_OFFSET: f32 = 1100.0;
@@ -215,6 +217,8 @@ impl State {
             enable_float_volume_texture: default_float,
             toggle_enabled: true,
             last_volume: None,
+            #[cfg(feature = "mesh")]
+            enable_mesh: false,
         })
     }
 
@@ -388,6 +392,17 @@ impl State {
                 size,
             );
             self.layout.add_view(Box::new(view));
+        }
+
+        #[cfg(feature = "mesh")]
+        if self.enable_mesh {
+            use crate::view::MeshView;
+            use crate::mesh::{mesh::Mesh, mesh_render_context::MeshRenderContext};
+            let mut mesh_view = MeshView::new();
+            let mesh = Mesh::unit_cube();
+            let ctx = MeshRenderContext::new(&self.graphics.device, &self.graphics.queue, &mesh);
+            mesh_view.attach_context(ctx);
+            self.layout.add_view(Box::new(mesh_view));
         }
     }
 

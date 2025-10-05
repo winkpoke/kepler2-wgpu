@@ -167,6 +167,15 @@ impl RenderApp {
                     log::info!("ClearLayout event received.");
                     state.layout.remove_all();
                 }
+                #[cfg(feature = "mesh")]
+                Event::UserEvent(UserEvent::SetEnableMesh(enabled)) => {
+                    state.enable_mesh = enabled;
+                    log::info!("EnableMesh set to: {}", enabled);
+                    if let Some(vol) = state.last_volume.clone() {
+                        state.load_data_from_ct_volume(&vol);
+                        log::info!("Reloaded layout with mesh view {}", if enabled {"enabled"} else {"disabled"});
+                    }
+                }
                 Event::WindowEvent {
                     ref event,
                     window_id,
@@ -212,6 +221,37 @@ impl RenderApp {
                                 // Disable the runtime toggle feature per requirement
                                 state.disable_volume_format_toggle();
                                 println!("F key pressed: volume format toggle feature disabled");
+                            }
+                            WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyM),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                #[cfg(feature = "mesh")]
+                                {
+                                    state.enable_mesh = !state.enable_mesh;
+                                    let enabled = state.enable_mesh;
+                                    log::info!("M key pressed: toggling mesh. Now enabled={}", enabled);
+                                    if let Some(vol) = state.last_volume.clone() {
+                                        state.load_data_from_ct_volume(&vol);
+                                        log::info!(
+                                            "Reloaded layout with mesh view {}",
+                                            if enabled { "enabled" } else { "disabled" }
+                                        );
+                                    } else {
+                                        log::warn!("No last_volume available; mesh toggle will apply on next load");
+                                    }
+                                }
+                                #[cfg(not(feature = "mesh"))]
+                                {
+                                    log::info!(
+                                        "M key pressed: mesh feature not enabled at compile time; ignoring toggle"
+                                    );
+                                }
                             }
                             WindowEvent::RedrawRequested => {
                                 // This tells winit that we want another frame after this one
