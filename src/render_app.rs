@@ -18,7 +18,7 @@ use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::spawn_local;
 
-pub async fn create_graphics(window: Arc<Window>) -> Graphics {
+pub async fn create_graphics(window: Arc<Window>) -> Result<Graphics, crate::error::KeplerError> {
     Graphics::new(window).await
 }
 
@@ -41,8 +41,10 @@ impl RenderApp {
     
     pub async fn set_window(&mut self, window: Arc<Window>) {
         if let Some(state) = &mut self.state {
-            let graphics = Graphics::new(window.clone()).await;
-            state.swap_graphics(graphics);
+            match Graphics::new(window.clone()).await {
+                Ok(graphics) => state.swap_graphics(graphics),
+                Err(e) => log::error!("Failed to create graphics: {}", e),
+            }
         }
     }
 }
@@ -108,11 +110,11 @@ impl RenderApp {
                 }
                 Event::UserEvent(UserEvent::SetPan(index, dx, dy)) => {
                     state.set_pan(index, dx, dy);
-                    log::info!("Pan set to: dx={}, dy={}", dx, dy);
+                    log::info!("Pan set to: dx={dx}, dy={dy}");
                 }
                 Event::UserEvent(UserEvent::SetPanMM(index, dx_mm, dy_mm)) => {
                     state.set_pan_mm(index, dx_mm, dy_mm);
-                    log::info!("PanMM set to: dx_mm={}, dy_mm={}", dx_mm, dy_mm);
+                    log::info!("PanMM set to: dx_mm={dx_mm}, dy_mm={dy_mm}");
                 }
                 Event::UserEvent(UserEvent::Quit) => {
                     log::info!("Quit event received. Exiting event loop.");
@@ -120,7 +122,7 @@ impl RenderApp {
                     target.exit();
                 }
                 Event::UserEvent(UserEvent::SetWindowByDivId(div_id, volume)) => {
-                    log::info!("SetWindowByDivId event received for div_id: {}", div_id);
+                    log::info!("SetWindowByDivId event received for div_id: {div_id}");
 
                     let window = Arc::new(WindowBuilder::new().build(target).unwrap());
                     #[cfg(target_arch = "wasm32")]
@@ -142,9 +144,15 @@ impl RenderApp {
                         let proxy = proxy.clone();
                         state.layout.remove_all();
                         spawn_local(async move {
-                            let graphics = Graphics::new(window.clone()).await;
-                            log::info!("Graphics created in SetWindowByDivId event. {:?}", graphics);
-                            let _ = proxy.send_event(UserEvent::GraphicsReady(graphics, volume));
+                            match Graphics::new(window.clone()).await {
+                                Ok(graphics) => {
+                                    log::info!("Graphics created in SetWindowByDivId event.");
+                                    let _ = proxy.send_event(UserEvent::GraphicsReady(graphics, volume));
+                                }
+                                Err(e) => {
+                                    log::error!("Failed to create graphics in SetWindowByDivId: {:?}", e);
+                                }
+                            }
                         });
                     }
                 }
@@ -152,7 +160,7 @@ impl RenderApp {
                     log::info!("GraphicsReady event received.");
                     state.swap_graphics(graphics);
                     state.resize(PhysicalSize { width: 800, height: 800 });
-                    let _ = proxy.send_event(UserEvent::LoadDataFromCTVolume(volume)).unwrap();
+                    proxy.send_event(UserEvent::LoadDataFromCTVolume(volume)).unwrap();
                     log::info!("Graphics swapped in state.");
                 }
                 Event::UserEvent(UserEvent::ClearLayout) => {

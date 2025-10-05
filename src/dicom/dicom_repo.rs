@@ -30,22 +30,26 @@ impl DicomRepo {
 
     // Add or update a patient
     pub fn add_patient(&mut self, patient: Patient) {
-        self.patients.insert(patient.patient_id.clone(), patient);
+        let key = patient.patient_id.clone();
+        self.patients.insert(key, patient);
     }
 
     // Add or update a study
     pub fn add_study(&mut self, study: StudySet) {
-        self.study_sets.insert(study.uid.clone(), study);
+        let key = study.uid.clone();
+        self.study_sets.insert(key, study);
     }
 
     // Add or update an image series
     pub fn add_image_series(&mut self, series: ImageSeries) {
-        self.image_series.insert(series.uid.clone(), series);
+        let key = series.uid.clone();
+        self.image_series.insert(key, series);
     }
 
     // Add or update a CT image
     pub fn add_ct_image(&mut self, image: CTImage) {
-        self.ct_images.insert(image.uid.clone(), image);
+        let key = image.uid.clone();
+        self.ct_images.insert(key, image);
     }
 
     pub fn to_string(&self) -> String {

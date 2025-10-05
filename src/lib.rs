@@ -18,11 +18,13 @@ use winit::{
 
 use view::Renderable;
 use crate::state::Graphics;
+use crate::error::KeplerError;
 
 // mod texture;
 pub mod coord;
 pub mod ct_volume;
 pub mod dicom;
+pub mod error;
 pub mod geometry;
 pub mod gl_canvas;
 pub mod state;
@@ -52,7 +54,7 @@ pub async fn init() {
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-pub async fn get_render_app() -> RenderApp {
+pub async fn get_render_app() -> Result<RenderApp, KeplerError> {
     #[cfg(not(target_arch = "wasm32"))]
     env_logger::init();
 
@@ -88,9 +90,8 @@ pub async fn get_render_app() -> RenderApp {
 
     // this sets the style width and height of the canvas
     let _ = window.request_inner_size(PhysicalSize::new(800, 800)); 
-    let state = State::new(window.clone()).await;
-    let mut render_app = RenderApp::new(state, event_loop);
-    return render_app;
+    let state = State::new(window.clone()).await?;
+    Ok(RenderApp::new(state, event_loop))
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]

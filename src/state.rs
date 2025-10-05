@@ -23,6 +23,7 @@ use crate::ct_volume::*;
 use crate::dicom::*;
 use crate::render_content::RenderContent;
 use crate::view::*;
+use crate::error::KeplerError;
 
 fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
     let mut file_paths = Vec::new();
@@ -61,7 +62,7 @@ pub struct Graphics {
 }
 
 impl Graphics {
-    pub async fn initialize(window: Arc<Window>) -> Graphics {
+    pub async fn initialize(window: Arc<Window>) -> Result<Graphics, KeplerError> {
         let size = window.inner_size();
 
         // The instance is a handle to our GPU
@@ -76,7 +77,8 @@ impl Graphics {
             ..Default::default()
         });
 
-        let surface = instance.create_surface(window.clone()).unwrap();
+        let surface = instance.create_surface(window.clone())
+            .map_err(|e| KeplerError::Graphics(format!("Failed to create surface: {}", e)))?;
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -85,7 +87,7 @@ impl Graphics {
                 force_fallback_adapter: false,
             })
             .await
-            .unwrap();
+            .ok_or_else(|| KeplerError::Graphics("Failed to find suitable adapter".to_string()))?;
 
         let (device, queue) = adapter
             .request_device(
@@ -108,7 +110,7 @@ impl Graphics {
                 None,
             )
             .await
-            .unwrap();
+            .map_err(|e| KeplerError::Graphics(format!("Failed to create device: {}", e)))?;
 
         let surface_caps = surface.get_capabilities(&adapter);
         // Shader code in this tutorial assumes an Srgb surface texture. Using a different
@@ -136,16 +138,16 @@ impl Graphics {
             surface.configure(&device, &surface_config);
         }
 
-        Self {
+        Ok(Self {
             surface,
             surface_config,
             device,
             queue,
             window,
-        }
+        })
     }
 
-    pub async fn new(window: Arc<Window>) -> Graphics {
+    pub async fn new(window: Arc<Window>) -> Result<Graphics, KeplerError> {
         Self::initialize(window).await
     }
 }
@@ -176,13 +178,12 @@ pub struct State {
 const HU_OFFSET: f32 = 1100.0;
 
 impl State {
-    pub async fn new(window: Arc<Window>) -> State {
-        let state = State::initialize(window).await;
-        state
+    pub async fn new(window: Arc<Window>) -> Result<State, KeplerError> {
+        State::initialize(window).await
     }
 
-    pub async fn initialize(window: Arc<Window>) -> State {
-        let graphics = Graphics::new(window.clone()).await;
+    pub async fn initialize(window: Arc<Window>) -> Result<State, KeplerError> {
+        let graphics = Graphics::new(window.clone()).await?;
         // println!("supported texture formats: {:?}", surface_caps.formats);
         // println!("format: {:?}", config.format);
 
@@ -195,10 +196,10 @@ impl State {
             },
         );
 
-        Self {
+        Ok(Self {
             graphics,
             layout,
-        }
+        })
     }
 
     pub fn swap_graphics(&mut self, new_graphics: Graphics) {

@@ -6,7 +6,7 @@ pub trait LayoutStrategy {
     fn calculate_position_and_size(
         &self,
         index: u32,
-        total_views: u32,
+        _total_views: u32,
         parent_dim: (u32, u32),
     ) -> ((i32, i32), (u32, u32));
 }
