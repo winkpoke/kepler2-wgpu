@@ -209,9 +209,9 @@ impl RenderApp {
                                     },
                                 ..
                             } => {
-                                // Toggle float volume texture path (Rg8Unorm <-> R16Float)
-                                state.toggle_float_volume_texture();
-                                println!("F key pressed: toggled float volume texture");
+                                // Disable the runtime toggle feature per requirement
+                                state.disable_volume_format_toggle();
+                                println!("F key pressed: volume format toggle feature disabled");
                             }
                             WindowEvent::RedrawRequested => {
                                 // This tells winit that we want another frame after this one

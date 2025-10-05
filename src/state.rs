@@ -57,6 +57,7 @@ pub struct Graphics {
     pub(crate) window: Arc<Window>,
     pub(crate) surface: wgpu::Surface<'static>,
     pub(crate) surface_config: wgpu::SurfaceConfiguration,
+    pub(crate) adapter: wgpu::Adapter,
     pub(crate) device: wgpu::Device,
     pub(crate) queue: wgpu::Queue,
 }
@@ -141,6 +142,7 @@ impl Graphics {
         Ok(Self {
             surface,
             surface_config,
+            adapter,
             device,
             queue,
             window,
@@ -174,6 +176,7 @@ pub struct State {
     // pub(crate) layout: Layout<OneCellLayout>,
     pub(crate) layout: Layout<GridLayout>,
     pub(crate) enable_float_volume_texture: bool,
+    pub(crate) toggle_enabled: bool,
     pub(crate) last_volume: Option<CTVolume>,
 }
 
@@ -198,10 +201,19 @@ impl State {
             },
         );
 
+        // Choose default format based on device capability: prefer R16Float when supported, else RG8
+        let default_float = Self::device_supports_r16float(&graphics.adapter);
+        log::info!(
+            "R16Float filterable sampling supported: {}. Defaulting to {}",
+            default_float,
+            if default_float { "R16Float" } else { "Rg8Unorm" }
+        );
+
         Ok(Self {
             graphics,
             layout,
-            enable_float_volume_texture: false,
+            enable_float_volume_texture: default_float,
+            toggle_enabled: true,
             last_volume: None,
         })
     }
@@ -318,6 +330,7 @@ impl State {
     pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume) {
         self.last_volume = Some(vol.clone());
         let texture = if self.enable_float_volume_texture {
+            info!("Using R16Float volume texture path");
             // Convert voxel i16 values to half-float bytes
             let bytes: Vec<u8> = {
                 let voxels_f16_bits: Vec<u16> = vol
@@ -337,6 +350,7 @@ impl State {
                 vol.dimensions.2 as u32,
             ).unwrap())
         } else {
+            info!("Using Rg8Unorm volume texture path");
             let voxel_data: Vec<u16> = vol
                 .voxel_data
                 .iter()
@@ -459,7 +473,32 @@ impl State {
         }
     }
 
+    // Check if device supports R16Float with filtering and sampling as a texture binding
+    fn device_supports_r16float(adapter: &wgpu::Adapter) -> bool {
+        let features = adapter.get_texture_format_features(wgpu::TextureFormat::R16Float);
+        let filterable = features
+            .flags
+            .contains(wgpu::TextureFormatFeatureFlags::FILTERABLE);
+        let can_sample = features
+            .allowed_usages
+            .contains(wgpu::TextureUsages::TEXTURE_BINDING);
+        filterable && can_sample
+    }
+
     pub fn toggle_float_volume_texture(&mut self) {
+        if !self.toggle_enabled {
+            log::warn!("Toggle feature is disabled; ignoring.");
+            return;
+        }
+        // If enabling float path, ensure hardware support
+        if !self.enable_float_volume_texture {
+            if !Self::device_supports_r16float(&self.graphics.adapter) {
+                log::warn!(
+                    "Hardware doesn't support R16Float filtered sampling; staying on RG8."
+                );
+                return;
+            }
+        }
         self.enable_float_volume_texture = !self.enable_float_volume_texture;
         log::info!(
             "Toggled enable_float_volume_texture to {}",
@@ -471,6 +510,14 @@ impl State {
         } else {
             log::warn!("No cached CTVolume to reload after toggle.");
         }
+    }
+
+    pub fn disable_volume_format_toggle(&mut self) {
+        self.toggle_enabled = false;
+        log::info!(
+            "Volume format toggle feature disabled. Default format in use: {}",
+            if self.enable_float_volume_texture { "R16Float" } else { "Rg8Unorm" }
+        );
     }
 }
 

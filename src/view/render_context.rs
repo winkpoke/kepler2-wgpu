@@ -92,14 +92,21 @@ impl RenderContext {
             rotation_angle_z: 0.0,
             ..Default::default()
         };
+        let is_packed = matches!(texture.texture_format, wgpu::TextureFormat::Rg8Unorm);
         let u_frag_data = UniformsFrag {
             window_width: 350.,
-            window_level: 1140.,
+            window_level: if is_packed { 1140.0 } else { 40.0 },
             slice: 0.0,
-            is_packed_rg8: if matches!(texture.texture_format, wgpu::TextureFormat::Rg8Unorm) { 1.0 } else { 0.0 },
+            is_packed_rg8: if is_packed { 1.0 } else { 0.0 },
             mat: *array_to_slice(&transform_matrix.data),
             ..Default::default()
         };
+        log::info!(
+            "RenderContext defaults => window_width: {:.1}, window_level: {:.1}, is_packed_rg8: {}",
+            u_frag_data.window_width,
+            u_frag_data.window_level,
+            is_packed
+        );
         let uniforms = Uniforms {
             vert: u_vert_data,
             frag: u_frag_data,

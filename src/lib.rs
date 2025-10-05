@@ -56,7 +56,7 @@ pub async fn init() {
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub async fn get_render_app() -> Result<RenderApp, KeplerError> {
     #[cfg(not(target_arch = "wasm32"))]
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
     warn!("Start the program ...");
 
