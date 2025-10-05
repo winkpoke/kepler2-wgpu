@@ -10,10 +10,10 @@ Phased development plan
 
 Phase 1: R16Float implementation (opt-in, non-breaking)
 1) Capability check and opt-in runtime flag
-- Change: Introduce a runtime flag `enable_float_volume_texture: bool` (default false) to enable the float path. For Phase 1, select `wgpu::TextureFormat::R16Float` when enabled.
+- Change: Introduce a runtime flag `enable_float_volume_texture: bool` (default auto-enabled if supported) to enable the float path. At startup, if R16Float is supported for filtered sampling, select `wgpu::TextureFormat::R16Float`; otherwise default to `Rg8Unorm`.
 - Files: src/state.rs
-- Purpose: Keeps current RG8 path as default; enables half-float textures explicitly.
-- Stability: No behavior changes by default; safe for WASM/older GPUs.
+- Purpose: Keeps current RG8 path as default on unsupported devices; enables half-float textures automatically when supported.
+- Stability: Behavior remains consistent on unsupported devices (falls back to RG8).
 
 2) Volume texture creation for half-float data
 - Change: Add a constructor/path to build a 3D texture using `wgpu::TextureFormat::R16Float`, alongside the existing RG8 path.
@@ -77,32 +77,28 @@ Implementation notes
   - Phase 2 (R32Float): `bytes_per_row = 4 × columns`.
 - Dimensions: Respect CTVolume dimensions `(rows, columns, slices)` and voxel spacing `(spacing_x, spacing_y, spacing_z)` throughout.
 
----
+Implemented changes and actions (current code)
+- Capability and default selection
+  - `enable_float_volume_texture` is initialized based on a runtime capability check; when the device supports filtered R16Float, the float path is selected by default.
+  - A toggle function is available to switch formats at runtime; logs indicate the chosen default and any toggles.
+- RenderContext defaults and logging
+  - Defaults are format-aware: `window_level = 1140.0` for packed RG8, `window_level = 40.0` for float; `window_width = 350.0` for both.
+  - `is_packed_rg8` is set to `1.0` (RG8) or `0.0` (float). Initialization logs: "RenderContext defaults => window_width, window_level, is_packed_rg8".
+- Shader decoding branch
+  - Fragment shader decodes RG8 using `(g * 256 + r) * 255.0` only when `is_packed_rg8 > 0.5`; otherwise uses `sampled_value.r` directly for the float path. Window/level logic is shared.
+- Upload paths
+  - Float path: Convert voxels to half (`f16`) on CPU and upload to `R16Float` with `bytes_per_row = 2 × columns`, `rows_per_image = rows`.
+  - RG8 path: Add `HU_OFFSET` on CPU, pack to two bytes per voxel, and upload with `bytes_per_row = 2 × columns`.
+- Uniform updates each frame
+  - `GenericMPRView::update` writes vertex and fragment uniforms every frame using the queue, ensuring window/level and slice changes are applied immediately.
+- Texture and sampling
+  - 3D textures are created with `TextureDimension::D3` and sampled via `texture_3d<f32>`; sampler uses filtering consistent with device support.
+- Event injections for validation
+  - `main.rs` currently has slice/scale/translate injections commented out (e.g., `set_slice_mm(0, 5.0)`), retained for manual testing if needed.
+- Known visual issue and guidance
+  - If the transverse view shows black, verify slice depth and pan are in-bounds; out-of-bounds coordinates are clamped to black by the shader. Adjust via `set_slice_mm` and pan controls.
 
-Comparison: R32Float vs R16Float (Precision, Performance, and Filtering)
-- Precision and dynamic range:
-  - R32Float: Highest precision and dynamic range; ideal when clinical HU fidelity, strict window/level operations, and avoidance of quantization artifacts are paramount.
-  - R16Float: Half-precision format; adequate for many visualization tasks but with reduced precision and range. Best when storage/bandwidth constraints and compatibility are more important than maximum fidelity.
-- Memory bandwidth and footprint:
-  - R32Float: 4 bytes per voxel; doubles bandwidth and memory use versus R16Float.
-  - R16Float: 2 bytes per voxel; lower bandwidth and memory, improving throughput on large volumes.
-- Which offers superior quality:
-  - Prefer R32Float for the most faithful CT/HU representation and robust window/level behavior.
-  - Prefer R16Float when acceptable quality suffices and you need better performance and broader platform support.
-
-Linear filtering support and considerations
-- R16Float: Supported for linear filtering broadly; suitable for interpolated sampling without special device features.
-- R32Float: Linear filtering is optional and requires enabling the device’s `float32-filterable` feature; many desktop GPUs support it, but mobile/web targets may not. When unavailable, use nearest sampling or fall back to R16Float for linear filtering.
-
-Practical guidance
-- If you need ubiquitous linear filtering and lower bandwidth, choose R16Float.
-- If maximum precision is key and your target devices support `float32-filterable`, choose R32Float; otherwise use nearest sampling or fall back to R16Float.
-
-Device feature checks
-- At runtime, query adapter/device features for `float32-filterable` to decide whether R32Float can be filtered. If not supported, keep R32Float with nearest sampling or select R16Float for filtered sampling.
-
-Change tracking
-- Updated strategy to phased approach (Phase 1: R16Float; Phase 2: R32Float).
-- Adjusted stride notes to differentiate half vs 32-bit paths.
-- Clarified filtering behavior and device feature gating for R32Float.
-- Documented upload details: R16Float uses 2 × columns; R32Float uses 4 × columns.
+Change tracking (this document)
+- Modified: Clarified the default selection policy for `enable_float_volume_texture` (auto-enabled when supported; otherwise RG8).
+- Modified: Corrected RenderContext default `window_width` to 350.0 and documented format-aware `window_level` defaults (1140.0 for RG8, 40.0 for float).
+- Added: Implemented changes and actions section summarizing capability detection, logging, shader branching, upload paths, uniform updates, and event injection status.
