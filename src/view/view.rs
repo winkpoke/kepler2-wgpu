@@ -101,6 +101,7 @@ impl GenericMPRView {
         let slice = 0.0;
 
         let mut base_screen_cloned = base_screen.clone();
+        // the following is matrix multiplication so it's in reversed order
         base_screen_cloned.translate([-pan[0], -pan[1], -pan[2]]); 
         base_screen_cloned.translate([0.5, 0.5, 0.0]); // move back
         base_screen_cloned.scale([scale, scale, 1.0]);
