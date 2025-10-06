@@ -333,6 +333,25 @@ impl<T> Vector3<T> {
         Self { data }
     }
 
+    /// Function-level comment: Get the x component of the vector
+    pub fn x(&self) -> T where T: Copy {
+        self.data[0]
+    }
+
+    /// Function-level comment: Get the y component of the vector
+    pub fn y(&self) -> T where T: Copy {
+        self.data[1]
+    }
+
+    /// Function-level comment: Get the z component of the vector
+    pub fn z(&self) -> T where T: Copy {
+        self.data[2]
+    }
+
+    /// Function-level comment: Get the raw data array
+    pub fn as_array(&self) -> &[T; 3] {
+        &self.data
+    }
 }
 
 // Vector3 Operations =======================================================

@@ -32,6 +32,18 @@ pub trait MPRView: View {
     fn set_translate_in_screen_coord(&mut self, translate: [f32; 3]);
     fn set_pan(&mut self, x: f32, y: f32); // pan in screen space
     fn set_pan_mm(&mut self, x_mm: f32, y_mm: f32); // pan in mm
+    /// Returns current window level used by the fragment shader.
+    fn get_window_level(&self) -> f32;
+    /// Returns current window width used by the fragment shader.
+    fn get_window_width(&self) -> f32;
+    /// Returns current slice position in millimeters along view normal.
+    fn get_slice_mm(&self) -> f32;
+    /// Returns current scale factor applied in screen space.
+    fn get_scale(&self) -> f32;
+    /// Returns current pan/translation in screen coordinates [x, y, z].
+    fn get_translate_in_screen_coord(&self) -> [f32; 3];
+    /// Returns current translation in view/model coordinates [x, y, z].
+    fn get_translate(&self) -> [f32; 3];
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -93,6 +105,7 @@ impl GenericMPRView {
         translate: [f32; 3],
         pos: (i32, i32),
         dim: (u32, u32),
+
     ) -> Self {
         let r_speed = 0.0;
         let s_speed = orientation.default_slice_speed();
@@ -249,6 +262,21 @@ impl MPRView for GenericMPRView {
         self.pan[0] = x_mm / scale_x;
         self.pan[1] = y_mm / scale_y;
     }
+    /// Function-level comment: Retrieve current window level from fragment uniforms for state snapshotting.
+    fn get_window_level(&self) -> f32 { self.view.uniforms.frag.window_level }
+    /// Function-level comment: Retrieve current window width from fragment uniforms for state snapshotting.
+    fn get_window_width(&self) -> f32 { self.view.uniforms.frag.window_width }
+    /// Function-level comment: Convert internal pan.z (in screen units) back to millimeters using base scale factors.
+    fn get_slice_mm(&self) -> f32 {
+        let [_, _, scale_z] = self.base_screen.get_scale_factors();
+        self.pan[2] * scale_z
+    }
+    /// Function-level comment: Return current screen-space scale factor.
+    fn get_scale(&self) -> f32 { self.scale }
+    /// Function-level comment: Return current screen-space translation vector.
+    fn get_translate_in_screen_coord(&self) -> [f32; 3] { self.pan }
+    /// Function-level comment: Return current view/model-space translation vector.
+    fn get_translate(&self) -> [f32; 3] { self.translate }
 }
 
 // Optional: keep type aliases for old names

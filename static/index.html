@@ -51,6 +51,11 @@
         <label for="height">height:</label><input type="number" id="height" step="10.0" value="0.0" placeholder="800">
         <button id="resize-submit">Submit</button>
     </div>
+    <div>
+        <label for="mesh-mode">Mesh Mode:</label>
+        <input type="checkbox" id="mesh-mode" />
+        <span id="mesh-status">Disabled</span>
+    </div>
     <button id="rerender">render</button>
     <div id="render_app"></div>
     <script type="module">
@@ -165,6 +170,24 @@
             lev && gl_canvas1.set_window_level(indexValue, lev);
             render_app.drop_state();
         });
+
+        // Function-level comment: Mesh mode checkbox event listener for runtime mesh toggling via WASM.
+        document.getElementById('mesh-mode').addEventListener('change', (event) => {
+            const isEnabled = event.target.checked;
+            const statusSpan = document.getElementById('mesh-status');
+            
+            if (!gl_canvas0) {
+                alert('Please select a series first!');
+                event.target.checked = !isEnabled; // Revert checkbox state
+                return;
+            }
+            
+            // Call WASM function to toggle mesh mode
+            gl_canvas0.enable_mesh(isEnabled);
+            statusSpan.textContent = isEnabled ? 'Enabled' : 'Disabled';
+            console.log('Mesh mode toggled:', isEnabled);
+        });
+
         document.querySelector('#file').addEventListener('change', async () => {
 
             if (state.render_app) {

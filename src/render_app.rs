@@ -215,12 +215,9 @@ impl RenderApp {
                 }
                 #[cfg(feature = "mesh")]
                 Event::UserEvent(UserEvent::SetEnableMesh(enabled)) => {
-                    state.enable_mesh = enabled;
-                    log::info!("EnableMesh set to: {}", enabled);
-                    if let Some(vol) = state.last_volume.clone() {
-                        state.load_data_from_ct_volume(&mut pipeline_manager, &vol);
-                        log::info!("Reloaded layout with mesh view {}", if enabled {"enabled"} else {"disabled"});
-                    }
+                    // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
+                    state.set_mesh_mode_enabled(&mut pipeline_manager, enabled);
+                    log::info!("EnableMesh toggled at runtime: {}", enabled);
                 }
                 Event::WindowEvent {
                     ref event,
@@ -282,27 +279,10 @@ impl RenderApp {
                                     },
                                 ..
                             } => {
-                                #[cfg(feature = "mesh")]
-                                {
-                                    state.enable_mesh = !state.enable_mesh;
-                                    let enabled = state.enable_mesh;
-                                    log::info!("M key pressed: toggling mesh. Now enabled={}", enabled);
-                                    if let Some(vol) = state.last_volume.clone() {
-                                        state.load_data_from_ct_volume(&mut pipeline_manager, &vol);
-                                        log::info!(
-                                            "Reloaded layout with mesh view {}",
-                                            if enabled { "enabled" } else { "disabled" }
-                                        );
-                                    } else {
-                                        log::warn!("No last_volume available; mesh toggle will apply on next load");
-                                    }
-                                }
-                                #[cfg(not(feature = "mesh"))]
-                                {
-                                    log::info!(
-                                        "M key pressed: mesh feature not enabled at compile time; ignoring toggle"
-                                    );
-                                }
+                                // Function-level comment: Toggle mesh mode on 'M' key press at runtime.
+                                let new_enabled = !state.mesh_mode_enabled();
+                                state.set_mesh_mode_enabled(&mut pipeline_manager, new_enabled);
+                                log::info!("KeyM pressed: mesh mode toggled to {}", new_enabled);
                             }
                             WindowEvent::RedrawRequested => {
                                 // This tells winit that we want another frame after this one

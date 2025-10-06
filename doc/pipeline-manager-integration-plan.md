@@ -80,8 +80,8 @@ Partial / Deviations
 - [x] Surface format negotiation (prefer sRGB when available) and swapchain format propagation via global accessor.
 - [x] Mesh depth support: depth format helper, pipeline depth-stencil enabled, depth texture lifecycle managed, render pass attachment wired.
 - [x] Doctest stabilization: environment-dependent examples in `geometry` and `dicom/fileio` gated with `rust,ignore`; native doctests pass.
-- [~] Mesh topology and rasterization updated to indexed triangles (TriangleList + draw_indexed) — vertex and index buffers implemented; depth-stencil enabled; verification pending on native and WASM; culling and feature toggling to be confirmed. [HIGH PRIORITY]
-- [ ] Web UI toggle for mesh feature in static/index.html to call enable_mesh(true/false) and re-render for browser validation. [HIGH PRIORITY]
+- [~] Mesh topology and rasterization updated to indexed triangles (TriangleList + draw_indexed) — vertex and index buffers implemented; depth-stencil enabled; verification pending on native and WASM; culling and feature toggling (non-invasive Mesh Mode) to be confirmed. [HIGH PRIORITY]
+- [ ] Web UI toggle for Mesh Mode in static/index.html to call set_mesh_mode_enabled(true/false) and re-render for browser validation. [HIGH PRIORITY]
 - [ ] Unit tests for `PipelineKey` stability and cache behavior.
 - [ ] Invalidation wiring finalized and tested.
 - [ ] Warning cleanup (unused imports/variables).
@@ -94,7 +94,7 @@ High Priority (1–3 days)
 Recommendation: Begin with visual verification across native and WASM and add a simple web UI toggle for mesh.
 1. **[HIGH PRIORITY] Mesh visual verification and UI toggle**
    - Confirm triangle mesh rasterization visuals on native and WASM targets; validate culling and depth testing remain correct.
-   - Add a web UI control to toggle mesh (calls enable_mesh(true/false) and re-renders) to streamline browser validation.
+   - Add a web UI control to toggle Mesh Mode (calls set_mesh_mode_enabled(true/false) and re-renders) to streamline browser validation.
 2. **[HIGH PRIORITY] Unit tests, doctest stabilization, and basic CI**
    - Add tests covering `PipelineKey` stability and cache hit/miss behavior.
    - Doctests stabilized: environment-dependent examples in `geometry` and `dicom/fileio` are gated with `rust,ignore`; native doctests pass.

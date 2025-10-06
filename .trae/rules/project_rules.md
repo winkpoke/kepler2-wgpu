@@ -3,3 +3,5 @@
 3. The code shall be compiled with native and wasm target. The wasm shall be compiled with "wasm-pack build -t web"
 4. The project documents are all under the folder "doc". Please refer to the documentations in the folder.
 5. Do not use npx or live serve to test the wasm build since I will manually test the wasm build in the browser for now.
+6. Compilation and test shall turn on feature mesh.
+7. Please log information with debug level when necessary in order to help debug the project.

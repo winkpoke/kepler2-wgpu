@@ -77,10 +77,10 @@ pub fn get_mesh_depth_format() -> wgpu::TextureFormat {
 /// identical pipelines rather than re-compiling them. Keys should be deterministic across builds.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum PipelineKey {
-    /// Volume slice quad pipeline, parameterized by the target surface format and layout signatures.
+    /// Volume slice quad pipeline, parameterized by the target surface format, layout signatures, and optional depth format.
     VolumeSliceQuad { target_format: wgpu::TextureFormat, vertex_sig: String, bgl_sig: String },
-    /// Basic mesh pipeline, parameterized by target format and primitive topology.
-    MeshBasic { target_format: wgpu::TextureFormat, topology: wgpu::PrimitiveTopology },
+    /// Basic mesh pipeline, parameterized by target format, primitive topology, and depth usage.
+    MeshBasic { target_format: wgpu::TextureFormat, topology: wgpu::PrimitiveTopology, use_depth: bool },
     /// Custom pipelines keyed by a deterministic descriptor signature.
     Custom { signature: String },
 }
@@ -262,10 +262,10 @@ pub fn get_or_create_texture_quad_pipeline(
 /// Notes
 /// - Pipeline state is fully specified for deterministic behavior across platforms.
 /// - Blend state is set to REPLACE; adjust if alpha blending is desired.
+/// - No depth-stencil state since 2D slice rendering uses separate passes without depth.
 ///
 /// TODO
 /// - Parameterize MSAA (`multisample.count`) and culling for performance/quality trade-offs.
-/// - Add optional depth-stencil to support ordered rendering or Z-tests.
 pub fn create_texture_quad_pipeline(
     device: &wgpu::Device,
     bind_group_layouts: [&wgpu::BindGroupLayout; 3],
@@ -310,7 +310,7 @@ pub fn create_texture_quad_pipeline(
             unclipped_depth: false,
             conservative: false,
         },
-        depth_stencil: None, // No depth testing; suitable for 2D overlays
+        depth_stencil: None, // No depth testing for 2D slice rendering
         multisample: wgpu::MultisampleState {
             count: 1,                          // No MSAA; parameterize for quality improvements
             mask: !0,
@@ -340,10 +340,25 @@ pub fn create_texture_quad_pipeline(
 /// - Add bind groups for uniforms and textures as needed.
 #[cfg(feature = "mesh")]
 pub fn get_or_create_mesh_pipeline(manager: &mut PipelineManager, device: &wgpu::Device) -> Arc<wgpu::RenderPipeline> {
+    get_or_create_mesh_pipeline_with_depth(manager, device, true)
+}
+
+/// Returns a cached basic mesh pipeline with configurable depth testing.
+/// This allows creating pipelines with or without depth-stencil state based on render pass requirements.
+///
+/// Parameters
+/// - `manager`: Pipeline cache used to deduplicate creation.
+/// - `device`: Logical device used to build shader modules and pipelines.
+/// - `use_depth`: Whether to enable depth testing and depth buffer writes.
+///
+/// Returns
+/// - `Arc<wgpu::RenderPipeline>`: Shared pipeline handle for mesh rendering.
+#[cfg(feature = "mesh")]
+pub fn get_or_create_mesh_pipeline_with_depth(manager: &mut PipelineManager, device: &wgpu::Device, use_depth: bool) -> Arc<wgpu::RenderPipeline> {
     // Updated topology: TriangleList for proper mesh rasterization. Depth testing remains enabled.
     let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
     let topology = wgpu::PrimitiveTopology::TriangleList;
-    let key = PipelineKey::MeshBasic { target_format, topology };
+    let key = PipelineKey::MeshBasic { target_format, topology, use_depth };
 
     if let Some(p) = { manager.get(&key).cloned() } {
         manager.hit_count += 1;
@@ -360,10 +375,77 @@ pub fn get_or_create_mesh_pipeline(manager: &mut PipelineManager, device: &wgpu:
     log::trace!("Pipeline cache miss: {:?}. Creating.", key);
     // Mesh shader with both vertex and fragment stages.
     let shader = device.create_shader_module(wgpu::include_wgsl!("shader/mesh.wgsl"));
-    // No bind groups for this basic pipeline; layout is empty.
+    
+    // Create bind group layouts for uniform buffers
+    // Bind group 0: Camera uniforms (view, projection matrices, camera position)
+    let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Camera Bind Group Layout"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+    });
+    
+    // Bind group 1: Lighting uniforms (light position, color, material properties)
+    let lighting_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Lighting Bind Group Layout"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+    });
+    
+    // Bind group 2: Model uniforms (model matrix, normal matrix)
+    let model_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Model Bind Group Layout"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::VERTEX,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+    });
+    
+    // Bind group 3: Material uniforms (albedo, metallic, roughness, etc.)
+    let material_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Material Bind Group Layout"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+    });
+    
+    // Create pipeline layout with uniform buffer bind groups
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Mesh Pipeline Layout"),
-        bind_group_layouts: &[],
+        bind_group_layouts: &[
+            &camera_bind_group_layout,
+            &lighting_bind_group_layout,
+            &model_bind_group_layout,
+            &material_bind_group_layout,
+        ],
         push_constant_ranges: &[],
     });
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -394,13 +476,17 @@ pub fn get_or_create_mesh_pipeline(manager: &mut PipelineManager, device: &wgpu:
             unclipped_depth: false,
             conservative: false,
         },
-        depth_stencil: Some(wgpu::DepthStencilState {
-            format: get_mesh_depth_format(),
-            depth_write_enabled: true,
-            depth_compare: wgpu::CompareFunction::Less,
-            stencil: wgpu::StencilState::default(),
-            bias: wgpu::DepthBiasState::default(),
-        }),
+        depth_stencil: if use_depth {
+            Some(wgpu::DepthStencilState {
+                format: get_mesh_depth_format(),
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            })
+        } else {
+            None
+        },
         multisample: wgpu::MultisampleState {
             count: 1,
             mask: !0,
@@ -681,19 +767,22 @@ mod tests {
         assert_eq!(mgr.cache_size(), 0, "Cache size should be 0 after invalidation");
     }
 
-    /// Ensures MeshBasic PipelineKey equality for identical inputs and inequality for differing topology or format.
+    /// Ensures MeshBasic PipelineKey equality for identical inputs and inequality for differing topology, format, or depth usage.
     #[test]
     fn pipeline_key_mesh_basic_variations() {
         let fmt_a = wgpu::TextureFormat::Rgba8Unorm;
         let fmt_b = wgpu::TextureFormat::Bgra8Unorm;
-        let key_tri_a = PipelineKey::MeshBasic { target_format: fmt_a, topology: wgpu::PrimitiveTopology::TriangleList };
-        let key_tri_a2 = PipelineKey::MeshBasic { target_format: fmt_a, topology: wgpu::PrimitiveTopology::TriangleList };
+        let key_tri_a = PipelineKey::MeshBasic { target_format: fmt_a, topology: wgpu::PrimitiveTopology::TriangleList, use_depth: true };
+        let key_tri_a2 = PipelineKey::MeshBasic { target_format: fmt_a, topology: wgpu::PrimitiveTopology::TriangleList, use_depth: true };
         assert_eq!(key_tri_a, key_tri_a2, "Identical MeshBasic keys should be equal");
 
-        let key_topo_diff = PipelineKey::MeshBasic { target_format: fmt_a, topology: wgpu::PrimitiveTopology::PointList };
+        let key_topo_diff = PipelineKey::MeshBasic { target_format: fmt_a, topology: wgpu::PrimitiveTopology::PointList, use_depth: true };
         assert_ne!(key_tri_a, key_topo_diff, "Keys should differ for different topology");
 
-        let key_fmt_diff = PipelineKey::MeshBasic { target_format: fmt_b, topology: wgpu::PrimitiveTopology::TriangleList };
+        let key_fmt_diff = PipelineKey::MeshBasic { target_format: fmt_b, topology: wgpu::PrimitiveTopology::TriangleList, use_depth: true };
         assert_ne!(key_tri_a, key_fmt_diff, "Keys should differ for different target format");
+
+        let key_depth_diff = PipelineKey::MeshBasic { target_format: fmt_a, topology: wgpu::PrimitiveTopology::TriangleList, use_depth: false };
+        assert_ne!(key_tri_a, key_depth_diff, "Keys should differ for different depth usage");
     }
 }

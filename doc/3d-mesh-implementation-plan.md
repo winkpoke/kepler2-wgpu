@@ -88,29 +88,29 @@ Status: Not Yet Implemented
 - Stability: Only compiled under feature; no runtime effect.
 - Validation: Build passes; outputs unchanged.
 
-9) Add non-invasive configuration plumbing (default off)
+9) Add non-invasive Mesh Mode configuration (default off)
 Status: Not Yet Implemented
-- Change: Introduce enable_mesh: bool in app state; only instantiate MeshView if true.
+- Change: Introduce mesh_mode_enabled: bool in app state; when true, render MeshView in a full-screen path without modifying existing views or layout.
 - Files: <mcfile name="state.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\state.rs"></mcfile> <mcfile name="render_app.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\render_app.rs"></mcfile>
-- Purpose: Controlled activation to preserve default behavior and allow gradual testing.
-- Stability: Default false; no MeshView instances created by default.
-- Validation: Start app; verify identical layout and rendering.
+- Purpose: Controlled activation to preserve default behavior and allow gradual testing while keeping the third view unchanged.
+- Stability: Default false; no changes to view/layout; render path branches only.
+- Validation: Start app; verify identical layout and rendering when disabled; full-screen mesh when enabled.
 
-10) Wire MeshView into layout system (opt-in only)
+10) Render MeshView in a separate full-screen path (opt-in only)
 Status: Not Yet Implemented
-- Change: Allow layout builder to accept MeshView when enable_mesh is true; do not alter default layouts.
-- Files: <mcfile name="layout.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\view\\layout.rs"></mcfile>
-- Purpose: Introduces MeshView into layout graph in a strictly opt-in way.
+- Change: Do not modify the layout builder. Instead, render MeshView in a dedicated full-screen pass when Mesh Mode is enabled.
+- Files: <mcfile name="render_app.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\render_app.rs"></mcfile>
+- Purpose: Integrates mesh visualization without altering any view indices or grid cells; the third view remains unchanged.
 - Stability: Existing layouts remain unchanged.
-- Validation: Confirm current layouts render as before when disabled.
+- Validation: Confirm current layouts render as before when disabled; full-screen mesh appears when enabled.
 
 11) Implement mesh pipeline creation (guarded, default disabled)
 Status: Not Yet Implemented
-- Change: In MeshRenderContext, create mesh pipeline using mesh.wgsl and depth; only instantiate when enable_mesh.
+- Change: In MeshRenderContext, create mesh pipeline using mesh.wgsl and depth; only instantiate when Mesh Mode is enabled.
 - Files: <mcfile name="mesh_render_context.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\mesh\\mesh_render_context.rs"></mcfile> <mcfile name="mesh.wgsl" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\shader\\mesh.wgsl"></mcfile>
 - Purpose: Establishes 3D pipeline ready for rendering; remains inactive by default.
 - Stability: Separate pipeline and pass from 2D; no interference.
-- Validation: Build with feature enabled and enable_mesh false; ensure pipeline creation is skipped.
+- Validation: Build with feature enabled and Mesh Mode disabled; ensure pipeline creation is skipped.
 
 12) Add separate mesh render pass before 2D slice pass (only when enabled)
 Status: Not Yet Implemented
@@ -118,7 +118,7 @@ Status: Not Yet Implemented
 - Files: <mcfile name="render_app.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\render_app.rs"></mcfile> <mcfile name="shader_tex.wgsl" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\shader\\shader_tex.wgsl"></mcfile>
 - Purpose: Implements recommended separate passes strategy.
 - Stability: Execution path identical unless enabled; depth resources isolated.
-- Validation: With enable_mesh false, confirm identical rendering; with true, ensure 2D MPR renders after mesh pass.
+- Validation: With Mesh Mode disabled, confirm identical rendering; with enabled, ensure 2D MPR renders after the mesh pass (for multi-pass design) or grid-only when disabled (for full-screen mode).
 
 13) Add basic camera control and matrices for MeshView
 Status: Not Yet Implemented
@@ -140,7 +140,7 @@ Status: Ongoing Guideline (No changes required today)
 
 Notes on enabling later:
 - Build-time: enable Cargo feature `mesh`.
-- Runtime: set `enable_mesh = true` in app state to instantiate MeshView and run the mesh pass.
+- Runtime: toggle Mesh Mode via `set_mesh_mode_enabled(true)` to instantiate MeshView and run the full-screen mesh path (or mesh pass in multi-pass design).
 
 ## Stability, Integration, and Test Plan
 
@@ -159,8 +159,8 @@ Preflight capability checks (when feature is enabled)
 - Validate swapchain surface state from <mcfile name="state.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\state.rs"></mcfile> and ensure proper reconfiguration on SurfaceError Lost/Outdated, identical to current behavior.
 
 Resource management lifecycle
-- Lazy initialization: create mesh pipeline and depth texture only on first activation when `enable_mesh == true`.
-- Deterministic drop: free mesh GPU resources when MeshView is removed from layout (<mcfile name="layout.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\view\layout.rs"></mcfile>), mirroring how existing views are cleaned up.
+- Lazy initialization: create mesh pipeline and depth texture only on first activation when Mesh Mode is enabled.
+- Deterministic drop: free mesh GPU resources when Mesh Mode is disabled or MeshView is torn down; do not alter or depend on the layout system.
 - Depth resource creation helper: centralized in <mcfile name="texture.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\texture.rs"></mcfile> to keep pipeline code lean and testable.
 
 Render pass ordering and encoder usage
@@ -234,7 +234,7 @@ Hierarchy (modules, assets, and gating):
   - <mcfile name="mod.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\view\\mod.rs"></mcfile> (conditional `pub use MeshView`)
   - <mcfile name="view.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\view\\view.rs"></mcfile> (View trait)
 - Runtime control and orchestration
-  - <mcfile name="state.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\state.rs"></mcfile> (`enable_mesh` flag)
+  - <mcfile name="state.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\state.rs"></mcfile> (Mesh Mode flag and toggles)
   - <mcfile name="render_app.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\render_app.rs"></mcfile> (render loop; pass ordering)
   - 2D pipeline remains independent: <mcfile name="render_context.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\view\\render_context.rs"></mcfile> + <mcfile name="shader_tex.wgsl" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\shader\\shader_tex.wgsl"></mcfile>
 
@@ -243,10 +243,9 @@ Dependency graph (labeled relationships):
   - <mcfile name="Cargo.toml" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\Cargo.toml"></mcfile>
     -> guards { src/mesh/*, <mcfile name="mod.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\view\\mod.rs"></mcfile> conditional export } [label: cfg(feature = "mesh")]
 - Runtime gating and view instantiation
-  - <mcfile name="state.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\state.rs"></mcfile> (`enable_mesh`) ->
-    <mcfile name="render_app.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\render_app.rs"></mcfile> [label: instantiate MeshView only if true]
-  - <mcfile name="render_app.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\render_app.rs"></mcfile> -> <mcfile name="layout.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\view\\layout.rs"></mcfile> [label: include MeshView in layout graph when enabled]
-- MeshView composition
+  - <mcfile name="state.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\state.rs"></mcfile> (Mesh Mode) ->
+    <mcfile name="render_app.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\render_app.rs"></mcfile> [label: instantiate MeshView only when Mesh Mode is enabled]
+  - [Removed: no inclusion into layout graph; MeshView renders in full-screen path]
   - <mcfile name="mesh_view.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\mesh\\mesh_view.rs"></mcfile>
     -> <mcfile name="mesh_render_context.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\mesh\\mesh_render_context.rs"></mcfile> [label: owns GPU state]
     -> <mcfile name="mesh.rs" path="c:\\Users\\admin\\OneDrive\\文档\\2024\\Imaging\\kepler-wgpu\\src\\mesh\\mesh.rs"></mcfile> [label: geometry data]

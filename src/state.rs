@@ -3,7 +3,8 @@
 use log::{debug, error, info, warn};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::{fs, io, time::Instant};
+use std::{fs, io};
+use crate::timing::{Instant, DurationExt};
 
 // use wgpu::util::DeviceExt;
 #[cfg(target_arch = "wasm32")]
@@ -240,9 +241,33 @@ pub struct State {
     pub(crate) enable_mesh: bool,
     #[cfg(feature = "mesh")]
     pub(crate) texture_pool: TexturePool,
+    /// Function-level comment: Snapshot of slot-2 MPR state to restore when mesh mode is disabled.
+    pub(crate) mpr_state_slot2: Option<MPRViewState>,
+    #[cfg(feature = "mesh")]
+    /// Function-level comment: Cached MeshRenderContext wrapped in Arc for efficient reuse across toggles.
+    pub(crate) mesh_ctx: Option<Arc<crate::mesh::mesh_render_context::MeshRenderContext>>,
+    /// Function-level comment: PassExecutor manages separate render passes for 3D mesh and 2D slice content.
+    pub(crate) pass_executor: crate::render_pass::PassExecutor,
 }
 
 const HU_OFFSET: f32 = 1100.0;
+
+/// Captures key MPR view parameters for restoring after mesh toggles.
+#[derive(Clone, Debug)]
+pub struct MPRViewState {
+    /// Function-level comment: Current window level used by the fragment shader (uniform value).
+    pub window_level: f32,
+    /// Function-level comment: Current window width used by the fragment shader (uniform value).
+    pub window_width: f32,
+    /// Function-level comment: Current slice position in millimeters along the view normal.
+    pub slice_mm: f32,
+    /// Function-level comment: Current screen-space scale factor.
+    pub scale: f32,
+    /// Function-level comment: Current view/model-space translation vector.
+    pub translate: [f32; 3],
+    /// Function-level comment: Current screen-space translation (pan) vector.
+    pub translate_in_screen_coord: [f32; 3],
+}
 
 impl State {
     pub async fn new(window: Arc<Window>) -> Result<State, KeplerError> {
@@ -311,6 +336,7 @@ impl State {
             }
         }
 
+        let surface_format = graphics.surface_config.format;
         Ok(Self {
             graphics,
             layout,
@@ -321,12 +347,24 @@ impl State {
             enable_mesh: false,
             #[cfg(feature = "mesh")]
             texture_pool: texture_pool,
+            mpr_state_slot2: None,
+            #[cfg(feature = "mesh")]
+            mesh_ctx: None,
+            pass_executor: crate::render_pass::PassExecutor::new(surface_format),
         })
     }
 
     pub fn swap_graphics(&mut self, new_graphics: Graphics) {
         self.graphics = new_graphics;
         crate::pipeline::set_swapchain_format(self.graphics.surface_config.format);
+        
+        // #[cfg(feature = "mesh")]
+        // {
+        //     // Function-level comment: Clear mesh resources bound to old device to prevent stale references.
+        //     self.mesh_ctx = None;
+        //     self.texture_pool.clear_depth_view();
+        // }
+        
         // self.resize(winit::dpi::PhysicalSize {
         //     width: self.graphics.surface_config.width,
         //     height: self.graphics.surface_config.height,
@@ -385,6 +423,9 @@ impl State {
                 let _ = self.graphics.window.request_inner_size(new_size); 
             }
             self.graphics.surface.configure(&self.graphics.device, &self.graphics.surface_config);
+            
+            // Update PassExecutor with new surface format
+            self.pass_executor.update_surface_format(self.graphics.surface_config.format);
 
             #[cfg(feature = "mesh")]
             {
@@ -421,93 +462,101 @@ impl State {
         self.layout.update(&self.graphics.queue);
     }
 
+    /// Function-level comment: Renders the frame using separate render passes for 3D mesh and 2D slice content.
+    /// This architecture provides better performance and cleaner separation of concerns.
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let frame = self.graphics.surface.get_current_texture()?;
         let frame_view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        let mut encoder = self
-            .graphics.device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("Render Encoder"),
-            });
-        {
-            #[cfg(feature = "mesh")]
-            if self.enable_mesh && self.texture_pool.depth_view().is_none() {
-                // Lazily create depth texture if missing
-                let depth_format = crate::pipeline::get_mesh_depth_format();
-                let width = self.graphics.surface_config.width;
-                let height = self.graphics.surface_config.height;
-                if width > 0 && height > 0 {
-                    let size = wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    };
-                    let desc = wgpu::TextureDescriptor {
-                        label: Some("Mesh Depth Texture"),
-                        size,
-                        mip_level_count: 1,
-                        sample_count: 1,
-                        dimension: wgpu::TextureDimension::D2,
-                        format: depth_format,
-                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                        view_formats: &[],
-                    };
-                    let depth_tex = self.graphics.device.create_texture(&desc);
-                    let depth_view = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
-                    self.texture_pool.set_depth(depth_tex, depth_view);
-                } else {
-                    warn!("Skipping lazy mesh depth texture creation: surface size is {}x{} (expected >0).", width, height);
-                }
-            }
+        // Create command encoder for render passes
+        let mut encoder = self.graphics.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Render Encoder"),
+        });
 
-            let depth_attachment: Option<wgpu::RenderPassDepthStencilAttachment> = {
-                #[cfg(feature = "mesh")]
-                {
-                    if self.enable_mesh {
-                        self.texture_pool.depth_view().map(|view| wgpu::RenderPassDepthStencilAttachment {
-                            view,
-                            depth_ops: Some(wgpu::Operations {
-                                load: wgpu::LoadOp::Clear(1.0),
-                                store: wgpu::StoreOp::Store,
-                            }),
-                            stencil_ops: None,
-                        })
-                    } else { None }
-                }
-                #[cfg(not(feature = "mesh"))]
-                {
-                    None
-                }
-            };
+        // Create texture pool for this frame
+        #[cfg(feature = "mesh")]
+        let texture_pool = &mut self.texture_pool;
+        #[cfg(not(feature = "mesh"))]
+        let mut dummy_texture_pool = crate::render_pass::DummyTexturePool::new();
+        #[cfg(not(feature = "mesh"))]
+        let texture_pool = &mut dummy_texture_pool;
 
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &frame_view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.5,
-                            g: 0.5,
-                            b: 0.5,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: depth_attachment,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
+        // Determine mesh settings
+        #[cfg(feature = "mesh")]
+        let mesh_enabled = self.enable_mesh;
+        #[cfg(not(feature = "mesh"))]
+        let mesh_enabled = false;
 
-            self.layout.render(&mut render_pass)?;
+        // Function-level comment: Check if mesh content is available and reset error state if needed
+        let has_mesh_content = self.layout.views.len() > 2 && 
+            self.layout.views[2].as_any().downcast_ref::<crate::view::MeshView>().is_some();
+        
+        // Reset mesh pass error state if mesh is enabled and content is available
+        #[cfg(feature = "mesh")]
+        if mesh_enabled && has_mesh_content && !self.pass_executor.is_healthy() {
+            log::info!("Resetting mesh pass error state - mesh content available");
+            self.pass_executor.reset_error_state();
         }
-        self.graphics.queue.submit(std::iter::once(encoder.finish()));
-        frame.present();
 
+        // Execute frame using PassExecutor with separate render passes
+        // We need to split the borrowing to avoid conflicts
+        let device = &self.graphics.device;
+        let layout = &mut self.layout;
+        let pass_executor = &mut self.pass_executor;
+        
+        pass_executor.execute_frame(
+            &mut encoder,
+            &frame_view,
+            texture_pool,
+            device,
+            self.graphics.surface_config.width,
+            self.graphics.surface_config.height,
+            mesh_enabled,
+            has_mesh_content, // has_mesh_content - enable mesh pass when mesh content is available
+            |pass_context| {
+                match pass_context.pass_id {
+                    crate::render_pass::PassId::MeshPass => {
+                        // Function-level comment: Render 3D mesh content by accessing MeshView from layout slot 2
+                        #[cfg(feature = "mesh")]
+                        if mesh_enabled && layout.views.len() > 2 {
+                            // Access MeshView from slot 2 and attempt to downcast to mutable reference
+                            if let Some(mesh_view) = layout.views[2].as_any_mut().downcast_mut::<crate::view::MeshView>() {
+                                // Call the MeshView render method with the pass context
+                                mesh_view.render(pass_context.pass).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+                            }
+                        }
+                        Ok(())
+                    }
+                    crate::render_pass::PassId::SlicePass => {
+                        // Function-level comment: Render 2D slice content (MPR views only, skip MeshView)
+                        // Iterate through views and only render MPR views, not MeshView
+                        for (index, view) in layout.views.iter_mut().enumerate() {
+                            // Skip slot 2 if it contains a MeshView (when mesh is enabled)
+                            #[cfg(feature = "mesh")]
+                            if mesh_enabled && index == 2 {
+                                // Check if this is a MeshView and skip it during slice pass
+                                if view.as_any().downcast_ref::<crate::view::MeshView>().is_some() {
+                                    continue;
+                                }
+                            }
+                            // Render MPR views only
+                            view.render(pass_context.pass).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+                        }
+                        Ok(())
+                    }
+                }
+            },
+        ).map_err(|e| {
+            log::error!("PassExecutor error: {}", e);
+            wgpu::SurfaceError::Lost
+        })?;
+
+        // Submit the command buffer
+        self.graphics.queue.submit(std::iter::once(encoder.finish()));
+
+        frame.present();
         Ok(())
     }
 
@@ -554,42 +603,298 @@ impl State {
 
         self.layout.remove_all();
 
-        for orietation in ALL_ORIENTATIONS.iter() {
-            let (pos, size) = self.layout.strategy.calculate_position_and_size(
-                self.layout.views.len() as u32,
-                (self.layout.views.len() + 1) as u32,
-                (self.graphics.surface_config.width, self.graphics.surface_config.height),
-            );
-            info!("Adding view at position: {:?}, size: {:?}", pos, size);
+        #[cfg(feature = "mesh")]
+        if self.enable_mesh {
+            // Mesh enabled at initialization: place MPR views in slots 0 and 1, MeshView in slot 2, and MPR view in slot 3.
+            // This adheres strictly to the 2x2 grid and replaces the third view without reflowing others.
+            for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1]].iter() {
+                let view = GenericMPRView::new(
+                    manager,
+                    &self.graphics.device,
+                    texture.clone(),
+                    &vol,
+                    *orientation,
+                    1.0,
+                    [0.0, 0.0, 0.0],
+                    (0, 0),
+                    (0, 0),
+                );
+                self.layout.add_view(Box::new(view));
+            }
+            // Mesh view creation temporarily disabled for debugging
+            use crate::view::MeshView;
+            use crate::mesh::{mesh::Mesh, mesh_render_context::MeshRenderContext};
+            let mut mesh_view = MeshView::new();
+            
+            // Function-level comment: Create or reuse cached Arc<MeshRenderContext> for efficient toggling.
+            let ctx_arc = if let Some(cached_ctx) = &self.mesh_ctx {
+                cached_ctx.clone()
+            } else {
+                let mesh = Mesh::unit_cube();
+                let ctx = MeshRenderContext::new(manager, &self.graphics.device, &self.graphics.queue, &mesh, true);
+                let ctx_arc = Arc::new(ctx);
+                self.mesh_ctx = Some(ctx_arc.clone());
+                ctx_arc
+            };
+            
+            mesh_view.attach_context(ctx_arc);
+            self.layout.add_view(Box::new(mesh_view));
+            let orientation = ALL_ORIENTATIONS[3];
             let view = GenericMPRView::new(
                 manager,
                 &self.graphics.device,
                 texture.clone(),
                 &vol,
-                *orietation,
+                orientation,
                 1.0,
                 [0.0, 0.0, 0.0],
-                pos,
-                size,
+                (0, 0),
+                (0, 0),
             );
             self.layout.add_view(Box::new(view));
+        } else {
+            // Mesh disabled: add all four MPR views in fixed order.
+            for orientation in ALL_ORIENTATIONS.iter() {
+                let view = GenericMPRView::new(
+                    manager,
+                    &self.graphics.device,
+                    texture.clone(),
+                    &vol,
+                    *orientation,
+                    1.0,
+                    [0.0, 0.0, 0.0],
+                    (0, 0),
+                    (0, 0),
+                );
+                self.layout.add_view(Box::new(view));
+            }
         }
 
-        #[cfg(feature = "mesh")]
-        if self.enable_mesh {
-            use crate::view::MeshView;
-            use crate::mesh::{mesh::Mesh, mesh_render_context::MeshRenderContext};
-            let mut mesh_view = MeshView::new();
-            let mesh = Mesh::unit_cube();
-            let ctx = MeshRenderContext::new(manager, &self.graphics.device, &self.graphics.queue, &mesh);
-            mesh_view.attach_context(ctx);
-            self.layout.add_view(Box::new(mesh_view));
+        #[cfg(not(feature = "mesh"))]
+        {
+            for orientation in ALL_ORIENTATIONS.iter() {
+                let view = GenericMPRView::new(
+                    manager,
+                    &self.graphics.device,
+                    texture.clone(),
+                    &vol,
+                    *orientation,
+                    1.0,
+                    [0.0, 0.0, 0.0],
+                    (0, 0),
+                    (0, 0),
+                );
+                self.layout.add_view(Box::new(view));
+            }
         }
     }
 
     pub fn load_data_from_repo(&mut self, manager: &mut crate::pipeline::PipelineManager, repo: &DicomRepo, image_series_number: &str) {
         let vol = repo.generate_ct_volume(image_series_number).unwrap();
         self.load_data_from_ct_volume(manager, &vol);
+    }
+
+    // Temporarily disabled mesh module
+    // /// Function-level comment: Returns whether mesh mode is currently enabled (false when mesh feature is disabled).
+    // pub fn mesh_mode_enabled(&self) -> bool {
+    //     #[cfg(feature = "mesh")]
+    //     { self.enable_mesh }
+    //     #[cfg(not(feature = "mesh"))]
+    //     { false }
+    // }
+
+    /// Function-level comment: Returns whether mesh mode is currently enabled.
+    pub fn mesh_mode_enabled(&self) -> bool {
+        #[cfg(feature = "mesh")]
+        { self.enable_mesh }
+        #[cfg(not(feature = "mesh"))]
+        { false }
+    }
+
+    // /// Function-level comment: Enable or disable mesh mode at runtime by swapping the view at slot 2.
+    // /// When enabling, replaces slot 2 with a MeshView and snapshots the previous MPR state.
+    // /// When disabling, recreates a GenericMPRView for slot 2 and restores the cached MPR state if available.
+    // pub fn set_mesh_mode_enabled(&mut self, manager: &mut crate::pipeline::PipelineManager, enabled: bool) {
+    
+    /// Function-level comment: Enable or disable mesh mode at runtime by swapping the view at slot 2.
+    pub fn set_mesh_mode_enabled(&mut self, manager: &mut crate::pipeline::PipelineManager, enabled: bool) {
+        #[cfg(not(feature = "mesh"))]
+        {
+            let _ = (manager, enabled);
+            log::warn!("Mesh feature not enabled; runtime toggle ignored.");
+            return;
+        }
+        #[cfg(feature = "mesh")]
+        {
+            use std::sync::Arc;
+            use crate::render_content::RenderContent;
+            use crate::view::{MeshView, GenericMPRView, ALL_ORIENTATIONS, View as _};
+
+            if self.enable_mesh == enabled { return; }
+            self.enable_mesh = enabled;
+
+            if self.last_volume.is_none() {
+                log::info!("Mesh mode set to {} without loaded volume; will apply on next data load.", enabled);
+                return;
+            }
+
+            let index = 2usize;
+            if self.layout.views.len() < 4 {
+                log::warn!("Expected 4 views; found {}. Toggle will not modify layout.", self.layout.views.len());
+                return;
+            }
+
+            let total_views = self.layout.views.len() as u32;
+            let parent_dim = (self.graphics.surface_config.width, self.graphics.surface_config.height);
+            let (pos, size) = self.layout.strategy.calculate_position_and_size(index as u32, total_views, parent_dim);
+
+            if enabled {
+                // Ensure depth texture is created before creating mesh pipeline
+                if self.texture_pool.depth_view().is_none() {
+                    let depth_format = crate::pipeline::get_mesh_depth_format();
+                    let width = self.graphics.surface_config.width;
+                    let height = self.graphics.surface_config.height;
+                    if width > 0 && height > 0 {
+                        let size = wgpu::Extent3d {
+                            width,
+                            height,
+                            depth_or_array_layers: 1,
+                        };
+                        let desc = wgpu::TextureDescriptor {
+                            label: Some("Mesh Depth Texture"),
+                            size,
+                            mip_level_count: 1,
+                            sample_count: 1,
+                            dimension: wgpu::TextureDimension::D2,
+                            format: depth_format,
+                            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                            view_formats: &[],
+                        };
+                        let depth_tex = self.graphics.device.create_texture(&desc);
+                        let depth_view = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
+                        self.texture_pool.set_depth(depth_tex, depth_view);
+                        log::info!("Created depth texture for mesh mode: {}x{} format {:?}", width, height, depth_format);
+                    } else {
+                        log::warn!("Cannot create depth texture: surface size is {}x{} (expected >0).", width, height);
+                        return;
+                    }
+                }
+
+                // Snapshot MPR state from slot 2 if present
+                if let Some(view) = self.layout.views.get_mut(index) {
+                    if let Some(mpr) = view.as_mpr() {
+                        let snap = MPRViewState {
+                            window_level: mpr.get_window_level(),
+                            window_width: mpr.get_window_width(),
+                            slice_mm: mpr.get_slice_mm(),
+                            scale: mpr.get_scale(),
+                            translate: mpr.get_translate(),
+                            translate_in_screen_coord: mpr.get_translate_in_screen_coord(),
+                        };
+                        self.mpr_state_slot2 = Some(snap);
+                        log::info!("Saved MPR snapshot for slot 2 prior to enabling mesh.");
+                    } else {
+                        self.mpr_state_slot2 = None;
+                    }
+                }
+
+                // Create MeshView for slot 2
+                use crate::mesh::{mesh::Mesh, mesh_render_context::MeshRenderContext};
+                let mut mesh_view = MeshView::new();
+                
+                // Function-level comment: Create or reuse cached Arc<MeshRenderContext> for efficient toggling.
+                // Now that depth texture exists, create context with depth enabled.
+                let ctx_arc = if let Some(cached_ctx) = &self.mesh_ctx {
+                    // Check if the cached context has depth enabled, if not recreate it
+                    let mesh = Mesh::unit_cube();
+                    let new_ctx = MeshRenderContext::new(manager, &self.graphics.device, &self.graphics.queue, &mesh, true);
+                    let ctx_arc = Arc::new(new_ctx);
+                    self.mesh_ctx = Some(ctx_arc.clone());
+                    ctx_arc
+                } else {
+                    let mesh = Mesh::unit_cube();
+                    let ctx = MeshRenderContext::new(manager, &self.graphics.device, &self.graphics.queue, &mesh, true);
+                    let ctx_arc = Arc::new(ctx);
+                    self.mesh_ctx = Some(ctx_arc.clone());
+                    ctx_arc
+                };
+                
+                mesh_view.attach_context(ctx_arc);
+                mesh_view.move_to(pos);
+                mesh_view.resize(size);
+                self.layout.views[index] = Box::new(mesh_view);
+                log::info!("MeshView placed at slot 2 with position {:?} and size {:?}.", pos, size);
+            } else {
+                // Replace slot 2 with a GenericMPRView (Sagittal orientation in non-mesh mode)
+                let vol = self.last_volume.as_ref().unwrap();
+                let texture: Arc<RenderContent> = if self.enable_float_volume_texture {
+                    info!("Using R16Float volume texture path (toggle)");
+                    let bytes: Vec<u8> = {
+                        let voxels_f16_bits: Vec<u16> = vol
+                            .voxel_data
+                            .iter()
+                            .map(|&x| half::f16::from_f32(x as f32).to_bits())
+                            .collect();
+                        bytemuck::cast_slice(&voxels_f16_bits).to_vec()
+                    };
+                    Arc::new(RenderContent::from_bytes_r16f(
+                        &self.graphics.device,
+                        &self.graphics.queue,
+                        &bytes,
+                        "CT Volume",
+                        vol.dimensions.0 as u32,
+                        vol.dimensions.1 as u32,
+                        vol.dimensions.2 as u32,
+                    ).unwrap())
+                } else {
+                    info!("Using Rg8Unorm volume texture path (toggle)");
+                    let voxel_data: Vec<u16> = vol
+                        .voxel_data
+                        .iter()
+                        .map(|x| (*x + HU_OFFSET as i16) as u16)
+                        .collect();
+                    let voxel_data: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
+                    Arc::new(RenderContent::from_bytes(
+                        &self.graphics.device,
+                        &self.graphics.queue,
+                        &voxel_data,
+                        "CT Volume",
+                        vol.dimensions.0 as u32,
+                        vol.dimensions.1 as u32,
+                        vol.dimensions.2 as u32,
+                    ).unwrap())
+                };
+
+                let orientation = ALL_ORIENTATIONS[2]; // Sagittal for slot 2 in non-mesh mode
+                let mut view = GenericMPRView::new(
+                    manager,
+                    &self.graphics.device,
+                    texture.clone(),
+                    vol,
+                    orientation,
+                    1.0,
+                    [0.0, 0.0, 0.0],
+                    (0, 0),
+                    (0, 0),
+                );
+
+                // Restore prior MPR state if we have a snapshot
+                if let Some(snap) = &self.mpr_state_slot2 {
+                    view.set_window_level(snap.window_level);
+                    view.set_window_width(snap.window_width);
+                    view.set_slice_mm(snap.slice_mm);
+                    view.set_scale(snap.scale);
+                    view.set_translate(snap.translate);
+                    view.set_translate_in_screen_coord(snap.translate_in_screen_coord);
+                    log::info!("Restored MPR snapshot for slot 2 after disabling mesh.");
+                }
+
+                view.move_to(pos);
+                view.resize(size);
+                self.layout.views[index] = Box::new(view);
+                log::info!("GenericMPRView placed at slot 2 with position {:?} and size {:?}.", pos, size);
+            }
+        }
     }
 
     pub fn set_slice_speed(&mut self, index: usize, speed: f32) {

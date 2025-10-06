@@ -3,12 +3,16 @@
 use bytemuck::{Pod, Zeroable};
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, Zeroable, Pod)]
+#[derive(Clone, Copy, Debug)]
 pub struct MeshVertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
     pub uv: [f32; 2],
 }
+
+// Manual implementation to avoid potential bytemuck derive issues
+unsafe impl bytemuck::Zeroable for MeshVertex {}
+unsafe impl bytemuck::Pod for MeshVertex {}
 
 #[derive(Default, Debug, Clone)]
 pub struct Mesh {
@@ -50,14 +54,34 @@ impl Mesh {
 }
 
 impl MeshVertex {
-    pub const ATTRIBS: [wgpu::VertexAttribute; 3] =
-        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2];
+    // Temporarily comment out the macro to test if it's causing stack overflow
+    // pub const ATTRIBS: [wgpu::VertexAttribute; 3] =
+    //     wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x2];
 
     pub fn desc() -> wgpu::VertexBufferLayout<'static> {
+        // Manual vertex attributes to avoid potential macro issues
+        const ATTRIBS: [wgpu::VertexAttribute; 3] = [
+            wgpu::VertexAttribute {
+                offset: 0,
+                shader_location: 0,
+                format: wgpu::VertexFormat::Float32x3,
+            },
+            wgpu::VertexAttribute {
+                offset: 12,
+                shader_location: 1,
+                format: wgpu::VertexFormat::Float32x3,
+            },
+            wgpu::VertexAttribute {
+                offset: 24,
+                shader_location: 2,
+                format: wgpu::VertexFormat::Float32x2,
+            },
+        ];
+        
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<MeshVertex>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &Self::ATTRIBS,
+            attributes: &ATTRIBS,
         }
     }
 }

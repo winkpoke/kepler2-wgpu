@@ -26,6 +26,8 @@ pub mod render_content;
 pub mod view;
 pub mod render_app;
 pub mod pipeline_builder;
+pub mod render_pass;
+pub mod timing;
 
 // Mesh module is opt-in via Cargo feature `mesh`
 #[cfg(feature = "mesh")]
