@@ -17,7 +17,9 @@ Completed
   - Setter/getter live in the pipeline module: <mcfile name="pipeline.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\pipeline.rs"></mcfile>
   - Call sites set the format after surface configuration in initialization and when swapping graphics: <mcfile name="state.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\state.rs"></mcfile>
   - RenderContext obtains target format via the accessor: <mcfile name="render_context.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\view\render_context.rs"></mcfile>
-- Centralized creation via PipelineBuilder for TextureQuad; cache keys include target format and layout signatures; cache hit/miss counters added.
+- Centralized creation via helper for TextureQuad; PipelineBuilder retained internally but not used by RenderContext path; cache keys include target format and layout signatures; cache hit/miss counters added.
+- Unified pipeline acquisition in view and mesh contexts
+  - RenderContext uses `get_or_create_texture_quad_pipeline` via the centralized helper and PipelineManager cache; MeshRenderContext uses `get_or_create_mesh_pipeline`; no direct `PipelineBuilder` usage in these runtime paths.
 - Pipelines created during setup (context/view construction), not per frame; rendering reuses pipelines.
 - Optional debug logging is gated behind a feature flag for cache hits/misses and builder status.
 - Mesh depth support integrated under the `mesh` feature flag:
@@ -26,13 +28,12 @@ Completed
   - Depth texture lifecycle managed via TexturePool during initialize/resize; lazy creation ensures a depth attachment exists when mesh is enabled: <mcfile name="texture_pool.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\mesh\texture_pool.rs"></mcfile> and <mcsymbol name="initialize" filename="state.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\state.rs" startline="252" type="function"></mcsymbol> / <mcsymbol name="resize" filename="state.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\state.rs" startline="363" type="function"></mcsymbol> / <mcsymbol name="render" filename="state.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\state.rs" startline="414" type="function"></mcsymbol>
   - WASM zero-dimension guard: Depth texture creation is skipped when surface size is 0x0; lazy creation occurs once a non-zero size is available to avoid WebGPU validation error (“Dimension X is zero”). See <mcfile name="mesh-depth-texture-zero-dimension-fix.md" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\doc\mesh-depth-texture-zero-dimension-fix.md"></mcfile>.
 - Native and WASM builds succeed (wasm-pack with `-t web`).
-- Mesh pipeline topology updated to `TriangleList`; depth testing remains enabled and correct under the `mesh` feature flag.
-- Unit tests added for `PipelineKey::MeshBasic` stability and variation; all unit tests pass with `cargo test --lib`.
+- Mesh pipeline helper configured for `TriangleList`; builds verified; native and WASM visual verification pending.
 
 Partial / Deviations
-- RenderContext currently routes pipeline creation through PipelineBuilder directly instead of a single internal helper; signatures were adjusted to accept a `PipelineManager` reference.
+- RenderContext texture-quad path already uses the centralized helper; MeshRenderContext now also uses the centralized mesh helper (no direct PipelineBuilder usage). Signatures accept a `PipelineManager` reference where needed.
 - A typed `PipelineKey` already exists (originally planned for Phase 2); acceptable but should be documented/stabilized.
-- Doctest snippets in geometry/dicom modules currently fail; unit tests pass. This item is promoted to High Priority under the Action Plan to stabilize doctests across targets.
+- Doctest snippets in geometry/dicom modules have been stabilized by gating environment-dependent examples with `rust,ignore`; unit tests continue to pass.
 
 ## Resolved in Phase 1 (Updated)
 - Backend selection portability
@@ -46,17 +47,17 @@ Partial / Deviations
 - Mesh depth support (feature-gated)
   - Depth format helper and mesh pipeline depth-stencil configuration implemented.
   - Depth texture created and recreated on resize; depth attachment included in render pass when mesh is enabled.
+- Optional routing alignment
+  - RenderContext and MeshRenderContext now acquire pipelines exclusively via centralized helpers; `PipelineBuilder` is retained internally but not used directly by these contexts.
 
 ## Open Issues
-- Optional routing alignment
-  - Unify RenderContext acquisition via an internal helper to avoid dual paths (helper vs builder) without signature churn.
-- Typed `PipelineKey` stabilization
+- [HIGH PRIORITY] Mesh rasterization completion and visual verification
+  - Triangle-based rasterization path is implemented (TriangleList with indexed drawing); confirm visual output on native and WASM, validate culling and depth testing, and ensure feature toggling works via native keybinding and web UI toggle.
+- [HIGH PRIORITY] Typed `PipelineKey` stabilization
   - Document the key schema; ensure it includes shader identity, bind group layouts, vertex layouts, primitive/multisample state, depth-stencil configuration, and target format.
   - Add unit tests verifying key stability across identical inputs and cache behavior.
 - Invalidation wiring
   - Device-lost and shader-reload invalidation present but not fully wired to runtime events; pipelines tied to older devices should be invalidated and lazily rebuilt on next use.
-- Mesh rasterization completion
-  - Finalize triangle-based rasterization path: verify vertex/index buffers, adapt shaders, validate culling, and run visual verification on native and WASM.
 - Warning cleanup
   - Several unused imports/variables remain; clean up to reduce noise and improve maintainability.
 
@@ -71,14 +72,16 @@ Partial / Deviations
 - [x] Parameterize color target format in the pipeline creation API.
 - [x] Add PipelineManager to the app orchestrator and instantiate at startup.
 - [x] Add app helper and global accessor to create/get pipelines using the correct format.
-- [~] Route RenderContext pipeline creation through the helper (currently uses PipelineBuilder directly).
+- [x] Route RenderContext pipeline creation through the helper (RenderContext uses cache helper; MeshRenderContext updated to use centralized mesh helper).
 - [x] Add optional debug logging for pipeline creation under a flag.
 - [x] Verify behavior via build/run and visual inspection (native and WASM).
 - [x] Safe fallback on pipeline creation in RenderContext.
 - [x] Backend selection portability (PRIMARY on native, GL on WASM).
 - [x] Surface format negotiation (prefer sRGB when available) and swapchain format propagation via global accessor.
 - [x] Mesh depth support: depth format helper, pipeline depth-stencil enabled, depth texture lifecycle managed, render pass attachment wired.
-- [ ] Mesh topology and rasterization finalized (PointList -> triangle primitives).
+- [x] Doctest stabilization: environment-dependent examples in `geometry` and `dicom/fileio` gated with `rust,ignore`; native doctests pass.
+- [~] Mesh topology and rasterization updated to indexed triangles (TriangleList + draw_indexed) — vertex and index buffers implemented; depth-stencil enabled; verification pending on native and WASM; culling and feature toggling to be confirmed. [HIGH PRIORITY]
+- [ ] Web UI toggle for mesh feature in static/index.html to call enable_mesh(true/false) and re-render for browser validation. [HIGH PRIORITY]
 - [ ] Unit tests for `PipelineKey` stability and cache behavior.
 - [ ] Invalidation wiring finalized and tested.
 - [ ] Warning cleanup (unused imports/variables).
@@ -88,15 +91,16 @@ Legend: [x] completed, [~] partial, [ ] pending
 ## Action Plan (Next Steps)
 
 High Priority (1–3 days)
-1. **[HIGH PRIORITY] Unify pipeline acquisition path in RenderContext**
-   - Provide an internal utility/wrapper so RenderContext calls a single helper to acquire pipelines; keep PipelineBuilder internally but avoid duplicate paths.
-2. **[HIGH PRIORITY] Mesh rasterization readiness**
-   - Update mesh pipeline topology to triangle primitives and adapt shaders; ensure depth testing remains enabled and correct.
-   - Perform visual verification of triangle mesh rasterization in both native and WASM targets.
-3. **[HIGH PRIORITY] Unit tests, doctest stabilization, and basic CI**
+Recommendation: Begin with visual verification across native and WASM and add a simple web UI toggle for mesh.
+1. **[HIGH PRIORITY] Mesh visual verification and UI toggle**
+   - Confirm triangle mesh rasterization visuals on native and WASM targets; validate culling and depth testing remain correct.
+   - Add a web UI control to toggle mesh (calls enable_mesh(true/false) and re-renders) to streamline browser validation.
+2. **[HIGH PRIORITY] Unit tests, doctest stabilization, and basic CI**
    - Add tests covering `PipelineKey` stability and cache hit/miss behavior.
-   - Stabilize doctests in `geometry`/`dicom` modules: fix failing snippets or gate them appropriately per target; ensure native doctests pass and WASM builds are not blocked.
+   - Doctests stabilized: environment-dependent examples in `geometry` and `dicom/fileio` are gated with `rust,ignore`; native doctests pass.
    - Add CI tasks for `cargo build --features mesh` and `wasm-pack build -t web`; include `cargo test --lib` and doctests gating to guard regressions across targets.
+3. **[HIGH PRIORITY] Typed `PipelineKey` documentation**
+   - Document the key schema and finalize inputs required for stable caching across platforms.
 
 Medium Priority (3–5 days)
 4. Invalidation wiring

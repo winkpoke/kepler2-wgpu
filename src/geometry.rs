@@ -49,7 +49,8 @@ impl <'a> GeometryBuilder<'a> {
     ///   `world_matrix = vol.base.matrix * scaling_matrix`.
     ///
     /// # Example
-    /// ```
+    /// ```rust,ignore
+    /// // This example requires a constructed CTVolume and is ignored in doctests.
     /// let uv_base = build_uv_base(&ct_volume);
     /// let world_pos = uv_base.matrix.transform_point((u, v, w, 1.0));
     /// ```

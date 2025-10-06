@@ -84,7 +84,15 @@ pub struct RenderContext {
 }
 
 impl RenderContext {
-    // Create RenderContext with resilient pipeline acquisition. Attempts builder.build and falls back to direct pipeline creation if needed to ensure stability across device/context changes.
+    /// Create a RenderContext using the centralized pipeline helper and PipelineManager cache.
+    /// This unifies pipeline acquisition to a single path (no direct PipelineBuilder usage),
+    /// ensuring consistent behavior across native and WASM targets.
+    /// Parameters:
+    /// - manager: PipelineManager cache used to retrieve/create the texture-quad pipeline.
+    /// - device: wgpu device used for GPU resource creation.
+    /// - texture: RenderContent whose 3D texture and sampler are bound to the fragment stage.
+    /// - transform_matrix: 4x4 matrix applied to the vertex positions for view transforms.
+    /// Returns: A fully initialized RenderContext with pipeline, buffers, bind groups, and uniforms.
     pub fn new(
         manager: &mut crate::pipeline::PipelineManager,
         device: &wgpu::Device,

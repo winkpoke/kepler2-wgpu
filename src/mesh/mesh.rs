@@ -17,24 +17,35 @@ pub struct Mesh {
 }
 
 impl Mesh {
+    /// Constructs a unit cube mesh composed of 12 triangles (CCW winding) suitable for TriangleList rasterization.
+    /// Vertices are unit cube corners in clip-space range [-0.5, 0.5]; normals/uvs are placeholders for now.
     pub fn unit_cube() -> Self {
         // Placeholder-only geometry; not optimized.
-        // Simple 8-vertex cube with no indices for now.
+        // Simple 8-vertex cube with indices for triangle faces.
         let mut vertices = Vec::new();
         let positions = [
-            [-0.5, -0.5, -0.5],
-            [ 0.5, -0.5, -0.5],
-            [ 0.5,  0.5, -0.5],
-            [-0.5,  0.5, -0.5],
-            [-0.5, -0.5,  0.5],
-            [ 0.5, -0.5,  0.5],
-            [ 0.5,  0.5,  0.5],
-            [-0.5,  0.5,  0.5],
+            [-0.5, -0.5, -0.5], // 0
+            [ 0.5, -0.5, -0.5], // 1
+            [ 0.5,  0.5, -0.5], // 2
+            [-0.5,  0.5, -0.5], // 3
+            [-0.5, -0.5,  0.5], // 4
+            [ 0.5, -0.5,  0.5], // 5
+            [ 0.5,  0.5,  0.5], // 6
+            [-0.5,  0.5,  0.5], // 7
         ];
         for p in positions.iter() {
             vertices.push(MeshVertex { position: *p, normal: [0.0, 0.0, 1.0], uv: [0.0, 0.0] });
         }
-        Self { vertices, indices: Vec::new() }
+        // CCW triangles per face: back (-Z), front (+Z), left (-X), right (+X), bottom (-Y), top (+Y)
+        let indices = vec![
+            0, 1, 2, 0, 2, 3, // back
+            4, 5, 6, 4, 6, 7, // front
+            4, 0, 3, 4, 3, 7, // left
+            1, 5, 6, 1, 6, 2, // right
+            4, 5, 1, 4, 1, 0, // bottom
+            3, 2, 6, 3, 6, 7, // top
+        ];
+        Self { vertices, indices }
     }
 }
 

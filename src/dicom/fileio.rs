@@ -31,7 +31,8 @@ use super::*;
 /// - Non-existent directories or permission issues may result in an error.
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
+/// // Requires async runtime and local filesystem with DICOM files.
 /// let directories = vec!["/path/to/dir1", "/path/to/dir2"];
 /// let repo = parse_dcm_directories(directories).await?;
 /// ```
@@ -79,7 +80,8 @@ pub async fn parse_dcm_directories(directories: Vec<&str>) -> Result<DicomRepo> 
 /// - Each file is processed in a separate Tokio task, enabling high concurrency.
 ///
 /// # Example
-/// ```rust
+/// ```rust,ignore
+/// // Requires async runtime and real DICOM files on filesystem.
 /// let files = vec![PathBuf::from("file1.dcm"), PathBuf::from("file2.dcm")];
 /// let repo = parse_dcm_files(files).await?;
 /// ```

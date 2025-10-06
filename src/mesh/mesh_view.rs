@@ -31,10 +31,11 @@ impl Renderable for MeshView {
         if let Some(ctx) = &self.ctx {
             render_pass.set_pipeline(&*ctx.pipeline);
             render_pass.set_vertex_buffer(0, ctx.vertex_buffer.slice(..));
+            render_pass.set_index_buffer(ctx.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             let (x, y) = (self.pos.0 as f32, self.pos.1 as f32);
             let (width, height) = (self.dim.0, self.dim.1);
             render_pass.set_viewport(x, y, width as f32, height as f32, 0.0, 1.0);
-            render_pass.draw(0..ctx.num_vertices, 0..1);
+            render_pass.draw_indexed(0..ctx.num_indices, 0, 0..1);
         }
         Ok(())
     }
