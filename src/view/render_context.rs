@@ -3,7 +3,7 @@
 use crate::coord::{array_to_slice, Matrix4x4};
 use crate::render_content::RenderContent;
 use wgpu::util::DeviceExt;
-use crate::pipeline_builder::{PipelineBuilder, PipelineRequest, PipelineParams, PipelineType};
+
 
 #[repr(C)]
 #[derive(Copy, Clone, Default, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -84,6 +84,7 @@ pub struct RenderContext {
 }
 
 impl RenderContext {
+    // Create RenderContext with resilient pipeline acquisition. Attempts builder.build and falls back to direct pipeline creation if needed to ensure stability across device/context changes.
     pub fn new(
         manager: &mut crate::pipeline::PipelineManager,
         device: &wgpu::Device,
@@ -160,16 +161,15 @@ impl RenderContext {
             crate::pipeline::create_fragment_uniform_bind_group(device, &uniforms.frag);
 
         let target_format = crate::pipeline::get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
-        // Build pipeline via PipelineBuilder for centralized control and monitoring
-        let mut builder = PipelineBuilder::new(device, manager);
-        let params = PipelineParams {
-            target_format: Some(target_format),
-            vertex_buffers: Some(vec![Vertex::desc()]),
-            bind_group_layouts: Some(vec![texture_bind_group_layout, vert_bind_group_layout, frag_bind_group_layout]),
-            ..Default::default()
-        };
-        let req = PipelineRequest { ty: PipelineType::TextureQuad, params };
-        let render_pipeline = builder.build(&req).expect("Failed to build TextureQuad pipeline");
+        // Acquire pipeline via centralized cache helper to unify behavior with RenderApp
+        let bgls: [&wgpu::BindGroupLayout; 3] = [&texture_bind_group_layout, &vert_bind_group_layout, &frag_bind_group_layout];
+        let render_pipeline = crate::pipeline::get_or_create_texture_quad_pipeline(
+            manager,
+            device,
+            bgls,
+            &[Vertex::desc()],
+            target_format,
+        );
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),

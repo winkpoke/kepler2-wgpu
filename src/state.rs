@@ -2,22 +2,18 @@
 
 use log::{debug, error, info, warn};
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 use std::sync::Arc;
 use std::{fs, io, time::Instant};
 
 // use wgpu::util::DeviceExt;
 #[cfg(target_arch = "wasm32")]
 use async_lock::Mutex;
-use once_cell::sync::Lazy;
-use std::cell::{LazyCell, OnceCell, RefCell};
+
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::sync::Mutex;
 use winit::{
     dpi::PhysicalSize,
     event::*,
-    event_loop::EventLoop,
-    keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowBuilder},
 };
 
@@ -26,6 +22,8 @@ use crate::dicom::*;
 use crate::render_content::RenderContent;
 use crate::view::*;
 use crate::error::KeplerError;
+#[cfg(feature = "mesh")]
+use crate::mesh::texture_pool::TexturePool;
 
 fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
     let mut file_paths = Vec::new();
@@ -65,18 +63,47 @@ pub struct Graphics {
 }
 
 impl Graphics {
+    // Function-level comment: Initialize Graphics with environment-driven backend selection and optional validation.
+    // Behavior:
+    // - Native: default to Backends::PRIMARY; allow override via KEPLER_WGPU_BACKEND or WGPU_BACKEND (dx12, vulkan, metal, gl, primary/auto).
+    // - WASM: use Backends::GL for broad compatibility.
+    // - Validation: enable via KEPLER_WGPU_VALIDATION=1/true/on; otherwise disabled to avoid noisy Vulkan loader warnings.
+    // - Negotiates surface format preferring sRGB; logs adapter info and chosen format for transparency.
+    // This improves portability, reduces overlay/validation noise on Windows, and keeps color correctness across OS/GPU.
     pub async fn initialize(window: Arc<Window>) -> Result<Graphics, KeplerError> {
         let size = window.inner_size();
 
-        // The instance is a handle to our GPU
-        // BackendBit::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
+        // The instance is a handle to our GPU with runtime-selectable backend and optional validation
+        #[cfg(not(target_arch = "wasm32"))]
+        let selected_backends: wgpu::Backends = {
+            let env_backend = std::env::var("KEPLER_WGPU_BACKEND").ok()
+                .or_else(|| std::env::var("WGPU_BACKEND").ok());
+            match env_backend.as_deref() {
+                Some("dx12") => { info!("Backend override via env: DX12"); wgpu::Backends::DX12 }
+                Some("vulkan") | Some("vk") => { info!("Backend override via env: VULKAN"); wgpu::Backends::VULKAN }
+                Some("metal") => { info!("Backend override via env: METAL"); wgpu::Backends::METAL }
+                Some("gl") => { info!("Backend override via env: GL"); wgpu::Backends::GL }
+                Some("primary") | Some("auto") | None => { info!("Backend selection: PRIMARY"); wgpu::Backends::PRIMARY }
+                Some(other) => { warn!("Unknown backend {} in env, defaulting to PRIMARY", other); wgpu::Backends::PRIMARY }
+            }
+        };
+        #[cfg(target_arch = "wasm32")]
+        let selected_backends: wgpu::Backends = wgpu::Backends::GL;
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let instance_flags: wgpu::InstanceFlags = match std::env::var("KEPLER_WGPU_VALIDATION").ok().as_deref() {
+            Some("1") | Some("true") | Some("on") => {
+                info!("Instance validation enabled via env KEPLER_WGPU_VALIDATION");
+                wgpu::InstanceFlags::VALIDATION
+            },
+            _ => wgpu::InstanceFlags::empty(),
+        };
+        #[cfg(target_arch = "wasm32")]
+        let instance_flags: wgpu::InstanceFlags = wgpu::InstanceFlags::empty();
+
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            #[cfg(not(target_arch = "wasm32"))]
-            // backends: wgpu::Backends::PRIMARY,
-            backends: wgpu::Backends::DX12,
-            #[cfg(target_arch = "wasm32")]
-            backends: wgpu::Backends::GL,
-            // backends: wgpu::BROWSER_WEBGPU,
+            backends: selected_backends,
+            flags: instance_flags,
             ..Default::default()
         });
 
@@ -97,8 +124,6 @@ impl Graphics {
                 &wgpu::DeviceDescriptor {
                     label: None,
                     required_features: wgpu::Features::empty(),
-                    // WebGL doesn't support all of wgpu's features, so if
-                    // we're building for the web we'll have to disable some.
                     required_limits: if cfg!(target_arch = "wasm32") {
                         wgpu::Limits {
                             max_texture_dimension_3d: 1024,
@@ -109,16 +134,46 @@ impl Graphics {
                     },
                     memory_hints: Default::default(),
                 },
-                // Some(&std::path::Path::new("trace")), // Trace path
                 None,
             )
             .await
             .map_err(|e| KeplerError::Graphics(format!("Failed to create device: {}", e)))?;
 
+        let adapter_info = adapter.get_info();
+        // Native: read env to summarize requested backend and validation; WASM: default values
+        #[cfg(not(target_arch = "wasm32"))]
+        let backend_env = std::env::var("KEPLER_WGPU_BACKEND").ok()
+            .or_else(|| std::env::var("WGPU_BACKEND").ok());
+        #[cfg(not(target_arch = "wasm32"))]
+        let backend_str = match backend_env.as_deref() {
+            Some("dx12") => "dx12",
+            Some("vulkan") | Some("vk") => "vulkan",
+            Some("metal") => "metal",
+            Some("gl") => "gl",
+            Some("primary") | Some("auto") | None => "primary",
+            Some(other) => other,
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        let validation = matches!(
+            std::env::var("KEPLER_WGPU_VALIDATION").ok().as_deref(),
+            Some("1") | Some("true") | Some("on")
+        );
+        #[cfg(target_arch = "wasm32")]
+        let (backend_str, validation) = ("gl", false);
+
+        info!("Adapter: {} ({:?}), vendor: {}, device: {}", adapter_info.name, adapter_info.backend, adapter_info.vendor, adapter_info.device);
+        info!("Final backend chosen by wgpu: {:?}", adapter_info.backend);
+        info!(
+            "Startup GPU summary: backend_env={} validation={} final_backend={:?} adapter=\"{}\" vendor={} device={}",
+            backend_str,
+            if validation { "enabled" } else { "disabled" },
+            adapter_info.backend,
+            adapter_info.name,
+            adapter_info.vendor,
+            adapter_info.device
+        );
+
         let surface_caps = surface.get_capabilities(&adapter);
-        // Shader code in this tutorial assumes an Srgb surface texture. Using a different
-        // one will result all the colors comming out darker. If you want to support non
-        // Srgb surfaces, you'll need to account for that when drawing to the frame.
         let surface_format = surface_caps
             .formats
             .iter()
@@ -127,8 +182,7 @@ impl Graphics {
             .unwrap_or(surface_caps.formats[0]);
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            // format: surface_format,
-            format: wgpu::TextureFormat::Rgba8Unorm,
+            format: surface_format,
             width: size.width,
             height: size.height,
             present_mode: surface_caps.present_modes[0],
@@ -136,6 +190,7 @@ impl Graphics {
             desired_maximum_frame_latency: 2,
             view_formats: vec![],
         };
+        info!("Surface format chosen: {:?} (sRGB: {}), present_mode: {:?}, alpha_mode: {:?}", surface_config.format, surface_config.format.is_srgb(), surface_config.present_mode, surface_config.alpha_mode);
 
         if size.width > 0 && size.height > 0 {
             surface.configure(&device, &surface_config);
@@ -183,6 +238,8 @@ pub struct State {
     pub(crate) last_volume: Option<CTVolume>,
     #[cfg(feature = "mesh")]
     pub(crate) enable_mesh: bool,
+    #[cfg(feature = "mesh")]
+    pub(crate) texture_pool: TexturePool,
 }
 
 const HU_OFFSET: f32 = 1100.0;
@@ -214,6 +271,46 @@ impl State {
             if default_float { "R16Float" } else { "Rg8Unorm" }
         );
 
+        crate::pipeline::set_swapchain_format(graphics.surface_config.format);
+
+        #[cfg(feature = "mesh")]
+        let mut texture_pool = TexturePool::new();
+
+        #[cfg(feature = "mesh")]
+        {
+            // Create initial depth texture and view for mesh rendering.
+            // Function-level comment: This block initializes a depth attachment matching the current surface size.
+            // Guard against zero-sized canvas on WASM to avoid WebGPU validation errors.
+            let depth_format = crate::pipeline::get_mesh_depth_format();
+            let width = graphics.surface_config.width;
+            let height = graphics.surface_config.height;
+            if width > 0 && height > 0 {
+                let size = wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                };
+                let desc = wgpu::TextureDescriptor {
+                    label: Some("Mesh Depth Texture"),
+                    size,
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: depth_format,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    view_formats: &[],
+                };
+                let depth_tex = graphics.device.create_texture(&desc);
+                let depth_view = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
+                texture_pool.set_depth(depth_tex, depth_view);
+            } else {
+                warn!(
+                    "Skipping initial mesh depth texture creation: surface size is {}x{} (expected >0). Will create after first resize.",
+                    width, height
+                );
+            }
+        }
+
         Ok(Self {
             graphics,
             layout,
@@ -222,6 +319,8 @@ impl State {
             last_volume: None,
             #[cfg(feature = "mesh")]
             enable_mesh: false,
+            #[cfg(feature = "mesh")]
+            texture_pool: texture_pool,
         })
     }
 
@@ -286,6 +385,30 @@ impl State {
                 let _ = self.graphics.window.request_inner_size(new_size); 
             }
             self.graphics.surface.configure(&self.graphics.device, &self.graphics.surface_config);
+
+            #[cfg(feature = "mesh")]
+            {
+                // Recreate depth texture to match new surface size
+                let depth_format = crate::pipeline::get_mesh_depth_format();
+                let size = wgpu::Extent3d {
+                    width: self.graphics.surface_config.width,
+                    height: self.graphics.surface_config.height,
+                    depth_or_array_layers: 1,
+                };
+                let desc = wgpu::TextureDescriptor {
+                    label: Some("Mesh Depth Texture"),
+                    size,
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: depth_format,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                    view_formats: &[],
+                };
+                let depth_tex = self.graphics.device.create_texture(&desc);
+                let depth_view = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
+                self.texture_pool.set_depth(depth_tex, depth_view);
+            }
         }
     }
 
@@ -310,6 +433,56 @@ impl State {
                 label: Some("Render Encoder"),
             });
         {
+            #[cfg(feature = "mesh")]
+            if self.enable_mesh && self.texture_pool.depth_view().is_none() {
+                // Lazily create depth texture if missing
+                let depth_format = crate::pipeline::get_mesh_depth_format();
+                let width = self.graphics.surface_config.width;
+                let height = self.graphics.surface_config.height;
+                if width > 0 && height > 0 {
+                    let size = wgpu::Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    };
+                    let desc = wgpu::TextureDescriptor {
+                        label: Some("Mesh Depth Texture"),
+                        size,
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: depth_format,
+                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                        view_formats: &[],
+                    };
+                    let depth_tex = self.graphics.device.create_texture(&desc);
+                    let depth_view = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
+                    self.texture_pool.set_depth(depth_tex, depth_view);
+                } else {
+                    warn!("Skipping lazy mesh depth texture creation: surface size is {}x{} (expected >0).", width, height);
+                }
+            }
+
+            let depth_attachment: Option<wgpu::RenderPassDepthStencilAttachment> = {
+                #[cfg(feature = "mesh")]
+                {
+                    if self.enable_mesh {
+                        self.texture_pool.depth_view().map(|view| wgpu::RenderPassDepthStencilAttachment {
+                            view,
+                            depth_ops: Some(wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(1.0),
+                                store: wgpu::StoreOp::Store,
+                            }),
+                            stencil_ops: None,
+                        })
+                    } else { None }
+                }
+                #[cfg(not(feature = "mesh"))]
+                {
+                    None
+                }
+            };
+
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -325,7 +498,7 @@ impl State {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: depth_attachment,
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });

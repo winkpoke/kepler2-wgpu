@@ -61,6 +61,16 @@ pub fn get_swapchain_format() -> Option<wgpu::TextureFormat> {
     SWAPCHAIN_FORMAT.get().copied()
 }
 
+/// Returns the default depth texture format for mesh rendering across native and WebGPU.
+///
+/// Rationale
+/// - Depth24Plus is widely supported and does not include a stencil component, which we do not need.
+/// - This choice avoids backend-specific formats and ensures portability across platforms (Windows, macOS, Linux, WASM).
+#[cfg(feature = "mesh")]
+pub fn get_mesh_depth_format() -> wgpu::TextureFormat {
+    wgpu::TextureFormat::Depth24Plus
+}
+
 /// Minimal pipeline cache key for render pipelines.
 ///
 /// Keys group pipelines by characteristics that affect pipeline creation. This ensures we reuse
@@ -330,8 +340,9 @@ pub fn create_texture_quad_pipeline(
 /// - Add bind groups for uniforms and textures as needed.
 #[cfg(feature = "mesh")]
 pub fn get_or_create_mesh_pipeline(manager: &mut PipelineManager, device: &wgpu::Device) -> Arc<wgpu::RenderPipeline> {
+    // Updated topology: TriangleList for proper mesh rasterization. Depth testing remains enabled.
     let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
-    let topology = wgpu::PrimitiveTopology::PointList;
+    let topology = wgpu::PrimitiveTopology::TriangleList;
     let key = PipelineKey::MeshBasic { target_format, topology };
 
     if let Some(p) = { manager.get(&key).cloned() } {
@@ -383,7 +394,13 @@ pub fn get_or_create_mesh_pipeline(manager: &mut PipelineManager, device: &wgpu:
             unclipped_depth: false,
             conservative: false,
         },
-        depth_stencil: None,
+        depth_stencil: Some(wgpu::DepthStencilState {
+            format: get_mesh_depth_format(),
+            depth_write_enabled: true,
+            depth_compare: wgpu::CompareFunction::Less,
+            stencil: wgpu::StencilState::default(),
+            bias: wgpu::DepthBiasState::default(),
+        }),
         multisample: wgpu::MultisampleState {
             count: 1,
             mask: !0,
@@ -552,4 +569,131 @@ pub fn create_fragment_uniform_bind_group<T: bytemuck::Pod>(
     });
     let (buffer, bind_group) = create_uniform_bind_group(device, &layout, data);
     (buffer, bind_group, layout)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    /// Ensures that identical vertex layouts and bind group layout signatures produce identical PipelineKey values and hashes.
+    #[test]
+    fn pipeline_key_volume_slice_quad_stability() {
+        // Define static vertex attribute arrays to satisfy the 'static lifetime requirement.
+        static ATTRS_A: [wgpu::VertexAttribute; 2] = [
+            wgpu::VertexAttribute { shader_location: 0, offset: 0, format: wgpu::VertexFormat::Float32x3 },
+            wgpu::VertexAttribute { shader_location: 1, offset: 12, format: wgpu::VertexFormat::Float32x2 },
+        ];
+        static ATTRS_B: [wgpu::VertexAttribute; 2] = [
+            wgpu::VertexAttribute { shader_location: 0, offset: 0, format: wgpu::VertexFormat::Float32x3 },
+            wgpu::VertexAttribute { shader_location: 1, offset: 12, format: wgpu::VertexFormat::Float32x2 },
+        ];
+
+        let vb_layout_1 = wgpu::VertexBufferLayout {
+            array_stride: 20,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &ATTRS_A,
+        };
+        let vb_layout_2 = wgpu::VertexBufferLayout {
+            array_stride: 20,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &ATTRS_B,
+        };
+
+        let sig1 = vertex_layout_signature(&[vb_layout_1]);
+        let sig2 = vertex_layout_signature(&[vb_layout_2]);
+        assert_eq!(sig1, sig2, "Vertex layout signatures should match for identical layouts");
+
+        let bgl_sig1 = default_slice_bgl_signature();
+        let bgl_sig2 = default_slice_bgl_signature();
+
+        let key1 = PipelineKey::VolumeSliceQuad { target_format: wgpu::TextureFormat::Rgba8Unorm, vertex_sig: sig1.clone(), bgl_sig: bgl_sig1 };
+        let key2 = PipelineKey::VolumeSliceQuad { target_format: wgpu::TextureFormat::Rgba8Unorm, vertex_sig: sig2.clone(), bgl_sig: bgl_sig2 };
+        assert_eq!(key1, key2, "PipelineKey values should be equal for identical inputs");
+
+        let mut h1 = DefaultHasher::new();
+        key1.hash(&mut h1);
+        let mut h2 = DefaultHasher::new();
+        key2.hash(&mut h2);
+        assert_eq!(h1.finish(), h2.finish(), "PipelineKey hashes should be equal for identical inputs");
+    }
+
+    /// Verifies that changes in target format or vertex layout impact the PipelineKey as expected.
+    #[test]
+    fn pipeline_key_variation_on_format_or_layout() {
+        static ATTRS_BASE: [wgpu::VertexAttribute; 2] = [
+            wgpu::VertexAttribute { shader_location: 0, offset: 0, format: wgpu::VertexFormat::Float32x3 },
+            wgpu::VertexAttribute { shader_location: 1, offset: 12, format: wgpu::VertexFormat::Float32x2 },
+        ];
+        static ATTRS_CHANGED: [wgpu::VertexAttribute; 2] = [
+            wgpu::VertexAttribute { shader_location: 0, offset: 0, format: wgpu::VertexFormat::Float32x3 },
+            wgpu::VertexAttribute { shader_location: 1, offset: 16, format: wgpu::VertexFormat::Float32x2 },
+        ];
+
+        let vb_base = wgpu::VertexBufferLayout {
+            array_stride: 20,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &ATTRS_BASE,
+        };
+        let vb_changed = wgpu::VertexBufferLayout {
+            array_stride: 24,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &ATTRS_CHANGED,
+        };
+
+        let sig_base = vertex_layout_signature(&[vb_base]);
+        let sig_changed = vertex_layout_signature(&[vb_changed]);
+        assert_ne!(sig_base, sig_changed, "Signatures should differ when vertex layout changes");
+
+        let key_fmt_a = PipelineKey::VolumeSliceQuad { target_format: wgpu::TextureFormat::Rgba8Unorm, vertex_sig: sig_base.clone(), bgl_sig: default_slice_bgl_signature() };
+        let key_fmt_b = PipelineKey::VolumeSliceQuad { target_format: wgpu::TextureFormat::Bgra8Unorm, vertex_sig: sig_base.clone(), bgl_sig: default_slice_bgl_signature() };
+        assert_ne!(key_fmt_a, key_fmt_b, "Keys should differ for different target formats");
+
+        let key_layout_a = PipelineKey::VolumeSliceQuad { target_format: wgpu::TextureFormat::Rgba8Unorm, vertex_sig: sig_base, bgl_sig: default_slice_bgl_signature() };
+        let key_layout_b = PipelineKey::VolumeSliceQuad { target_format: wgpu::TextureFormat::Rgba8Unorm, vertex_sig: sig_changed, bgl_sig: default_slice_bgl_signature() };
+        assert_ne!(key_layout_a, key_layout_b, "Keys should differ for different vertex layout signatures");
+    }
+
+    /// Validates PipelineManager hit/miss counters and invalidate_all behavior without GPU dependencies.
+    #[test]
+    fn pipeline_manager_counters_and_invalidate_all() {
+        // Create a new manager and verify initial counters are zero.
+        let mut mgr = PipelineManager::new();
+        assert_eq!(mgr.hits(), 0, "Initial hits should be 0");
+        assert_eq!(mgr.misses(), 0, "Initial misses should be 0");
+        assert_eq!(mgr.cache_size(), 0, "Initial cache size should be 0");
+
+        // Record a few hits and misses; these do not require GPU resources.
+        mgr.record_hit();
+        mgr.record_hit();
+        mgr.record_miss();
+        assert_eq!(mgr.hits(), 2, "Hits should reflect recorded events");
+        assert_eq!(mgr.misses(), 1, "Misses should reflect recorded events");
+
+        // Validate cache state before invalidation; no pipelines inserted.
+        assert_eq!(mgr.cache_size(), 0, "Cache should remain empty when no pipelines are inserted");
+
+        // Invalidate all should clear pipelines and reset counters to zero.
+        mgr.invalidate_all();
+        assert_eq!(mgr.hits(), 0, "Hits should reset to 0 after invalidation");
+        assert_eq!(mgr.misses(), 0, "Misses should reset to 0 after invalidation");
+        assert_eq!(mgr.cache_size(), 0, "Cache size should be 0 after invalidation");
+    }
+
+    /// Ensures MeshBasic PipelineKey equality for identical inputs and inequality for differing topology or format.
+    #[test]
+    fn pipeline_key_mesh_basic_variations() {
+        let fmt_a = wgpu::TextureFormat::Rgba8Unorm;
+        let fmt_b = wgpu::TextureFormat::Bgra8Unorm;
+        let key_tri_a = PipelineKey::MeshBasic { target_format: fmt_a, topology: wgpu::PrimitiveTopology::TriangleList };
+        let key_tri_a2 = PipelineKey::MeshBasic { target_format: fmt_a, topology: wgpu::PrimitiveTopology::TriangleList };
+        assert_eq!(key_tri_a, key_tri_a2, "Identical MeshBasic keys should be equal");
+
+        let key_topo_diff = PipelineKey::MeshBasic { target_format: fmt_a, topology: wgpu::PrimitiveTopology::PointList };
+        assert_ne!(key_tri_a, key_topo_diff, "Keys should differ for different topology");
+
+        let key_fmt_diff = PipelineKey::MeshBasic { target_format: fmt_b, topology: wgpu::PrimitiveTopology::TriangleList };
+        assert_ne!(key_tri_a, key_fmt_diff, "Keys should differ for different target format");
+    }
 }

@@ -203,6 +203,16 @@ impl RenderApp {
                     log::info!("ClearLayout event received.");
                     state.layout.remove_all();
                 }
+                Event::UserEvent(UserEvent::ReloadShaders) => {
+                    // Function-level comment: Invalidate all pipelines in response to shader reload request.
+                    pipeline_manager.invalidate_all();
+                    log::info!("ReloadShaders event: PipelineManager cache invalidated; pipelines will rebuild lazily.");
+                }
+                Event::UserEvent(UserEvent::InvalidatePipelines) => {
+                    // Function-level comment: Explicit pipeline invalidation request.
+                    pipeline_manager.invalidate_all();
+                    log::info!("InvalidatePipelines event: PipelineManager cache invalidated.");
+                }
                 #[cfg(feature = "mesh")]
                 Event::UserEvent(UserEvent::SetEnableMesh(enabled)) => {
                     state.enable_mesh = enabled;
@@ -243,7 +253,12 @@ impl RenderApp {
                                     },
                                 ..
                             } => {
-                                println!("R key pressed");
+                                // Function-level comment: On 'R' key press, request shader reload via event to invalidate pipelines.
+                                if let Err(e) = proxy.send_event(UserEvent::ReloadShaders) {
+                                    log::error!("Failed to send ReloadShaders event on KeyR: {:?}", e);
+                                } else {
+                                    log::info!("KeyR pressed: ReloadShaders event sent");
+                                }
                             }
                             WindowEvent::KeyboardInput {
                                 event:
@@ -306,6 +321,9 @@ impl RenderApp {
                                         let width = state.graphics.surface_config.width;
                                         let height = state.graphics.surface_config.height;
                                         let size = PhysicalSize::<u32> {width, height};
+                                        // Function-level comment: Invalidate all pipelines on surface reconfiguration to avoid stale pipelines referencing old swapchain/format.
+                                        pipeline_manager.invalidate_all();
+                                        log::info!("PipelineManager cache invalidated due to surface error {:?}", "Lost/Outdated");
                                         state.resize(size);
                                     }
                                     // The system is out of memory, we should probably quit

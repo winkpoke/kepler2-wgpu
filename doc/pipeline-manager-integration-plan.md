@@ -1,32 +1,63 @@
-# PipelineManager Integration Plan (Phase 1) — Status and Action Plan
+# PipelineManager Integration Plan — Updated Status and Action Plan
 
-This document tracks the current implementation status of the PipelineManager integration, highlights deviations and issues, and outlines a prioritized action plan to complete Phase 1 and prepare for Phase 2. The objectives remain: stability, performance, and full backward compatibility with existing 2D MPR behavior across native and WASM targets.
+This document reflects the current implementation status of the PipelineManager integration, highlights deviations and issues, and outlines clear next steps to complete Phase 1 and prepare for Phase 2. Objectives remain: stability, performance, and full backward compatibility with existing 2D MPR behavior across native and WASM targets.
 
 ## Goals (unchanged)
 - Introduce PipelineManager as an internal utility to centralize pipeline creation and set the stage for caching/reuse.
 - Maintain current visual output and frame-time characteristics; avoid public API churn.
 - Parameterize pipeline color target format to improve portability across OS/GPU combinations.
+- Ensure mesh rendering can use an optional depth buffer across native and WebGPU with a portable depth format.
 
 ## Current Implementation Status
 
 Completed
 - Parameterized color target format in texture-quad pipeline API; creation uses the provided format consistently.
 - PipelineManager added to the application orchestrator and instantiated at startup; pipelines are cached and returned as `Arc<wgpu::RenderPipeline>`.
-- Internal helper defined in the app to create/get texture-quad pipelines with the correct format.
+- Global surface/swapchain color format accessor implemented and set during initialization; downstream pipeline creation reads it consistently.
+  - Setter/getter live in the pipeline module: <mcfile name="pipeline.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\pipeline.rs"></mcfile>
+  - Call sites set the format after surface configuration in initialization and when swapping graphics: <mcfile name="state.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\state.rs"></mcfile>
+  - RenderContext obtains target format via the accessor: <mcfile name="render_context.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\view\render_context.rs"></mcfile>
 - Centralized creation via PipelineBuilder for TextureQuad; cache keys include target format and layout signatures; cache hit/miss counters added.
 - Pipelines created during setup (context/view construction), not per frame; rendering reuses pipelines.
 - Optional debug logging is gated behind a feature flag for cache hits/misses and builder status.
+- Mesh depth support integrated under the `mesh` feature flag:
+  - Portable depth format helper added: <mcsymbol name="get_mesh_depth_format" filename="pipeline.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\pipeline.rs" startline="69" type="function"></mcsymbol>
+  - Mesh pipeline enables depth-stencil state (write enabled, compare Less): <mcsymbol name="get_or_create_mesh_pipeline" filename="pipeline.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\pipeline.rs" startline="341" type="function"></mcsymbol>
+  - Depth texture lifecycle managed via TexturePool during initialize/resize; lazy creation ensures a depth attachment exists when mesh is enabled: <mcfile name="texture_pool.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\mesh\texture_pool.rs"></mcfile> and <mcsymbol name="initialize" filename="state.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\state.rs" startline="252" type="function"></mcsymbol> / <mcsymbol name="resize" filename="state.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\state.rs" startline="363" type="function"></mcsymbol> / <mcsymbol name="render" filename="state.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\state.rs" startline="414" type="function"></mcsymbol>
 - Native and WASM builds succeed (wasm-pack with `-t web`).
+- Mesh pipeline topology updated to `TriangleList`; depth testing remains enabled and correct under the `mesh` feature flag.
+- Unit tests added for `PipelineKey::MeshBasic` stability and variation; all unit tests pass with `cargo test --lib`.
 
 Partial / Deviations
-- RenderContext routes through PipelineBuilder directly instead of the app helper; function signatures were adjusted internally to accept a `PipelineManager` reference.
-- A typed `PipelineKey` already exists (originally planned for Phase 2). This is acceptable but should be stabilized.
+- RenderContext currently routes pipeline creation through PipelineBuilder directly instead of a single internal helper; signatures were adjusted to accept a `PipelineManager` reference.
+- A typed `PipelineKey` already exists (originally planned for Phase 2); acceptable but should be documented/stabilized.
+- Doctest snippets in geometry/dicom modules currently fail; unit tests pass. Plan to fix or gate doctests separately.
 
-Identified Issues
-- Cross-platform backend selection uses DX12 for non-WASM and GL for WASM; this may limit portability on macOS/Linux and older GPUs.
-- Surface configuration forces `Rgba8Unorm` while negotiated `surface_format` is available (prefers sRGB). This may cause subtle color differences and reduces portability.
-- Pipeline creation failure currently panics at the RenderContext setup (no safe fallback path).
-- Device-lost/shader-reload invalidation methods exist in PipelineManager but aren’t wired to runtime events yet.
+## Resolved in Phase 1 (Updated)
+- Backend selection portability
+  - Non-WASM uses `wgpu::Backends::PRIMARY` to enable Vulkan/Metal/DX12 automatically across platforms.
+  - WASM retains WebGL2 downlevel defaults to ensure broad compatibility.
+- Surface format negotiation
+  - The surface is configured with the negotiated `surface_format` (preferring sRGB when available).
+  - The selected swapchain format is propagated consistently to downstream pipeline creation via global accessor.
+- Safe fallback on pipeline creation
+  - In RenderContext setup, `expect()` on builder failure was replaced with resilient error handling that logs and falls back to direct pipeline construction.
+- Mesh depth support (feature-gated)
+  - Depth format helper and mesh pipeline depth-stencil configuration implemented.
+  - Depth texture created and recreated on resize; depth attachment included in render pass when mesh is enabled.
+
+## Open Issues
+- Optional routing alignment
+  - Unify RenderContext acquisition via an internal helper to avoid dual paths (helper vs builder) without signature churn.
+- Typed `PipelineKey` stabilization
+  - Document the key schema; ensure it includes shader identity, bind group layouts, vertex layouts, primitive/multisample state, depth-stencil configuration, and target format.
+  - Add unit tests verifying key stability across identical inputs and cache behavior.
+- Invalidation wiring
+  - Device-lost and shader-reload invalidation present but not fully wired to runtime events; pipelines tied to older devices should be invalidated and lazily rebuilt on next use.
+- Topology and rasterization for mesh
+  - Move from `PointList` to triangle-based primitives and complete the mesh rasterization path.
+- Warning cleanup
+  - Several unused imports/variables remain; clean up to reduce noise and improve maintainability.
 
 ## Principles for Non-Breaking Integration (affirmed)
 1. Additive and internal-only in Phase 1; avoid public API changes wherever practical.
@@ -38,58 +69,65 @@ Identified Issues
 ## Implementation Checklist — Updated
 - [x] Parameterize color target format in the pipeline creation API.
 - [x] Add PipelineManager to the app orchestrator and instantiate at startup.
-- [x] Add app helper to create/get texture-quad pipelines using the correct format.
+- [x] Add app helper and global accessor to create/get pipelines using the correct format.
 - [~] Route RenderContext pipeline creation through the helper (currently uses PipelineBuilder directly).
 - [x] Add optional debug logging for pipeline creation under a flag.
-- [x] Verify behavior via build/run and visual inspection.
+- [x] Verify behavior via build/run and visual inspection (native and WASM).
+- [x] Safe fallback on pipeline creation in RenderContext.
+- [x] Backend selection portability (PRIMARY on native, GL on WASM).
+- [x] Surface format negotiation (prefer sRGB when available) and swapchain format propagation via global accessor.
+- [x] Mesh depth support: depth format helper, pipeline depth-stencil enabled, depth texture lifecycle managed, render pass attachment wired.
+- [ ] Mesh topology and rasterization finalized (PointList -> triangle primitives).
+- [ ] Unit tests for `PipelineKey` stability and cache behavior.
+- [ ] Invalidation wiring finalized and tested.
+- [ ] Warning cleanup (unused imports/variables).
 
 Legend: [x] completed, [~] partial, [ ] pending
 
 ## Action Plan (Next Steps)
 
-High Priority (1–2 days)
-1. Backend selection portability
-   - Non-WASM: use `wgpu::Backends::PRIMARY` to enable Vulkan/Metal/DX12 automatically.
-   - WASM: retain WebGL2 downlevel defaults but ensure compatibility flags remain.
-2. Surface format negotiation
-   - Configure the surface with the negotiated `surface_format` (prefer sRGB when available).
-   - Set the global swapchain format from the negotiated value and propagate consistently.
-3. Safe fallback on pipeline creation
-   - Replace `expect()` in RenderContext setup with error handling that logs failures and falls back to direct pipeline creation; keep runtime resilient.
+High Priority (1–3 days)
+1. Unify pipeline acquisition path in RenderContext
+   - Provide an internal utility/wrapper so RenderContext calls a single helper to acquire pipelines; keep PipelineBuilder internally but avoid duplicate paths.
+2. Mesh rasterization readiness
+   - Update mesh pipeline topology to triangle primitives and adapt shaders; ensure depth testing remains enabled and correct.
+3. Unit tests and basic CI
+   - Add tests covering `PipelineKey` stability and cache hit/miss behavior.
+   - Add CI tasks for `cargo build --features mesh` and `wasm-pack build -t web` to guard regressions across targets.
 
 Medium Priority (3–5 days)
-4. Optional routing alignment
-   - Provide an internal utility so RenderContext can call the app helper or a small wrapper to acquire pipelines without further signature changes.
-   - Keep current PipelineBuilder path as acceptable for Phase 1; ensure the helper and builder yield consistent results.
-5. Stabilize typed PipelineKey
-   - Document the key schema; ensure it includes shader identity, bind group layouts, vertex layouts, primitive/multisample state, and target format.
-   - Add unit tests for key stability across identical inputs.
+4. Invalidation wiring
+   - Wire device-lost and shader-reload events to PipelineManager invalidation and verify lazy rebuild on next use.
+5. Warning cleanup and refactors
+   - Remove or gate unused imports/variables; apply `cargo fix` where appropriate and follow up with manual cleanups.
 
-Phase 2 Preparation (5–10 days)
-6. Invalidation wiring
-   - Wire device-lost and shader-reload events to PipelineManager invalidation; rebuild lazily on next use.
-7. Quality/performance parameters
+Low Priority Optional Items (Deferred)
+6. Quality/performance parameters
    - Parameterize MSAA, culling, and optional depth-stencil for TextureQuad and Mesh pipelines.
-8. Observability improvements
-   - Add counters and simple timing under a feature flag; provide builder/manager status reporting APIs.
+7. Observability improvements
+   - Add counters and simple timing under a feature flag; provide builder/manager status reporting APIs and startup summaries.
 
 ## Timelines and Milestones
-- Week 1
-  - Complete backend selection and surface format negotiation fixes.
-  - Implement safe fallback on pipeline creation; verify on Windows and at least one non-Windows environment.
-- Week 2
-  - Optional routing alignment (helper vs builder) and PipelineKey stabilization.
+- Week 1 (Completed)
+  - Backend selection and surface format negotiation fixes.
+  - Safe fallback on pipeline creation; verified on Windows and WASM builds.
+  - Mesh depth support integrated (feature-gated).
+- Week 2 (Planned)
+  - Optional routing alignment (helper vs builder) and `PipelineKey` stabilization tests.
   - Begin invalidation wiring; add basic tests for cache and invalidation behavior.
+  - Mesh rasterization path updated to triangle primitives.
 
-## Acceptance Criteria (Phase 1) — Reaffirmed
-- Build succeeds without public API changes beyond internal-only modules.
-- Visual output and frame time remain consistent with baseline runs.
-- Pipeline color target format is sourced from the negotiated surface/swapchain and used consistently.
-- System remains resilient: pipeline creation failures do not crash the app.
+## Acceptance Criteria (Phase 1) — Status
+- Build succeeds without public API changes beyond internal-only modules. [Met]
+- Visual output and frame time remain consistent with baseline runs. [Met]
+- Pipeline color target format is sourced from the negotiated surface/swapchain and used consistently. [Met]
+- System remains resilient: pipeline creation failures do not crash the app. [Met]
+- Mesh depth support functions across native and WASM, with correct resize behavior and render pass attachment. [Met]
 
 ## Rollback Strategy
 - Revert to legacy creation paths while keeping PipelineManager present; since Phase 1 is additive, rollback is low-risk.
 
 ## Notes
-- All changes should continue to compile on native targets and WASM with `wasm-pack build -t web`.
-- Ensure cross-platform behavior (Windows, macOS, Linux) by avoiding backend hardcoding and honoring surface format negotiation.
+- All changes continue to compile on native targets and WASM with `wasm-pack build -t web`.
+- Cross-platform behavior (Windows, macOS, Linux) is improved by avoiding backend hardcoding and honoring surface format negotiation.
+- Depth format uses `Depth24Plus` for portability; stencil is omitted.

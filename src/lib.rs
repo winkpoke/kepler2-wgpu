@@ -52,6 +52,7 @@ use log::LevelFilter;
 /// Initialize cross-platform logger
 /// - Native: env_logger with module filters for wgpu, wgpu_core, wgpu_hal, naga at WARN
 /// - WASM: custom logger routing to web_sys::console with the same filters
+/// Ensures that adapter/backend and surface format logs from Graphics::initialize are visible at Info level across platforms.
 #[cfg(target_arch = "wasm32")]
 struct WasmLogger;
 
@@ -98,6 +99,8 @@ pub fn init_logger() -> Result<(), log::SetLoggerError> {
     Ok(())
 }
 
+
+
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 #[cfg(target_arch = "wasm32")]
 pub async fn init() {
@@ -113,6 +116,8 @@ pub async fn get_render_app() -> Result<RenderApp, KeplerError> {
     if let Err(e) = init_logger() {
         eprintln!("Logger initialization failed: {}", e);
     }
+
+
 
     warn!("Start the program ...");
 

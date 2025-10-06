@@ -23,6 +23,10 @@ pub enum UserEvent {
     SetWindowByDivId(String, CTVolume),
     GraphicsReady(Graphics, CTVolume),
     ClearLayout,
+    /// Manually trigger shader reload by invalidating pipelines; pipelines will be lazily rebuilt on next render.
+    ReloadShaders,
+    /// Manually trigger pipeline cache invalidation without any other action.
+    InvalidatePipelines,
     #[cfg(feature = "mesh")]
     SetEnableMesh(bool),
     // ... add more events as needed
@@ -97,6 +101,24 @@ impl GLCanvas {
             log::error!("Failed to send ClearLayout event: {:?}", e);
         } else {
             log::info!("Sent ClearLayout event");
+        }
+    }
+
+    /// Sends a ReloadShaders event which will invalidate pipelines; they will be recreated as needed.
+    pub fn reload_shaders(&self) {
+        if let Err(e) = self.proxy.send_event(UserEvent::ReloadShaders) {
+            log::error!("Failed to send ReloadShaders event: {:?}", e);
+        } else {
+            log::info!("Sent ReloadShaders event");
+        }
+    }
+
+    /// Sends an InvalidatePipelines event without any shader changes.
+    pub fn invalidate_pipelines(&self) {
+        if let Err(e) = self.proxy.send_event(UserEvent::InvalidatePipelines) {
+            log::error!("Failed to send InvalidatePipelines event: {:?}", e);
+        } else {
+            log::info!("Sent InvalidatePipelines event");
         }
     }
 
