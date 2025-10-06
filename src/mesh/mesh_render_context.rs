@@ -3,56 +3,21 @@
 use wgpu::{Device, Queue};
 
 pub struct MeshRenderContext {
-    pub pipeline: wgpu::RenderPipeline,
+    pub pipeline: std::sync::Arc<wgpu::RenderPipeline>,
     pub vertex_buffer: wgpu::Buffer,
     pub num_vertices: u32,
 }
 
 impl MeshRenderContext {
-    pub fn new(device: &Device, queue: &Queue, mesh: &super::mesh::Mesh) -> Self {
-        let shader = device.create_shader_module(wgpu::include_wgsl!("../shader/mesh.wgsl"));
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Mesh Pipeline Layout"),
-            bind_group_layouts: &[],
-            push_constant_ranges: &[],
-        });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("Mesh Pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[super::mesh::MeshVertex::desc()],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::PointList,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-            cache: None,
-        });
+    /// Create a MeshRenderContext, using the provided PipelineManager for pipeline caching/creation.
+    pub fn new(manager: &mut crate::pipeline::PipelineManager, device: &Device, queue: &Queue, mesh: &super::mesh::Mesh) -> Self {
+        // Obtain cached/basic mesh pipeline via PipelineBuilder for centralized control
+        #[allow(unused_imports)]
+        use crate::pipeline_builder::{PipelineBuilder, PipelineRequest, PipelineParams, PipelineType};
+        let mut builder = PipelineBuilder::new(device, manager);
+        let params = PipelineParams { topology: Some(wgpu::PrimitiveTopology::PointList), ..Default::default() };
+        let req = PipelineRequest { ty: PipelineType::MeshBasic, params };
+        let pipeline = builder.build(&req).expect("Failed to build MeshBasic pipeline");
 
         let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Mesh Vertex Buffer"),

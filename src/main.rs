@@ -16,6 +16,8 @@ async fn main() {
     // pollster::block_on(run());
     let mut render_app = get_render_app().await.expect("Failed to create render app");
     let gl_canvase = render_app.get_glcanvas();
+    #[cfg(feature = "mesh")]
+    gl_canvase.enable_mesh(false);
     gl_canvase.load_data_from_ct_volume(&vol);
 
     // Inject test events for verification

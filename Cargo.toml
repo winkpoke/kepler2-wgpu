@@ -59,15 +59,18 @@ web-sys = { version = "0.3", features = [
     "Element",
     "File",
     "FileReader",
-    "ProgressEvent"
-]}
-js-sys = "0.3.22"
+    "ProgressEvent",
+    "console"
+ ]}
+ js-sys = "0.3.22"
 
 [features]
 # Default features remain empty to avoid enabling mesh inadvertently
 default = []
 # Opt-in 3D mesh feature gate
 mesh = []
+# Debug logging for pipeline cache
+pipeline_debug = []
 
 [[bin]]
 name = "kepler"

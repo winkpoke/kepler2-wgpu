@@ -1,22 +1,15 @@
 #![feature(duration_millis_float)]
 
 use log::{debug, error, info, warn};
-use winit::event_loop;
 use winit::event_loop::EventLoopBuilder;
-use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::LazyLock;
 
 // use wgpu::util::DeviceExt;
 use winit::{
     dpi::PhysicalSize,
-    event::*,
-    event_loop::EventLoop,
-    keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowBuilder},
 };
 
-use view::Renderable;
 use crate::state::Graphics;
 use crate::error::KeplerError;
 
@@ -28,9 +21,11 @@ pub mod error;
 pub mod geometry;
 pub mod gl_canvas;
 pub mod state;
-mod render_content;
-mod view;
-mod render_app;
+pub mod pipeline;
+pub mod render_content;
+pub mod view;
+pub mod render_app;
+pub mod pipeline_builder;
 
 // Mesh module is opt-in via Cargo feature `mesh`
 #[cfg(feature = "mesh")]
@@ -50,17 +45,74 @@ use tokio::sync::Mutex;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsValue;
+use log::LevelFilter;
+
+/// Initialize cross-platform logger
+/// - Native: env_logger with module filters for wgpu, wgpu_core, wgpu_hal, naga at WARN
+/// - WASM: custom logger routing to web_sys::console with the same filters
+#[cfg(target_arch = "wasm32")]
+struct WasmLogger;
+
+#[cfg(target_arch = "wasm32")]
+static WASM_LOGGER: WasmLogger = WasmLogger;
+
+#[cfg(target_arch = "wasm32")]
+impl log::Log for WasmLogger {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        let t = metadata.target();
+        let is_wgpu = t.starts_with("wgpu") || t.starts_with("naga");
+        if is_wgpu { metadata.level() >= log::Level::Warn } else { metadata.level() <= log::Level::Info }
+    }
+    fn log(&self, record: &log::Record) {
+        if !self.enabled(record.metadata()) { return; }
+        let msg = format!("{}: {}", record.target(), record.args());
+        match record.level() {
+            log::Level::Error => web_sys::console::error_1(&JsValue::from_str(&msg)),
+            log::Level::Warn => web_sys::console::warn_1(&JsValue::from_str(&msg)),
+            log::Level::Info => web_sys::console::log_1(&JsValue::from_str(&msg)),
+            log::Level::Debug => web_sys::console::debug_1(&JsValue::from_str(&msg)),
+            log::Level::Trace => web_sys::console::log_1(&JsValue::from_str(&msg)),
+        }
+    }
+    fn flush(&self) {}
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn init_logger() -> Result<(), log::SetLoggerError> {
+    let mut builder = env_logger::Builder::new();
+    builder
+        .filter_level(LevelFilter::Info)
+        .filter_module("wgpu", LevelFilter::Warn)
+        .filter_module("wgpu_core", LevelFilter::Warn)
+        .filter_module("wgpu_hal", LevelFilter::Warn)
+        .filter_module("naga", LevelFilter::Warn);
+    builder.try_init()
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn init_logger() -> Result<(), log::SetLoggerError> {
+    log::set_logger(&WASM_LOGGER)?;
+    log::set_max_level(LevelFilter::Info);
+    Ok(())
+}
+
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen(start))]
 #[cfg(target_arch = "wasm32")]
 pub async fn init() {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-    console_log::init_with_level(log::Level::Info).expect("Couldn't initialize logger");
+    if let Err(e) = init_logger() {
+        web_sys::console::error_1(&JsValue::from_str(&format!("Logger initialization failed: {}", e)));
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub async fn get_render_app() -> Result<RenderApp, KeplerError> {
     #[cfg(not(target_arch = "wasm32"))]
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    if let Err(e) = init_logger() {
+        eprintln!("Logger initialization failed: {}", e);
+    }
 
     warn!("Start the program ...");
 

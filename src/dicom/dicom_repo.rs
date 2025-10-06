@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use super::ct_image::CTImage;
 use super::image_series::ImageSeries;
 use super::patient::Patient;

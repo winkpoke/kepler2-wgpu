@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use log::{debug, error, info, warn};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -137,6 +139,7 @@ impl Graphics {
 
         if size.width > 0 && size.height > 0 {
             surface.configure(&device, &surface_config);
+            crate::pipeline::set_swapchain_format(surface_config.format);
         }
 
         Ok(Self {
@@ -224,6 +227,7 @@ impl State {
 
     pub fn swap_graphics(&mut self, new_graphics: Graphics) {
         self.graphics = new_graphics;
+        crate::pipeline::set_swapchain_format(self.graphics.surface_config.format);
         // self.resize(winit::dpi::PhysicalSize {
         //     width: self.graphics.surface_config.width,
         //     height: self.graphics.surface_config.height,
@@ -231,7 +235,9 @@ impl State {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub async fn load_data(&mut self) {
+    /// Loads local DICOM data and forwards PipelineManager for pipeline retrieval.
+    /// Native-only helper used during development/testing.
+    pub async fn load_data(&mut self, manager: &mut crate::pipeline::PipelineManager) {
         let repo = {
             // Start the timer
             let start_time = Instant::now();
@@ -255,6 +261,7 @@ impl State {
             repo
         };
         self.load_data_from_repo(
+            manager,
             &repo,
             "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.964561",
         );
@@ -331,7 +338,7 @@ impl State {
         Ok(())
     }
 
-    pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume) {
+    pub fn load_data_from_ct_volume(&mut self, manager: &mut crate::pipeline::PipelineManager, vol: &CTVolume) {
         self.last_volume = Some(vol.clone());
         let texture = if self.enable_float_volume_texture {
             info!("Using R16Float volume texture path");
@@ -382,6 +389,7 @@ impl State {
             );
             info!("Adding view at position: {:?}, size: {:?}", pos, size);
             let view = GenericMPRView::new(
+                manager,
                 &self.graphics.device,
                 texture.clone(),
                 &vol,
@@ -400,15 +408,15 @@ impl State {
             use crate::mesh::{mesh::Mesh, mesh_render_context::MeshRenderContext};
             let mut mesh_view = MeshView::new();
             let mesh = Mesh::unit_cube();
-            let ctx = MeshRenderContext::new(&self.graphics.device, &self.graphics.queue, &mesh);
+            let ctx = MeshRenderContext::new(manager, &self.graphics.device, &self.graphics.queue, &mesh);
             mesh_view.attach_context(ctx);
             self.layout.add_view(Box::new(mesh_view));
         }
     }
 
-    pub fn load_data_from_repo(&mut self, repo: &DicomRepo, image_series_number: &str) {
+    pub fn load_data_from_repo(&mut self, manager: &mut crate::pipeline::PipelineManager, repo: &DicomRepo, image_series_number: &str) {
         let vol = repo.generate_ct_volume(image_series_number).unwrap();
-        self.load_data_from_ct_volume(&vol);
+        self.load_data_from_ct_volume(manager, &vol);
     }
 
     pub fn set_slice_speed(&mut self, index: usize, speed: f32) {
@@ -500,7 +508,9 @@ impl State {
         filterable && can_sample
     }
 
-    pub fn toggle_float_volume_texture(&mut self) {
+    /// Toggle the volume texture format (R16Float vs Rg8Unorm) and reload the CT volume using the given PipelineManager.
+    /// Ensures hardware support when enabling float textures and reinitializes views.
+    pub fn toggle_float_volume_texture(&mut self, manager: &mut crate::pipeline::PipelineManager) {
         if !self.toggle_enabled {
             log::warn!("Toggle feature is disabled; ignoring.");
             return;
@@ -521,7 +531,7 @@ impl State {
         );
         if let Some(vol) = self.last_volume.clone() {
             // Clone to avoid borrowing self immutably while mutably reloading
-            self.load_data_from_ct_volume(&vol);
+            self.load_data_from_ct_volume(manager, &vol);
         } else {
             log::warn!("No cached CTVolume to reload after toggle.");
         }

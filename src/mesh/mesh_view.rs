@@ -29,7 +29,7 @@ impl Renderable for MeshView {
     }
     fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
         if let Some(ctx) = &self.ctx {
-            render_pass.set_pipeline(&ctx.pipeline);
+            render_pass.set_pipeline(&*ctx.pipeline);
             render_pass.set_vertex_buffer(0, ctx.vertex_buffer.slice(..));
             let (x, y) = (self.pos.0 as f32, self.pos.1 as f32);
             let (width, height) = (self.dim.0, self.dim.1);

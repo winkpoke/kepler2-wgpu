@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::any::Any;
 use std::sync::Arc;
 use super::Renderable;
@@ -82,6 +84,7 @@ pub struct GenericMPRView {
 
 impl GenericMPRView {
     pub fn new(
+        manager: &mut crate::pipeline::PipelineManager,
         device: &wgpu::Device,
         texture: Arc<RenderContent>,
         vol: &CTVolume,
@@ -109,7 +112,7 @@ impl GenericMPRView {
 
         let transform_matrix = base_screen_cloned.to_base(&base_uv).transpose();
 
-        let view = RenderContext::new(&device, &texture, transform_matrix);
+        let view = RenderContext::new(manager, device, &texture, transform_matrix);
 
         log::trace!("Created GenericMPRView with orientation: {:?}, scale: {}, translate: {:#?}, pos: {:#?}, dim: {:#?}",
             orientation, scale, translate, pos, dim);

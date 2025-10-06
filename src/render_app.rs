@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+
+
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use winit::{
@@ -11,6 +14,7 @@ use winit::{
 use crate::{ct_volume, state::{Graphics, State}};
 use crate::gl_canvas::{GLCanvas, UserEvent};
 use winit::event_loop::EventLoopProxy;
+use crate::pipeline::PipelineManager;
 
 
 #[cfg(target_arch = "wasm32")]
@@ -27,6 +31,7 @@ pub struct RenderApp {
     pub(crate) state: Option<State>,
     pub(crate) event_loop: Option<EventLoop<UserEvent>>,
     pub(crate) proxy: Option<EventLoopProxy<UserEvent>>,
+    pipeline_manager: PipelineManager,
 }
 
 impl RenderApp {
@@ -36,16 +41,40 @@ impl RenderApp {
             state: Some(state),
             event_loop: Some(event_loop),
             proxy: Some(proxy),
+            pipeline_manager: PipelineManager::new(),
         }
     }
     
     pub async fn set_window(&mut self, window: Arc<Window>) {
         if let Some(state) = &mut self.state {
             match Graphics::new(window.clone()).await {
-                Ok(graphics) => state.swap_graphics(graphics),
+                Ok(graphics) => {
+                    state.swap_graphics(graphics);
+                    // Function-level comment: Invalidate pipeline cache after device/graphics swap to prevent stale pipeline usage across devices.
+                    self.pipeline_manager.invalidate_all();
+                    log::info!("PipelineManager cache invalidated due to graphics/device swap.");
+                },
                 Err(e) => log::error!("Failed to create graphics: {}", e),
             }
         }
+    }
+
+    /// Internal helper to create a texture-quad pipeline using the provided target format.
+    /// Phase 1: direct creation; Phase 2: consult PipelineManager cache.
+    fn create_texture_quad_pipeline_internal(
+        &mut self,
+        device: &wgpu::Device,
+        bind_group_layouts: [&wgpu::BindGroupLayout; 3],
+        vertex_buffers: &[wgpu::VertexBufferLayout<'static>],
+        target_format: wgpu::TextureFormat,
+    ) -> std::sync::Arc<wgpu::RenderPipeline> {
+        crate::pipeline::get_or_create_texture_quad_pipeline(
+            &mut self.pipeline_manager,
+            device,
+            bind_group_layouts,
+            vertex_buffers,
+            target_format,
+        )
     }
 }
 
@@ -58,10 +87,11 @@ impl RenderApp {
     }
 
     pub async fn run(&mut self) {
-        // Take the event_loop out before borrowing self.state
+        // Take ownership to avoid borrowing `self` inside the event loop closure
         let event_loop = self.event_loop.take().unwrap();
-        let state = self.state.as_mut().unwrap();
-        let proxy = self.proxy.as_mut().unwrap().clone();
+        let mut state = self.state.take().unwrap();
+        let proxy = self.proxy.take().unwrap();
+        let mut pipeline_manager = std::mem::replace(&mut self.pipeline_manager, PipelineManager::new());
 
         let mut surface_configured = false;
 
@@ -100,7 +130,7 @@ impl RenderApp {
                     state.set_translate_in_screen_coord(index, translate);
                 }
                 Event::UserEvent(UserEvent::LoadDataFromCTVolume(volume)) => {
-                    state.load_data_from_ct_volume(&volume);
+                    state.load_data_from_ct_volume(&mut pipeline_manager, &volume);
                     log::info!("Loaded data from CTVolume");
                 }
                 Event::UserEvent(UserEvent::Resize(width, height)) => {
@@ -127,6 +157,9 @@ impl RenderApp {
                     let window = Arc::new(WindowBuilder::new().build(target).unwrap());
                     #[cfg(target_arch = "wasm32")]
                     {
+                        // Function-level comment: Invalidate pipeline cache before recreating graphics on web to ensure pipelines are rebuilt for the new device/context.
+                        pipeline_manager.invalidate_all();
+                        log::info!("PipelineManager cache invalidated due to upcoming graphics/device recreation.");
                         // Winit prevents sizing with CSS, so we have to set
                         // the size manually when on web.
                         use winit::dpi::PhysicalSize;
@@ -160,6 +193,9 @@ impl RenderApp {
                     log::info!("GraphicsReady event received.");
                     state.swap_graphics(graphics);
                     state.resize(PhysicalSize { width: 800, height: 800 });
+                    // Function-level comment: Invalidate pipeline cache on device/graphics swap before loading data to rebuild pipelines on the new device.
+                    pipeline_manager.invalidate_all();
+                    log::info!("PipelineManager cache invalidated on GraphicsReady.");
                     proxy.send_event(UserEvent::LoadDataFromCTVolume(volume)).unwrap();
                     log::info!("Graphics swapped in state.");
                 }
@@ -172,7 +208,7 @@ impl RenderApp {
                     state.enable_mesh = enabled;
                     log::info!("EnableMesh set to: {}", enabled);
                     if let Some(vol) = state.last_volume.clone() {
-                        state.load_data_from_ct_volume(&vol);
+                        state.load_data_from_ct_volume(&mut pipeline_manager, &vol);
                         log::info!("Reloaded layout with mesh view {}", if enabled {"enabled"} else {"disabled"});
                     }
                 }
@@ -237,7 +273,7 @@ impl RenderApp {
                                     let enabled = state.enable_mesh;
                                     log::info!("M key pressed: toggling mesh. Now enabled={}", enabled);
                                     if let Some(vol) = state.last_volume.clone() {
-                                        state.load_data_from_ct_volume(&vol);
+                                        state.load_data_from_ct_volume(&mut pipeline_manager, &vol);
                                         log::info!(
                                             "Reloaded layout with mesh view {}",
                                             if enabled { "enabled" } else { "disabled" }
@@ -257,7 +293,7 @@ impl RenderApp {
                                 // This tells winit that we want another frame after this one
                                 state.window().request_redraw();
 
-                                if (!surface_configured) {
+                                if !surface_configured {
                                     return;
                                 }
                                 state.update();

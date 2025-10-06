@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use anyhow::*;
 use log::{debug, error, info};
 use wgpu::util::DeviceExt;
