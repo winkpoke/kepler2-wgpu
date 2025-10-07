@@ -85,8 +85,18 @@ impl log::Log for WasmLogger {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn init_logger() -> Result<(), log::SetLoggerError> {
     let mut builder = env_logger::Builder::new();
+    
+    // Check if RUST_LOG is set, if not default to Info level
+    if std::env::var("RUST_LOG").is_ok() {
+        // If RUST_LOG is set, use env_logger's default behavior which respects it
+        builder.parse_default_env();
+    } else {
+        // If RUST_LOG is not set, use our default configuration
+        builder.filter_level(LevelFilter::Info);
+    }
+    
+    // Always filter noisy wgpu modules to WARN level regardless of RUST_LOG
     builder
-        .filter_level(LevelFilter::Info)
         .filter_module("wgpu", LevelFilter::Warn)
         .filter_module("wgpu_core", LevelFilter::Warn)
         .filter_module("wgpu_hal", LevelFilter::Warn)

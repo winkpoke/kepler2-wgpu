@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use log::{debug, error, info, warn};
+use log::{trace, debug, error, info, warn};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fs, io};
@@ -344,7 +344,7 @@ impl State {
             toggle_enabled: true,
             last_volume: None,
             #[cfg(feature = "mesh")]
-            enable_mesh: false,
+            enable_mesh: true,
             #[cfg(feature = "mesh")]
             texture_pool: texture_pool,
             mpr_state_slot2: None,
@@ -487,11 +487,24 @@ impl State {
         #[cfg(feature = "mesh")]
         let mesh_enabled = self.enable_mesh;
         #[cfg(not(feature = "mesh"))]
-        let mesh_enabled = false;
+        let mesh_enabled = self.mesh_mode_enabled();
 
         // Function-level comment: Check if mesh content is available and reset error state if needed
         let has_mesh_content = self.layout.views.len() > 2 && 
             self.layout.views[2].as_any().downcast_ref::<crate::view::MeshView>().is_some();
+        
+        // Debug logging for mesh pass execution conditions
+        trace!("Mesh pass conditions - mesh_enabled: {}, has_mesh_content: {}, views_len: {}", 
+               mesh_enabled, has_mesh_content, self.layout.views.len());
+        
+        if self.layout.views.len() > 2 {
+            let view_type = if self.layout.views[2].as_any().downcast_ref::<crate::view::MeshView>().is_some() {
+                "MeshView"
+            } else {
+                "Other"
+            };
+            trace!("View at index 2 type: {}", view_type);
+        }
         
         // Reset mesh pass error state if mesh is enabled and content is available
         #[cfg(feature = "mesh")]
@@ -627,15 +640,26 @@ impl State {
             let mut mesh_view = MeshView::new();
             
             // Function-level comment: Create or reuse cached Arc<MeshRenderContext> for efficient toggling.
-            let ctx_arc = if let Some(cached_ctx) = &self.mesh_ctx {
-                cached_ctx.clone()
+            let (ctx_arc, mesh) = if let Some(cached_ctx) = &self.mesh_ctx {
+                // Reuse cached context and create a new mesh instance
+                let mesh = Mesh::unit_cube();
+                (cached_ctx.clone(), mesh)
             } else {
                 let mesh = Mesh::unit_cube();
                 let ctx = MeshRenderContext::new(manager, &self.graphics.device, &self.graphics.queue, &mesh, true);
                 let ctx_arc = Arc::new(ctx);
                 self.mesh_ctx = Some(ctx_arc.clone());
-                ctx_arc
+                (ctx_arc, mesh)
             };
+            
+            // Assign the mesh to the MeshView
+            mesh_view.mesh = Some(mesh);
+            
+            // Set up default camera and lighting for 3D rendering
+            use crate::mesh::{camera::Camera, lighting::Lighting, material::Material};
+            mesh_view.camera = Some(Camera::new());
+            mesh_view.lighting = Some(Lighting::default());
+            mesh_view.material = Some(Material::default());
             
             mesh_view.attach_context(ctx_arc);
             self.layout.add_view(Box::new(mesh_view));
@@ -693,15 +717,6 @@ impl State {
         let vol = repo.generate_ct_volume(image_series_number).unwrap();
         self.load_data_from_ct_volume(manager, &vol);
     }
-
-    // Temporarily disabled mesh module
-    // /// Function-level comment: Returns whether mesh mode is currently enabled (false when mesh feature is disabled).
-    // pub fn mesh_mode_enabled(&self) -> bool {
-    //     #[cfg(feature = "mesh")]
-    //     { self.enable_mesh }
-    //     #[cfg(not(feature = "mesh"))]
-    //     { false }
-    // }
 
     /// Function-level comment: Returns whether mesh mode is currently enabled.
     pub fn mesh_mode_enabled(&self) -> bool {

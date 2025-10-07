@@ -21,7 +21,7 @@ Completed
 - Unified pipeline acquisition in view and mesh contexts
   - RenderContext uses `get_or_create_texture_quad_pipeline` via the centralized helper and PipelineManager cache; MeshRenderContext uses `get_or_create_mesh_pipeline`; no direct `PipelineBuilder` usage in these runtime paths.
 - Pipelines created during setup (context/view construction), not per frame; rendering reuses pipelines.
-- Optional debug logging is gated behind a feature flag for cache hits/misses and builder status.
+- Debug logging for cache hits/misses and builder status is always enabled at trace level.
 - Mesh depth support integrated under the `mesh` feature flag:
   - Portable depth format helper added: <mcsymbol name="get_mesh_depth_format" filename="pipeline.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\pipeline.rs" startline="69" type="function"></mcsymbol>
   - Mesh pipeline enables depth-stencil state (write enabled, compare Less): <mcsymbol name="get_or_create_mesh_pipeline" filename="pipeline.rs" path="c:\Users\admin\OneDrive\文档\2024\Imaging\kepler-wgpu\src\pipeline.rs" startline="341" type="function"></mcsymbol>

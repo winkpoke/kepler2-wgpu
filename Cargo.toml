@@ -69,8 +69,6 @@ web-sys = { version = "0.3", features = [
 default = []
 # Opt-in 3D mesh feature gate
 mesh = []
-# Debug logging for pipeline cache
-pipeline_debug = []
 
 [[bin]]
 name = "kepler"

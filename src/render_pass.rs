@@ -83,12 +83,13 @@ impl PassDescriptor {
             name: "SlicePass".to_string(),
             is_offscreen: false,
             color_format: surface_format,
-            clear_color: wgpu::Color {
-                r: 0.5,
-                g: 0.5,
-                b: 0.5,
-                a: 1.0,
-            },
+            clear_color: wgpu::Color::TRANSPARENT,
+            // clear_color: wgpu::Color {
+            //     r: 0.5,
+            //     g: 0.5,
+            //     b: 0.5,
+            //     a: 1.0,
+            // },
             uses_depth: false,
             clear_depth: false,
         }
@@ -357,7 +358,7 @@ impl PassExecutor {
         F: FnMut(PassContext) -> Result<(), Box<dyn std::error::Error>>,
     {
         let frame_start_time = Instant::now();
-        log::debug!("[FRAME_EXEC] Starting frame execution - Surface: {}x{}, Mesh enabled: {}, Has mesh content: {}", 
+        log::trace!("[FRAME_EXEC] Starting frame execution - Surface: {}x{}, Mesh enabled: {}, Has mesh content: {}", 
                     surface_width, surface_height, mesh_enabled, has_mesh_content);
         
         // Build the pass plan for this frame
@@ -365,7 +366,7 @@ impl PassExecutor {
         let plan = self.registry.build_pass_plan(effective_mesh_enabled, has_mesh_content);
         let mut frame_success = true;
         
-        log::debug!("[FRAME_EXEC] Pass plan: {} passes scheduled, Effective mesh enabled: {}", 
+        log::trace!("[FRAME_EXEC] Pass plan: {} passes scheduled, Effective mesh enabled: {}", 
                     plan.passes.len(), effective_mesh_enabled);
         if self.mesh_pass_disabled {
             log::warn!("[FRAME_EXEC] Mesh pass is currently DISABLED due to previous errors");
@@ -380,13 +381,13 @@ impl PassExecutor {
                 PassId::MeshPass => "MESH",
                 PassId::SlicePass => "SLICE",
             };
-            log::debug!("[FRAME_EXEC] Executing {} pass: '{}'", pass_name, descriptor.name);
+            log::trace!("[FRAME_EXEC] Executing {} pass: '{}'", pass_name, descriptor.name);
 
             let pass_result = match pass_id {
                 PassId::MeshPass => {
                     // Skip mesh pass if disabled due to errors
                     if self.mesh_pass_disabled {
-                        log::debug!("Skipping mesh pass - disabled due to previous errors");
+                        log::trace!("Skipping mesh pass - disabled due to previous errors");
                         continue;
                     }
                     
@@ -401,7 +402,7 @@ impl PassExecutor {
 
             match &pass_result {
                 Ok(_) => {
-                    log::debug!("[FRAME_EXEC] {} pass '{}' completed successfully", pass_name, descriptor.name);
+                    log::trace!("[FRAME_EXEC] {} pass '{}' completed successfully", pass_name, descriptor.name);
                 }
                 Err(error) => {
                     log::error!("[FRAME_EXEC] {} pass '{}' failed: {}", pass_name, descriptor.name, error);
@@ -419,7 +420,7 @@ impl PassExecutor {
 
         if frame_success {
             self.record_success();
-            log::debug!("[FRAME_EXEC] Frame execution completed successfully in {:.2}ms", 
+            log::trace!("[FRAME_EXEC] Frame execution completed successfully in {:.2}ms", 
                         frame_start_time.elapsed().as_millis_f64());
         } else {
             log::warn!("[FRAME_EXEC] Frame execution completed with errors in {:.2}ms", 
@@ -445,13 +446,13 @@ impl PassExecutor {
         F: FnMut(PassContext) -> Result<(), Box<dyn std::error::Error>>,
     {
         let start_time = Instant::now();
-        log::debug!("[MESH_PASS] Starting execution - Pass: '{}', Size: {}x{}, Depth: {}", 
+        log::trace!("[MESH_PASS] Starting execution - Pass: '{}', Size: {}x{}, Depth: {}", 
                     descriptor.name, surface_width, surface_height, descriptor.uses_depth);
 
         // Ensure textures are ready for offscreen rendering
         let texture_start = Instant::now();
         texture_pool.ensure_textures(device, surface_width, surface_height, descriptor.uses_depth);
-        log::debug!("[MESH_PASS] Texture preparation completed in {:.2}ms", 
+        log::trace!("[MESH_PASS] Texture preparation completed in {:.2}ms", 
                     texture_start.elapsed().as_millis_f64());
 
         // Get both color and depth views in a single call to avoid borrow conflicts
@@ -463,14 +464,14 @@ impl PassExecutor {
             descriptor.color_format,
             descriptor.uses_depth,
         );
-        log::debug!("[MESH_PASS] View acquisition completed in {:.2}ms", 
+        log::trace!("[MESH_PASS] View acquisition completed in {:.2}ms", 
                     view_start.elapsed().as_millis_f64());
 
         let color_view = color_view_opt.expect("Failed to get color view for mesh pass");
         
         // Log depth attachment status
         match &depth_view_opt {
-            Some(_) => log::debug!("[MESH_PASS] Depth attachment: ENABLED (format: {:?})", 
+            Some(_) => log::trace!("[MESH_PASS] Depth attachment: ENABLED (format: {:?})", 
                                    crate::pipeline::get_mesh_depth_format()),
             None => log::warn!("[MESH_PASS] Depth attachment: DISABLED - this may cause pipeline mismatch"),
         }
@@ -504,7 +505,7 @@ impl PassExecutor {
             occlusion_query_set: None,
             timestamp_writes: None,
         });
-        log::debug!("[MESH_PASS] Render pass creation completed in {:.2}ms", 
+        log::trace!("[MESH_PASS] Render pass creation completed in {:.2}ms", 
                     render_pass_start.elapsed().as_millis_f64());
 
         // Execute rendering
@@ -515,8 +516,8 @@ impl PassExecutor {
 
         match &render_result {
             Ok(_) => {
-                log::debug!("[MESH_PASS] Rendering completed successfully in {:.2}ms", rendering_time);
-                log::debug!("[MESH_PASS] Total execution time: {:.2}ms", 
+                log::trace!("[MESH_PASS] Rendering completed successfully in {:.2}ms", rendering_time);
+                log::trace!("[MESH_PASS] Total execution time: {:.2}ms", 
                             start_time.elapsed().as_millis_f64());
             }
             Err(e) => {
@@ -561,9 +562,9 @@ impl PassExecutor {
         F: FnMut(PassContext) -> Result<(), Box<dyn std::error::Error>>,
     {
         let start_time = Instant::now();
-        log::debug!("[SLICE_PASS] Starting execution - Pass: '{}', Target: Surface (onscreen)", 
+        log::trace!("[SLICE_PASS] Starting execution - Pass: '{}', Target: Surface (onscreen)", 
                     descriptor.name);
-        log::debug!("[SLICE_PASS] Clear color: {:?}, Clear depth: {}", 
+        log::trace!("[SLICE_PASS] Clear color: {:?}, Clear depth: {}", 
                     descriptor.clear_color, descriptor.clear_depth);
 
         // Begin slice render pass (renders directly to surface)
@@ -582,9 +583,9 @@ impl PassExecutor {
             occlusion_query_set: None,
             timestamp_writes: None,
         });
-        log::debug!("[SLICE_PASS] Render pass creation completed in {:.2}ms", 
+        log::trace!("[SLICE_PASS] Render pass creation completed in {:.2}ms", 
                     render_pass_start.elapsed().as_millis_f64());
-        log::debug!("[SLICE_PASS] Depth attachment: DISABLED (2D slice rendering)");
+        log::trace!("[SLICE_PASS] Depth attachment: DISABLED (2D slice rendering)");
 
         // Execute rendering
         let rendering_start = Instant::now();
@@ -594,8 +595,8 @@ impl PassExecutor {
 
         match &render_result {
             Ok(_) => {
-                log::debug!("[SLICE_PASS] Rendering completed successfully in {:.2}ms", rendering_time);
-                log::debug!("[SLICE_PASS] Total execution time: {:.2}ms", 
+                log::trace!("[SLICE_PASS] Rendering completed successfully in {:.2}ms", rendering_time);
+                log::trace!("[SLICE_PASS] Total execution time: {:.2}ms", 
                             start_time.elapsed().as_millis_f64());
             }
             Err(e) => {

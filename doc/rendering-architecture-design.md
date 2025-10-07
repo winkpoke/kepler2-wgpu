@@ -506,7 +506,7 @@ pub fn init_logger() -> Result<(), log::SetLoggerError> {
 ```
 
 **Debug Features**
-- `pipeline_debug` feature flag for detailed pipeline creation logging
+- Detailed pipeline creation logging always enabled at trace level
 - Cache hit/miss statistics for performance monitoring
 - Validation of pipeline descriptors and attachment compatibility
 
@@ -520,14 +520,12 @@ The system uses Cargo feature flags for conditional compilation:
 [features]
 # Opt-in 3D mesh feature gate
 mesh = []
-# Debug logging for pipeline cache
-pipeline_debug = []
 ```
 
 **Feature-Gated Architecture**
 - Core 2D functionality always available
 - 3D mesh rendering conditionally compiled with `mesh` feature
-- Debug instrumentation available via `pipeline_debug` feature
+- Debug instrumentation always available at trace level
 
 ### Runtime Configuration
 

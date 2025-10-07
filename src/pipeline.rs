@@ -216,34 +216,27 @@ pub fn get_or_create_texture_quad_pipeline(
     let key = PipelineKey::VolumeSliceQuad { target_format, vertex_sig: vertex_sig.clone(), bgl_sig: bgl_sig.clone() };
     if let Some(p) = { manager.get(&key).cloned() } {
         manager.hit_count += 1;
-        if cfg!(feature = "pipeline_debug") {
-            // Verbose tracing is gated behind a feature to avoid log noise in production builds.
-            log::trace!(
-                "Pipeline cache hit: {:?}. Hits={}, Misses={}, Size={}",
-                key,
-                manager.hit_count,
-                manager.miss_count,
-                manager.cache_size()
-            );
-        }
-        return p;
-    }
-
-    if cfg!(feature = "pipeline_debug") {
-        log::trace!("Pipeline cache miss: {:?}. Creating.", key);
-    }
-    let pipeline = create_texture_quad_pipeline(device, bind_group_layouts, vertex_buffers, target_format);
-    let pipeline = Arc::new(pipeline);
-    manager.miss_count += 1;
-    manager.insert(key, pipeline.clone());
-    if cfg!(feature = "pipeline_debug") {
         log::trace!(
-            "Pipeline inserted. Hits={}, Misses={}, Size={}",
+            "Pipeline cache hit: {:?}. Hits={}, Misses={}, Size={}",
+            key,
             manager.hit_count,
             manager.miss_count,
             manager.cache_size()
         );
+        return p;
     }
+
+    log::trace!("Pipeline cache miss: {:?}. Creating.", key);
+    let pipeline = create_texture_quad_pipeline(device, bind_group_layouts, vertex_buffers, target_format);
+    let pipeline = Arc::new(pipeline);
+    manager.miss_count += 1;
+    manager.insert(key, pipeline.clone());
+    log::trace!(
+        "Pipeline inserted. Hits={}, Misses={}, Size={}",
+        manager.hit_count,
+        manager.miss_count,
+        manager.cache_size()
+    );
     pipeline
 }
 

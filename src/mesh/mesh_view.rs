@@ -298,18 +298,26 @@ impl MeshView {
     
     /// Function-level comment: Attempt to render with comprehensive error handling and fallback.
     fn try_render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), MeshRenderError> {
+        log::trace!("MeshView::try_render - Starting mesh render attempt");
+        
         // Start frame timing for performance monitoring
         self.start_frame_timing();
         let start_time = Instant::now();
         
         // Check if rendering is disabled
         if matches!(self.fallback_mode, FallbackMode::Disabled) {
+            log::trace!("MeshView::try_render - Rendering disabled due to fallback mode");
             return Err(MeshRenderError::ResourceError("Rendering disabled due to repeated failures".to_string()));
         }
         
         // Ensure context is available
         let ctx = self.ctx.as_ref()
-            .ok_or(MeshRenderError::ContextNotAttached)?;
+            .ok_or_else(|| {
+                log::trace!("MeshView::try_render - No context attached");
+                MeshRenderError::ContextNotAttached
+            })?;
+        
+        log::trace!("MeshView::try_render - Context available, vertices: {}, indices: {}", ctx.num_vertices, ctx.num_indices);
         
         // Update uniform buffers with current data
         // Note: We need access to queue for uniform updates, but it's not available in render pass
@@ -326,12 +334,15 @@ impl MeshView {
         }
         
         // Set pipeline with error handling
+        log::trace!("MeshView::try_render - Setting render pipeline");
         render_pass.set_pipeline(&*ctx.pipeline);
         
         // Set vertex buffer
+        log::trace!("MeshView::try_render - Setting vertex buffer");
         render_pass.set_vertex_buffer(0, ctx.vertex_buffer.slice(..));
         
         // Bind uniform buffers (camera, lighting, model)
+        log::trace!("MeshView::try_render - Binding uniform buffers");
         render_pass.set_bind_group(0, &ctx.camera_bind_group, &[]);
         render_pass.set_bind_group(1, &ctx.lighting_bind_group, &[]);
         render_pass.set_bind_group(2, &ctx.model_bind_group, &[]);
@@ -346,18 +357,22 @@ impl MeshView {
         let quality_settings = self.quality_controller.get_quality_settings();
         
         // Render based on fallback mode, quality settings, and available data
+        log::trace!("MeshView::try_render - Rendering with mode: {:?}", self.fallback_mode);
         match self.fallback_mode {
             FallbackMode::Normal | FallbackMode::Simplified => {
                 // Use quality settings to determine rendering approach
                 if quality_settings.wireframe_mode {
                     // Force wireframe mode for minimal quality
                     if ctx.num_indices > 0 {
+                        log::trace!("MeshView::try_render - Drawing indexed wireframe geometry: {} indices", ctx.num_indices);
                         render_pass.set_index_buffer(ctx.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                         // TODO: Set wireframe pipeline when available
                         render_pass.draw_indexed(0..ctx.num_indices, 0, 0..1);
                     } else if ctx.num_vertices > 0 {
+                        log::trace!("MeshView::try_render - Drawing non-indexed wireframe geometry: {} vertices", ctx.num_vertices);
                         render_pass.draw(0..ctx.num_vertices, 0..1);
                     } else {
+                        log::trace!("MeshView::try_render - No vertices or indices to render in wireframe mode");
                         return Err(MeshRenderError::ResourceError("No vertices or indices to render".to_string()));
                     }
                 } else {
@@ -371,6 +386,7 @@ impl MeshView {
                         } else {
                             ctx.num_indices
                         };
+                        log::trace!("MeshView::try_render - Drawing indexed geometry: {} indices (reduced from {})", index_count.min(ctx.num_indices), ctx.num_indices);
                         render_pass.draw_indexed(0..index_count.min(ctx.num_indices), 0, 0..1);
                     } else if ctx.num_vertices > 0 {
                         let vertex_count = if quality_settings.mesh_lod_bias > 1.0 {
@@ -378,8 +394,10 @@ impl MeshView {
                         } else {
                             ctx.num_vertices
                         };
+                        log::trace!("MeshView::try_render - Drawing non-indexed geometry: {} vertices (reduced from {})", vertex_count.min(ctx.num_vertices), ctx.num_vertices);
                         render_pass.draw(0..vertex_count.min(ctx.num_vertices), 0..1);
                     } else {
+                        log::trace!("MeshView::try_render - No vertices or indices to render in normal mode");
                         return Err(MeshRenderError::ResourceError("No vertices or indices to render".to_string()));
                     }
                 }
@@ -402,6 +420,7 @@ impl MeshView {
         // Record successful render
         let render_time_ms = start_time.elapsed().as_millis_f32();
         self.record_success(render_time_ms);
+        log::trace!("MeshView::try_render - Render completed successfully in {:.2}ms", render_time_ms);
         
         // End frame timing and check for quality adjustments
         if let Some(new_quality) = self.end_frame_timing() {

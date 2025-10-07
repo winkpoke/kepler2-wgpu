@@ -5,3 +5,4 @@
 5. Do not use npx or live serve to test the wasm build since I will manually test the wasm build in the browser for now.
 6. Compilation and test shall turn on feature mesh.
 7. Please log information with debug level when necessary in order to help debug the project.
+8. Implement trace-level logging to capture detailed information when logging frequency becomes excessive, particularly within the render loop. This will help monitor performance without overwhelming the log output. Ensure the trace logging is only activated when necessary to maintain system efficiency.

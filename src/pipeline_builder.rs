@@ -176,20 +176,16 @@ impl<'a> PipelineBuilder<'a> {
         Err(KeplerError::Validation("Custom pipeline not found in cache; please insert manually via PipelineManager::insert".into()))
     }
 
-    /// Marks a cache hit for monitoring when pipeline_debug is enabled.
+    /// Marks a cache hit for monitoring.
     fn hit(&mut self) {
         self.manager.record_hit();
-        if cfg!(feature = "pipeline_debug") {
-            log::trace!("PipelineBuilder hit. Hits={}, Misses={}, Size={}", self.manager.hits(), self.manager.misses(), self.manager.cache_size());
-        }
+        log::trace!("PipelineBuilder hit. Hits={}, Misses={}, Size={}", self.manager.hits(), self.manager.misses(), self.manager.cache_size());
     }
 
-    /// Marks a cache miss for monitoring when pipeline_debug is enabled.
+    /// Marks a cache miss for monitoring.
     fn miss(&mut self) {
         self.manager.record_miss();
-        if cfg!(feature = "pipeline_debug") {
-            log::trace!("PipelineBuilder miss. Hits={}, Misses={}, Size={}", self.manager.hits(), self.manager.misses(), self.manager.cache_size());
-        }
+        log::trace!("PipelineBuilder miss. Hits={}, Misses={}, Size={}", self.manager.hits(), self.manager.misses(), self.manager.cache_size());
     }
 }
 

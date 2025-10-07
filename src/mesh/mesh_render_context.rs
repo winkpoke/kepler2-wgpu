@@ -218,7 +218,7 @@ impl MeshRenderContext {
 
         // Create default material properties
         let material_properties = MaterialProperties {
-            albedo: [0.8, 0.8, 0.8], // Light gray
+            albedo: [0.6, 0.2, 0.8], // Purple
             _albedo_padding: 0.0,
             metallic: 0.0,
             roughness: 0.5,
@@ -605,6 +605,7 @@ impl MeshRenderContext {
     /// Function-level comment: Update all uniform buffers with default values when no specific data is provided.
     /// Sets up identity matrices and basic lighting for fallback rendering.
     pub fn update_default_uniforms(&self, queue: &Queue, aspect_ratio: f32) {
+        log::debug!("[MESH_UNIFORMS] Updating default uniforms with aspect_ratio: {}", aspect_ratio);
         let identity_matrix = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]];
         
         // Create a simple perspective projection matrix
@@ -627,10 +628,20 @@ impl MeshRenderContext {
             [0.0, 0.0, 0.0, 1.0],
         ];
         
+        // Calculate proper view-projection matrix by multiplying projection * view
+        let mut view_projection_matrix = [[0.0; 4]; 4];
+        for i in 0..4 {
+            for j in 0..4 {
+                for k in 0..4 {
+                    view_projection_matrix[i][j] += projection_matrix[i][k] * view_matrix[k][j];
+                }
+            }
+        }
+        
         let camera_uniforms = CameraUniforms {
             view_matrix,
             projection_matrix,
-            view_projection_matrix: projection_matrix, // Simplified for now
+            view_projection_matrix,
             camera_position: [0.0, 0.0, 5.0],
             _padding: 0.0,
         };
