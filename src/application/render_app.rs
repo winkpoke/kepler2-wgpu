@@ -216,7 +216,6 @@ impl RenderApp {
                     pipeline_manager.invalidate_all();
                     log::info!("InvalidatePipelines event: PipelineManager cache invalidated.");
                 }
-                #[cfg(feature = "mesh")]
                 Event::UserEvent(UserEvent::SetEnableMesh(enabled)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
                     state.set_mesh_mode_enabled(&mut pipeline_manager, enabled);

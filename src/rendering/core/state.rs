@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fs, io};
 use crate::core::timing::{Instant, DurationExt};
-#[cfg(feature = "mesh")]
 use crate::rendering::view;
 
 // use wgpu::util::DeviceExt;
@@ -25,7 +24,6 @@ use crate::data::dicom::*;
 use crate::rendering::content::render_content::RenderContent;
 use crate::rendering::view::*;
 use crate::core::error::KeplerError;
-#[cfg(feature = "mesh")]
 use crate::rendering::mesh::texture_pool::TexturePool;
 
 fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
@@ -239,13 +237,10 @@ pub struct State {
     pub(crate) enable_float_volume_texture: bool,
     pub(crate) toggle_enabled: bool,
     pub(crate) last_volume: Option<CTVolume>,
-    #[cfg(feature = "mesh")]
     pub(crate) enable_mesh: bool,
-    #[cfg(feature = "mesh")]
     pub(crate) texture_pool: TexturePool,
     /// Function-level comment: Snapshot of slot-2 MPR state to restore when mesh mode is disabled.
     pub(crate) mpr_state_slot2: Option<MPRViewState>,
-    #[cfg(feature = "mesh")]
     /// Function-level comment: Cached BasicMeshContext wrapped in Arc for efficient reuse across toggles.
     pub(crate) mesh_ctx: Option<Arc<crate::rendering::mesh::basic_mesh_context::BasicMeshContext>>,
     /// Function-level comment: PassExecutor manages separate render passes for 3D mesh and 2D slice content.
@@ -300,10 +295,8 @@ impl State {
 
         crate::rendering::core::pipeline::set_swapchain_format(graphics.surface_config.format);
 
-        #[cfg(feature = "mesh")]
         let mut texture_pool = TexturePool::new();
 
-        #[cfg(feature = "mesh")]
         {
             // Create initial depth texture and view for mesh rendering.
             // Function-level comment: This block initializes a depth attachment matching the current surface size.
@@ -345,12 +338,9 @@ impl State {
             enable_float_volume_texture: default_float,
             toggle_enabled: true,
             last_volume: None,
-            #[cfg(feature = "mesh")]
             enable_mesh: false,
-            #[cfg(feature = "mesh")]
             texture_pool: texture_pool,
             mpr_state_slot2: None,
-            #[cfg(feature = "mesh")]
             mesh_ctx: None,
             pass_executor: crate::rendering::core::PassExecutor::new(surface_format),
         })
@@ -429,29 +419,26 @@ impl State {
             // Update PassExecutor with new surface format
             self.pass_executor.update_surface_format(self.graphics.surface_config.format);
 
-            #[cfg(feature = "mesh")]
-            {
-                // Recreate depth texture to match new surface size
-                let depth_format = crate::rendering::core::pipeline::get_mesh_depth_format();
-                let size = wgpu::Extent3d {
-                    width: self.graphics.surface_config.width,
-                    height: self.graphics.surface_config.height,
-                    depth_or_array_layers: 1,
-                };
-                let desc = wgpu::TextureDescriptor {
-                    label: Some("Mesh Depth Texture"),
-                    size,
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: depth_format,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                    view_formats: &[],
-                };
-                let depth_tex = self.graphics.device.create_texture(&desc);
-                let depth_view = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
-                self.texture_pool.set_depth(depth_tex, depth_view);
-            }
+            // Recreate depth texture to match new surface size
+            let depth_format = crate::rendering::core::pipeline::get_mesh_depth_format();
+            let size = wgpu::Extent3d {
+                width: self.graphics.surface_config.width,
+                height: self.graphics.surface_config.height,
+                depth_or_array_layers: 1,
+            };
+            let desc = wgpu::TextureDescriptor {
+                label: Some("Mesh Depth Texture"),
+                size,
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: depth_format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            };
+            let depth_tex = self.graphics.device.create_texture(&desc);
+            let depth_view = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
+            self.texture_pool.set_depth(depth_tex, depth_view);
         }
     }
 
@@ -478,44 +465,29 @@ impl State {
         });
 
         // Create texture pool for this frame
-        #[cfg(feature = "mesh")]
         let texture_pool = &mut self.texture_pool;
-        #[cfg(not(feature = "mesh"))]
-        let mut dummy_texture_pool = crate::rendering::passes::render_pass::DummyTexturePool::new();
-        #[cfg(not(feature = "mesh"))]
-        let texture_pool = &mut dummy_texture_pool;
 
         // Determine mesh settings
-        #[cfg(feature = "mesh")]
         let mesh_enabled = self.enable_mesh;
-        #[cfg(not(feature = "mesh"))]
-        let mesh_enabled = self.mesh_mode_enabled();
 
         // Function-level comment: Check if mesh content is available and reset error state if needed
-        #[cfg(feature = "mesh")]
         let has_mesh_content = self.layout.views.len() > 2 && 
             self.layout.views[2].as_any().downcast_ref::<crate::rendering::view::MeshView>().is_some();
-        #[cfg(not(feature = "mesh"))]
-        let has_mesh_content = false;
         
         // Debug logging for mesh pass execution conditions
         trace!("Mesh pass conditions - mesh_enabled: {}, has_mesh_content: {}, views_len: {}", 
                mesh_enabled, has_mesh_content, self.layout.views.len());
         
         if self.layout.views.len() > 2 {
-            #[cfg(feature = "mesh")]
             let view_type = if self.layout.views[2].as_any().downcast_ref::<view::MeshView>().is_some() {
                 "MeshView"
             } else {
                 "Other"
             };
-            #[cfg(not(feature = "mesh"))]
-            let view_type = "Other";
             trace!("View at index 2 type: {}", view_type);
         }
         
         // Reset mesh pass error state if mesh is enabled and content is available
-        #[cfg(feature = "mesh")]
         if mesh_enabled && has_mesh_content && !self.pass_executor.is_healthy() {
             log::info!("Resetting mesh pass error state - mesh content available");
             self.pass_executor.reset_error_state();
@@ -540,7 +512,6 @@ impl State {
                 match pass_context.pass_id {
                     crate::rendering::core::PassId::MeshPass => {
                         // Function-level comment: Render 3D mesh content by accessing MeshView from layout slot 2
-                        #[cfg(feature = "mesh")]
                         if mesh_enabled && layout.views.len() > 2 {
                             // Access MeshView from slot 2 and attempt to downcast to mutable reference
                             let mesh_view = layout.views.get_mut(2)
@@ -557,7 +528,6 @@ impl State {
                         // Iterate through views and only render MPR views, not MeshView
                         for (index, view) in layout.views.iter_mut().enumerate() {
                             // Skip slot 2 if it contains a MeshView (when mesh is enabled)
-                            #[cfg(feature = "mesh")]
                             if mesh_enabled && index == 2 {
                                 // Check if this is a MeshView and skip it during slice pass
                                 if view.as_any().downcast_ref::<crate::rendering::view::MeshView>().is_some() {
@@ -626,7 +596,6 @@ impl State {
 
         self.layout.remove_all();
 
-        #[cfg(feature = "mesh")]
         if self.enable_mesh {
             // Add MPR views to slots 0 and 1 first
             for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1]].iter() {
@@ -689,23 +658,7 @@ impl State {
             }
         }
 
-        #[cfg(not(feature = "mesh"))]
-        {
-            for orientation in ALL_ORIENTATIONS.iter() {
-                let view = GenericMPRView::new(
-                    manager,
-                    &self.graphics.device,
-                    texture.clone(),
-                    &vol,
-                    *orientation,
-                    1.0,
-                    [0.0, 0.0, 0.0],
-                    (0, 0),
-                    (0, 0),
-                );
-                self.layout.add_view(Box::new(view));
-            }
-        }
+
     }
 
     pub fn load_data_from_repo(&mut self, manager: &mut crate::rendering::core::pipeline::PipelineManager, repo: &DicomRepo, image_series_number: &str) {
@@ -715,10 +668,7 @@ impl State {
 
     /// Function-level comment: Returns whether mesh mode is currently enabled.
     pub fn mesh_mode_enabled(&self) -> bool {
-        #[cfg(feature = "mesh")]
-        { self.enable_mesh }
-        #[cfg(not(feature = "mesh"))]
-        { false }
+        self.enable_mesh
     }
 
     // /// Function-level comment: Enable or disable mesh mode at runtime by swapping the view at slot 2.
@@ -728,17 +678,9 @@ impl State {
     
     /// Function-level comment: Enable or disable mesh mode at runtime by swapping the view at slot 2.
     pub fn set_mesh_mode_enabled(&mut self, manager: &mut crate::rendering::core::pipeline::PipelineManager, enabled: bool) {
-        #[cfg(not(feature = "mesh"))]
-        {
-            let _ = (manager, enabled);
-            log::warn!("Mesh feature not enabled; runtime toggle ignored.");
-            return;
-        }
-        #[cfg(feature = "mesh")]
-        {
-            use std::sync::Arc;
-            use crate::rendering::content::render_content::RenderContent;
-            use crate::rendering::view::{MeshView, GenericMPRView, ALL_ORIENTATIONS, View as _};
+        use std::sync::Arc;
+        use crate::rendering::content::render_content::RenderContent;
+        use crate::rendering::view::{MeshView, GenericMPRView, ALL_ORIENTATIONS, View as _};
 
             if self.enable_mesh == enabled { return; }
             self.enable_mesh = enabled;
@@ -905,7 +847,6 @@ impl State {
                 self.layout.views[index] = Box::new(view);
                 log::info!("GenericMPRView placed at slot 2 with position {:?} and size {:?}.", pos, size);
             }
-        }
     }
 
     pub fn set_slice_speed(&mut self, index: usize, speed: f32) {

@@ -7,36 +7,9 @@ use wgpu;
 use std::collections::HashMap;
 use crate::core::timing::{Instant, DurationExt};
 
-#[cfg(feature = "mesh")]
 use crate::rendering::mesh::texture_pool::TexturePool;
 
-#[cfg(not(feature = "mesh"))]
-pub struct DummyTexturePool;
-
-#[cfg(not(feature = "mesh"))]
-impl DummyTexturePool {
-    pub fn new() -> Self {
-        Self
-    }
-    
-    pub fn ensure_mesh_offscreen_texture(&mut self, _device: &wgpu::Device, _width: u32, _height: u32, _format: wgpu::TextureFormat) -> Option<&wgpu::TextureView> {
-        panic!("Mesh functionality is not enabled")
-    }
-    
-    pub fn get_color_view(&self, _key: &str) -> Option<&wgpu::TextureView> {
-        panic!("Mesh functionality is not enabled")
-    }
-    
-    pub fn depth_view(&self) -> Option<&wgpu::TextureView> {
-        None
-    }
-}
-
-#[cfg(feature = "mesh")]
 type TexturePoolType = TexturePool;
-
-#[cfg(not(feature = "mesh"))]
-type TexturePoolType = DummyTexturePool;
 
 /// Unique identifier for render passes
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -439,7 +412,6 @@ impl PassExecutor {
     }
 
     /// Execute the mesh pass (direct to surface with depth)
-    #[cfg(feature = "mesh")]
     fn execute_mesh_pass<F>(
         &self,
         encoder: &mut wgpu::CommandEncoder,
@@ -544,25 +516,7 @@ impl PassExecutor {
 
 
 
-    /// Execute the mesh pass (dummy version when mesh feature is disabled)
-    #[cfg(not(feature = "mesh"))]
-    fn execute_mesh_pass<F>(
-        &self,
-        _encoder: &mut wgpu::CommandEncoder,
-        _frame_view: &wgpu::TextureView,
-        _texture_pool: &mut TexturePoolType,
-        _device: &wgpu::Device,
-        _surface_width: u32,
-        _surface_height: u32,
-        _descriptor: &PassDescriptor,
-        _render_fn: &mut F,
-    ) -> Result<(), Box<dyn std::error::Error>>
-    where
-        F: FnMut(PassContext) -> Result<(), Box<dyn std::error::Error>>,
-    {
-        log::trace!("Mesh pass skipped - mesh feature disabled");
-        Ok(())
-    }
+
 
     /// Execute the slice pass (onscreen without depth)
     fn execute_slice_pass<F>(

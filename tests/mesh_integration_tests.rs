@@ -3,7 +3,6 @@
 /// This module provides comprehensive integration testing for the mesh rendering system,
 /// ensuring all components work together correctly across different scenarios.
 
-#[cfg(feature = "mesh")]
 mod mesh_integration_tests {
     use kepler_wgpu::mesh::{
         mesh_view::{MeshView, MeshRenderError},

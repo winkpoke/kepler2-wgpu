@@ -66,7 +66,6 @@ pub fn get_swapchain_format() -> Option<wgpu::TextureFormat> {
 /// Rationale
 /// - Depth24Plus is widely supported and does not include a stencil component, which we do not need.
 /// - This choice avoids backend-specific formats and ensures portability across platforms (Windows, macOS, Linux, WASM).
-#[cfg(feature = "mesh")]
 pub fn get_mesh_depth_format() -> wgpu::TextureFormat {
     wgpu::TextureFormat::Depth24Plus
 }
@@ -331,7 +330,6 @@ pub fn create_texture_quad_pipeline(
 /// TODO
 /// - Parameterize topology and pipeline state (cull mode, MSAA, depth) via input args or `PipelineKey`.
 /// - Add bind groups for uniforms and textures as needed.
-#[cfg(feature = "mesh")]
 pub fn get_or_create_mesh_pipeline(manager: &mut PipelineManager, device: &wgpu::Device) -> Arc<wgpu::RenderPipeline> {
     get_or_create_mesh_pipeline_with_depth(manager, device, true)
 }
@@ -346,7 +344,6 @@ pub fn get_or_create_mesh_pipeline(manager: &mut PipelineManager, device: &wgpu:
 ///
 /// Returns
 /// - `Arc<wgpu::RenderPipeline>`: Shared pipeline handle for mesh rendering.
-#[cfg(feature = "mesh")]
 pub fn get_or_create_mesh_pipeline_with_depth(manager: &mut PipelineManager, device: &wgpu::Device, use_depth: bool) -> Arc<wgpu::RenderPipeline> {
     // Updated topology: TriangleList for proper mesh rasterization. Depth testing remains enabled.
     let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
@@ -660,7 +657,6 @@ pub fn create_fragment_uniform_bind_group<T: bytemuck::Pod>(
 ///
 /// Returns
 /// - `wgpu::RenderPipeline`: Newly created simple pipeline.
-#[cfg(feature = "mesh")]
 pub fn create_simple_mesh_pipeline(
     device: &wgpu::Device,
     bind_group_layout: &wgpu::BindGroupLayout,

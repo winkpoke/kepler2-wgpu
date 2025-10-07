@@ -27,7 +27,6 @@ pub enum UserEvent {
     ReloadShaders,
     /// Manually trigger pipeline cache invalidation without any other action.
     InvalidatePipelines,
-    #[cfg(feature = "mesh")]
     SetEnableMesh(bool),
     // ... add more events as needed
 }
@@ -122,7 +121,6 @@ impl GLCanvas {
         }
     }
 
-    #[cfg(feature = "mesh")]
     pub fn enable_mesh(&self, enabled: bool) {
         if let Err(e) = self.proxy.send_event(UserEvent::SetEnableMesh(enabled)) {
             log::error!("Failed to send SetEnableMesh event: {:?}", e);

@@ -27,8 +27,7 @@ pub use rendering::{
 };
 pub use application::{render_app::RenderApp, gl_canvas::GLCanvas};
 
-// Feature-gated exports
-#[cfg(feature = "mesh")]
+// Mesh functionality is now always available
 pub use rendering::mesh;
 
 // Current imports for existing functionality

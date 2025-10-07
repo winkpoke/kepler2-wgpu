@@ -3,7 +3,6 @@
 /// This module provides comprehensive unit testing for the MeshView component,
 /// ensuring proper functionality, error handling, and performance characteristics.
 
-#[cfg(feature = "mesh")]
 mod mesh_view_tests {
     use kepler_wgpu::mesh::{
         mesh_view::{MeshView, MeshRenderError, RenderStats, FallbackMode},

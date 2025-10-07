@@ -3,7 +3,6 @@
 /// This module provides comprehensive testing for the performance monitoring and
 /// quality adjustment systems, ensuring they work correctly under various conditions.
 
-#[cfg(feature = "mesh")]
 mod performance_tests {
     use kepler_wgpu::mesh::performance::{
         QualityLevel, PerformanceTargets, QualityController, FrameTimer, PerformanceStats

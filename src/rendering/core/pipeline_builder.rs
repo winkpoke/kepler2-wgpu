@@ -153,15 +153,8 @@ impl<'a> PipelineBuilder<'a> {
 
     /// Internal: build MeshBasic using existing mesh utilities.
     fn build_mesh_basic(&mut self, _req: &PipelineRequest) -> KeplerResult<Arc<wgpu::RenderPipeline>> {
-        #[cfg(feature = "mesh")]
-        {
-            let p = crate::rendering::core::pipeline::get_or_create_mesh_pipeline(self.manager, self.device);
-            return Ok(p);
-        }
-        #[cfg(not(feature = "mesh"))]
-        {
-            Err(KeplerError::Validation("MeshBasic requested but the `mesh` Cargo feature is disabled".into()))
-        }
+        let p = crate::rendering::core::pipeline::get_or_create_mesh_pipeline(self.manager, self.device);
+        Ok(p)
     }
 
     /// Internal: build Custom using a signature-only key; the caller is responsible for creating the pipeline externally.

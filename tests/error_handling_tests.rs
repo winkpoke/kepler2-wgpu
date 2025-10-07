@@ -4,7 +4,6 @@
 /// mechanisms in the mesh rendering system, ensuring robust operation under
 /// various failure conditions.
 
-#[cfg(feature = "mesh")]
 mod error_handling_tests {
     use kepler_wgpu::mesh::{
         MeshRenderError, ShaderValidationError, MeshView, BasicMeshContext,

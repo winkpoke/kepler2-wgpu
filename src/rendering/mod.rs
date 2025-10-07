@@ -9,14 +9,11 @@ pub mod content;
 pub mod view;
 pub mod shaders;
 
-// Feature-gated mesh module
-#[cfg(feature = "mesh")]
+// Mesh module is now always available
 pub mod mesh;
 
 // Re-exports for convenience
 pub use core::*;
 pub use content::*;
 pub use view::*;
-
-#[cfg(feature = "mesh")]
 pub use mesh::*;
