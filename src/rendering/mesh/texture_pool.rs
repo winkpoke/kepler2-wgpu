@@ -155,4 +155,10 @@ impl TexturePool {
 
         self.get_color_view(key)
     }
+
+    /// Function-level comment: Clear depth texture and view to prevent stale references when graphics context changes.
+    pub fn clear_depth_view(&mut self) {
+        self.depth_texture = None;
+        self.depth_view = None;
+    }
 }

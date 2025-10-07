@@ -423,6 +423,13 @@ impl Renderable for MeshView {
     }
 }
 
+impl Drop for MeshView {
+    /// Function-level comment: Clean up MeshView resources and log the drop for debugging.
+    fn drop(&mut self) {
+        log::debug!("[MESH_VIEW] Dropping MeshView at position {:?} with size {:?}", self.pos, self.dim);
+    }
+}
+
 impl View for MeshView {
     fn position(&self) -> (i32, i32) { self.pos }
     fn dimensions(&self) -> (u32, u32) { self.dim }

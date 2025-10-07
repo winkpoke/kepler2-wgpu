@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated default uniforms in `MeshRenderContext` to use orthogonal projection
   - Created comprehensive documentation in `doc/orthogonal-projection-implementation.md`
 
+- **Buffer Lifecycle Management**: Implemented comprehensive buffer cleanup to prevent "Buffer does not exist" errors during mesh mode toggling
+  - Added `Drop` implementations for `BasicMeshContext` and `MeshView` with debug logging
+  - Added `clear_mesh_context_cache()` method to `State` for explicit cache clearing
+  - Added `clear_depth_view()` method to `TexturePool` for depth texture cleanup
+  - Enhanced graphics context swapping to clear mesh resources and prevent stale references
+  - Created detailed documentation in `doc/buffer-lifecycle-fix.md`
+
 ### Changed
 - **Default Camera Projection**: `Camera::new()` now defaults to orthogonal projection instead of perspective projection for medical accuracy
 - **Fallback Rendering**: Default uniform calculations now use orthogonal projection for consistency

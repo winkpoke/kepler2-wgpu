@@ -350,12 +350,9 @@ impl State {
         self.graphics = new_graphics;
         crate::rendering::core::pipeline::set_swapchain_format(self.graphics.surface_config.format);
         
-        // #[cfg(feature = "mesh")]
-        // {
-        //     // Function-level comment: Clear mesh resources bound to old device to prevent stale references.
-        //     self.mesh_ctx = None;
-        //     self.texture_pool.clear_depth_view();
-        // }
+        // Function-level comment: Clear mesh resources bound to old device to prevent stale references.
+        self.clear_mesh_context_cache();
+        self.texture_pool.clear_depth_view();
         
         // self.resize(winit::dpi::PhysicalSize {
         //     width: self.graphics.surface_config.width,
@@ -671,6 +668,15 @@ impl State {
         self.enable_mesh
     }
 
+    /// Function-level comment: Clear cached mesh context to force recreation and prevent buffer reference issues.
+    /// This is useful when switching graphics contexts or when buffer errors occur.
+    pub fn clear_mesh_context_cache(&mut self) {
+        if self.mesh_ctx.is_some() {
+            log::debug!("Clearing cached mesh context to prevent buffer reference issues");
+            self.mesh_ctx = None;
+        }
+    }
+
     // /// Function-level comment: Enable or disable mesh mode at runtime by swapping the view at slot 2.
     // /// When enabling, replaces slot 2 with a MeshView and snapshots the previous MPR state.
     // /// When disabling, recreates a GenericMPRView for slot 2 and restores the cached MPR state if available.
@@ -846,6 +852,9 @@ impl State {
                 view.resize(size);
                 self.layout.views[index] = Box::new(view);
                 log::info!("GenericMPRView placed at slot 2 with position {:?} and size {:?}.", pos, size);
+                
+                // Clear mesh context cache when disabling mesh mode to prevent buffer reference issues
+                self.clear_mesh_context_cache();
             }
     }
 

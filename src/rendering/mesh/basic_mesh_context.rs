@@ -157,3 +157,13 @@ impl BasicMeshContext {
         (vertex_size, index_size, 0.0, 0.0)
     }
 }
+
+/// Function-level comment: Explicit cleanup implementation for BasicMeshContext
+/// Ensures proper buffer destruction to prevent "Buffer does not exist" errors in WASM
+impl Drop for BasicMeshContext {
+    fn drop(&mut self) {
+        log::debug!("[BASIC_MESH_CONTEXT] Dropping BasicMeshContext - GPU buffers will be automatically cleaned up");
+        // Note: wgpu::Buffer doesn't have a destroy() method - buffers are automatically 
+        // cleaned up when dropped. The explicit Drop implementation here is mainly for logging.
+    }
+}
