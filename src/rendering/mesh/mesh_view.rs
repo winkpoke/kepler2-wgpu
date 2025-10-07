@@ -200,52 +200,46 @@ impl MeshView {
             // Simplified MVP matrix calculation for guaranteed visibility
             use std::f32::consts::PI;
             
-            // Model matrix - scale down and add slight rotation for visual interest
-            let time = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_secs_f32();
-            let rotation_y = time * 0.3; // Slower rotation
-            
-            let cos_y = rotation_y.cos();
-            let sin_y = rotation_y.sin();
-            let scale = 0.5; // Scale down the cube to ensure it fits in view
+            // Model matrix - identity matrix with uniform scaling only
+            let scale = 0.5; // Make cube much smaller
             
             let model_matrix = Matrix4x4::from_array([
-                scale * cos_y, 0.0, scale * sin_y, 0.0,
+                scale, 0.0, 0.0, 0.0,
                 0.0, scale, 0.0, 0.0,
-                -scale * sin_y, 0.0, scale * cos_y, 0.0,
-                0.0, 0.0, 0.0, 1.0, // Keep at origin
+                0.0, 0.0, scale, 0.0,
+                0.0, 0.0, 0.0, 1.0, // Identity with scale, centered at origin
             ]);
             
-            // View matrix - camera positioned further back for better view
+            // View matrix - camera positioned for optimal viewing of smaller cube
             let view_matrix = Matrix4x4::from_array([
                 1.0, 0.0, 0.0, 0.0,
                 0.0, 1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, -5.0, // Move camera further back
+                0.0, 0.0, 1.0, -3.0, // Closer camera for smaller cube
                 0.0, 0.0, 0.0, 1.0,
             ]);
             
-            // Perspective projection matrix with wider field of view
-            let fov = PI / 3.0; // 60 degrees for wider view
+            // Orthogonal projection matrix for medical imaging accuracy
+            let left = -2.0;
+            let right = 2.0;
+            let bottom = -2.0 / aspect_ratio;
+            let top = 2.0 / aspect_ratio;
             let near = 0.1;
             let far = 100.0;
             
-            let f = 1.0 / (fov / 2.0).tan();
             let proj_matrix = Matrix4x4::from_array([
-                f / aspect_ratio, 0.0, 0.0, 0.0,
-                0.0, f, 0.0, 0.0,
-                0.0, 0.0, (far + near) / (near - far), (2.0 * far * near) / (near - far),
-                0.0, 0.0, -1.0, 0.0,
+                2.0 / (right - left), 0.0, 0.0, -(right + left) / (right - left),
+                0.0, 2.0 / (top - bottom), 0.0, -(top + bottom) / (top - bottom),
+                0.0, 0.0, -2.0 / (far - near), -(far + near) / (far - near),
+                0.0, 0.0, 0.0, 1.0,
             ]);
             
             // Calculate MVP: projection * view * model
             let view_model = view_matrix.multiply(&model_matrix);
             let mvp_matrix = proj_matrix.multiply(&view_model);
             
-            log::debug!("[BASIC_MESH_MATRICES] Model matrix (scaled & rotating): {:?}", model_matrix.data);
-            log::debug!("[BASIC_MESH_MATRICES] View matrix (camera at -5): {:?}", view_matrix.data);
-            log::debug!("[BASIC_MESH_MATRICES] Projection matrix (60° FOV): {:?}", proj_matrix.data);
+            log::debug!("[BASIC_MESH_MATRICES] Model matrix (identity with scale 0.05): {:?}", model_matrix.data);
+            log::debug!("[BASIC_MESH_MATRICES] View matrix (camera at -3): {:?}", view_matrix.data);
+            log::debug!("[BASIC_MESH_MATRICES] Projection matrix (orthogonal): {:?}", proj_matrix.data);
             log::debug!("[BASIC_MESH_MATRICES] Combined MVP matrix: {:?}", mvp_matrix.data);
             
             // Update uniforms in BasicMeshContext with combined MVP matrix

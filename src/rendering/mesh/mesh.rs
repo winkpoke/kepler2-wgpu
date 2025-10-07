@@ -20,21 +20,22 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    /// Function-level comment: Creates a simple unit cube mesh matching temp/main.rs structure
+    /// Function-level comment: Creates a simple unit cube mesh with uniform blue color
     /// Returns a cube with 8 vertices and 12 triangles for basic 3D rendering
     pub fn unit_cube() -> Self {
-        // Create cube vertices matching temp/main.rs structure
+        // Create cube vertices with uniform blue color
+        let uniform_color = [0.3, 0.5, 0.9]; // Nice blue color
         let vertices = vec![
             // front face
-            MeshVertex { position: [-1.0, -1.0,  1.0], color: [1.0, 0.0, 0.0] }, // 0: front bottom-left (red)
-            MeshVertex { position: [ 1.0, -1.0,  1.0], color: [0.0, 1.0, 0.0] }, // 1: front bottom-right (green)
-            MeshVertex { position: [ 1.0,  1.0,  1.0], color: [0.0, 0.0, 1.0] }, // 2: front top-right (blue)
-            MeshVertex { position: [-1.0,  1.0,  1.0], color: [1.0, 1.0, 0.0] }, // 3: front top-left (yellow)
+            MeshVertex { position: [-1.0, -1.0,  1.0], color: uniform_color }, // 0: front bottom-left
+            MeshVertex { position: [ 1.0, -1.0,  1.0], color: uniform_color }, // 1: front bottom-right
+            MeshVertex { position: [ 1.0,  1.0,  1.0], color: uniform_color }, // 2: front top-right
+            MeshVertex { position: [-1.0,  1.0,  1.0], color: uniform_color }, // 3: front top-left
             // back face
-            MeshVertex { position: [-1.0, -1.0, -1.0], color: [1.0, 0.0, 1.0] }, // 4: back bottom-left (magenta)
-            MeshVertex { position: [ 1.0, -1.0, -1.0], color: [0.0, 1.0, 1.0] }, // 5: back bottom-right (cyan)
-            MeshVertex { position: [ 1.0,  1.0, -1.0], color: [1.0, 1.0, 1.0] }, // 6: back top-right (white)
-            MeshVertex { position: [-1.0,  1.0, -1.0], color: [0.2, 0.6, 0.2] }, // 7: back top-left (dark green)
+            MeshVertex { position: [-1.0, -1.0, -1.0], color: uniform_color }, // 4: back bottom-left
+            MeshVertex { position: [ 1.0, -1.0, -1.0], color: uniform_color }, // 5: back bottom-right
+            MeshVertex { position: [ 1.0,  1.0, -1.0], color: uniform_color }, // 6: back top-right
+            MeshVertex { position: [-1.0,  1.0, -1.0], color: uniform_color }, // 7: back top-left
         ];
 
         // Create cube indices matching temp/main.rs structure (CCW winding)

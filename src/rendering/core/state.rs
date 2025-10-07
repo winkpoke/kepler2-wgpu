@@ -750,9 +750,9 @@ impl State {
                 return;
             }
 
-            let index = 2usize;
-            if self.layout.views.len() < 4 {
-                log::warn!("Expected 4 views; found {}. Toggle will not modify layout.", self.layout.views.len());
+            let index = 0usize;
+            if self.layout.views.len() < 1 {
+                log::warn!("Expected at least 1 view; found {}. Toggle will not modify layout.", self.layout.views.len());
                 return;
             }
 
@@ -792,7 +792,7 @@ impl State {
                     }
                 }
 
-                // Snapshot MPR state from slot 2 if present
+                // Snapshot MPR state from slot 0 if present
                 if let Some(view) = self.layout.views.get_mut(index) {
                     if let Some(mpr) = view.as_mpr() {
                         let snap = MPRViewState {
@@ -804,13 +804,13 @@ impl State {
                             translate_in_screen_coord: mpr.get_translate_in_screen_coord(),
                         };
                         self.mpr_state_slot2 = Some(snap);
-                        log::info!("Saved MPR snapshot for slot 2 prior to enabling mesh.");
+                        log::info!("Saved MPR snapshot for slot 0 prior to enabling mesh.");
                     } else {
                         self.mpr_state_slot2 = None;
                     }
                 }
 
-                // Create MeshView for slot 2
+                // Create MeshView for slot 0
                 use crate::rendering::mesh::{mesh::Mesh, basic_mesh_context::BasicMeshContext};
                 let mut mesh_view = MeshView::new();
                 
@@ -836,9 +836,9 @@ impl State {
                 mesh_view.move_to(pos);
                 mesh_view.resize(size);
                 self.layout.views[index] = Box::new(mesh_view);
-                log::info!("MeshView placed at slot 2 with position {:?} and size {:?}.", pos, size);
+                log::info!("MeshView placed at slot 0 with position {:?} and size {:?}.", pos, size);
             } else {
-                // Replace slot 2 with a GenericMPRView (Sagittal orientation in non-mesh mode)
+                // Replace slot 0 with a GenericMPRView (Sagittal orientation in non-mesh mode)
                 let vol = self.last_volume.as_ref().unwrap();
                 let texture: Arc<RenderContent> = if self.enable_float_volume_texture {
                     info!("Using R16Float volume texture path (toggle)");
