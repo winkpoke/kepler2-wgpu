@@ -41,11 +41,9 @@ mod mesh_view_tests {
             .expect("Failed to create device")
     }
 
-    #[tokio::test]
-    async fn test_mesh_view_creation_success() {
+    #[test]
+    fn test_mesh_view_creation_success() {
         /// Test successful MeshView creation with valid parameters
-        let (_device, _queue) = create_test_device().await;
-        
         let mesh_view = MeshView::new();
         
         assert!(mesh_view.is_healthy());
@@ -68,11 +66,9 @@ mod mesh_view_tests {
         assert_eq!(stats.error_count, 0);
     }
 
-    #[tokio::test]
-    async fn test_mesh_view_quality_settings() {
+    #[test]
+    fn test_mesh_view_quality_settings() {
         /// Test quality settings application in MeshView
-        let (_device, _queue) = create_test_device().await;
-        
         let mut mesh_view = MeshView::new();
         
         // Test applying different quality levels
@@ -86,22 +82,18 @@ mod mesh_view_tests {
         assert!(true, "Quality settings should be applied successfully");
     }
 
-    #[tokio::test]
-    async fn test_mesh_view_render_target() {
+    #[test]
+    fn test_mesh_view_render_target() {
         /// Test render target functionality
-        let (_device, _queue) = create_test_device().await;
-        
         let mesh_view = MeshView::new();
         
         // Test that mesh view is healthy and functional
         assert!(mesh_view.is_healthy(), "MeshView should be healthy after creation");
     }
 
-    #[tokio::test]
-    async fn test_mesh_view_performance_stats() {
+    #[test]
+    fn test_mesh_view_performance_stats() {
         /// Test performance statistics collection
-        let (_device, _queue) = create_test_device().await;
-        
         let mesh_view = MeshView::new();
         
         // Test that mesh view is healthy and has default quality level
@@ -109,11 +101,9 @@ mod mesh_view_tests {
         assert_eq!(mesh_view.get_quality_level(), QualityLevel::Medium, "Default quality should be Medium");
     }
 
-    #[tokio::test]
-    async fn test_mesh_view_error_recovery() {
+    #[test]
+    fn test_mesh_view_error_recovery() {
         /// Test error recovery mechanisms
-        let (_device, _queue) = create_test_device().await;
-        
         let mut mesh_view = MeshView::new();
         
         // Test that the mesh view can handle basic operations without errors
@@ -124,11 +114,9 @@ mod mesh_view_tests {
         assert!(mesh_view.is_healthy(), "MeshView should remain healthy after reset");
     }
 
-    #[tokio::test]
-    async fn test_mesh_view_multiple_formats() {
+    #[test]
+    fn test_mesh_view_multiple_formats() {
         /// Test MeshView creation with different texture formats
-        let (_device, _queue) = create_test_device().await;
-        
         let formats = vec![
             wgpu::TextureFormat::Bgra8UnormSrgb,
             wgpu::TextureFormat::Rgba8UnormSrgb,
@@ -142,11 +130,9 @@ mod mesh_view_tests {
         }
     }
 
-    #[tokio::test]
-    async fn test_mesh_view_concurrent_access() {
+    #[test]
+    fn test_mesh_view_concurrent_access() {
         /// Test that MeshView handles concurrent access safely
-        let (_device, _queue) = create_test_device().await;
-        
         let mesh_view = std::sync::Arc::new(std::sync::Mutex::new(
             MeshView::new()
         ));
