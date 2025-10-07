@@ -5,6 +5,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fs, io};
 use crate::core::timing::{Instant, DurationExt};
+#[cfg(feature = "mesh")]
+use crate::rendering::view;
 
 // use wgpu::util::DeviceExt;
 #[cfg(target_arch = "wasm32")]
@@ -232,8 +234,8 @@ pub struct App {
 // #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct State {
     pub(crate) graphics: Graphics,
-    // pub(crate) layout: Layout<OneCellLayout>,
-    pub(crate) layout: Layout<GridLayout>,
+    pub(crate) layout: Layout<OneCellLayout>,
+    // pub(crate) layout: Layout<GridLayout>,
     pub(crate) enable_float_volume_texture: bool,
     pub(crate) toggle_enabled: bool,
     pub(crate) last_volume: Option<CTVolume>,
@@ -244,10 +246,10 @@ pub struct State {
     /// Function-level comment: Snapshot of slot-2 MPR state to restore when mesh mode is disabled.
     pub(crate) mpr_state_slot2: Option<MPRViewState>,
     #[cfg(feature = "mesh")]
-    /// Function-level comment: Cached MeshRenderContext wrapped in Arc for efficient reuse across toggles.
-    pub(crate) mesh_ctx: Option<Arc<crate::rendering::mesh::mesh_render_context::MeshRenderContext>>,
+    /// Function-level comment: Cached BasicMeshContext wrapped in Arc for efficient reuse across toggles.
+    pub(crate) mesh_ctx: Option<Arc<crate::rendering::mesh::basic_mesh_context::BasicMeshContext>>,
     /// Function-level comment: PassExecutor manages separate render passes for 3D mesh and 2D slice content.
-    pub(crate) pass_executor: crate::rendering::render_pass::PassExecutor,
+    pub(crate) pass_executor: crate::rendering::core::PassExecutor,
 }
 
 const HU_OFFSET: f32 = 1100.0;
@@ -281,9 +283,9 @@ impl State {
 
         let layout = Layout::new(
             (800, 800),
-            GridLayout {
-                rows: 2,
-                cols: 2,
+            OneCellLayout {
+                rows: 1,
+                cols: 1,
                 spacing: 0,
             },
         );
@@ -350,7 +352,7 @@ impl State {
             mpr_state_slot2: None,
             #[cfg(feature = "mesh")]
             mesh_ctx: None,
-            pass_executor: crate::rendering::render_pass::PassExecutor::new(surface_format),
+            pass_executor: crate::rendering::core::PassExecutor::new(surface_format),
         })
     }
 
@@ -491,8 +493,8 @@ impl State {
 
         // Function-level comment: Check if mesh content is available and reset error state if needed
         #[cfg(feature = "mesh")]
-        let has_mesh_content = self.layout.views.len() > 2 && 
-            self.layout.views[2].as_any().downcast_ref::<crate::rendering::view::MeshView>().is_some();
+        let has_mesh_content = self.layout.views.len() > 0 && 
+            self.layout.views[0].as_any().downcast_ref::<crate::rendering::view::MeshView>().is_some();
         #[cfg(not(feature = "mesh"))]
         let has_mesh_content = false;
         
@@ -500,16 +502,16 @@ impl State {
         trace!("Mesh pass conditions - mesh_enabled: {}, has_mesh_content: {}, views_len: {}", 
                mesh_enabled, has_mesh_content, self.layout.views.len());
         
-        if self.layout.views.len() > 2 {
+        if self.layout.views.len() > 0 {
             #[cfg(feature = "mesh")]
-            let view_type = if self.layout.views[2].as_any().downcast_ref::<crate::rendering::view::MeshView>().is_some() {
+            let view_type = if self.layout.views[0].as_any().downcast_ref::<view::MeshView>().is_some() {
                 "MeshView"
             } else {
                 "Other"
             };
             #[cfg(not(feature = "mesh"))]
             let view_type = "Other";
-            trace!("View at index 2 type: {}", view_type);
+            trace!("View at index 0 type: {}", view_type);
         }
         
         // Reset mesh pass error state if mesh is enabled and content is available
@@ -536,12 +538,12 @@ impl State {
             has_mesh_content, // has_mesh_content - enable mesh pass when mesh content is available
             |pass_context| {
                 match pass_context.pass_id {
-                    crate::rendering::render_pass::PassId::MeshPass => {
-                        // Function-level comment: Render 3D mesh content by accessing MeshView from layout slot 2
+                    crate::rendering::core::PassId::MeshPass => {
+                        // Function-level comment: Render 3D mesh content by accessing MeshView from layout slot 0
                         #[cfg(feature = "mesh")]
-                        if mesh_enabled && layout.views.len() > 2 {
-                            // Access MeshView from slot 2 and attempt to downcast to mutable reference
-                            let mesh_view = layout.views.get_mut(2)
+                        if mesh_enabled && !layout.views.is_empty() {
+                            // Access MeshView from slot 0 and attempt to downcast to mutable reference
+                            let mesh_view = layout.views.get_mut(0)
                                 .and_then(|view| view.as_any_mut().downcast_mut::<crate::rendering::view::MeshView>());
                             if let Some(mesh_view) = mesh_view {
                                 // Call the MeshView render method with the pass context
@@ -550,13 +552,13 @@ impl State {
                         }
                         Ok(())
                     }
-                    crate::rendering::render_pass::PassId::SlicePass => {
+                    crate::rendering::core::PassId::SlicePass => {
                         // Function-level comment: Render 2D slice content (MPR views only, skip MeshView)
                         // Iterate through views and only render MPR views, not MeshView
                         for (index, view) in layout.views.iter_mut().enumerate() {
-                            // Skip slot 2 if it contains a MeshView (when mesh is enabled)
+                            // Skip slot 0 if it contains a MeshView (when mesh is enabled)
                             #[cfg(feature = "mesh")]
-                            if mesh_enabled && index == 2 {
+                            if mesh_enabled && index == 0 {
                                 // Check if this is a MeshView and skip it during slice pass
                                 if view.as_any().downcast_ref::<crate::rendering::view::MeshView>().is_some() {
                                     continue;
@@ -626,35 +628,19 @@ impl State {
 
         #[cfg(feature = "mesh")]
         if self.enable_mesh {
-            // Add first two MPR views (Axial and Coronal) to slots 0 and 1
-            for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1]].iter() {
-                let view = GenericMPRView::new(
-                    manager,
-                    &self.graphics.device,
-                    texture.clone(),
-                    &vol,
-                    *orientation,
-                    1.0,
-                    [0.0, 0.0, 0.0],
-                    (0, 0),
-                    (0, 0),
-                );
-                self.layout.add_view(Box::new(view));
-            }
-            
-            // Add mesh view to slot 2 (replacing Sagittal view)
+            // Add mesh view to slot 0 (first position for OneCellLayout)
             use crate::rendering::view::MeshView;
-            use crate::rendering::mesh::{mesh::Mesh, mesh_render_context::MeshRenderContext};
+            use crate::rendering::mesh::{mesh::Mesh, basic_mesh_context::BasicMeshContext};
             let mut mesh_view = MeshView::new();
             
-            // Function-level comment: Create or reuse cached Arc<MeshRenderContext> for efficient toggling.
+            // Function-level comment: Create or reuse cached Arc<BasicMeshContext> for efficient toggling.
             let (ctx_arc, mesh) = if let Some(cached_ctx) = &self.mesh_ctx {
                 // Reuse cached context and create a new mesh instance
                 let mesh = Mesh::unit_cube();
                 (cached_ctx.clone(), mesh)
             } else {
                 let mesh = Mesh::unit_cube();
-                let ctx = MeshRenderContext::new(manager, &self.graphics.device, &self.graphics.queue, &mesh, true);
+                let ctx = BasicMeshContext::new(manager, &self.graphics.device, &self.graphics.queue, &mesh, true);
                 let ctx_arc = Arc::new(ctx);
                 self.mesh_ctx = Some(ctx_arc.clone());
                 (ctx_arc, mesh)
@@ -670,21 +656,23 @@ impl State {
             mesh_view.material = Some(Material::default());
             
             mesh_view.attach_context(ctx_arc);
-            self.layout.add_view(Box::new(mesh_view)); // This will be slot 2 (bottom-left)
+            self.layout.add_view(Box::new(mesh_view)); // This will be slot 0 (first position)
             
-            // Add final MPR view to slot 3
-            let view = GenericMPRView::new(
-                manager,
-                &self.graphics.device,
-                texture.clone(),
-                &vol,
-                ALL_ORIENTATIONS[3], // Last orientation
-                1.0,
-                [0.0, 0.0, 0.0],
-                (0, 0),
-                (0, 0),
-            );
-            self.layout.add_view(Box::new(view));
+            // Add MPR views to slots 1, 2, and 3
+            for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1], ALL_ORIENTATIONS[2]].iter() {
+                let view = GenericMPRView::new(
+                    manager,
+                    &self.graphics.device,
+                    texture.clone(),
+                    &vol,
+                    *orientation,
+                    1.0,
+                    [0.0, 0.0, 0.0],
+                    (0, 0),
+                    (0, 0),
+                );
+                self.layout.add_view(Box::new(view));
+            }
         } else {
             // Mesh disabled: add all four MPR views in fixed order.
             for orientation in ALL_ORIENTATIONS.iter() {
@@ -823,21 +811,22 @@ impl State {
                 }
 
                 // Create MeshView for slot 2
-                use crate::rendering::mesh::{mesh::Mesh, mesh_render_context::MeshRenderContext};
+                use crate::rendering::mesh::{mesh::Mesh, basic_mesh_context::BasicMeshContext};
                 let mut mesh_view = MeshView::new();
                 
-                // Function-level comment: Create or reuse cached Arc<MeshRenderContext> for efficient toggling.
-                // Now that depth texture exists, create context with depth enabled.
+                // Function-level comment: Create or reuse cached Arc<BasicMeshContext> for efficient toggling.
                 let ctx_arc = if let Some(cached_ctx) = &self.mesh_ctx {
-                    // Check if the cached context has depth enabled, if not recreate it
-                    let mesh = Mesh::unit_cube();
-                    let new_ctx = MeshRenderContext::new(manager, &self.graphics.device, &self.graphics.queue, &mesh, true);
-                    let ctx_arc = Arc::new(new_ctx);
-                    self.mesh_ctx = Some(ctx_arc.clone());
-                    ctx_arc
+                    // Reuse cached context
+                    cached_ctx.clone()
                 } else {
                     let mesh = Mesh::unit_cube();
-                    let ctx = MeshRenderContext::new(manager, &self.graphics.device, &self.graphics.queue, &mesh, true);
+                    let ctx = BasicMeshContext::new(
+                        manager,
+                        &self.graphics.device,
+                        &self.graphics.queue,
+                        &mesh,
+                        true, // Enable depth testing for proper 3D rendering
+                    );
                     let ctx_arc = Arc::new(ctx);
                     self.mesh_ctx = Some(ctx_arc.clone());
                     ctx_arc

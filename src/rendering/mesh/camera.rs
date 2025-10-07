@@ -40,18 +40,19 @@ impl Camera {
     /// Uses orthogonal projection by default for accurate dimensional representation
     pub fn new() -> Self {
         Self {
-            eye: [0.0, 0.0, 10.0], // Move camera much further back
+            eye: [0.0, 0.0, 3.0], // Position camera closer to the cube
             center: [0.0, 0.0, 0.0],
             up: [0.0, 1.0, 0.0],
             fov_y_radians: std::f32::consts::PI / 4.0, // 45 degrees (used for perspective mode)
-            near: 0.1,
-            far: 100.0,
+            near: -5.0, // Allow objects in front of the camera (negative Z values)
+            far: 10.0, // Reduce far plane to focus on nearby objects
             projection_type: ProjectionType::Orthogonal, // Default to orthogonal for medical accuracy
-            // Orthogonal bounds - defines a 20x20 unit viewing volume centered at origin
-            ortho_left: -10.0,
-            ortho_right: 10.0,
-            ortho_bottom: -10.0,
-            ortho_top: 10.0,
+            // Orthogonal bounds - defines viewing volume to make cube prominent
+            // Unit cube spans from -1 to +1, smaller bounds = larger cube on screen
+            ortho_left: -2.5,
+            ortho_right: 2.5,
+            ortho_bottom: -2.5,
+            ortho_top: 2.5,
         }
     }
 

@@ -7,7 +7,7 @@
 mod mesh_integration_tests {
     use kepler_wgpu::mesh::{
         mesh_view::{MeshView, MeshRenderError},
-        mesh_render_context::MeshRenderContext,
+        basic_mesh_context::BasicMeshContext,
         performance::{QualityController, QualityLevel},
         shader_validation::ShaderValidator,
         mesh::Mesh,
@@ -93,13 +93,13 @@ mod mesh_integration_tests {
     }
 
     #[tokio::test]
-    async fn test_mesh_render_context_creation() {
-        /// Test MeshRenderContext creation with valid data
+    async fn test_basic_mesh_context_creation() {
+        /// Test BasicMeshContext creation with valid data
         let (device, queue) = create_test_device().await;
         let mut pipeline_manager = PipelineManager::new();
 
         let mesh = Mesh::unit_cube(); // Using available sample mesh
-        let context = MeshRenderContext::new(&mut pipeline_manager, &device, &queue, &mesh, true);
+        let context = BasicMeshContext::new(&mut pipeline_manager, &device, &queue, &mesh, true);
         
         assert_eq!(context.num_vertices, 3);
         assert_eq!(context.num_indices, 3);
@@ -146,7 +146,7 @@ mod mesh_integration_tests {
         // Create multiple mesh contexts
         for _ in 0..5 {
             let mesh = Mesh::unit_cube();
-            let context = MeshRenderContext::new(&mut pipeline_manager, &device, &queue, &mesh, true);
+            let context = BasicMeshContext::new(&mut pipeline_manager, &device, &queue, &mesh, true);
             contexts.push(context);
         }
         

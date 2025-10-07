@@ -22,3 +22,4 @@
 20. In the medical imaging context, ensure accuracy, numerical stability, and performance for CT reconstruction and visualization.
 21. Manage GPU memory efficiently and minimize texture/data copies.
 22. The codebase must remain buildable, testable, and inspectable at all times.
+23. Do not use perspective projection in medical imaging for accuracy reasons unless asked.

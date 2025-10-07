@@ -132,7 +132,14 @@ pub async fn get_render_app() -> Result<RenderApp, KeplerError> {
     warn!("Start the program ...");
 
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build().unwrap();
-    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
+    let window = Arc::new(
+        WindowBuilder::new()
+            .with_title("Kepler WGPU Medical Imaging")
+            .with_inner_size(winit::dpi::LogicalSize::new(800, 800))
+            .with_visible(true)
+            .build(&event_loop)
+            .unwrap()
+    );
     // let proxy = event_loop.create_proxy();
 
     #[cfg(target_arch = "wasm32")]

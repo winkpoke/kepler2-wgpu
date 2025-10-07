@@ -65,11 +65,11 @@ pub struct PassDescriptor {
 }
 
 impl PassDescriptor {
-    /// Create a descriptor for the mesh pass (3D rendering with depth)
-    pub fn mesh_pass(surface_format: wgpu::TextureFormat) -> Self {
+    /// Create a descriptor for the mesh pass (3D rendering with configurable depth)
+    pub fn mesh_pass(surface_format: wgpu::TextureFormat, use_depth: bool) -> Self {
         Self {
             name: "MeshPass".to_string(),
-            is_offscreen: true,
+            is_offscreen: false,  // Renders directly to surface
             color_format: surface_format,
             clear_color: wgpu::Color {
                 r: 0.1,
@@ -77,8 +77,8 @@ impl PassDescriptor {
                 b: 0.1,
                 a: 1.0,
             },
-            uses_depth: true,
-            clear_depth: true,
+            uses_depth: use_depth,
+            clear_depth: use_depth,
         }
     }
 
@@ -154,16 +154,21 @@ impl PassRegistry {
     /// # Arguments
     /// * `mesh_enabled` - Whether 3D mesh rendering is enabled
     /// * `has_mesh_content` - Whether there is actual mesh content to render
+    /// 
+    /// Render order follows the architecture design:
+    /// 1. MeshPass (3D) renders first with Clear operation to establish base scene
+    /// 2. SlicePass (2D) renders second with Load operation to overlay on mesh content
     pub fn build_pass_plan(&self, mesh_enabled: bool, has_mesh_content: bool) -> PassPlan {
         let mut plan = PassPlan::new();
 
-        // Always include slice pass for 2D MPR views
-        plan.add_pass(PassId::SlicePass, PassDescriptor::slice_pass(self.surface_format));
-
-        // Include mesh pass only if mesh rendering is enabled and there's content
+        // Add mesh pass first for 3D rendering (base layer with Clear)
         if mesh_enabled && has_mesh_content {
-            plan.add_pass(PassId::MeshPass, PassDescriptor::mesh_pass(self.surface_format));
+            plan.add_pass(PassId::MeshPass, PassDescriptor::mesh_pass(self.surface_format, true));
         }
+
+        // Add slice pass second for 2D rendering (overlay with Load)
+        // TEMPORARILY DISABLED: Slice pass disabled to test mesh pass rendering
+        // plan.add_pass(PassId::SlicePass, PassDescriptor::slice_pass(self.surface_format));
 
         plan
     }
@@ -395,7 +400,7 @@ impl PassExecutor {
                         continue;
                     }
                     
-                    self.execute_mesh_pass(encoder, texture_pool, device, surface_width, surface_height, descriptor, &mut render_fn)
+                    self.execute_mesh_pass(encoder, frame_view, texture_pool, device, surface_width, surface_height, descriptor, &mut render_fn)
                         .map_err(|e| PassExecutionError::RenderingFailed(e.to_string()))
                 }
                 PassId::SlicePass => {
@@ -434,11 +439,12 @@ impl PassExecutor {
         Ok(())
     }
 
-    /// Execute the mesh pass (offscreen with depth)
+    /// Execute the mesh pass (direct to surface with depth)
     #[cfg(feature = "mesh")]
     fn execute_mesh_pass<F>(
         &self,
         encoder: &mut wgpu::CommandEncoder,
+        frame_view: &wgpu::TextureView,
         texture_pool: &mut TexturePoolType,
         device: &wgpu::Device,
         surface_width: u32,
@@ -452,42 +458,45 @@ impl PassExecutor {
         use crate::rendering::core::pipeline::get_mesh_depth_format;
 
         let start_time = Instant::now();
-        log::trace!("[MESH_PASS] Starting execution - Pass: '{}', Size: {}x{}, Depth: {}", 
+        log::trace!("[MESH_PASS] Starting execution - Pass: '{}', Size: {}x{}, Target: Surface (direct), Depth: {}", 
                     descriptor.name, surface_width, surface_height, descriptor.uses_depth);
 
-        // Ensure textures are ready for offscreen rendering
-        let texture_start = Instant::now();
-        texture_pool.ensure_textures(device, surface_width, surface_height, descriptor.uses_depth);
-        log::trace!("[MESH_PASS] Texture preparation completed in {:.2}ms", 
-                    texture_start.elapsed().as_millis_f64());
+        // Prepare depth texture if needed (only depth, no offscreen color texture)
+        let depth_view_opt = if descriptor.uses_depth {
+            let texture_start = Instant::now();
+            texture_pool.ensure_textures(device, surface_width, surface_height, descriptor.uses_depth);
+            log::trace!("[MESH_PASS] Depth texture preparation completed in {:.2}ms", 
+                        texture_start.elapsed().as_millis_f64());
 
-        // Get both color and depth views in a single call to avoid borrow conflicts
-        let view_start = Instant::now();
-        let (color_view_opt, depth_view_opt) = texture_pool.get_mesh_views(
-            device,
-            surface_width,
-            surface_height,
-            descriptor.color_format,
-            descriptor.uses_depth,
-        );
-        log::trace!("[MESH_PASS] View acquisition completed in {:.2}ms", 
-                    view_start.elapsed().as_millis_f64());
-
-        let color_view = color_view_opt.expect("Failed to get color view for mesh pass");
+            let view_start = Instant::now();
+            // Get just the depth view from get_mesh_views, ignoring the color view
+            let (_, depth_view_opt) = texture_pool.get_mesh_views(
+                device, 
+                surface_width, 
+                surface_height, 
+                wgpu::TextureFormat::Bgra8UnormSrgb, 
+                true
+            );
+            log::trace!("[MESH_PASS] Depth view acquisition completed in {:.2}ms", 
+                        view_start.elapsed().as_millis_f64());
+            depth_view_opt
+        } else {
+            None
+        };
         
         // Log depth attachment status
         match &depth_view_opt {
             Some(_) => log::trace!("[MESH_PASS] Depth attachment: ENABLED (format: {:?})", 
                                    get_mesh_depth_format()),
-            None => log::warn!("[MESH_PASS] Depth attachment: DISABLED - this may cause pipeline mismatch"),
+            None => log::trace!("[MESH_PASS] Depth attachment: DISABLED - rendering without depth"),
         }
 
-        // Now that we have both views, we can use them without borrow conflicts
+        // Render directly to surface view
         let render_pass_start = Instant::now();
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(&descriptor.name),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &color_view,
+                view: frame_view,  // Render directly to surface
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(descriptor.clear_color),
@@ -541,6 +550,7 @@ impl PassExecutor {
     fn execute_mesh_pass<F>(
         &self,
         _encoder: &mut wgpu::CommandEncoder,
+        _frame_view: &wgpu::TextureView,
         _texture_pool: &mut TexturePoolType,
         _device: &wgpu::Device,
         _surface_width: u32,
@@ -551,7 +561,7 @@ impl PassExecutor {
     where
         F: FnMut(PassContext) -> Result<(), Box<dyn std::error::Error>>,
     {
-        // Mesh functionality is disabled, do nothing
+        log::trace!("Mesh pass skipped - mesh feature disabled");
         Ok(())
     }
 
@@ -573,7 +583,7 @@ impl PassExecutor {
         log::trace!("[SLICE_PASS] Clear color: {:?}, Clear depth: {}", 
                     descriptor.clear_color, descriptor.clear_depth);
 
-        // Begin slice render pass (renders directly to surface)
+        // Begin slice render pass (renders directly to surface, preserving mesh content)
         let render_pass_start = Instant::now();
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(&descriptor.name),
@@ -581,7 +591,7 @@ impl PassExecutor {
                 view: frame_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(descriptor.clear_color),
+                    load: wgpu::LoadOp::Load, // Preserve existing mesh content
                     store: wgpu::StoreOp::Store,
                 },
             })],

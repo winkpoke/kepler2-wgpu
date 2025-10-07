@@ -7,7 +7,7 @@
 #[cfg(feature = "mesh")]
 mod error_handling_tests {
     use kepler_wgpu::mesh::{
-        MeshRenderError, ShaderValidationError, MeshView, MeshRenderContext,
+        MeshRenderError, ShaderValidationError, MeshView, BasicMeshContext,
         QualityLevel, mesh::Mesh,
         mesh_view::FallbackMode::Wireframe,
     };
@@ -84,11 +84,11 @@ mod error_handling_tests {
     }
 
     #[tokio::test]
-    async fn test_mesh_render_context_invalid_data() {
-        // Test MeshRenderContext error handling with invalid data
+    async fn test_basic_mesh_context_invalid_data() {
+        // Test BasicMeshContext error handling with invalid data
         let (_device, _queue) = create_test_device().await;
 
-        // Since MeshRenderContext::new doesn't return Result, we'll test error types directly
+        // Since BasicMeshContext::new doesn't return Result, we'll test error types directly
         // Test different error scenarios
         let buffer_error = MeshRenderError::BufferValidationFailed("Empty vertices provided".to_string());
         let pipeline_error = MeshRenderError::PipelineError("Failed to create render pipeline".to_string());
@@ -153,7 +153,7 @@ mod error_handling_tests {
         let (device, _queue) = create_test_device().await;
 
         // Create a scenario that will test error handling
-        // Since MeshRenderContext::new doesn't return Result, we'll test error types directly
+        // Since BasicMeshContext::new doesn't return Result, we'll test error types directly
         let error = MeshRenderError::BufferValidationFailed("Test error for logging".to_string());
         
         // Test that error can be converted to string for logging
@@ -243,7 +243,7 @@ mod error_handling_tests {
                 };
                 
                 // For this test, we'll just count successful creations
-                // In practice, MeshRenderContext::new doesn't return a Result
+                // In practice, BasicMeshContext::new doesn't return a Result
                 // so we'll simulate the test differently
                 let mut count = success_count_clone.lock().unwrap();
                 *count += 1;

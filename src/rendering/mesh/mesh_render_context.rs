@@ -120,10 +120,9 @@ impl MeshRenderContext {
 
         // Test 2: Check if vertex buffer creation is the issue
         log::info!("MeshRenderContext::new - Creating vertex buffer, vertices count: {}", mesh.vertices.len());
-        log::debug!("[MESH_DATA] First vertex: position={:?}, normal={:?}, uv={:?}", 
+        log::debug!("[MESH_DATA] First vertex: position={:?}, color={:?}", 
                    mesh.vertices.get(0).map(|v| v.position), 
-                   mesh.vertices.get(0).map(|v| v.normal), 
-                   mesh.vertices.get(0).map(|v| v.uv));
+                   mesh.vertices.get(0).map(|v| v.color));
         let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Mesh Vertex Buffer"),
             size: (mesh.vertices.len() * std::mem::size_of::<super::mesh::MeshVertex>()) as wgpu::BufferAddress,

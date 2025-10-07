@@ -91,19 +91,21 @@ pub struct OneCellLayout {
 }
 
 impl LayoutStrategy for OneCellLayout {
-    /// Compute position and size where only `index == 0` occupies the parent; others are hidden.
+    /// Compute position and size where only index 0 occupies the parent; others are hidden.
+    /// Function-level comment: Displays the first view (index 0) in full screen, which is now the mesh view.
     fn calculate_position_and_size(
         &self,
         index: u32,
         total_views: u32,
         parent_dim: (u32, u32),
     ) -> ((i32, i32), (u32, u32)) {
+        // Show first view (index 0) in full screen, hide all others
         if total_views <= 1 || index == 0 {
-            ((0, 0),  parent_dim)
+            ((0, 0), parent_dim)
         } else {
-            // TODO: Replace offscreen hiding with explicit visibility or zero-size rectangles.
-            // When there are multiple views, other views are not displayed.
-            ((-1000, -1000), (1, 1))
+            // Hide additional views using minimal valid size at the bottom-right corner
+            // WGPU requires viewport width and height to be > 0
+            ((parent_dim.0 as i32 - 1, parent_dim.1 as i32 - 1), (1, 1))
         }
     }
 }

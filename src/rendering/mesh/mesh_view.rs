@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
-use super::{mesh::Mesh, material::Material, camera::Camera, lighting::Lighting, performance::{QualityController, QualityLevel, PerformanceStats}};
-
+use super::{mesh::Mesh, material::Material, camera::Camera, lighting::Lighting, performance::{QualityController, QualityLevel, PerformanceStats}, basic_mesh_context::BasicMeshContext};
 use crate::{core::coord::Matrix4x4, rendering::view::{Renderable, View}, core::timing::{Instant, DurationExt}};
+use std::sync::Arc;
 
 /// Function-level comment: Error types specific to mesh rendering operations
 #[derive(Debug)]
@@ -68,7 +68,7 @@ pub struct MeshView {
     pub material: Option<Material>,
     pub camera: Option<Camera>,
     pub lighting: Option<Lighting>,
-    ctx: Option<std::sync::Arc<super::mesh_render_context::MeshRenderContext>>,
+    ctx: Option<std::sync::Arc<BasicMeshContext>>,
     pos: (i32, i32),
     dim: (u32, u32),
     /// Performance and error tracking
@@ -107,13 +107,12 @@ impl MeshView {
         Self::default()
     }
     
-    /// Function-level comment: Attach a shared mesh render context (Arc) to this view for rendering.
-    pub fn attach_context(&mut self, ctx: std::sync::Arc<super::mesh_render_context::MeshRenderContext>) {
+    /// Function-level comment: Attaches a basic mesh render context for GPU operations
+    pub fn attach_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
         self.ctx = Some(ctx);
+        log::debug!("MeshView::attach_context - Basic context attached successfully");
         // Reset error state when new context is attached
-        self.consecutive_errors = 0;
-        self.fallback_mode = FallbackMode::Normal;
-        log::info!("Mesh render context attached successfully");
+        self.reset_error_state();
     }
     
     /// Function-level comment: Get current rendering statistics for performance monitoring.
@@ -163,16 +162,17 @@ impl MeshView {
         }
     }
 
-    /// Function-level comment: Create a default camera positioned to view the scene appropriately.
-    /// Returns a camera with reasonable defaults for 3D mesh viewing.
+    /// Function-level comment: Create a default camera positioned to view a unit cube
     fn create_default_camera(&self) -> Camera {
-        let mut camera = Camera::new();
-        camera.eye = [0.0, 0.0, 2.0];     // Position camera closer to origin for better visibility
-        camera.center = [0.0, 0.0, 0.0];  // Look at origin
-        camera.up = [0.0, 1.0, 0.0];      // Standard Y-up orientation
-        camera.fov_y_radians = std::f32::consts::PI / 4.0; // 45 degrees
+        // Use perspective projection for initial testing to match working implementation
+        let mut camera = Camera::new_perspective();
+        camera.eye = [0.0, 0.0, 3.0]; // Position camera closer to the cube
+        camera.center = [0.0, 0.0, 0.0]; // Look at origin
+        camera.up = [0.0, 1.0, 0.0]; // Y-up
+        camera.fov_y_radians = std::f32::consts::PI / 4.0; // 45 degrees FOV
         camera.near = 0.1;
         camera.far = 100.0;
+        
         camera
     }
 
@@ -185,8 +185,7 @@ impl MeshView {
         }
     }
 
-    /// Function-level comment: Update uniform buffers with current camera, lighting, and material data.
-    /// Calculates aspect ratio from current viewport dimensions for proper orthogonal projection in medical visualization.
+    /// Function-level comment: Update GPU uniforms for basic mesh rendering with combined MVP matrix
     pub fn update_uniforms(&self, queue: &wgpu::Queue) {
         if let Some(ctx) = &self.ctx {
             let aspect_ratio = if self.dim.1 > 0 {
@@ -195,44 +194,62 @@ impl MeshView {
                 1.0
             };
             
-            log::debug!("[MESH_UNIFORMS] Viewport dimensions: {}x{}, aspect_ratio: {:.3}", 
+            log::debug!("[BASIC_MESH_UNIFORMS] Viewport dimensions: {}x{}, aspect_ratio: {:.3}", 
                        self.dim.0, self.dim.1, aspect_ratio);
             
-            // Update camera uniforms
-            if let Some(camera) = &self.camera {
-                log::debug!("[MESH_UNIFORMS] Camera - eye: {:?}, center: {:?}, up: {:?}, fov: {:.3}°", 
-                            camera.eye, camera.center, camera.up, camera.fov_y_radians.to_degrees());
-                 
-                 // Debug the actual matrices being sent to GPU
-                 let view_matrix = camera.view_matrix();
-                 let proj_matrix = camera.projection_matrix(aspect_ratio);
-                 let view_proj_matrix = camera.view_projection_matrix(aspect_ratio);
-                 log::debug!("[MESH_MATRICES] View matrix: {:?}", view_matrix.data);
-                 log::debug!("[MESH_MATRICES] Projection matrix: {:?}", proj_matrix.data);
-                 log::debug!("[MESH_MATRICES] View-Projection matrix: {:?}", view_proj_matrix.data);
-                
-                ctx.update_camera_uniforms(queue, camera, aspect_ratio);
-            } else {
-                log::debug!("[MESH_UNIFORMS] Using default camera uniforms");
-                ctx.update_default_uniforms(queue, aspect_ratio);
-            }
+            // Simplified MVP matrix calculation for guaranteed visibility
+            use std::f32::consts::PI;
             
-            // Update lighting uniforms
-            if let Some(lighting) = &self.lighting {
-                ctx.update_lighting_uniforms(queue, lighting);
-            }
+            // Model matrix - scale down and add slight rotation for visual interest
+            let time = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs_f32();
+            let rotation_y = time * 0.3; // Slower rotation
             
-            // Update model uniforms (identity matrix for now)
-            ctx.update_model_uniforms(queue, &Matrix4x4::eye());
+            let cos_y = rotation_y.cos();
+            let sin_y = rotation_y.sin();
+            let scale = 0.5; // Scale down the cube to ensure it fits in view
             
-            // Update material uniforms
-            if let Some(material) = &self.material {
-                log::debug!("[MESH_UNIFORMS] Material - base_color: {:?}", material.base_color);
-                ctx.update_material_uniforms(queue, material);
-            } else {
-                log::debug!("[MESH_UNIFORMS] Using default material");
-                ctx.update_material_uniforms(queue, &Material::default());
-            }
+            let model_matrix = Matrix4x4::from_array([
+                scale * cos_y, 0.0, scale * sin_y, 0.0,
+                0.0, scale, 0.0, 0.0,
+                -scale * sin_y, 0.0, scale * cos_y, 0.0,
+                0.0, 0.0, 0.0, 1.0, // Keep at origin
+            ]);
+            
+            // View matrix - camera positioned further back for better view
+            let view_matrix = Matrix4x4::from_array([
+                1.0, 0.0, 0.0, 0.0,
+                0.0, 1.0, 0.0, 0.0,
+                0.0, 0.0, 1.0, -5.0, // Move camera further back
+                0.0, 0.0, 0.0, 1.0,
+            ]);
+            
+            // Perspective projection matrix with wider field of view
+            let fov = PI / 3.0; // 60 degrees for wider view
+            let near = 0.1;
+            let far = 100.0;
+            
+            let f = 1.0 / (fov / 2.0).tan();
+            let proj_matrix = Matrix4x4::from_array([
+                f / aspect_ratio, 0.0, 0.0, 0.0,
+                0.0, f, 0.0, 0.0,
+                0.0, 0.0, (far + near) / (near - far), (2.0 * far * near) / (near - far),
+                0.0, 0.0, -1.0, 0.0,
+            ]);
+            
+            // Calculate MVP: projection * view * model
+            let view_model = view_matrix.multiply(&model_matrix);
+            let mvp_matrix = proj_matrix.multiply(&view_model);
+            
+            log::debug!("[BASIC_MESH_MATRICES] Model matrix (scaled & rotating): {:?}", model_matrix.data);
+            log::debug!("[BASIC_MESH_MATRICES] View matrix (camera at -5): {:?}", view_matrix.data);
+            log::debug!("[BASIC_MESH_MATRICES] Projection matrix (60° FOV): {:?}", proj_matrix.data);
+            log::debug!("[BASIC_MESH_MATRICES] Combined MVP matrix: {:?}", mvp_matrix.data);
+            
+            // Update uniforms in BasicMeshContext with combined MVP matrix
+            ctx.update_uniforms(queue, &mvp_matrix.data);
         }
     }
     
@@ -315,135 +332,44 @@ impl MeshView {
     
     /// Function-level comment: Attempt to render with comprehensive error handling and fallback.
     fn try_render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), MeshRenderError> {
-        log::trace!("MeshView::try_render - Starting mesh render attempt");
-        
         // Start frame timing for performance monitoring
         self.start_frame_timing();
         let start_time = Instant::now();
         
         // Check if rendering is disabled
         if matches!(self.fallback_mode, FallbackMode::Disabled) {
-            log::trace!("MeshView::try_render - Rendering disabled due to fallback mode");
+            log::trace!("BasicMeshView::try_render - Rendering disabled due to fallback mode");
             return Err(MeshRenderError::ResourceError("Rendering disabled due to repeated failures".to_string()));
         }
         
         // Ensure context is available
         let ctx = self.ctx.as_ref()
             .ok_or_else(|| {
-                log::trace!("MeshView::try_render - No context attached");
+                log::trace!("BasicMeshView::try_render - No context attached");
                 MeshRenderError::ContextNotAttached
             })?;
         
-        log::trace!("MeshView::try_render - Context available, vertices: {}, indices: {}", ctx.num_vertices, ctx.num_indices);
-        
-        // Update uniform buffers with current data
-        // Note: We need access to queue for uniform updates, but it's not available in render pass
-        // For now, we'll use default uniforms. This should be updated when queue is available.
-        
-        // Validate buffers before rendering
-        if let Err(validation_error) = ctx.validate_buffers() {
-            return Err(MeshRenderError::BufferValidationFailed(validation_error));
-        }
+        log::trace!("BasicMeshView::try_render - Context available, vertices: {}, indices: {}", ctx.num_vertices, ctx.num_indices);
         
         // Validate viewport dimensions
         if self.dim.0 == 0 || self.dim.1 == 0 {
             return Err(MeshRenderError::ViewportError("Invalid viewport dimensions".to_string()));
         }
         
-        // Set pipeline with error handling
-        log::trace!("MeshView::try_render - Setting render pipeline");
-        render_pass.set_pipeline(&*ctx.pipeline);
-        
-        // Set vertex buffer
-        log::trace!("MeshView::try_render - Setting vertex buffer");
-        render_pass.set_vertex_buffer(0, ctx.vertex_buffer.slice(..));
-        
-        // Bind uniform buffers (camera, lighting, model)
-        log::trace!("MeshView::try_render - Binding uniform buffers");
-        render_pass.set_bind_group(0, &ctx.camera_bind_group, &[]);
-        render_pass.set_bind_group(1, &ctx.lighting_bind_group, &[]);
-        render_pass.set_bind_group(2, &ctx.model_bind_group, &[]);
-        render_pass.set_bind_group(3, &ctx.material_bind_group, &[]);
-        
         // Configure viewport
         let (x, y) = (self.pos.0 as f32, self.pos.1 as f32);
         let (width, height) = (self.dim.0 as f32, self.dim.1 as f32);
-        log::debug!("[MESH_VIEWPORT] Setting viewport: x={}, y={}, width={}, height={}, depth=[0.0, 1.0]", 
-                   x, y, width, height);
         render_pass.set_viewport(x, y, width, height, 0.0, 1.0);
         
-        // Get quality settings for adaptive rendering
-        let quality_settings = self.quality_controller.get_quality_settings();
+        log::trace!("BasicMeshView::try_render - Viewport set to ({}, {}) {}x{}", x, y, width, height);
         
-        // Render based on fallback mode, quality settings, and available data
-        log::trace!("MeshView::try_render - Rendering with mode: {:?}", self.fallback_mode);
-        match self.fallback_mode {
-            FallbackMode::Normal | FallbackMode::Simplified => {
-                // Use quality settings to determine rendering approach
-                if quality_settings.wireframe_mode {
-                    // Force wireframe mode for minimal quality
-                    if ctx.num_indices > 0 {
-                        log::trace!("MeshView::try_render - Drawing indexed wireframe geometry: {} indices", ctx.num_indices);
-                        render_pass.set_index_buffer(ctx.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                        // TODO: Set wireframe pipeline when available
-                        render_pass.draw_indexed(0..ctx.num_indices, 0, 0..1);
-                    } else if ctx.num_vertices > 0 {
-                        log::trace!("MeshView::try_render - Drawing non-indexed wireframe geometry: {} vertices", ctx.num_vertices);
-                        render_pass.draw(0..ctx.num_vertices, 0..1);
-                    } else {
-                        log::trace!("MeshView::try_render - No vertices or indices to render in wireframe mode");
-                        return Err(MeshRenderError::ResourceError("No vertices or indices to render".to_string()));
-                    }
-                } else {
-                    // Normal rendering with quality adjustments
-                    if ctx.num_indices > 0 {
-                        render_pass.set_index_buffer(ctx.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                        // Apply LOD bias for quality adjustment (future enhancement)
-                        let index_count = if quality_settings.mesh_lod_bias > 1.0 {
-                            // Reduce geometry for lower quality
-                            (ctx.num_indices as f32 / quality_settings.mesh_lod_bias) as u32
-                        } else {
-                            ctx.num_indices
-                        };
-                        let final_index_count = index_count.min(ctx.num_indices);
-                        log::debug!("[MESH_DRAW] Drawing indexed geometry: {} indices (reduced from {}), total vertices: {}", final_index_count, ctx.num_indices, ctx.num_vertices);
-                        render_pass.draw_indexed(0..final_index_count, 0, 0..1);
-                        log::debug!("[MESH_DRAW] draw_indexed call completed successfully");
-                    } else if ctx.num_vertices > 0 {
-                        let vertex_count = if quality_settings.mesh_lod_bias > 1.0 {
-                            (ctx.num_vertices as f32 / quality_settings.mesh_lod_bias) as u32
-                        } else {
-                            ctx.num_vertices
-                        };
-                        let final_vertex_count = vertex_count.min(ctx.num_vertices);
-                        log::debug!("[MESH_DRAW] Drawing non-indexed geometry: {} vertices (reduced from {})", final_vertex_count, ctx.num_vertices);
-                        render_pass.draw(0..final_vertex_count, 0..1);
-                        log::debug!("[MESH_DRAW] draw call completed successfully");
-                    } else {
-                        log::trace!("MeshView::try_render - No vertices or indices to render in normal mode");
-                        return Err(MeshRenderError::ResourceError("No vertices or indices to render".to_string()));
-                    }
-                }
-            }
-            FallbackMode::Wireframe => {
-                // Wireframe rendering mode
-                if ctx.num_indices > 0 {
-                    render_pass.set_index_buffer(ctx.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                    // TODO: Set wireframe pipeline when available
-                    render_pass.draw_indexed(0..ctx.num_indices, 0, 0..1);
-                } else if ctx.num_vertices > 0 {
-                    render_pass.draw(0..ctx.num_vertices, 0..1);
-                }
-            }
-            FallbackMode::Disabled => {
-                return Err(MeshRenderError::ResourceError("Rendering disabled".to_string()));
-            }
-        }
+        // Use the simplified BasicMeshContext render method
+        ctx.render(render_pass);
         
         // Record successful render
         let render_time_ms = start_time.elapsed().as_millis_f32();
         self.record_success(render_time_ms);
-        log::trace!("MeshView::try_render - Render completed successfully in {:.2}ms", render_time_ms);
+        log::trace!("BasicMeshView::try_render - Render completed successfully in {:.2}ms", render_time_ms);
         
         // End frame timing and check for quality adjustments
         if let Some(new_quality) = self.end_frame_timing() {

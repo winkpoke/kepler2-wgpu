@@ -650,6 +650,85 @@ pub fn create_fragment_uniform_bind_group<T: bytemuck::Pod>(
     (buffer, bind_group, layout)
 }
 
+/// Creates a simple mesh pipeline for BasicMeshContext that only requires one bind group.
+/// This is a simplified version that uses the basic_mesh.wgsl shader with minimal uniforms.
+///
+/// Parameters
+/// - `device`: Logical device used to build shader modules and pipelines.
+/// - `bind_group_layout`: Single bind group layout for basic uniforms.
+/// - `use_depth`: Whether to enable depth testing and depth buffer writes.
+///
+/// Returns
+/// - `wgpu::RenderPipeline`: Newly created simple pipeline.
+#[cfg(feature = "mesh")]
+pub fn create_simple_mesh_pipeline(
+    device: &wgpu::Device,
+    bind_group_layout: &wgpu::BindGroupLayout,
+    use_depth: bool,
+) -> wgpu::RenderPipeline {
+    // Use the basic mesh shader with minimal uniforms
+    let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/mesh_basic.wgsl"));
+    
+    // Create pipeline layout with only one bind group
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Simple Mesh Pipeline Layout"),
+        bind_group_layouts: &[bind_group_layout],
+        push_constant_ranges: &[],
+    });
+    
+    // Get target format
+    let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
+    
+    // Create the pipeline
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("Simple Mesh Pipeline"),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_main"),
+            buffers: &[crate::rendering::mesh::mesh::MeshVertex::desc()],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs_main"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: target_format,
+                blend: Some(wgpu::BlendState::REPLACE),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: None, // Temporarily disable culling to test visibility
+            unclipped_depth: false,
+            polygon_mode: wgpu::PolygonMode::Fill,
+            conservative: false,
+        },
+        depth_stencil: if use_depth {
+            Some(wgpu::DepthStencilState {
+                format: get_mesh_depth_format(),
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            })
+        } else {
+            None
+        },
+        multisample: wgpu::MultisampleState {
+            count: 1,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        },
+        multiview: None,
+        cache: None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
