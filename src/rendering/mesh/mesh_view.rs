@@ -186,7 +186,7 @@ impl MeshView {
     }
 
     /// Function-level comment: Update uniform buffers with current camera, lighting, and material data.
-    /// Calculates aspect ratio from current viewport dimensions for proper perspective projection.
+    /// Calculates aspect ratio from current viewport dimensions for proper orthogonal projection in medical visualization.
     pub fn update_uniforms(&self, queue: &wgpu::Queue) {
         if let Some(ctx) = &self.ctx {
             let aspect_ratio = if self.dim.1 > 0 {

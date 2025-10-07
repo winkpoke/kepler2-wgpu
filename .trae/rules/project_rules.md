@@ -1,9 +1,24 @@
-1. The project is a Rust project.
-2. The project is a WGPU project.
-3. The code shall be compiled with native and wasm target. The wasm shall be compiled with "wasm-pack build -t web"
-4. The project documents are all under the folder "doc". Please refer to the documentations in the folder.
-5. Do not use npx or live serve to test the wasm build since I will manually test the wasm build in the browser for now.
-6. Compilation and test shall turn on feature mesh.
-7. Please log information with debug level when necessary in order to help debug the project.
-8. Implement trace-level logging to capture detailed information when logging frequency becomes excessive, particularly within the render loop. This will help monitor performance without overwhelming the log output. Ensure the trace logging is only activated when necessary to maintain system efficiency.
-9. As a foundamential rule, anything add to the code base shall minimal and step-by-step. This shall produce a minimal viable product first and add more features incrementally.
+1. The project is a Rust-based WGPU medical imaging framework for CT reconstruction, MPR (multi-planar reconstruction), MIP (maximum intensity projection), and 3D visualization.
+2. The project must build for both native and WebAssembly (wasm) targets.
+3. The wasm build command is: wasm-pack build -t web -- --features mesh
+   The native build and test commands are:
+        cargo build --features mesh
+        cargo test --features mesh
+4. Do not use npx, live-server, or any node-based tools for wasm testing. The wasm output will be manually tested in the browser.
+6. All documentation resides under the doc/ folder. Each feature or change must include a short explanation in this folder.
+7. The mesh feature must always be enabled for builds and tests.
+8. Development must be incremental and minimal. Add features step by step, starting with the minimal viable product.
+9. Default logging level is INFO.
+10. Use DEBUG level logs for development and debugging.
+11. Use TRACE level logs only for high-frequency or detailed performance diagnostics (e.g., within render loops).
+12. TRACE logging must be gated by a feature flag named trace-logging.
+13. When trace logging is enabled, consider sampling (e.g., log every Nth frame) to prevent log flooding.
+14. Make logging configurable through the environment variable RUST_LOG (for native builds).
+15. In wasm builds, route logs to the browser console using console_log.
+16. Heavy trace logging must never be enabled in release builds.
+17. GPU operations must remain efficient and non-blocking. Avoid excessive CPU-GPU synchronization in render loops.
+18. Use cfg(feature = "trace-logging") to conditionally include expensive diagnostics.
+19. Update doc/CHANGELOG.md for each user-visible change.
+20. In the medical imaging context, ensure accuracy, numerical stability, and performance for CT reconstruction and visualization.
+21. Manage GPU memory efficiently and minimize texture/data copies.
+22. The codebase must remain buildable, testable, and inspectable at all times.

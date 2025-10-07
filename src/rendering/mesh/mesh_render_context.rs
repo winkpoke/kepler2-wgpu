@@ -629,21 +629,36 @@ impl MeshRenderContext {
     }
 
     /// Function-level comment: Update all uniform buffers with default values when no specific data is provided.
-    /// Sets up identity matrices and basic lighting for fallback rendering.
+    /// Sets up identity matrices and basic lighting for fallback rendering using orthogonal projection for medical accuracy.
     pub fn update_default_uniforms(&self, queue: &Queue, aspect_ratio: f32) {
         log::debug!("[MESH_UNIFORMS] Updating default uniforms with aspect_ratio: {}", aspect_ratio);
         let identity_matrix = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]];
         
-        // Create a simple perspective projection matrix
-        let fov = 45.0_f32.to_radians();
+        // Create orthogonal projection matrix for medical visualization accuracy
         let near = 0.1;
         let far = 100.0;
-        let f = 1.0 / (fov / 2.0).tan();
+        let ortho_size = 10.0; // 20x20 unit viewing volume
+        
+        // Adjust orthogonal bounds to maintain aspect ratio
+        let (left, right, bottom, top) = if aspect_ratio > 1.0 {
+            // Width is larger - adjust width
+            let half_width = ortho_size * aspect_ratio;
+            (-half_width, half_width, -ortho_size, ortho_size)
+        } else {
+            // Height is larger - adjust height
+            let half_height = ortho_size / aspect_ratio;
+            (-ortho_size, ortho_size, -half_height, half_height)
+        };
+
+        let width_inv = 1.0 / (right - left);
+        let height_inv = 1.0 / (top - bottom);
+        let depth_inv = 1.0 / (near - far);
+
         let projection_matrix = [
-            [f / aspect_ratio, 0.0, 0.0, 0.0],
-            [0.0, f, 0.0, 0.0],
-            [0.0, 0.0, (far + near) / (near - far), (2.0 * far * near) / (near - far)],
-            [0.0, 0.0, -1.0, 0.0],
+            [2.0 * width_inv, 0.0, 0.0, 0.0],
+            [0.0, 2.0 * height_inv, 0.0, 0.0],
+            [0.0, 0.0, 2.0 * depth_inv, 0.0],
+            [-(right + left) * width_inv, -(top + bottom) * height_inv, (far + near) * depth_inv, 1.0],
         ];
         
         // Create a simple view matrix (camera at (0, 0, 5) looking at origin)
