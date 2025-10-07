@@ -16,7 +16,7 @@ impl Camera {
     /// Function-level comment: Create a new camera with default values suitable for mesh viewing
     pub fn new() -> Self {
         Self {
-            eye: [0.0, 0.0, 3.0],
+            eye: [0.0, 0.0, 10.0], // Move camera much further back
             center: [0.0, 0.0, 0.0],
             up: [0.0, 1.0, 0.0],
             fov_y_radians: std::f32::consts::PI / 4.0, // 45 degrees

@@ -541,7 +541,9 @@ impl State {
                         #[cfg(feature = "mesh")]
                         if mesh_enabled && layout.views.len() > 2 {
                             // Access MeshView from slot 2 and attempt to downcast to mutable reference
-                            if let Some(mesh_view) = layout.views[2].as_any_mut().downcast_mut::<crate::rendering::view::MeshView>() {
+                            let mesh_view = layout.views.get_mut(2)
+                                .and_then(|view| view.as_any_mut().downcast_mut::<crate::rendering::view::MeshView>());
+                            if let Some(mesh_view) = mesh_view {
                                 // Call the MeshView render method with the pass context
                                 mesh_view.render(pass_context.pass).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
                             }
@@ -624,8 +626,7 @@ impl State {
 
         #[cfg(feature = "mesh")]
         if self.enable_mesh {
-            // Mesh enabled at initialization: place MPR views in slots 0 and 1, MeshView in slot 2, and MPR view in slot 3.
-            // This adheres strictly to the 2x2 grid and replaces the third view without reflowing others.
+            // Add first two MPR views (Axial and Coronal) to slots 0 and 1
             for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1]].iter() {
                 let view = GenericMPRView::new(
                     manager,
@@ -640,7 +641,8 @@ impl State {
                 );
                 self.layout.add_view(Box::new(view));
             }
-            // Mesh view creation temporarily disabled for debugging
+            
+            // Add mesh view to slot 2 (replacing Sagittal view)
             use crate::rendering::view::MeshView;
             use crate::rendering::mesh::{mesh::Mesh, mesh_render_context::MeshRenderContext};
             let mut mesh_view = MeshView::new();
@@ -668,14 +670,15 @@ impl State {
             mesh_view.material = Some(Material::default());
             
             mesh_view.attach_context(ctx_arc);
-            self.layout.add_view(Box::new(mesh_view));
-            let orientation = ALL_ORIENTATIONS[3];
+            self.layout.add_view(Box::new(mesh_view)); // This will be slot 2 (bottom-left)
+            
+            // Add final MPR view to slot 3
             let view = GenericMPRView::new(
                 manager,
                 &self.graphics.device,
                 texture.clone(),
                 &vol,
-                orientation,
+                ALL_ORIENTATIONS[3], // Last orientation
                 1.0,
                 [0.0, 0.0, 0.0],
                 (0, 0),

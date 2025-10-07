@@ -71,7 +71,12 @@ impl PassDescriptor {
             name: "MeshPass".to_string(),
             is_offscreen: true,
             color_format: surface_format,
-            clear_color: wgpu::Color::TRANSPARENT,
+            clear_color: wgpu::Color {
+                r: 0.1,
+                g: 0.1,
+                b: 0.1,
+                a: 1.0,
+            },
             uses_depth: true,
             clear_depth: true,
         }
@@ -83,13 +88,12 @@ impl PassDescriptor {
             name: "SlicePass".to_string(),
             is_offscreen: false,
             color_format: surface_format,
-            clear_color: wgpu::Color::TRANSPARENT,
-            // clear_color: wgpu::Color {
-            //     r: 0.5,
-            //     g: 0.5,
-            //     b: 0.5,
-            //     a: 1.0,
-            // },
+            clear_color: wgpu::Color {
+                r: 0.1,
+                g: 0.1,
+                b: 0.1,
+                a: 1.0,
+            },
             uses_depth: false,
             clear_depth: false,
         }

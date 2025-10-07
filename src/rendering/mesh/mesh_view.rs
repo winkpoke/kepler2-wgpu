@@ -167,7 +167,7 @@ impl MeshView {
     /// Returns a camera with reasonable defaults for 3D mesh viewing.
     fn create_default_camera(&self) -> Camera {
         let mut camera = Camera::new();
-        camera.eye = [0.0, 0.0, 5.0];     // Position camera back from origin
+        camera.eye = [0.0, 0.0, 2.0];     // Position camera closer to origin for better visibility
         camera.center = [0.0, 0.0, 0.0];  // Look at origin
         camera.up = [0.0, 1.0, 0.0];      // Standard Y-up orientation
         camera.fov_y_radians = std::f32::consts::PI / 4.0; // 45 degrees
@@ -185,37 +185,54 @@ impl MeshView {
         }
     }
 
-    /// Function-level comment: Update uniform buffers with current camera, lighting, and model data.
-    /// Ensures GPU buffers contain the latest transformation and lighting information for rendering.
+    /// Function-level comment: Update uniform buffers with current camera, lighting, and material data.
+    /// Calculates aspect ratio from current viewport dimensions for proper perspective projection.
     pub fn update_uniforms(&self, queue: &wgpu::Queue) {
         if let Some(ctx) = &self.ctx {
-            let aspect_ratio = self.dim.0 as f32 / self.dim.1 as f32;
+            let aspect_ratio = if self.dim.1 > 0 {
+                self.dim.0 as f32 / self.dim.1 as f32
+            } else {
+                1.0
+            };
             
-            // Update camera uniforms - use provided camera or create default
-            match &self.camera {
-                Some(camera) => {
-                    ctx.update_camera_uniforms(queue, camera, aspect_ratio);
-                }
-                None => {
-                    let default_camera = self.create_default_camera();
-                    ctx.update_camera_uniforms(queue, &default_camera, aspect_ratio);
-                }
+            log::debug!("[MESH_UNIFORMS] Viewport dimensions: {}x{}, aspect_ratio: {:.3}", 
+                       self.dim.0, self.dim.1, aspect_ratio);
+            
+            // Update camera uniforms
+            if let Some(camera) = &self.camera {
+                log::debug!("[MESH_UNIFORMS] Camera - eye: {:?}, center: {:?}, up: {:?}, fov: {:.3}°", 
+                            camera.eye, camera.center, camera.up, camera.fov_y_radians.to_degrees());
+                 
+                 // Debug the actual matrices being sent to GPU
+                 let view_matrix = camera.view_matrix();
+                 let proj_matrix = camera.projection_matrix(aspect_ratio);
+                 let view_proj_matrix = camera.view_projection_matrix(aspect_ratio);
+                 log::debug!("[MESH_MATRICES] View matrix: {:?}", view_matrix.data);
+                 log::debug!("[MESH_MATRICES] Projection matrix: {:?}", proj_matrix.data);
+                 log::debug!("[MESH_MATRICES] View-Projection matrix: {:?}", view_proj_matrix.data);
+                
+                ctx.update_camera_uniforms(queue, camera, aspect_ratio);
+            } else {
+                log::debug!("[MESH_UNIFORMS] Using default camera uniforms");
+                ctx.update_default_uniforms(queue, aspect_ratio);
             }
             
-            // Update lighting uniforms - use provided lighting or create default
-            match &self.lighting {
-                Some(lighting) => {
-                    ctx.update_lighting_uniforms(queue, lighting);
-                }
-                None => {
-                    let default_lighting = self.create_default_lighting();
-                    ctx.update_lighting_uniforms(queue, &default_lighting);
-                }
+            // Update lighting uniforms
+            if let Some(lighting) = &self.lighting {
+                ctx.update_lighting_uniforms(queue, lighting);
             }
             
-            // Update model uniforms with identity matrix for now
-            let identity_matrix = crate::core::coord::Matrix4x4::eye();
-            ctx.update_model_uniforms(queue, &identity_matrix);
+            // Update model uniforms (identity matrix for now)
+            ctx.update_model_uniforms(queue, &Matrix4x4::eye());
+            
+            // Update material uniforms
+            if let Some(material) = &self.material {
+                log::debug!("[MESH_UNIFORMS] Material - base_color: {:?}", material.base_color);
+                ctx.update_material_uniforms(queue, material);
+            } else {
+                log::debug!("[MESH_UNIFORMS] Using default material");
+                ctx.update_material_uniforms(queue, &Material::default());
+            }
         }
     }
     
@@ -351,6 +368,8 @@ impl MeshView {
         // Configure viewport
         let (x, y) = (self.pos.0 as f32, self.pos.1 as f32);
         let (width, height) = (self.dim.0 as f32, self.dim.1 as f32);
+        log::debug!("[MESH_VIEWPORT] Setting viewport: x={}, y={}, width={}, height={}, depth=[0.0, 1.0]", 
+                   x, y, width, height);
         render_pass.set_viewport(x, y, width, height, 0.0, 1.0);
         
         // Get quality settings for adaptive rendering
@@ -386,16 +405,20 @@ impl MeshView {
                         } else {
                             ctx.num_indices
                         };
-                        log::trace!("MeshView::try_render - Drawing indexed geometry: {} indices (reduced from {})", index_count.min(ctx.num_indices), ctx.num_indices);
-                        render_pass.draw_indexed(0..index_count.min(ctx.num_indices), 0, 0..1);
+                        let final_index_count = index_count.min(ctx.num_indices);
+                        log::debug!("[MESH_DRAW] Drawing indexed geometry: {} indices (reduced from {}), total vertices: {}", final_index_count, ctx.num_indices, ctx.num_vertices);
+                        render_pass.draw_indexed(0..final_index_count, 0, 0..1);
+                        log::debug!("[MESH_DRAW] draw_indexed call completed successfully");
                     } else if ctx.num_vertices > 0 {
                         let vertex_count = if quality_settings.mesh_lod_bias > 1.0 {
                             (ctx.num_vertices as f32 / quality_settings.mesh_lod_bias) as u32
                         } else {
                             ctx.num_vertices
                         };
-                        log::trace!("MeshView::try_render - Drawing non-indexed geometry: {} vertices (reduced from {})", vertex_count.min(ctx.num_vertices), ctx.num_vertices);
-                        render_pass.draw(0..vertex_count.min(ctx.num_vertices), 0..1);
+                        let final_vertex_count = vertex_count.min(ctx.num_vertices);
+                        log::debug!("[MESH_DRAW] Drawing non-indexed geometry: {} vertices (reduced from {})", final_vertex_count, ctx.num_vertices);
+                        render_pass.draw(0..final_vertex_count, 0..1);
+                        log::debug!("[MESH_DRAW] draw call completed successfully");
                     } else {
                         log::trace!("MeshView::try_render - No vertices or indices to render in normal mode");
                         return Err(MeshRenderError::ResourceError("No vertices or indices to render".to_string()));
@@ -483,8 +506,14 @@ impl Renderable for MeshView {
 impl View for MeshView {
     fn position(&self) -> (i32, i32) { self.pos }
     fn dimensions(&self) -> (u32, u32) { self.dim }
-    fn move_to(&mut self, pos: (i32, i32)) { self.pos = pos; }
-    fn resize(&mut self, dim: (u32, u32)) { self.dim = dim; }
+    fn move_to(&mut self, pos: (i32, i32)) { 
+        log::debug!("[MESH_VIEW] Moving to position: {:?}", pos);
+        self.pos = pos; 
+    }
+    fn resize(&mut self, dim: (u32, u32)) { 
+        log::debug!("[MESH_VIEW] Resizing to dimensions: {:?}", dim);
+        self.dim = dim; 
+    }
     fn as_any(&self) -> &dyn std::any::Any { self }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
 }

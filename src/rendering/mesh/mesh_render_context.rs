@@ -120,6 +120,10 @@ impl MeshRenderContext {
 
         // Test 2: Check if vertex buffer creation is the issue
         log::info!("MeshRenderContext::new - Creating vertex buffer, vertices count: {}", mesh.vertices.len());
+        log::debug!("[MESH_DATA] First vertex: position={:?}, normal={:?}, uv={:?}", 
+                   mesh.vertices.get(0).map(|v| v.position), 
+                   mesh.vertices.get(0).map(|v| v.normal), 
+                   mesh.vertices.get(0).map(|v| v.uv));
         let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Mesh Vertex Buffer"),
             size: (mesh.vertices.len() * std::mem::size_of::<super::mesh::MeshVertex>()) as wgpu::BufferAddress,
@@ -133,6 +137,7 @@ impl MeshRenderContext {
 
         // Test 3: Check if index buffer creation is the issue
         log::info!("MeshRenderContext::new - Creating index buffer, indices count: {}", mesh.indices.len());
+        log::debug!("[MESH_DATA] First 6 indices: {:?}", mesh.indices.iter().take(6).collect::<Vec<_>>());
         let index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Mesh Index Buffer"),
             size: (mesh.indices.len() * std::mem::size_of::<u32>()) as wgpu::BufferAddress,
@@ -602,6 +607,25 @@ impl MeshRenderContext {
         };
         
         queue.write_buffer(&self.model_uniform_buffer, 0, bytemuck::cast_slice(&[model_uniforms]));
+    }
+
+    /// Function-level comment: Update material uniform buffer with material properties.
+    /// Converts Material data to MaterialProperties format and uploads to GPU.
+    pub fn update_material_uniforms(&self, queue: &Queue, material: &super::material::Material) {
+        log::debug!("[MESH_UNIFORMS] Updating material uniforms");
+        
+        let material_properties = MaterialProperties {
+            albedo: [material.base_color[0], material.base_color[1], material.base_color[2]],
+            _albedo_padding: 0.0,
+            metallic: 0.0,  // Default metallic value since Material doesn't have it
+            roughness: 0.5, // Default roughness value since Material doesn't have it
+            ao: 1.0,        // Default ambient occlusion value
+            _scalar_padding: 0.0,
+            emission: [0.0, 0.0, 0.0], // Default emission (no glow)
+            _emission_padding: 0.0,
+        };
+        
+        queue.write_buffer(&self.material_uniform_buffer, 0, bytemuck::cast_slice(&[material_properties]));
     }
 
     /// Function-level comment: Update all uniform buffers with default values when no specific data is provided.
