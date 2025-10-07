@@ -11,7 +11,7 @@ mod error_handling_tests {
         QualityLevel, mesh::Mesh,
         mesh_view::FallbackMode::Wireframe,
     };
-    use kepler_wgpu::pipeline::PipelineManager;
+    use kepler_wgpu::rendering::core::pipeline::PipelineManager;
     use wgpu::{Instance, Backends, DeviceDescriptor, Features, Limits};
 
     /// Helper function to create a test device

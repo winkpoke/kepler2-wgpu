@@ -10,33 +10,31 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::state::Graphics;
-use crate::error::KeplerError;
+// New module organization
+pub mod core;
+pub mod data;
+pub mod rendering;
+pub mod application;
 
-// mod texture;
-pub mod coord;
-pub mod ct_volume;
-pub mod dicom;
-pub mod error;
-pub mod geometry;
-pub mod gl_canvas;
-pub mod state;
-pub mod pipeline;
-pub mod render_content;
-pub mod view;
-pub mod render_app;
-pub mod pipeline_builder;
-pub mod render_pass;
-pub mod timing;
+// All modules now properly organized according to the new architecture
 
-// Mesh module is opt-in via Cargo feature `mesh`
+// Re-export commonly used types for backward compatibility
+pub use core::{coord, error::KeplerError, timing};
+pub use data::{ct_volume, dicom};
+pub use rendering::{
+    view::{View, Renderable, Layout},
+    core::{pipeline::PipelineManager, state::State},
+};
+pub use application::{render_app::RenderApp, gl_canvas::GLCanvas};
+
+// Feature-gated exports
 #[cfg(feature = "mesh")]
-pub mod mesh;
+pub use rendering::mesh;
 
-use ct_volume::CTVolume;
-use state::State;
-use render_app::RenderApp;
-use gl_canvas::UserEvent;
+// Current imports for existing functionality
+use crate::rendering::core::state::Graphics;
+use data::ct_volume::CTVolume;
+use application::gl_canvas::UserEvent;
 
 
 #[cfg(target_arch = "wasm32")]

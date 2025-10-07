@@ -1,4 +1,4 @@
-use kepler_wgpu::{get_render_app, ct_volume::CTVolumeGenerator, dicom::fileio};
+use kepler_wgpu::{get_render_app, data::{ct_volume::CTVolumeGenerator, dicom::fileio}};
 // use kepler_wgpu::gl_canvas::GLCanvas;
 
 
@@ -15,10 +15,10 @@ async fn main() {
 
     // pollster::block_on(run());
     let mut render_app = get_render_app().await.expect("Failed to create render app");
-    let gl_canvase = render_app.get_glcanvas();
+    let gl_canvas = render_app.get_glcanvas();
     #[cfg(feature = "mesh")]
-    gl_canvase.enable_mesh(true);
-    gl_canvase.load_data_from_ct_volume(&vol);
+    gl_canvas.enable_mesh(true);
+    gl_canvas.load_data_from_ct_volume(&vol);
 
     // Inject test events for verification
     // gl_canvase.set_window_level(0, 40.0);
