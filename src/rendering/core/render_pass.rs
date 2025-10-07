@@ -7,9 +7,9 @@ use wgpu;
 use std::collections::HashMap;
 use crate::core::timing::{Instant, DurationExt};
 
-use crate::rendering::mesh::texture_pool::TexturePool;
+use crate::rendering::mesh::mesh_texture_pool::MeshTexturePool;
 
-type TexturePoolType = TexturePool;
+type TexturePoolType = MeshTexturePool;
 
 /// Unique identifier for render passes
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

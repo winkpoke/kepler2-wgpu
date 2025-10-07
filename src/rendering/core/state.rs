@@ -24,7 +24,7 @@ use crate::data::dicom::*;
 use crate::rendering::content::render_content::RenderContent;
 use crate::rendering::view::*;
 use crate::core::error::KeplerError;
-use crate::rendering::mesh::texture_pool::TexturePool;
+use crate::rendering::mesh::mesh_texture_pool::MeshTexturePool;
 
 fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
     let mut file_paths = Vec::new();
@@ -238,7 +238,7 @@ pub struct State {
     pub(crate) toggle_enabled: bool,
     pub(crate) last_volume: Option<CTVolume>,
     pub(crate) enable_mesh: bool,
-    pub(crate) texture_pool: TexturePool,
+    pub(crate) texture_pool: MeshTexturePool,
     /// Function-level comment: Snapshot of slot-2 MPR state to restore when mesh mode is disabled.
     pub(crate) mpr_state_slot2: Option<MPRViewState>,
     /// Function-level comment: Cached BasicMeshContext wrapped in Arc for efficient reuse across toggles.
@@ -295,7 +295,7 @@ impl State {
 
         crate::rendering::core::pipeline::set_swapchain_format(graphics.surface_config.format);
 
-        let mut texture_pool = TexturePool::new();
+        let mut texture_pool = MeshTexturePool::new();
 
         {
             // Create initial depth texture and view for mesh rendering.

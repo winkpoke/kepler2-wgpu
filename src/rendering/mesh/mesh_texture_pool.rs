@@ -3,7 +3,7 @@
 /// Minimal texture pool that can hold onto a depth texture and view for reuse.
 use std::collections::HashMap;
 
-pub struct TexturePool {
+pub struct MeshTexturePool {
     width: u32,
     height: u32,
     /// Offscreen color views keyed by pass id (e.g., "mesh_offscreen")
@@ -16,7 +16,7 @@ pub struct TexturePool {
     depth_view: Option<wgpu::TextureView>,
 }
 
-impl TexturePool {
+impl MeshTexturePool {
     /// Creates a new empty texture pool.
     pub fn new() -> Self {
         Self {

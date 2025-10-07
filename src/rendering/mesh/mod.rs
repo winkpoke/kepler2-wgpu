@@ -10,7 +10,7 @@ pub mod lighting;
 pub mod mesh_view;
 pub mod mesh_render_context;
 pub mod basic_mesh_context;
-pub mod texture_pool;
+pub mod mesh_texture_pool;
 pub mod shader_validation;
 pub mod performance;
 
