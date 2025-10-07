@@ -6,3 +6,4 @@
 6. Compilation and test shall turn on feature mesh.
 7. Please log information with debug level when necessary in order to help debug the project.
 8. Implement trace-level logging to capture detailed information when logging frequency becomes excessive, particularly within the render loop. This will help monitor performance without overwhelming the log output. Ensure the trace logging is only activated when necessary to maintain system efficiency.
+9. As a foundamential rule, anything add to the code base shall minimal and step-by-step. This shall produce a minimal viable product first and add more features incrementally.

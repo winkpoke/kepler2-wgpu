@@ -4,6 +4,23 @@
 
 This document consolidates the design specifications for the kepler-wgpu rendering system, integrating 3D mesh rendering, render pass architecture, pipeline management, and mesh view implementation into a unified design. The architecture supports both 2D medical imaging (MPR views) and 3D mesh visualization with a modular, feature-gated approach.
 
+## Current Rendering Status
+
+### ✅ Onscreen Rendering Implementation
+
+The current implementation uses **direct surface rendering** for both 3D and 2D content:
+
+- **MeshPass**: Renders 3D geometry directly to the surface with depth buffering (Clear operation)
+- **SlicePass**: Renders 2D content directly to the surface preserving 3D background (Load operation)
+- **Composition**: Natural alpha blending through sequential render pass execution
+- **Output**: Both passes contribute to the final onscreen display without intermediate offscreen textures
+
+This simplified approach eliminates previous offscreen texture composition issues and ensures both 3D meshes and 2D medical imaging content are visible onscreen.
+
+### 🚀 Future Enhancement: Composite Rendering
+
+Advanced composite rendering capabilities are planned as future enhancements, including G-Buffer support, deferred lighting, post-processing effects, and multi-target rendering. See the [Future Enhancement: Advanced Composite Rendering](#future-enhancement-advanced-composite-rendering) section for detailed specifications.
+
 ## System Architecture
 
 ### Core Design Principles
@@ -45,16 +62,18 @@ This document consolidates the design specifications for the kepler-wgpu renderi
 The system implements a multi-pass rendering architecture with the following execution order:
 
 1. **MeshPass** (3D rendering with depth testing)
-   - Renders 3D mesh geometry with depth buffering
-   - Uses offscreen color and depth attachments
+   - Renders 3D mesh geometry with depth buffering directly to the surface
+   - Uses depth attachments for proper 3D rendering
    - Supports camera transformations, lighting, and materials
    - Only executed when mesh feature is enabled and MeshView is present
+   - Renders first to establish the 3D scene background
 
 2. **SlicePass** (2D MPR rendering)
-   - Renders medical imaging slices (axial, coronal, sagittal)
+   - Renders medical imaging slices (axial, coronal, sagittal) on top of existing content
    - Uses texture sampling for volume data visualization
    - Operates without depth testing for maximum throughput
-   - Renders to offscreen targets or directly to swapchain
+   - Uses LoadOp::Load to preserve content rendered by MeshPass
+   - Renders directly to the surface, compositing with 3D content
 
 3. **OverlayPass** (UI and annotations)
    - Renders overlays, annotations, and UI elements
@@ -76,9 +95,11 @@ impl PassExecutor {
                         target_view: &wgpu::TextureView,
                         texture_pool: &mut TexturePool) -> Result<(), wgpu::SurfaceError> {
         // Execute passes based on available views and features
+        // MeshPass renders first directly to the surface to establish 3D background
         if cfg!(feature = "mesh") && has_mesh_view {
-            self.execute_mesh_pass(encoder, texture_pool)?;
+            self.execute_mesh_pass(encoder, target_view, texture_pool)?;
         }
+        // SlicePass renders on top, preserving existing content with LoadOp::Load
         self.execute_slice_pass(encoder, target_view, texture_pool)?;
         Ok(())
     }
@@ -89,7 +110,7 @@ impl PassExecutor {
 
 #### TexturePool
 
-Manages offscreen render targets and depth attachments:
+Manages depth attachments and any remaining offscreen render targets:
 
 ```rust
 // Implementation in src/mesh/texture_pool.rs
@@ -102,10 +123,11 @@ pub struct TexturePool {
 ```
 
 **Key Features:**
-- Lazy allocation of depth textures (Depth32Float format)
-- Caching of offscreen color targets by pass ID
+- Lazy allocation of depth textures (Depth32Float format) for MeshPass
+- Simplified resource management with direct surface rendering
 - Automatic resource cleanup and reuse
 - Size-based texture pooling for different viewport dimensions
+- Reduced complexity with elimination of offscreen color targets for mesh rendering
 
 #### PipelineManager
 
@@ -376,9 +398,10 @@ if cfg!(feature = "mesh") && enable_mesh_view {
 ✅ **Render Architecture**
 - PassExecutor with MeshPass and SlicePass support
 - PassPlan and PassDescriptor for render pass organization
-- TexturePool for depth and color attachment management
+- TexturePool for depth attachment management (simplified from offscreen color targets)
 - PipelineManager with pipeline caching and Arc-wrapped sharing
 - Render pass creation and execution with proper borrowing
+- Simplified rendering pipeline with direct surface rendering for MeshPass
 
 ✅ **Pipeline Management**
 - Centralized pipeline creation via PipelineManager
@@ -409,11 +432,11 @@ if cfg!(feature = "mesh") && enable_mesh_view {
 ### Planned Features
 
 📋 **Advanced Rendering**
-- Active mesh rendering in MeshPass (currently disabled in state.rs)
 - Multiple light sources and shadow mapping
 - Texture-based materials and normal mapping
 - Instanced rendering for multiple objects
 - Level-of-detail (LOD) system for large meshes
+- Enhanced composition techniques for 2D/3D content blending
 
 📋 **User Interaction**
 - Camera controls (orbit, pan, zoom)
@@ -431,9 +454,13 @@ if cfg!(feature = "mesh") && enable_mesh_view {
 
 ### Current Limitations and Known Issues
 
-⚠️ **Mesh Rendering Status**
-- MeshView creation is currently disabled in `src/state.rs` (line 805) for debugging purposes
-- Mesh rendering pipeline exists but is not actively used in the render loop
+✅ **Current Onscreen Rendering Status**
+- **MeshPass**: Renders 3D geometry directly to the surface with depth buffering, establishing the 3D background layer
+- **SlicePass**: Renders 2D content directly to the surface using LoadOp::Load to preserve existing 3D content
+- **Render Order**: MeshPass executes first (Clear operation), followed by SlicePass (Load operation) for proper layering
+- **Surface Output**: Both passes contribute to the final onscreen display without intermediate offscreen textures
+- **Composition Method**: Natural alpha blending through sequential render pass execution
+- **Visibility Confirmed**: Simplified architecture eliminates previous offscreen texture composition issues
 - Camera, lighting, and material systems are data-only structures without active rendering logic
 
 ⚠️ **Architecture Gaps**
@@ -558,6 +585,247 @@ mesh = []
 - Lazy initialization of expensive resources (mesh pipelines, depth textures)
 - Deterministic cleanup when features are disabled
 - Automatic resource pooling for frequently used objects
+
+## Future Enhancement: Advanced Composite Rendering
+
+### Overview
+
+While the current implementation uses direct surface rendering for both MeshPass and SlicePass, future requirements may necessitate a more sophisticated composite rendering approach. This section outlines the planned architecture for advanced composition techniques that would enable complex post-processing, multi-target rendering, and enhanced visual effects.
+
+### Current Implementation vs. Composite Approach
+
+#### Current Direct Rendering Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Current Implementation                    │
+├─────────────────────────────────────────────────────────────┤
+│  MeshPass → Surface (Clear) → 3D Background                 │
+│  SlicePass → Surface (Load) → Final Composite Output        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Benefits of Current Approach:**
+- ✅ Simple and efficient for basic composition
+- ✅ Minimal resource overhead
+- ✅ Direct GPU-to-surface rendering
+- ✅ Natural alpha blending through render order
+
+#### Proposed Composite Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   Future Composite Pipeline                 │
+├─────────────────────────────────────────────────────────────┤
+│  MeshPass → G-Buffer → Depth/Normal/Albedo Targets         │
+│  SlicePass → Offscreen → 2D Content Target                 │
+│  CompositePass → Surface → Advanced Blending & Effects     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Benefits of Composite Approach:**
+- ✅ Advanced post-processing capabilities
+- ✅ Multiple render target support
+- ✅ Deferred rendering techniques
+- ✅ Complex blending and effects
+- ✅ Shadow mapping and lighting enhancements
+
+### Planned Composite Features
+
+#### 1. Multi-Target Rendering (G-Buffer)
+
+**MeshPass Enhancements:**
+```rust
+// Future G-Buffer structure
+pub struct GBuffer {
+    pub depth_texture: wgpu::Texture,
+    pub normal_texture: wgpu::Texture,    // World-space normals
+    pub albedo_texture: wgpu::Texture,    // Base color
+    pub material_texture: wgpu::Texture,  // Roughness/Metallic/AO
+}
+
+// Enhanced MeshPass descriptor
+impl PassDescriptor {
+    pub fn mesh_pass_deferred(surface_format: wgpu::TextureFormat) -> Self {
+        Self {
+            name: "MeshPass_Deferred".to_string(),
+            is_offscreen: true,
+            render_targets: vec![
+                RenderTarget::Depth(DepthFormat::Depth32Float),
+                RenderTarget::Color(ColorFormat::RGBA16Float), // Normals
+                RenderTarget::Color(ColorFormat::RGBA8UnormSrgb), // Albedo
+                RenderTarget::Color(ColorFormat::RGBA8Unorm), // Material
+            ],
+            clear_color: wgpu::Color::TRANSPARENT,
+            uses_depth: true,
+        }
+    }
+}
+```
+
+#### 2. Advanced Composition Pass
+
+**CompositePass Implementation:**
+```rust
+// Future composite pass structure
+pub struct CompositePass {
+    pub pipeline: wgpu::RenderPipeline,
+    pub bind_group_layout: wgpu::BindGroupLayout,
+    pub sampler: wgpu::Sampler,
+}
+
+impl CompositePass {
+    pub fn execute(&self,
+                   encoder: &mut wgpu::CommandEncoder,
+                   surface_view: &wgpu::TextureView,
+                   g_buffer: &GBuffer,
+                   slice_texture: &wgpu::Texture,
+                   lighting_params: &LightingParams) -> Result<(), CompositeError> {
+        // Advanced composition logic with:
+        // - Deferred lighting calculations
+        // - Screen-space ambient occlusion
+        // - Tone mapping and color grading
+        // - Alpha blending with medical data
+        // - Post-processing effects
+    }
+}
+```
+
+#### 3. Enhanced Lighting and Shading
+
+**Deferred Lighting Features:**
+- Multiple dynamic light sources
+- Screen-space ambient occlusion (SSAO)
+- Screen-space reflections (SSR)
+- Volumetric lighting effects
+- Shadow mapping with cascaded shadow maps
+
+**Medical Imaging Integration:**
+- Volume-aware lighting for 3D medical data
+- Tissue-specific material properties
+- Subsurface scattering for organic materials
+- Transparency and refraction effects
+
+#### 4. Post-Processing Pipeline
+
+**Planned Post-Processing Effects:**
+```rust
+// Future post-processing chain
+pub enum PostProcessEffect {
+    ToneMapping(ToneMappingParams),
+    ColorGrading(ColorGradingParams),
+    Bloom(BloomParams),
+    DepthOfField(DOFParams),
+    MotionBlur(MotionBlurParams),
+    AntiAliasing(AAParams),
+}
+
+pub struct PostProcessChain {
+    effects: Vec<PostProcessEffect>,
+    intermediate_textures: Vec<wgpu::Texture>,
+}
+```
+
+### Implementation Roadmap
+
+#### Phase 1: Foundation (Months 1-2)
+- **OverlayPass Implementation**: Basic offscreen-to-surface composition
+- **Multi-Target Support**: Extend TexturePool for multiple render targets
+- **Composite Shader Development**: Basic blending and composition shaders
+
+#### Phase 2: G-Buffer Integration (Months 3-4)
+- **Deferred MeshPass**: Implement G-Buffer output for mesh rendering
+- **Lighting Reconstruction**: Screen-space lighting calculations
+- **Material System Enhancement**: PBR material support
+
+#### Phase 3: Advanced Effects (Months 5-6)
+- **Post-Processing Pipeline**: Implement effect chain system
+- **Shadow Mapping**: Cascaded shadow maps for dynamic lighting
+- **SSAO Implementation**: Screen-space ambient occlusion
+
+#### Phase 4: Medical Integration (Months 7-8)
+- **Volume-Aware Composition**: Integrate 3D mesh with volume data
+- **Medical-Specific Effects**: Tissue rendering and subsurface scattering
+- **Performance Optimization**: GPU-driven rendering and culling
+
+### Migration Strategy
+
+#### Backward Compatibility
+- Current direct rendering remains as "Fast Path" option
+- Feature flag: `composite-rendering` for advanced features
+- Automatic fallback to direct rendering on resource constraints
+
+#### Configuration Options
+```rust
+// Future rendering configuration
+pub enum RenderingMode {
+    Direct,           // Current implementation
+    BasicComposite,   // Simple offscreen composition
+    AdvancedComposite, // Full G-Buffer and post-processing
+}
+
+pub struct RenderingConfig {
+    pub mode: RenderingMode,
+    pub enable_shadows: bool,
+    pub enable_ssao: bool,
+    pub enable_post_processing: bool,
+    pub quality_preset: QualityPreset,
+}
+```
+
+### Performance Considerations
+
+#### Resource Requirements
+- **Memory Overhead**: G-Buffer requires 4x surface resolution in texture memory
+- **Bandwidth Impact**: Multiple render targets increase memory bandwidth usage
+- **Compute Requirements**: Deferred lighting and post-processing are compute-intensive
+
+#### Optimization Strategies
+- **Adaptive Quality**: Dynamic quality scaling based on performance
+- **Temporal Techniques**: Temporal anti-aliasing and upsampling
+- **GPU-Driven Rendering**: Reduce CPU overhead with compute shaders
+- **Variable Rate Shading**: Focus quality on important screen regions
+
+### Use Cases for Composite Rendering
+
+#### Medical Visualization
+- **Volume-Surface Integration**: Seamless blending of volume data with 3D surfaces
+- **Multi-Modal Rendering**: Combine CT, MRI, and mesh data in single view
+- **Surgical Planning**: Real-time visualization with advanced lighting
+
+#### Scientific Visualization
+- **Complex Data Sets**: Multi-layered scientific data visualization
+- **Publication Quality**: High-quality rendering for research publications
+- **Interactive Analysis**: Real-time parameter adjustment with visual feedback
+
+#### General 3D Applications
+- **Architectural Visualization**: Photorealistic rendering with complex lighting
+- **Product Visualization**: Material-accurate rendering for design review
+- **Gaming and Entertainment**: Advanced visual effects and post-processing
+
+### Technical Challenges and Solutions
+
+#### Challenge 1: Resource Management
+**Problem**: Multiple render targets significantly increase memory usage
+**Solution**: Implement smart resource pooling and format optimization
+
+#### Challenge 2: Platform Compatibility
+**Problem**: Advanced features may not be available on all platforms
+**Solution**: Feature detection and graceful degradation to simpler techniques
+
+#### Challenge 3: Performance Scaling
+**Problem**: Composite rendering may be too expensive for some use cases
+**Solution**: Adaptive quality system with multiple rendering paths
+
+#### Challenge 4: Shader Complexity
+**Problem**: Advanced shaders increase compilation time and complexity
+**Solution**: Modular shader system with runtime compilation and caching
+
+### Conclusion
+
+The composite rendering approach represents a significant enhancement to the current architecture, enabling advanced visual effects and sophisticated composition techniques. While the current direct rendering approach is optimal for immediate needs, the composite architecture provides a clear path for future enhancements without disrupting existing functionality.
+
+The phased implementation approach ensures that each enhancement builds upon previous work while maintaining system stability and performance. The feature-gated design allows applications to choose their complexity level based on requirements and platform capabilities.
 
 ## Testing and Validation
 
