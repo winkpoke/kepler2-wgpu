@@ -167,8 +167,7 @@ impl PassRegistry {
         }
 
         // Add slice pass second for 2D rendering (overlay with Load)
-        // TEMPORARILY DISABLED: Slice pass disabled to test mesh pass rendering
-        // plan.add_pass(PassId::SlicePass, PassDescriptor::slice_pass(self.surface_format));
+        plan.add_pass(PassId::SlicePass, PassDescriptor::slice_pass(self.surface_format));
 
         plan
     }

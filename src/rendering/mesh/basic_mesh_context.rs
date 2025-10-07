@@ -136,24 +136,15 @@ impl BasicMeshContext {
 
     /// Function-level comment: Render the mesh using the basic pipeline
     pub fn render(&self, render_pass: &mut wgpu::RenderPass) {
-        log::debug!("[BASIC_MESH_RENDER] Starting render - {} indices, {} vertices", 
+        // Single debug log per render call instead of 6 separate logs
+        log::debug!("[BASIC_MESH_RENDER] Rendering mesh: {} indices, {} vertices", 
                    self.num_indices, self.num_vertices);
 
         render_pass.set_pipeline(&self.pipeline);
-        log::debug!("[BASIC_MESH_RENDER] Pipeline set");
-        
         render_pass.set_bind_group(0, &self.bind_group, &[]);
-        log::debug!("[BASIC_MESH_RENDER] Bind group set");
-        
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        log::debug!("[BASIC_MESH_RENDER] Vertex buffer set");
-        
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-        log::debug!("[BASIC_MESH_RENDER] Index buffer set");
-        
         render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
-        log::debug!("[BASIC_MESH_RENDER] Draw indexed called: indices 0..{}, base_vertex 0, instances 0..1", 
-                   self.num_indices);
 
         log::trace!("BasicMeshContext::render - Draw call completed");
     }

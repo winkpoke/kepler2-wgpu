@@ -98,7 +98,7 @@ impl RenderApp {
         log::info!("Starting the event loop ...");
 
         // Request initial redraw to start the rendering loop
-        state.window().request_redraw();
+        // state.window().request_redraw();
 
         event_loop.run(move |event, target| {
             match event {
