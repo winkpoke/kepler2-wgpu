@@ -23,6 +23,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enhanced graphics context swapping to clear mesh resources and prevent stale references
   - Created detailed documentation in `doc/buffer-lifecycle-fix.md`
 
+- **Mesh Y-Axis Rotation Animation**: Added continuous Y-axis rotation functionality for 3D mesh objects
+  - Frame-rate independent rotation animation using precise timing calculations
+  - Configurable rotation speed in radians or degrees per second (default: 90°/s)
+  - **Enabled by default** for immediate visual feedback
+  - External control through `State` struct methods (`set_mesh_rotation_enabled`, `set_mesh_rotation_speed`, etc.)
+  - Direct control through `MeshView` methods for fine-grained manipulation
+  - Automatic angle normalization to prevent floating-point precision issues
+  - Maintains medical imaging accuracy with orthogonal projection
+  - Comprehensive logging at INFO, DEBUG, and TRACE levels
+  - Created detailed documentation in `doc/mesh-rotation-functionality.md`
+
 ### Changed
 - **Default Camera Projection**: `Camera::new()` now defaults to orthogonal projection instead of perspective projection for medical accuracy
 - **Fallback Rendering**: Default uniform calculations now use orthogonal projection for consistency

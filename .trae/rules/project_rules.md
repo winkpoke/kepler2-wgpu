@@ -22,3 +22,4 @@
 19. Manage GPU memory efficiently and minimize texture/data copies.
 20. The codebase must remain buildable, testable, and inspectable at all times.
 21. Do not use perspective projection in medical imaging for accuracy reasons unless asked.
+22. When working with Rust matrices (which are row-major) and shader matrices (which require column-major format), ensure you transpose the matrices before uploading them to maintain data consistency and correct mathematical operations.

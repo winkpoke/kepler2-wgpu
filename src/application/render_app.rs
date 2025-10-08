@@ -98,14 +98,14 @@ impl RenderApp {
         log::info!("Starting the event loop ...");
 
         // Request initial redraw to start the rendering loop
-        // state.window().request_redraw();
+        state.window().request_redraw();
 
         event_loop.run(move |event, target| {
             match event {
-                Event::UserEvent(UserEvent::SetSliceSpeed(index, speed)) => {
-                    state.set_slice_speed(index, speed);
-                    log::info!("Slice speed set to: {}", speed);
-                }
+                // Event::UserEvent(UserEvent::SetSliceSpeed(index, speed)) => {
+                //     state.set_slice_speed(index, speed);
+                //     log::info!("Slice speed set to: {}", speed);
+                // }
                 Event::UserEvent(UserEvent::SetWindowLevel(index, window_level)) => {
                     state.set_window_level(index, window_level);
                     log::info!("Window level set to: {}", window_level);

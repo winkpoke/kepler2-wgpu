@@ -10,9 +10,9 @@ use wgpu::util::DeviceExt;
 #[repr(C)]
 #[derive(Copy, Clone, Default, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct UniformsVert {
-    pub rotation_angle_y: f32,
-    pub rotation_angle_z: f32,
-    pub _padding: [f32; 2],
+    // pub rotation_angle_y: f32,
+    // pub rotation_angle_z: f32,
+    pub _padding: [f32; 4],
 }
 
 #[repr(C)]
@@ -102,8 +102,8 @@ impl RenderContext {
         transform_matrix: Matrix4x4<f32>,
     ) -> RenderContext {
         let u_vert_data = UniformsVert {
-            rotation_angle_y: 0.0,
-            rotation_angle_z: 0.0,
+            // rotation_angle_y: 0.0,
+            // rotation_angle_z: 0.0,
             ..Default::default()
         };
         let is_packed = matches!(texture.texture_format, wgpu::TextureFormat::Rg8Unorm);

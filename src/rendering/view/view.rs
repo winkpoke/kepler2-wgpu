@@ -82,8 +82,8 @@ impl Orientation {
 pub struct GenericMPRView {
     view: RenderContext,
     texture: Arc<RenderContent>,
-    r_speed: f32,
-    s_speed: f32,
+    // r_speed: f32,
+    // s_speed: f32,
     slice: f32,
     base_screen: Base<f32>,
     base_uv: Base<f32>,
@@ -132,8 +132,8 @@ impl GenericMPRView {
         Self {
             view,
             texture,
-            r_speed,
-            s_speed,
+            // r_speed,
+            // s_speed,
             slice,
             base_screen,
             base_uv,
@@ -145,10 +145,10 @@ impl GenericMPRView {
         }
     }
 
-    pub fn set_slice_speed(&mut self, speed: f32) {
-        log::info!("MPRView set_slice_speed: {}", speed);
-        self.s_speed = speed;
-    }
+    // pub fn set_slice_speed(&mut self, speed: f32) {
+    //     log::info!("MPRView set_slice_speed: {}", speed);
+    //     self.s_speed = speed;
+    // }
 
     fn update_transform_matrix(&mut self) {
         let mut base_screen_cloned = self.base_screen.clone();
@@ -172,7 +172,7 @@ impl Drop for GenericMPRView {
 
 impl Renderable for GenericMPRView {
     fn update(&mut self, queue: &wgpu::Queue) {
-        self.view.uniforms.vert.rotation_angle_y += self.r_speed;
+        // self.view.uniforms.vert.rotation_angle_y += self.r_speed;
         self.view.uniforms.frag.slice = self.slice;
         self.update_transform_matrix();
 

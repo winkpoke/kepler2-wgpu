@@ -759,6 +759,8 @@ impl State {
                 // Create MeshView for slot 2
                 use crate::rendering::mesh::{mesh::Mesh, basic_mesh_context::BasicMeshContext};
                 let mut mesh_view = MeshView::new();
+                mesh_view.set_rotation_enabled(true);
+                log::info!("Mesh rotation enabled");
                 
                 // Function-level comment: Create or reuse cached Arc<BasicMeshContext> for efficient toggling.
                 let ctx_arc = if let Some(cached_ctx) = &self.mesh_ctx {
@@ -858,12 +860,12 @@ impl State {
             }
     }
 
-    pub fn set_slice_speed(&mut self, index: usize, speed: f32) {
-        let view = self.layout.views.get_mut(index).unwrap();
-        if let Some(transverse_view) = view.as_any_mut().downcast_mut::<TransverseView>() {
-            transverse_view.set_slice_speed(speed);
-        }
-    }
+    // pub fn set_slice_speed(&mut self, index: usize, speed: f32) {
+    //     let view = self.layout.views.get_mut(index).unwrap();
+    //     if let Some(transverse_view) = view.as_any_mut().downcast_mut::<TransverseView>() {
+    //         transverse_view.set_slice_speed(speed);
+    //     }
+    // }
 
     pub fn set_window_level(&mut self, index: usize, window_level: f32) {
         let view = self.layout.views.get_mut(index).unwrap();
@@ -945,6 +947,86 @@ impl State {
             .allowed_usages
             .contains(wgpu::TextureUsages::TEXTURE_BINDING);
         filterable && can_sample
+    }
+
+    /// Function-level comment: Enable or disable Y-axis rotation for the mesh view in slot 2.
+    /// This method provides external control over mesh rotation animation.
+    pub fn set_mesh_rotation_enabled(&mut self, enabled: bool) {
+        if self.layout.views.len() > 2 {
+            if let Some(mesh_view) = self.layout.views[2].as_any_mut().downcast_mut::<crate::rendering::view::MeshView>() {
+                mesh_view.set_rotation_enabled(enabled);
+                log::info!("Mesh rotation {} via State control", if enabled { "enabled" } else { "disabled" });
+            } else {
+                log::warn!("Cannot control mesh rotation: slot 2 does not contain a MeshView");
+            }
+        } else {
+            log::warn!("Cannot control mesh rotation: insufficient views (need at least 3, found {})", self.layout.views.len());
+        }
+    }
+
+    /// Function-level comment: Set the rotation speed for the mesh view in slot 2.
+    /// Speed is specified in radians per second. Use set_mesh_rotation_speed_degrees for degree-based input.
+    pub fn set_mesh_rotation_speed(&mut self, speed_rad_per_sec: f32) {
+        if self.layout.views.len() > 2 {
+            if let Some(mesh_view) = self.layout.views[2].as_any_mut().downcast_mut::<crate::rendering::view::MeshView>() {
+                mesh_view.set_rotation_speed(speed_rad_per_sec);
+                log::info!("Mesh rotation speed set to {:.3} rad/s ({:.1}°/s) via State control", 
+                           speed_rad_per_sec, speed_rad_per_sec.to_degrees());
+            } else {
+                log::warn!("Cannot set mesh rotation speed: slot 2 does not contain a MeshView");
+            }
+        } else {
+            log::warn!("Cannot set mesh rotation speed: insufficient views (need at least 3, found {})", self.layout.views.len());
+        }
+    }
+
+    /// Function-level comment: Set the rotation speed for the mesh view using degrees per second.
+    /// This is a convenience method that converts degrees to radians internally.
+    pub fn set_mesh_rotation_speed_degrees(&mut self, degrees_per_sec: f32) {
+        self.set_mesh_rotation_speed(degrees_per_sec.to_radians());
+    }
+
+    /// Function-level comment: Reset the mesh rotation angle to zero.
+    /// Useful for returning the mesh to its initial orientation.
+    pub fn reset_mesh_rotation(&mut self) {
+        if self.layout.views.len() > 2 {
+            if let Some(mesh_view) = self.layout.views[2].as_any_mut().downcast_mut::<crate::rendering::view::MeshView>() {
+                mesh_view.reset_rotation();
+                log::info!("Mesh rotation angle reset via State control");
+            } else {
+                log::warn!("Cannot reset mesh rotation: slot 2 does not contain a MeshView");
+            }
+        } else {
+            log::warn!("Cannot reset mesh rotation: insufficient views (need at least 3, found {})", self.layout.views.len());
+        }
+    }
+
+    /// Function-level comment: Check if mesh rotation is currently enabled.
+    /// Returns false if slot 2 doesn't contain a MeshView.
+    pub fn is_mesh_rotation_enabled(&self) -> bool {
+        if self.layout.views.len() > 2 {
+            if let Some(mesh_view) = self.layout.views[2].as_any().downcast_ref::<crate::rendering::view::MeshView>() {
+                mesh_view.is_rotation_enabled()
+            } else {
+                false
+            }
+        } else {
+            false
+        }
+    }
+
+    /// Function-level comment: Get the current mesh rotation speed in radians per second.
+    /// Returns 0.0 if slot 2 doesn't contain a MeshView.
+    pub fn get_mesh_rotation_speed(&self) -> f32 {
+        if self.layout.views.len() > 2 {
+            if let Some(mesh_view) = self.layout.views[2].as_any().downcast_ref::<crate::rendering::view::MeshView>() {
+                mesh_view.get_rotation_speed()
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        }
     }
 
     /// Toggle the volume texture format (R16Float vs Rg8Unorm) and reload the CT volume using the given PipelineManager.

@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use cgmath::SquareMatrix;
+
 use super::{mesh::Mesh, material::Material, camera::Camera, lighting::Lighting, performance::{QualityController, QualityLevel, PerformanceStats}, basic_mesh_context::BasicMeshContext};
 use crate::{core::coord::Matrix4x4, rendering::view::{Renderable, View}, core::timing::{Instant, DurationExt}};
 use std::sync::Arc;
@@ -81,10 +83,19 @@ pub struct MeshView {
     last_success_time: Instant,
     /// Performance monitoring and automatic quality adjustment
     quality_controller: QualityController,
+    /// Y-axis rotation state
+    rotation_enabled: bool,
+    /// Current rotation angle in radians
+    rotation_angle: f32,
+    /// Rotation speed in radians per second (default: π/2 = 90 degrees/second)
+    rotation_speed: f32,
+    /// Last frame time for rotation calculation
+    last_frame_time: Instant,
 }
 
 impl Default for MeshView {
     fn default() -> Self {
+        use std::f32::consts::PI;
         Self {
             mesh: None,
             material: None,
@@ -98,6 +109,10 @@ impl Default for MeshView {
             consecutive_errors: 0,
             last_success_time: Instant::now(),
             quality_controller: QualityController::default(),
+            rotation_enabled: true,
+            rotation_angle: 0.0,
+            rotation_speed: PI / 2.0, // 90 degrees per second - reasonable default speed
+            last_frame_time: Instant::now(),
         }
     }
 }
@@ -162,6 +177,59 @@ impl MeshView {
         }
     }
 
+    /// Function-level comment: Enable or disable Y-axis rotation animation.
+    /// When enabled, the mesh will continuously rotate around the Y-axis at the configured speed.
+    pub fn set_rotation_enabled(&mut self, enabled: bool) {
+        if enabled != self.rotation_enabled {
+            self.rotation_enabled = enabled;
+            if enabled {
+                // Reset timing when enabling rotation to prevent jumps
+                self.last_frame_time = Instant::now();
+                log::info!("Mesh Y-axis rotation enabled at {:.1}°/s", self.rotation_speed.to_degrees());
+            } else {
+                log::info!("Mesh Y-axis rotation disabled");
+            }
+        }
+    }
+
+    /// Function-level comment: Check if Y-axis rotation is currently enabled.
+    pub fn is_rotation_enabled(&self) -> bool {
+        self.rotation_enabled
+    }
+
+    /// Function-level comment: Set the rotation speed in radians per second.
+    /// Positive values rotate counter-clockwise when viewed from above (standard Y-up convention).
+    /// Common values: π/4 (45°/s), π/2 (90°/s), π (180°/s), 2π (360°/s)
+    pub fn set_rotation_speed(&mut self, speed_rad_per_sec: f32) {
+        self.rotation_speed = speed_rad_per_sec;
+        log::info!("Mesh rotation speed set to {:.3} rad/s ({:.1}°/s)", 
+                   speed_rad_per_sec, speed_rad_per_sec.to_degrees());
+    }
+
+    /// Function-level comment: Get the current rotation speed in radians per second.
+    pub fn get_rotation_speed(&self) -> f32 {
+        self.rotation_speed
+    }
+
+    /// Function-level comment: Reset the rotation angle to zero.
+    /// Useful for returning to a known orientation or synchronizing multiple objects.
+    pub fn reset_rotation(&mut self) {
+        self.rotation_angle = 0.0;
+        self.last_frame_time = Instant::now();
+        log::debug!("Mesh rotation angle reset to 0°");
+    }
+
+    /// Function-level comment: Get the current rotation angle in radians.
+    pub fn get_rotation_angle(&self) -> f32 {
+        self.rotation_angle
+    }
+
+    /// Function-level comment: Set rotation speed using degrees per second for convenience.
+    /// This is a helper method that converts degrees to radians internally.
+    pub fn set_rotation_speed_degrees(&mut self, degrees_per_sec: f32) {
+        self.set_rotation_speed(degrees_per_sec.to_radians());
+    }
+
     /// Function-level comment: Create a default camera positioned to view a unit cube
     fn create_default_camera(&self) -> Camera {
         // Use perspective projection for initial testing to match working implementation
@@ -186,7 +254,27 @@ impl MeshView {
     }
 
     /// Function-level comment: Update GPU uniforms for basic mesh rendering with combined MVP matrix
-    pub fn update_uniforms(&self, queue: &wgpu::Queue) {
+    /// Includes Y-axis rotation if enabled, using frame-rate independent timing
+    pub fn update_uniforms(&mut self, queue: &wgpu::Queue) {
+        // Update rotation angle if rotation is enabled
+        if self.rotation_enabled {
+            let current_time = Instant::now();
+            let delta_time = current_time.duration_since(self.last_frame_time).as_secs_f32();
+            self.rotation_angle += self.rotation_speed * delta_time;
+            
+            // Keep angle in [0, 2π] range to prevent floating point precision issues
+            use std::f32::consts::TAU; // TAU = 2π
+            if self.rotation_angle >= TAU {
+                self.rotation_angle -= TAU;
+            }
+            
+            self.last_frame_time = current_time;
+            
+            #[cfg(feature = "trace-logging")]
+            log::trace!("[MESH_ROTATION] Angle: {:.3} rad ({:.1}°), Speed: {:.3} rad/s, Delta: {:.3}ms", 
+                       self.rotation_angle, self.rotation_angle.to_degrees(), self.rotation_speed, delta_time * 1000.0);
+        }
+        
         if let Some(ctx) = &self.ctx {
             let aspect_ratio = if self.dim.1 > 0 {
                 self.dim.0 as f32 / self.dim.1 as f32
@@ -200,21 +288,37 @@ impl MeshView {
             // Simplified MVP matrix calculation for guaranteed visibility
             use std::f32::consts::PI;
             
-            // Model matrix - identity matrix with uniform scaling only
-            let scale = 0.5; // Make cube much smaller
+            // Model matrix - scaling with optional Y-axis rotation
+            let scale = 1.0; // Make cube much smaller
             
-            let model_matrix = Matrix4x4::from_array([
-                scale, 0.0, 0.0, 0.0,
-                0.0, scale, 0.0, 0.0,
-                0.0, 0.0, scale, 0.0,
-                0.0, 0.0, 0.0, 1.0, // Identity with scale, centered at origin
-            ]);
+            let model_matrix = if self.rotation_enabled {
+                // Create Y-axis rotation matrix
+                let cos_y = self.rotation_angle.cos();
+                let sin_y = self.rotation_angle.sin();
+                
+                // Combined scale and Y-axis rotation matrix
+                // Rotation around Y-axis: [cos θ, 0, sin θ, 0; 0, 1, 0, 0; -sin θ, 0, cos θ, 0; 0, 0, 0, 1]
+                Matrix4x4::from_array([
+                    cos_y,  0.0,    sin_y,  0.0,
+                    0.0,    1.0,    0.0,    0.0,
+                    -sin_y, 0.0,    cos_y,  0.0,
+                    0.0,    0.0,    0.0,    1.0,
+                ])
+            } else {
+                // Identity matrix with uniform scaling only
+                Matrix4x4::from_array([
+                    scale, 0.0, 0.0, 0.0,
+                    0.0, scale, 0.0, 0.0,
+                    0.0, 0.0, scale, 0.0,
+                    0.0, 0.0, 0.0, 1.0,
+                ])
+            };
             
             // View matrix - camera positioned for optimal viewing of smaller cube
             let view_matrix = Matrix4x4::from_array([
                 1.0, 0.0, 0.0, 0.0,
                 0.0, 1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, -3.0, // Closer camera for smaller cube
+                0.0, 0.0, 1.0, -5.0, // Closer camera for smaller cube
                 0.0, 0.0, 0.0, 1.0,
             ]);
             
@@ -223,8 +327,8 @@ impl MeshView {
             let right = 2.0;
             let bottom = -2.0 / aspect_ratio;
             let top = 2.0 / aspect_ratio;
-            let near = 0.1;
-            let far = 100.0;
+            let near = 0.5;
+            let far = 9.;
             
             let proj_matrix = Matrix4x4::from_array([
                 2.0 / (right - left), 0.0, 0.0, -(right + left) / (right - left),
@@ -232,18 +336,53 @@ impl MeshView {
                 0.0, 0.0, -2.0 / (far - near), -(far + near) / (far - near),
                 0.0, 0.0, 0.0, 1.0,
             ]);
+
+            // let proj_matrix = Matrix4x4::from_array([
+            //     1.0, 0.0, 0.0, 0.0,
+            //     0.0, aspect_ratio, 0.0, 0.0,  // Adjust for aspect ratio
+            //     0.0, 0.0, -1.0, 0.0,          // Simple depth mapping
+            //     0.0, 0.0, 0.0, 1.0,
+            // ]);
+            // let proj_matrix = Matrix4x4::from_array([
+            //     2.0 / 4., 0.0, 0.0, 0.0,
+            //     0.0, 2.0 / 4., 0.0, 0.0,
+            //     0.0, 0.0, -2.0 / (far - near), -(far + near) / (far - near),
+            //     0.0, 0.0, 0.0, 1.0,
+            // ]);
+            
             
             // Calculate MVP: projection * view * model
             let view_model = view_matrix.multiply(&model_matrix);
             let mvp_matrix = proj_matrix.multiply(&view_model);
+            // let mvp_matrix = proj_matrix.multiply(&view_matrix);
             
-            log::debug!("[BASIC_MESH_MATRICES] Model matrix (identity with scale 0.05): {:?}", model_matrix.data);
+            if self.rotation_enabled {
+                log::debug!("[BASIC_MESH_MATRICES] Model matrix (scale {} with Y-rotation {:.3} rad): {:?}", 
+                           scale, self.rotation_angle, model_matrix.data);
+            } else {
+                log::debug!("[BASIC_MESH_MATRICES] Model matrix (scale {} no rotation): {:?}", 
+                           scale, model_matrix.data);
+            }
             log::debug!("[BASIC_MESH_MATRICES] View matrix (camera at -3): {:?}", view_matrix.data);
             log::debug!("[BASIC_MESH_MATRICES] Projection matrix (orthogonal): {:?}", proj_matrix.data);
             log::debug!("[BASIC_MESH_MATRICES] Combined MVP matrix: {:?}", mvp_matrix.data);
             
             // Update uniforms in BasicMeshContext with combined MVP matrix
-            ctx.update_uniforms(queue, &mvp_matrix.data);
+            // Note: The shader expects column-major matrices, so we transpose the MVP matrix
+            let mvp_matrix_transposed = mvp_matrix.transpose();
+            log::trace!("[BASIC_MESH_MATRICES] Transposed MVP matrix for shader: {:?}", mvp_matrix_transposed.data);
+            
+            // ctx.update_uniforms(queue, &mvp_matrix_transposed.data);
+
+            let scale = cgmath::Matrix4::from_scale(2.0);
+            let rotation = cgmath::Matrix4::from_angle_y(cgmath::Rad(self.rotation_angle));
+            let translate = cgmath::Matrix4::from_translation(cgmath::vec3(0.0, 0.0, -5.0));
+            let aspect = self.dim.0 as f32 / self.dim.1 as f32;
+            // let proj = cgmath::perspective(cgmath::Deg(45.0), aspect, 0.1, 100.0);
+            let proj = cgmath::ortho(left, right, bottom, top, near, far);
+            let view = cgmath::Matrix4::identity();
+            let mvp = proj * view * translate * rotation* scale;
+            ctx.update_uniforms(queue, &mvp.into());
         }
     }
     
