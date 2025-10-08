@@ -1,7 +1,7 @@
 /// Cross-platform timing utilities that work on both native and WASM targets
 /// 
-/// This module provides timing functionality that gracefully handles the lack of
-/// std::time::Instant on WASM platforms by providing no-op implementations.
+/// This module provides timing functionality using std::time::Instant on native
+/// and the browser's performance API on WASM for accurate timing.
 
 #[cfg(not(target_arch = "wasm32"))]
 use std::time::{Duration, Instant as StdInstant};
@@ -9,19 +9,29 @@ use std::time::{Duration, Instant as StdInstant};
 #[cfg(target_arch = "wasm32")]
 use std::time::Duration;
 
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = performance)]
+    fn now() -> f64;
+}
+
 /// A cross-platform instant that works on both native and WASM
 #[derive(Debug, Clone, Copy)]
 pub struct Instant {
     #[cfg(not(target_arch = "wasm32"))]
     inner: StdInstant,
     #[cfg(target_arch = "wasm32")]
-    _phantom: (),
+    time_ms: f64,
 }
 
 impl Instant {
     /// Creates a new `Instant` representing the current time
     /// 
-    /// On WASM, this is a no-op and returns a dummy instant
+    /// On WASM, uses performance.now() for accurate timing
     pub fn now() -> Self {
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -31,13 +41,15 @@ impl Instant {
         }
         #[cfg(target_arch = "wasm32")]
         {
-            Self { _phantom: () }
+            Self { 
+                time_ms: now() 
+            }
         }
     }
 
     /// Returns the elapsed time since this instant
     /// 
-    /// On WASM, this always returns zero duration
+    /// On WASM, calculates elapsed time using performance.now()
     pub fn elapsed(&self) -> Duration {
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -45,13 +57,15 @@ impl Instant {
         }
         #[cfg(target_arch = "wasm32")]
         {
-            Duration::from_secs(0)
+            let current_ms = now();
+            let elapsed_ms = current_ms - self.time_ms;
+            Duration::from_millis(elapsed_ms.max(0.0) as u64)
         }
     }
 
     /// Returns the duration since another instant
     /// 
-    /// On WASM, this always returns zero duration
+    /// On WASM, calculates duration using performance.now() timestamps
     pub fn duration_since(&self, earlier: Instant) -> Duration {
         #[cfg(not(target_arch = "wasm32"))]
         {
@@ -59,8 +73,8 @@ impl Instant {
         }
         #[cfg(target_arch = "wasm32")]
         {
-            let _ = earlier; // Suppress unused variable warning
-            Duration::from_secs(0)
+            let elapsed_ms = self.time_ms - earlier.time_ms;
+            Duration::from_millis(elapsed_ms.max(0.0) as u64)
         }
     }
 }
