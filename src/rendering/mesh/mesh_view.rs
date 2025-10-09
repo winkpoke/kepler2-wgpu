@@ -289,7 +289,7 @@ impl MeshView {
             use std::f32::consts::PI;
             
             // Model matrix - scaling with optional Y-axis rotation
-            let scale = 1.0; // Make cube much smaller
+            let scale = 2.0; // Make cube much smaller
             
             let model_matrix = if self.rotation_enabled {
                 // Create Y-axis rotation matrix
@@ -327,8 +327,8 @@ impl MeshView {
             let right = 2.0;
             let bottom = -2.0 / aspect_ratio;
             let top = 2.0 / aspect_ratio;
-            let near = 0.5;
-            let far = 9.;
+            let near = 0.1;
+            let far = 10.;
             
             let proj_matrix = Matrix4x4::from_array([
                 2.0 / (right - left), 0.0, 0.0, -(right + left) / (right - left),
@@ -374,7 +374,7 @@ impl MeshView {
             
             // ctx.update_uniforms(queue, &mvp_matrix_transposed.data);
 
-            let scale = cgmath::Matrix4::from_scale(2.0);
+            let scale = cgmath::Matrix4::from_scale(0.5);
             let rotation = cgmath::Matrix4::from_angle_y(cgmath::Rad(self.rotation_angle));
             let translate = cgmath::Matrix4::from_translation(cgmath::vec3(0.0, 0.0, -5.0));
             let aspect = self.dim.0 as f32 / self.dim.1 as f32;
