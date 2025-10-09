@@ -276,7 +276,7 @@ impl MeshView {
         }
         
         if let Some(ctx) = &self.ctx {
-            let aspect_ratio = if self.dim.1 > 0 {
+            let aspect_ratio = if self.dim.1 > 0 && self.dim.0 > 0 {
                 self.dim.0 as f32 / self.dim.1 as f32
             } else {
                 1.0
@@ -285,40 +285,42 @@ impl MeshView {
             log::debug!("[BASIC_MESH_UNIFORMS] Viewport dimensions: {}x{}, aspect_ratio: {:.3}", 
                        self.dim.0, self.dim.1, aspect_ratio);
             
-            // Simplified MVP matrix calculation for guaranteed visibility
-            use std::f32::consts::PI;
-            
             // Model matrix - scaling with optional Y-axis rotation
-            let scale = 2.0; // Make cube much smaller
+            let scale = 1.0 / 2.0; // Make cube much smaller
+            
+            // Create scale matrix
+            let scale_matrix = Matrix4x4::from_array([
+                scale, 0.0,   0.0,   0.0,
+                0.0,   scale, 0.0,   0.0,
+                0.0,   0.0,   scale, 0.0,
+                0.0,   0.0,   0.0,   1.0,
+            ]);
             
             let model_matrix = if self.rotation_enabled {
                 // Create Y-axis rotation matrix
                 let cos_y = self.rotation_angle.cos();
                 let sin_y = self.rotation_angle.sin();
                 
-                // Combined scale and Y-axis rotation matrix
-                // Rotation around Y-axis: [cos θ, 0, sin θ, 0; 0, 1, 0, 0; -sin θ, 0, cos θ, 0; 0, 0, 0, 1]
-                Matrix4x4::from_array([
+                // Y-axis rotation matrix
+                let rotation_matrix = Matrix4x4::from_array([
                     cos_y,  0.0,    sin_y,  0.0,
                     0.0,    1.0,    0.0,    0.0,
                     -sin_y, 0.0,    cos_y,  0.0,
                     0.0,    0.0,    0.0,    1.0,
-                ])
+                ]);
+                
+                // Apply scale first, then rotation: rotation * scale
+                rotation_matrix.multiply(&scale_matrix)
             } else {
-                // Identity matrix with uniform scaling only
-                Matrix4x4::from_array([
-                    scale, 0.0, 0.0, 0.0,
-                    0.0, scale, 0.0, 0.0,
-                    0.0, 0.0, scale, 0.0,
-                    0.0, 0.0, 0.0, 1.0,
-                ])
+                // Use scale matrix only when rotation is disabled
+                scale_matrix
             };
             
             // View matrix - camera positioned for optimal viewing of smaller cube
             let view_matrix = Matrix4x4::from_array([
                 1.0, 0.0, 0.0, 0.0,
                 0.0, 1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, -5.0, // Closer camera for smaller cube
+                0.0, 0.0, 1.0, -2.0, // Closer camera for smaller cube
                 0.0, 0.0, 0.0, 1.0,
             ]);
             
@@ -328,28 +330,14 @@ impl MeshView {
             let bottom = -2.0 / aspect_ratio;
             let top = 2.0 / aspect_ratio;
             let near = 0.1;
-            let far = 10.;
+            let far = 4.;
             
             let proj_matrix = Matrix4x4::from_array([
                 2.0 / (right - left), 0.0, 0.0, -(right + left) / (right - left),
                 0.0, 2.0 / (top - bottom), 0.0, -(top + bottom) / (top - bottom),
                 0.0, 0.0, -2.0 / (far - near), -(far + near) / (far - near),
                 0.0, 0.0, 0.0, 1.0,
-            ]);
-
-            // let proj_matrix = Matrix4x4::from_array([
-            //     1.0, 0.0, 0.0, 0.0,
-            //     0.0, aspect_ratio, 0.0, 0.0,  // Adjust for aspect ratio
-            //     0.0, 0.0, -1.0, 0.0,          // Simple depth mapping
-            //     0.0, 0.0, 0.0, 1.0,
-            // ]);
-            // let proj_matrix = Matrix4x4::from_array([
-            //     2.0 / 4., 0.0, 0.0, 0.0,
-            //     0.0, 2.0 / 4., 0.0, 0.0,
-            //     0.0, 0.0, -2.0 / (far - near), -(far + near) / (far - near),
-            //     0.0, 0.0, 0.0, 1.0,
-            // ]);
-            
+            ]);          
             
             // Calculate MVP: projection * view * model
             let view_model = view_matrix.multiply(&model_matrix);
@@ -357,32 +345,32 @@ impl MeshView {
             // let mvp_matrix = proj_matrix.multiply(&view_matrix);
             
             if self.rotation_enabled {
-                log::debug!("[BASIC_MESH_MATRICES] Model matrix (scale {} with Y-rotation {:.3} rad): {:?}", 
+                log::trace!("[BASIC_MESH_MATRICES] Model matrix (scale {} with Y-rotation {:.3} rad): {:?}", 
                            scale, self.rotation_angle, model_matrix.data);
             } else {
-                log::debug!("[BASIC_MESH_MATRICES] Model matrix (scale {} no rotation): {:?}", 
+                log::trace!("[BASIC_MESH_MATRICES] Model matrix (scale {} no rotation): {:?}", 
                            scale, model_matrix.data);
             }
-            log::debug!("[BASIC_MESH_MATRICES] View matrix (camera at -3): {:?}", view_matrix.data);
-            log::debug!("[BASIC_MESH_MATRICES] Projection matrix (orthogonal): {:?}", proj_matrix.data);
-            log::debug!("[BASIC_MESH_MATRICES] Combined MVP matrix: {:?}", mvp_matrix.data);
+            log::trace!("[BASIC_MESH_MATRICES] View matrix (camera at -3): {:?}", view_matrix.data);
+            log::trace!("[BASIC_MESH_MATRICES] Projection matrix (orthogonal): {:?}", proj_matrix.data);
+            log::trace!("[BASIC_MESH_MATRICES] Combined MVP matrix: {:?}", mvp_matrix.data);
             
             // Update uniforms in BasicMeshContext with combined MVP matrix
             // Note: The shader expects column-major matrices, so we transpose the MVP matrix
             let mvp_matrix_transposed = mvp_matrix.transpose();
             log::trace!("[BASIC_MESH_MATRICES] Transposed MVP matrix for shader: {:?}", mvp_matrix_transposed.data);
             
-            // ctx.update_uniforms(queue, &mvp_matrix_transposed.data);
+            ctx.update_uniforms(queue, &mvp_matrix_transposed.data);
 
-            let scale = cgmath::Matrix4::from_scale(0.5);
-            let rotation = cgmath::Matrix4::from_angle_y(cgmath::Rad(self.rotation_angle));
-            let translate = cgmath::Matrix4::from_translation(cgmath::vec3(0.0, 0.0, -5.0));
-            let aspect = self.dim.0 as f32 / self.dim.1 as f32;
-            // let proj = cgmath::perspective(cgmath::Deg(45.0), aspect, 0.1, 100.0);
-            let proj = cgmath::ortho(left, right, bottom, top, near, far);
-            let view = cgmath::Matrix4::identity();
-            let mvp = proj * view * translate * rotation* scale;
-            ctx.update_uniforms(queue, &mvp.into());
+            // let scale = cgmath::Matrix4::from_scale(0.5);
+            // let rotation = cgmath::Matrix4::from_angle_y(cgmath::Rad(self.rotation_angle));
+            // let translate = cgmath::Matrix4::from_translation(cgmath::vec3(0.0, 0.0, -5.0));
+            // let aspect = self.dim.0 as f32 / self.dim.1 as f32;
+            // // let proj = cgmath::perspective(cgmath::Deg(45.0), aspect, 0.1, 100.0);
+            // let proj = cgmath::ortho(left, right, bottom, top, near, far);
+            // let view = cgmath::Matrix4::identity();
+            // let mvp = proj * view * translate * rotation* scale;
+            // ctx.update_uniforms(queue, &mvp.into());
         }
     }
     
