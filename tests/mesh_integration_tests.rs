@@ -117,8 +117,8 @@ mod mesh_integration_tests {
         /// Test BasicMeshContext creation with valid data
         let mesh = Mesh::unit_cube(); // Using available sample mesh
         
-        // Unit cube has 8 vertices and 36 indices (12 triangles * 3 indices each)
-        assert_eq!(mesh.vertices.len(), 8);
+        // Unit cube has 24 vertices (4 per face for distinct colors) and 36 indices (12 triangles * 3 indices each)
+        assert_eq!(mesh.vertices.len(), 24);
         assert_eq!(mesh.indices.len(), 36);
     }
 
@@ -157,7 +157,7 @@ mod mesh_integration_tests {
         
         // Test mesh data
         for mesh in &meshes {
-            assert_eq!(mesh.vertices.len(), 8, "Each mesh should have 8 vertices");
+            assert_eq!(mesh.vertices.len(), 24, "Each mesh should have 24 vertices");
             assert_eq!(mesh.indices.len(), 36, "Each mesh should have 36 indices");
         }
     }

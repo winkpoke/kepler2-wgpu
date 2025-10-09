@@ -248,7 +248,7 @@ impl DicomRepo {
 
         // Return the constructed CTVolume
         Ok(CTVolume {
-            dimensions: (rows as usize, columns as usize, ct_images.len()),
+            dimensions: (columns as usize, rows as usize, ct_images.len()),
             voxel_spacing,
             voxel_data,
             base: Base {
