@@ -1,53 +1,76 @@
-/// 功能级注释：医学影像操作的全面错误类型
-/// 为调试和用户反馈提供详细的错误信息
-#[derive(Debug, thiserror::Error)]
+/// Comprehensive error types for medical imaging operations
+/// Provides detailed error information for debugging and user feedback with proper error context
+
+use std::collections::HashMap;
+use std::path::PathBuf;
+use thiserror::Error;
+
+/// Main error type for all medical imaging operations
+/// Covers all possible error conditions with detailed context information
+#[derive(Debug, Error)]
 pub enum MedicalImagingError {
-    /// 文件格式不支持
-    #[error("不支持的文件格式: {format}")]
+    /// File format not supported
+    #[error("Unsupported file format: {format}")]
     UnsupportedFormat { format: String },
     
-    /// 无效的文件头
-    #[error("无效的文件头: {reason}")]
+    /// Invalid file header
+    #[error("Invalid file header: {reason}")]
     InvalidHeader { reason: String },
     
-    /// 元数据验证失败
-    #[error("元数据验证失败: {field} - {reason}")]
+    /// Metadata validation failed
+    #[error("Metadata validation failed: {field} - {reason}")]
     MetadataValidation { field: String, reason: String },
     
-    /// 检测到像素数据损坏
-    #[error("像素数据损坏: 预期 {expected} 字节，实际 {actual}")]
+    /// Pixel data corruption detected
+    #[error("Pixel data corruption: expected {expected} bytes, found {actual}")]
     DataCorruption { expected: usize, actual: usize },
     
-    /// 压缩/解压缩错误
-    #[error("压缩错误: {algorithm} - {reason}")]
+    /// Compression/decompression error
+    #[error("Compression error: {algorithm} - {reason}")]
     CompressionError { algorithm: String, reason: String },
     
-    /// 字节序转换错误
-    #[error("字节序转换失败: {reason}")]
+    /// Endianness conversion error
+    #[error("Endianness conversion failed: {reason}")]
     EndiannessError { reason: String },
     
-    /// 文件 I/O 错误
-    #[error("文件 I/O 错误: {0}")]
+    /// File I/O error
+    #[error("File I/O error: {0}")]
     Io(#[from] std::io::Error),
     
-    /// 内存分配错误
-    #[error("内存分配失败: 请求 {size} 字节")]
+    /// Memory allocation error
+    #[error("Memory allocation failed: requested {size} bytes")]
     MemoryAllocation { size: usize },
     
-    /// 数据类型转换错误
-    #[error("数据类型转换失败: 从 {from} 到 {to}")]
+    /// Data type conversion error
+    #[error("Data type conversion failed: from {from} to {to}")]
     TypeConversion { from: String, to: String },
     
-    /// 验证错误
-    #[error("验证失败: {0}")]
+    /// Validation error
+    #[error("Validation failed: {0}")]
     Validation(String),
+    
+    /// Parse error for numeric values
+    #[error("Parse error: {field} - {reason}")]
+    ParseError { field: String, reason: String },
+    
+    /// Missing required field
+    #[error("Missing required field: {field}")]
+    MissingField { field: String },
+    
+    /// Invalid dimensions
+    #[error("Invalid dimensions: {reason}")]
+    InvalidDimensions { reason: String },
+    
+    /// Unsupported pixel type
+    #[error("Unsupported pixel type: {pixel_type}")]
+    UnsupportedPixelType { pixel_type: String },
 }
 
-/// 医学影像操作的结果类型别名
+/// Result type alias for medical imaging operations
 pub type MedicalImagingResult<T> = Result<T, MedicalImagingError>;
 
-/// 功能级注释：用于详细诊断的错误上下文
-/// 为错误分析和调试提供额外的上下文
+/// Error context for detailed diagnostics
+/// Provides additional context for error analysis and debugging
 #[derive(Debug, Clone)]
 pub struct ErrorContext {
     pub file_path: Option<PathBuf>,
@@ -57,15 +80,31 @@ pub struct ErrorContext {
 }
 
 impl ErrorContext {
-    /// 创建新的错误上下文
-    pub fn new(operation: &str) -> Self;
+    /// Creates new error context
+    pub fn new(operation: &str) -> Self {
+        Self {
+            file_path: None,
+            operation: operation.to_string(),
+            line_number: None,
+            additional_info: HashMap::new(),
+        }
+    }
     
-    /// 添加文件路径上下文
-    pub fn with_file<P: AsRef<Path>>(mut self, path: P) -> Self;
+    /// Adds file path context
+    pub fn with_file<P: AsRef<std::path::Path>>(mut self, path: P) -> Self {
+        self.file_path = Some(path.as_ref().to_path_buf());
+        self
+    }
     
-    /// 添加行号上下文
-    pub fn with_line(mut self, line: usize) -> Self;
+    /// Adds line number context
+    pub fn with_line(mut self, line: usize) -> Self {
+        self.line_number = Some(line);
+        self
+    }
     
-    /// 添加上下文信息
-    pub fn with_info(mut self, key: &str, value: &str) -> Self;
+    /// Adds additional context information
+    pub fn with_info(mut self, key: &str, value: &str) -> Self {
+        self.additional_info.insert(key.to_string(), value.to_string());
+        self
+    }
 }
