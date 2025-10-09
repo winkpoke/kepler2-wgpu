@@ -1,5 +1,12 @@
-/// 功能级注释：所有医学影像格式解析器的通用接口
-/// 确保不同格式实现之间的一致 API
+/// Common traits and interfaces for medical image format parsers
+/// Provides unified API for parsing different medical imaging formats
+
+use crate::data::medical_imaging::{
+    data::MedicalVolume,
+    error::{MedicalImagingError, MedicalImagingResult},
+};
+use std::path::Path;
+
 pub trait MedicalImageParser {
     /// 解析完整的医学影像文件
     async fn parse<P: AsRef<Path>>(path: P) -> MedicalImagingResult<MedicalVolume>;
