@@ -7,6 +7,7 @@
 pub mod ct_volume;
 pub mod dicom;
 pub mod dicom_;
+pub mod medical_imaging;
 
 // Re-exports for convenience
 pub use ct_volume::*;
