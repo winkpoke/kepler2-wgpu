@@ -1,3 +1,6 @@
+use std::path::PathBuf;
+use anyhow::Result;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum CompressionType {
     GZip,
