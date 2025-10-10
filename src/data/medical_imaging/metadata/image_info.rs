@@ -1,40 +1,229 @@
-/// 功能级注释：全面的医学影像元数据
-/// 保留所有空间和采集信息
+use std::collections::HashMap;
+use crate::data::medical_imaging::{
+    data::{CompressionType,PixelType, Endianness},
+    validation::{ValidationResult, ValidationError},
+};
+
+/// Patient position enumeration
+/// Represents different positions of the patient in the imaging setup
+#[derive(Debug, Clone)]
+pub enum  PatientPosition{
+    HFS,
+    HFP,
+    FFS,
+    FFP,
+    HFDR,
+    HFDL,
+    FFDR,
+    FFDL,
+    Unknown,
+}
+
+/// Metadata value enumeration
+/// Supports various data types for custom metadata fields
 #[derive(Debug, Clone, PartialEq)]
-pub struct ImageMetadata {
-    /// 图像尺寸 [宽度, 高度, 深度]
+pub enum MetadataValue {
+    String(String),
+    Integer(i64),
+    Float(f64),
+    Boolean(bool),
+    Array(Vec<MetadataValue>),
+}
+
+/// Comprehensive medical image metadata
+/// Preserves all spatial and acquisition information critical for medical application
+#[derive(Debug, Clone, PartialEq)]pub struct ImageMetadata {
+    /// Image dimensions [width, height, depth]
     pub dimensions: [usize; 3],
-    /// 像素间距，单位 mm [x, y, z]
+    /// Pixel spacing in mm [x, y, z]
     pub spacing: [f64; 3],
-    /// 世界坐标系中的图像原点 [x, y, z]
+    /// Image origin in world coordinates [x, y, z]
     pub origin: [f64; 3],
-    /// 方向矩阵 (3x3)
+    /// Orientation matrix (3x3)
     pub orientation: [[f64; 3]; 3],
-    /// 像素数据类型
+    /// Pixel data type
     pub pixel_type: PixelType,
-    /// 每个像素的组件数量
+    /// Number of components per pixel
     pub components: usize,
-    /// 像素数据的字节序
+    /// Endianness of pixel data
     pub endianness: Endianness,
-    /// 压缩类型（如果有）
+    /// Compression type if any
     pub compression: Option<CompressionType>,
-    /// 额外的格式特定元数据
+    /// Additional format-specific metadata
     pub custom_fields: HashMap<String, MetadataValue>,
+    /// Patient position
+    pub patient_position: PatientPosition,
 }
 
 impl ImageMetadata {
-    /// 验证元数据一致性
-    pub fn validate(&self) -> ValidationResult;
+    /// Validates metadata consistency
+    pub fn validate(&self) -> ValidationResult {
+        let mut errors = Vec::new();
+
+        // Validate dimensions
+        for (i, &dim) in self.dimensions.iter().enumerate() {
+            if dim == 0 {
+                errors.push(ValidationError::InvalidDimension {
+                    axis: match i {
+                        0 => "width",
+                        1 => "height",
+                        2 => "depth",
+                        _ => "unknown",
+                    },
+                    value: dim,
+                });
+            }
+        }
+
+        // Validate spacing
+        for (i, &sp) in self.spacing.iter().enumerate() {
+            if sp <= 0.0 {
+                errors.push(ValidationError::InvalidSpacing {
+                    axis: match i {
+                        0 => "x",
+                        1 => "y",
+                        2 => "z",
+                        _ => "unknown",
+                    },
+                    value: sp,
+                });
+            }
+        }
+
+        // Validate orientation matrix (must be orthonormal)
+        let det = self.orientation[0][0] * (self.orientation[1][1] * self.orientation[2][2] - self.orientation[1][2] * self.orientation[2][1])
+                - self.orientation[0][1] * (self.orientation[1][0] * self.orientation[2][2] - self.orientation[1][2] * self.orientation[2][0])
+                + self.orientation[0][2] * (self.orientation[1][0] * self.orientation[2][1] - self.orientation[1][1] * self.orientation[2][0]);
+        if det.abs() < 1e-6 {
+            errors.push(ValidationError::InvalidOrientation);
+        }
+
+        // Validate components
+        if self.components == 0 {
+            errors.push(ValidationError::InvalidComponents(self.components));
+        }
+
+        if errors.is_empty() {
+            ValidationResult::success()
+        } else {
+            ValidationResult::failure(errors)
+        }
+    }
     
-    /// 计算总像素数
-    pub fn total_pixels(&self) -> usize;
+    /// Calculates total number of pixels
+    pub fn total_pixels(&self) -> usize {
+        self.dimensions.iter().product()
+    }
     
-    /// 计算数据大小（字节）
-    pub fn data_size_bytes(&self) -> usize;
+    /// Calculates data size in bytes
+    pub fn data_size_bytes(&self) -> usize {
+        self.total_pixels() * self.pixel_type.size_bytes() * self.components
+    }
     
-    /// 将世界坐标转换为体素索引
-    pub fn world_to_voxel(&self, world_pos: [f64; 3]) -> [f64; 3];
+    /// Converts world coordinates to voxel indices
+    pub fn world_to_voxel(&self, world_pos: [f64; 3]) -> [f64; 3] {
+        let mut voxel_pos = [0.0; 3];
+        
+        // Translate to origin
+        let translated = [
+            world_pos[0] - self.origin[0],
+            world_pos[1] - self.origin[1],
+            world_pos[2] - self.origin[2],
+        ];
+        
+        // Apply inverse orientation and spacing
+        for i in 0..3 {
+            for j in 0..3 {
+                voxel_pos[i] += self.orientation[j][i] * translated[j];
+            }
+            voxel_pos[i] /= self.spacing[i];
+        }
+        
+        voxel_pos
+    }
     
-    /// 将体素索引转换为世界坐标
-    pub fn voxel_to_world(&self, voxel_pos: [f64; 3]) -> [f64; 3];
+    /// Converts voxel indices to world coordinates
+    pub fn voxel_to_world(&self, voxel_pos: [f64; 3]) -> [f64; 3] {
+        let mut world_pos = [0.0; 3];
+        
+        // Apply spacing and orientation
+        for i in 0..3 {
+            for j in 0..3 {
+                world_pos[i] += self.orientation[i][j] * (voxel_pos[j] * self.spacing[j]);
+            }
+            world_pos[i] += self.origin[i];
+        }
+        
+        world_pos
+    }
+}
+
+fn create_patient_position(anatomical_orientation: &str)-> PatientPosition{
+    match anatomical_orientation {
+        "HFS" => PatientPosition::HFS,  // Head First-Supine (头先进仰卧)
+        "HFP" => PatientPosition::HFP,  // Head First-Prone (头先进俯卧) 
+        "FFS" => PatientPosition::FFS,  // Feet First-Supine (脚先进仰卧)
+        "FFP" => PatientPosition::FFP,  // Feet First-Prone (脚先进俯卧)
+        "HFDR" => PatientPosition::HFDR, // Head First-Decubitus Right (头先进右侧卧)
+        "HFDL" => PatientPosition::HFDL, // Head First-Decubitus Left (头先进左侧卧)
+        "FFDR" => PatientPosition::FFDR, // Feet First-Decubitus Right (脚先进右侧卧)
+        "FFDL" => PatientPosition::FFDL, // Feet First-Decubitus Left (脚先进左侧卧)
+        // ========================
+        // 解剖方向到标准体位的映射
+        // ========================
+        // 仰卧位 (Supine) - 头先进
+        "RAI" => PatientPosition::HFS,  // 右前上 -> 头先进仰卧
+        "LPS" => PatientPosition::HFS,  // 左后上 -> 头先进仰卧
+        "LAI" => PatientPosition::HFS,  // 左前上 -> 头先进仰卧
+        "RPS" => PatientPosition::HFS,  // 右后上 -> 头先进仰卧
+
+        // 俯卧位 (Prone) - 头先进  
+        "RPI" => PatientPosition::HFP,  // 右后上 -> 头先进俯卧
+        "LAS" => PatientPosition::HFP,  // 左前下 -> 头先进俯卧
+        "LPI" => PatientPosition::HFP,  // 左后上 -> 头先进俯卧
+        "RAS" => PatientPosition::HFP,  // 右前下 -> 头先进俯卧
+
+        // 仰卧位 (Supine) - 脚先进
+        "RSA" => PatientPosition::FFS,  // 右上前 -> 脚先进仰卧
+        "LSP" => PatientPosition::FFS,  // 左上后 -> 脚先进仰卧
+        "LSA" => PatientPosition::FFS,  // 左上前 -> 脚先进仰卧
+        "RSP" => PatientPosition::FFS,  // 右上后 -> 脚先进仰卧
+
+        // 俯卧位 (Prone) - 脚先进
+        "RPA" => PatientPosition::FFP,  // 右后前 -> 脚先进俯卧
+        "LIA" => PatientPosition::FFP,  // 左下前 -> 脚先进俯卧
+        "LPA" => PatientPosition::FFP,  // 左后前 -> 脚先进俯卧
+        "RIA" => PatientPosition::FFP,  // 右下前 -> 脚先进俯卧
+
+        // ========================
+        // 侧卧位 (Decubitus)
+        // ========================
+        // 右侧卧位
+        "ARI" => PatientPosition::HFDR, // 前右上 -> 头先进右侧卧
+        "PRI" => PatientPosition::HFDR, // 后右上 -> 头先进右侧卧
+        "ARS" => PatientPosition::FFDR, // 前右下 -> 脚先进右侧卧
+        "PRS" => PatientPosition::FFDR, // 后右下 -> 脚先进右侧卧
+
+        // 左侧卧位
+        "ALI" => PatientPosition::HFDL, // 前左上 -> 头先进左侧卧
+        "PLI" => PatientPosition::HFDL, // 后左上 -> 头先进左侧卧
+        "ALS" => PatientPosition::FFDL, // 前左下 -> 脚先进左侧卧
+        "PLS" => PatientPosition::FFDL, // 后左下 -> 脚先进左侧卧
+
+        // ========================
+        // 特殊情况
+        // ========================
+        "AIL" => PatientPosition::HFS,  // 前上左 -> 头先进仰卧
+        "PIL" => PatientPosition::HFS,  // 后上左 -> 头先进仰卧
+        "AIR" => PatientPosition::HFS,  // 前上右 -> 头先进仰卧
+        "PIR" => PatientPosition::HFS,  // 后上右 -> 头先进仰卧
+
+        // ========================
+        // 默认情况
+        // ========================
+        _ => {
+            log::info!("Unknown anatomical orientation: {}, defaulting to HFS", anatomical_orientation);
+            PatientPosition::HFS
+        }
+    }
 }
