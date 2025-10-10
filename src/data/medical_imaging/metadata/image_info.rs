@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 use crate::data::medical_imaging::{
-    data::{CompressionType,PixelType, Endianness},
     validation::{ValidationResult, ValidationError},
+    pixel_data::{PixelType, Endianness},
+    formats::CompressionType,
 };
 
 /// Patient position enumeration
@@ -19,17 +20,6 @@ pub enum  PatientPosition{
     Unknown,
 }
 
-/// Metadata value enumeration
-/// Supports various data types for custom metadata fields
-#[derive(Debug, Clone, PartialEq)]
-pub enum MetadataValue {
-    String(String),
-    Integer(i64),
-    Float(f64),
-    Boolean(bool),
-    Array(Vec<MetadataValue>),
-}
-
 /// Comprehensive medical image metadata
 /// Preserves all spatial and acquisition information critical for medical application
 #[derive(Debug, Clone, PartialEq)]pub struct ImageMetadata {
@@ -43,14 +33,10 @@ pub enum MetadataValue {
     pub orientation: [[f64; 3]; 3],
     /// Pixel data type
     pub pixel_type: PixelType,
-    /// Number of components per pixel
-    pub components: usize,
     /// Endianness of pixel data
     pub endianness: Endianness,
     /// Compression type if any
     pub compression: Option<CompressionType>,
-    /// Additional format-specific metadata
-    pub custom_fields: HashMap<String, MetadataValue>,
     /// Patient position
     pub patient_position: PatientPosition,
 }
@@ -98,11 +84,6 @@ impl ImageMetadata {
             errors.push(ValidationError::InvalidOrientation);
         }
 
-        // Validate components
-        if self.components == 0 {
-            errors.push(ValidationError::InvalidComponents(self.components));
-        }
-
         if errors.is_empty() {
             ValidationResult::success()
         } else {
@@ -113,11 +94,6 @@ impl ImageMetadata {
     /// Calculates total number of pixels
     pub fn total_pixels(&self) -> usize {
         self.dimensions.iter().product()
-    }
-    
-    /// Calculates data size in bytes
-    pub fn data_size_bytes(&self) -> usize {
-        self.total_pixels() * self.pixel_type.size_bytes() * self.components
     }
     
     /// Converts world coordinates to voxel indices

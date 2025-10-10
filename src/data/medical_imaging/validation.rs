@@ -13,8 +13,8 @@ use thiserror::Error;
 use async_trait::async_trait;
 
 use crate::data::medical_imaging::{
-    metadata::ImageMetadata,
-    data::PixelData,
+    metadata::{ImageMetadata,PixelData},
+    formats::ImageFormat,
 };
 
 // ============================================================================
@@ -104,26 +104,14 @@ pub struct DataIssue {
     pub severity: WarningSeverity,
 }
 
-/// Image format enumeration
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ImageFormat {
-    MHA,
-    MHD,
-    NIfTI,
-    DICOM,
-    Unknown,
-}
-
-/// Format validator trait
-pub trait FormatValidator {
-    fn validate_format(&self, path: &Path) -> ValidationResult;
-    fn supported_format(&self) -> ImageFormat;
-}
-
 /// Integrity checker trait
 pub trait IntegrityChecker {
-    fn check_integrity(&self, data: &[u8]) -> ValidationResult;
-    fn checker_name(&self) -> &str;
+    fn check_integrity(&self, data: &[u8]) -> ValidationResult{
+        ValidationResult::success()
+    }
+    fn checker_name(&self) -> &str{
+        "DefaultIntegrityChecker"
+    }
 }
 
 /// Core validation trait for synchronous validation
@@ -158,7 +146,7 @@ pub trait ValidationRule<T> {
 /// Ensures data integrity and format compliance
 pub struct MedicalImageValidator {
     /// Format-specific validators
-    format_validators: HashMap<ImageFormat, Box<dyn FormatValidator>>,
+    format_validators: HashMap<ImageFormat, ValidationResult>,
     /// Data integrity checkers
     integrity_checkers: Vec<Box<dyn IntegrityChecker>>,
 }

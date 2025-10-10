@@ -5,12 +5,10 @@
 pub mod error;
 pub mod formats;
 pub mod metadata;
-pub mod data;
 pub mod validation;
 
 // Re-export main types for convenience
 pub use error::*;
 pub use formats::*;
 pub use metadata::*;
-pub use data::*;
 pub use validation::*;
