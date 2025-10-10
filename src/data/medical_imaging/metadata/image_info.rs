@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use crate::data::medical_imaging::{
     validation::{ValidationResult, ValidationError},
     pixel_data::{PixelType, Endianness},
@@ -22,15 +21,16 @@ pub enum  PatientPosition{
 
 /// Comprehensive medical image metadata
 /// Preserves all spatial and acquisition information critical for medical application
-#[derive(Debug, Clone, PartialEq)]pub struct ImageMetadata {
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImageMetadata {
     /// Image dimensions [width, height, depth]
     pub dimensions: [usize; 3],
     /// Pixel spacing in mm [x, y, z]
-    pub spacing: [f64; 3],
+    pub spacing: [f32; 3],
     /// Image origin in world coordinates [x, y, z]
-    pub origin: [f64; 3],
+    pub offset: [f32; 3],
     /// Orientation matrix (3x3)
-    pub orientation: [[f64; 3]; 3],
+    pub orientation: [[f32; 3]; 3],
     /// Pixel data type
     pub pixel_type: PixelType,
     /// Endianness of pixel data
@@ -39,6 +39,8 @@ pub enum  PatientPosition{
     pub compression: Option<CompressionType>,
     /// Patient position
     pub patient_position: PatientPosition,
+    /// Offset to pixel data in bytes from start of file
+    pub data_offset: Option<usize>, 
 }
 
 impl ImageMetadata {
