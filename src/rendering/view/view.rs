@@ -170,7 +170,7 @@ impl Orientation {
 }
 
 pub struct GenericMPRView {
-    view: RenderContext,
+    ctx: RenderContext,
     texture: Arc<RenderContent>,
     // r_speed: f32,
     // s_speed: f32,
@@ -220,7 +220,7 @@ impl GenericMPRView {
         log::trace!("Created GenericMPRView with orientation: {:?}, scale: {}, translate: {:#?}, pos: {:#?}, dim: {:#?}",
             orientation, scale, translate, pos, dim);
         Self {
-            view,
+            ctx: view,
             texture,
             // r_speed,
             // s_speed,
@@ -250,47 +250,47 @@ impl GenericMPRView {
         let transform_matrix = base_screen_cloned
             .to_base(&self.base_uv)
             .transpose();
-        self.view.uniforms.frag.mat = *array_to_slice(&transform_matrix.data);
+        self.ctx.uniforms.frag.mat = *array_to_slice(&transform_matrix.data);
     }
 }
 
 impl Drop for GenericMPRView {
     fn drop(&mut self) {
-        log::info!("Dropping GenericMPRView");
+        log::debug!("Dropping GenericMPRView");
     }
 }
 
 impl Renderable for GenericMPRView {
     fn update(&mut self, queue: &wgpu::Queue) {
         // self.view.uniforms.vert.rotation_angle_y += self.r_speed;
-        self.view.uniforms.frag.slice = self.slice;
+        self.ctx.uniforms.frag.slice = self.slice;
         self.update_transform_matrix();
 
         queue.write_buffer(
-            &self.view.uniform_vert_buffer,
+            &self.ctx.uniform_vert_buffer,
             0,
-            bytemuck::cast_slice(&[self.view.uniforms.vert]),
+            bytemuck::cast_slice(&[self.ctx.uniforms.vert]),
         );
         queue.write_buffer(
-            &self.view.uniform_frag_buffer,
+            &self.ctx.uniform_frag_buffer,
             0,
-            bytemuck::cast_slice(&[self.view.uniforms.frag]),
+            bytemuck::cast_slice(&[self.ctx.uniforms.frag]),
         );
     }
 
     fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
-        render_pass.set_pipeline(&self.view.render_pipeline);
+        render_pass.set_pipeline(&self.ctx.render_pipeline);
 
         let (x, y) = (self.pos.0 as f32, self.pos.1 as f32);
         let (width, height) = (self.dim.0, self.dim.1);
 
         render_pass.set_viewport(x, y, width as f32, height as f32, 0.0, 1.0);
-        render_pass.set_bind_group(0, &self.view.texture_bind_group, &[]);
-        render_pass.set_bind_group(1, &self.view.uniform_vert_bind_group, &[]);
-        render_pass.set_bind_group(2, &self.view.uniform_frag_bind_group, &[]);
-        render_pass.set_vertex_buffer(0, self.view.vertex_buffer.slice(..));
-        render_pass.set_index_buffer(self.view.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
-        render_pass.draw_indexed(0..self.view.num_indices, 0, 0..1);
+        render_pass.set_bind_group(0, &self.ctx.texture_bind_group, &[]);
+        render_pass.set_bind_group(1, &self.ctx.uniform_vert_bind_group, &[]);
+        render_pass.set_bind_group(2, &self.ctx.uniform_frag_bind_group, &[]);
+        render_pass.set_vertex_buffer(0, self.ctx.vertex_buffer.slice(..));
+        render_pass.set_index_buffer(self.ctx.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        render_pass.draw_indexed(0..self.ctx.num_indices, 0, 0..1);
         Ok(())
     }
 }
@@ -325,10 +325,10 @@ impl View for GenericMPRView {
 
 impl MPRView for GenericMPRView {
     fn set_window_level(&mut self, window_level: f32) {
-        self.view.uniforms.frag.window_level = window_level;
+        self.ctx.uniforms.frag.window_level = window_level;
     }
     fn set_window_width(&mut self, window_width: f32) {
-        self.view.uniforms.frag.window_width = window_width;
+        self.ctx.uniforms.frag.window_width = window_width;
     }
     fn set_slice_mm(&mut self, z: f32) {
         let [_, _, scale_z] = self.base_screen.get_scale_factors();
@@ -353,9 +353,9 @@ impl MPRView for GenericMPRView {
         self.pan[1] = y_mm / scale_y;
     }
     /// Function-level comment: Retrieve current window level from fragment uniforms for state snapshotting.
-    fn get_window_level(&self) -> f32 { self.view.uniforms.frag.window_level }
+    fn get_window_level(&self) -> f32 { self.ctx.uniforms.frag.window_level }
     /// Function-level comment: Retrieve current window width from fragment uniforms for state snapshotting.
-    fn get_window_width(&self) -> f32 { self.view.uniforms.frag.window_width }
+    fn get_window_width(&self) -> f32 { self.ctx.uniforms.frag.window_width }
     /// Function-level comment: Convert internal pan.z (in screen units) back to millimeters using base scale factors.
     fn get_slice_mm(&self) -> f32 {
         let [_, _, scale_z] = self.base_screen.get_scale_factors();
