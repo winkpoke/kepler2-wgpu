@@ -9,6 +9,54 @@ use crate::rendering::content::render_content::RenderContent;
 use crate::rendering::view::RenderContext;
 use crate::CTVolume;
 
+/// Function-level comment: State snapshot for preserving view configuration during mode switches.
+/// This structure captures all essential MPR view parameters that need to be restored
+/// when transitioning between different view modes (e.g., mesh to MPR).
+#[derive(Debug, Clone)]
+pub struct ViewState {
+    pub window_level: f32,
+    pub window_width: f32,
+    pub slice_mm: f32,
+    pub scale: f32,
+    pub translate: [f32; 3],
+    pub translate_in_screen_coord: [f32; 3],
+    pub position: (i32, i32),
+    pub dimensions: (u32, u32),
+}
+
+impl ViewState {
+    /// Function-level comment: Create a new ViewState with default values for medical imaging.
+    /// Uses standard CT window/level settings and neutral positioning.
+    pub fn new() -> Self {
+        Self {
+            window_level: 40.0,    // Standard CT soft tissue window level
+            window_width: 400.0,   // Standard CT soft tissue window width
+            slice_mm: 0.0,
+            scale: 1.0,
+            translate: [0.0, 0.0, 0.0],
+            translate_in_screen_coord: [0.0, 0.0, 0.0],
+            position: (0, 0),
+            dimensions: (512, 512),
+        }
+    }
+
+    /// Function-level comment: Validate that the view state contains reasonable values.
+    /// Ensures window width is positive, scale is within reasonable bounds, and dimensions are valid.
+    pub fn is_valid(&self) -> bool {
+        self.window_width > 0.0 
+            && self.scale > 0.0 
+            && self.scale < 100.0  // Reasonable scale limit
+            && self.dimensions.0 > 0 
+            && self.dimensions.1 > 0
+    }
+}
+
+impl Default for ViewState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub trait View: Renderable + Any {
     fn position(&self) -> (i32, i32);
     fn dimensions(&self) -> (u32, u32);
@@ -20,6 +68,48 @@ pub trait View: Renderable + Any {
     fn as_mpr(&mut self) -> Option<&mut dyn MPRView> {
         None
     }
+}
+
+/// Function-level comment: Enhanced View trait with state management capabilities.
+/// Allows views to save their current state and restore from a saved state,
+/// enabling seamless transitions between different view modes.
+pub trait StatefulView: View {
+    /// Function-level comment: Save the current view state for later restoration.
+    /// Returns None if the view doesn't support state saving or if current state is invalid.
+    fn save_state(&self) -> Option<ViewState>;
+    
+    /// Function-level comment: Restore view state from a previously saved snapshot.
+    /// Returns true if restoration was successful, false if state was invalid or incompatible.
+    fn restore_state(&mut self, state: &ViewState) -> bool;
+    
+    /// Function-level comment: Get a string identifier for the view type.
+    /// Used for type checking and debugging during view transitions.
+    fn view_type(&self) -> &'static str;
+}
+
+/// Function-level comment: Factory trait for creating different types of views.
+/// Centralizes view creation logic and provides a consistent interface for
+/// creating views with proper initialization parameters.
+pub trait ViewFactory {
+    /// Function-level comment: Create a new mesh view with specified position and dimensions.
+    /// Returns a boxed View trait object ready for rendering mesh data.
+    fn create_mesh_view(
+        &self, 
+        manager: &mut crate::rendering::core::pipeline::PipelineManager, 
+        pos: (i32, i32), 
+        size: (u32, u32)
+    ) -> Result<Box<dyn View>, Box<dyn std::error::Error>>;
+    
+    /// Function-level comment: Create a new MPR view with volume data and orientation.
+    /// Returns a boxed View trait object configured for medical imaging display.
+    fn create_mpr_view(
+        &self, 
+        manager: &mut crate::rendering::core::pipeline::PipelineManager, 
+        vol: &CTVolume, 
+        orientation: Orientation, 
+        pos: (i32, i32), 
+        size: (u32, u32)
+    ) -> Result<Box<dyn View>, Box<dyn std::error::Error>>;
 }
 
 pub trait MPRView: View {
@@ -277,6 +367,63 @@ impl MPRView for GenericMPRView {
     fn get_translate_in_screen_coord(&self) -> [f32; 3] { self.pan }
     /// Function-level comment: Return current view/model-space translation vector.
     fn get_translate(&self) -> [f32; 3] { self.translate }
+}
+
+impl StatefulView for GenericMPRView {
+    /// Function-level comment: Save current MPR view state including window/level, position, scale, and translation.
+    /// Captures all essential parameters needed to restore the view to its current configuration.
+    fn save_state(&self) -> Option<ViewState> {
+        let state = ViewState {
+            window_level: self.get_window_level(),
+            window_width: self.get_window_width(),
+            slice_mm: self.get_slice_mm(),
+            scale: self.get_scale(),
+            translate: self.get_translate(),
+            translate_in_screen_coord: self.get_translate_in_screen_coord(),
+            position: self.position(),
+            dimensions: self.dimensions(),
+        };
+        
+        if state.is_valid() {
+            log::debug!("Saved MPR view state: window_level={}, window_width={}, scale={}, slice_mm={}", 
+                state.window_level, state.window_width, state.scale, state.slice_mm);
+            Some(state)
+        } else {
+            log::warn!("Failed to save MPR view state: invalid state values");
+            None
+        }
+    }
+    
+    /// Function-level comment: Restore MPR view state from a saved snapshot.
+    /// Updates all view parameters and triggers transform matrix recalculation.
+    fn restore_state(&mut self, state: &ViewState) -> bool {
+        if !state.is_valid() {
+            log::warn!("Cannot restore MPR view state: invalid state values");
+            return false;
+        }
+        
+        // Restore view parameters
+        self.set_window_level(state.window_level);
+        self.set_window_width(state.window_width);
+        self.set_slice_mm(state.slice_mm);
+        self.set_scale(state.scale);
+        self.set_translate(state.translate);
+        self.set_translate_in_screen_coord(state.translate_in_screen_coord);
+        self.move_to(state.position);
+        self.resize(state.dimensions);
+        
+        // Update transform matrix to reflect new state
+        self.update_transform_matrix();
+        
+        log::debug!("Restored MPR view state: window_level={}, window_width={}, scale={}, slice_mm={}", 
+            state.window_level, state.window_width, state.scale, state.slice_mm);
+        true
+    }
+    
+    /// Function-level comment: Return the view type identifier for this MPR view.
+    fn view_type(&self) -> &'static str {
+        "GenericMPRView"
+    }
 }
 
 // Optional: keep type aliases for old names

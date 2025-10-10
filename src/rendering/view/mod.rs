@@ -11,3 +11,6 @@ pub use renderable::*;
 
 mod layout;
 pub use layout::*;
+
+pub mod view_manager;
+pub use view_manager::*;
