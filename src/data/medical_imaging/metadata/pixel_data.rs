@@ -1,5 +1,4 @@
-use crate::data::medical_imaging::error::{MedicalImagingError, MedicalImagingResult};
-use std::{fs::File, io::Read};
+use crate::data::medical_imaging::error::MedicalImagingResult;
 
 /// Function-level comment: Endianness enumeration
 /// Defines byte order for multi-byte pixel types
@@ -21,23 +20,6 @@ pub enum PixelType {
     Float64,
 }
 
-impl PixelType {
-    /// Parses pixel type from string (case-insensitive)
-    pub fn from_str(s: &str) -> MedicalImagingResult<Self> {
-        match s.to_lowercase().as_str() {
-            "met_uint8" | "met_uchar" => Ok(PixelType::UInt8),
-            "met_uint16" | "met_ushort" => Ok(PixelType::UInt16),
-            "met_int16" | "met_short" => Ok(PixelType::Int16),
-            "met_int32" | "met_int" => Ok(PixelType::Int32),
-            "met_float32" | "met_float" => Ok(PixelType::Float32),
-            "met_float64" | "met_double" => Ok(PixelType::Float64),
-            _ => Err(MedicalImagingError::UnsupportedFormat {
-                format: format!("pixel type: {}", s)
-            }),
-        }
-    }
-}
-
 /// Type-safe pixel data container
 /// Stores pixel data with type information and provides safe access methods
 #[derive(Debug, Clone)]
@@ -55,10 +37,7 @@ impl PixelData {
     pub fn from_bytes(
         bytes: &[u8], 
         pixel_type: PixelType,
-        start: usize,
     ) -> MedicalImagingResult<Self>{
-        let bytes = &bytes[start..];
-
         match pixel_type {
             PixelType::UInt8 => Ok(Self::UInt8(bytes.to_vec())),
             PixelType::UInt16 => Ok(Self::UInt16(bytes.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect())),
@@ -69,11 +48,15 @@ impl PixelData {
         }
     }
 
-    pub fn get_pixel(path: &'static str, dims: [usize; 3]) -> MedicalImagingResult<Self>{
-        let n = dims[0] * dims[1] * dims[2];
-        let mut temp_buf = vec![0u8; n * 4];
-        let mut f = File::open(path)?;
-        f.read_exact(&mut temp_buf)?;
-        Ok(Self::UInt8(temp_buf))
+    /// Returns pixel data as byte slice
+    pub fn as_bytes(&self) -> &[u8]{
+        match self {
+            Self::UInt8(data) => data,
+            Self::UInt16(data) => bytemuck::cast_slice(data),
+            Self::Int16(data) => bytemuck::cast_slice(data),
+            Self::Int32(data) => bytemuck::cast_slice(data),
+            Self::Float32(data) => bytemuck::cast_slice(data),
+            Self::Float64(data) => bytemuck::cast_slice(data),
+        }
     }
 }

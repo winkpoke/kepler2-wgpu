@@ -9,6 +9,10 @@ use thiserror::Error;
 /// Covers all possible error conditions with detailed context information
 #[derive(Debug, Error)]
 pub enum MedicalImagingError {
+    /// Invalid path format or encoding
+    #[error("Invalid path format: {path}")]
+    InvalidPath { path: String },
+
     /// File format not supported
     #[error("Unsupported file format: {format}")]
     UnsupportedFormat { format: String },

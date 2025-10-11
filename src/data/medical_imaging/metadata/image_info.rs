@@ -21,14 +21,14 @@ pub enum  PatientPosition{
 
 /// Comprehensive medical image metadata
 /// Preserves all spatial and acquisition information critical for medical application
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ImageMetadata {
     /// Image dimensions [width, height, depth]
-    pub dimensions: [usize; 3],
+    pub dimensions: Vec<usize>,
     /// Pixel spacing in mm [x, y, z]
-    pub spacing: [f32; 3],
+    pub spacing: Vec<f32>,
     /// Image origin in world coordinates [x, y, z]
-    pub offset: [f32; 3],
+    pub offset: Vec<f32>,
     /// Orientation matrix (3x3)
     pub orientation: [[f32; 3]; 3],
     /// Pixel data type
@@ -41,6 +41,8 @@ pub struct ImageMetadata {
     pub patient_position: PatientPosition,
     /// Offset to pixel data in bytes from start of file
     pub data_offset: Option<usize>, 
+    /// Path to element data file if any
+    pub element_data_file: String,
 }
 
 impl ImageMetadata {
@@ -52,13 +54,8 @@ impl ImageMetadata {
         for (i, &dim) in self.dimensions.iter().enumerate() {
             if dim == 0 {
                 errors.push(ValidationError::InvalidDimension {
-                    axis: match i {
-                        0 => "width",
-                        1 => "height",
-                        2 => "depth",
-                        _ => "unknown",
-                    },
-                    value: dim,
+                    message: "Dimension cannot be zero".to_string(),
+                    dimension: format!("dimensions[{}]", i),
                 });
             }
         }
@@ -67,13 +64,8 @@ impl ImageMetadata {
         for (i, &sp) in self.spacing.iter().enumerate() {
             if sp <= 0.0 {
                 errors.push(ValidationError::InvalidSpacing {
-                    axis: match i {
-                        0 => "x",
-                        1 => "y",
-                        2 => "z",
-                        _ => "unknown",
-                    },
-                    value: sp,
+                    message: "Spacing cannot be zero or negative".to_string(),
+                    spacing: format!("spacing[{}]", i),
                 });
             }
         }
@@ -83,7 +75,10 @@ impl ImageMetadata {
                 - self.orientation[0][1] * (self.orientation[1][0] * self.orientation[2][2] - self.orientation[1][2] * self.orientation[2][0])
                 + self.orientation[0][2] * (self.orientation[1][0] * self.orientation[2][1] - self.orientation[1][1] * self.orientation[2][0]);
         if det.abs() < 1e-6 {
-            errors.push(ValidationError::InvalidOrientation);
+            errors.push(ValidationError::InvalidOrientation {
+                message: "Orientation matrix must be orthonormal".to_string(),
+                orientation: "orientation".to_string(),
+            });
         }
 
         if errors.is_empty() {
@@ -99,14 +94,14 @@ impl ImageMetadata {
     }
     
     /// Converts world coordinates to voxel indices
-    pub fn world_to_voxel(&self, world_pos: [f64; 3]) -> [f64; 3] {
+    pub fn world_to_voxel(&self, world_pos: [f32; 3]) -> [f32; 3] {
         let mut voxel_pos = [0.0; 3];
         
         // Translate to origin
         let translated = [
-            world_pos[0] - self.origin[0],
-            world_pos[1] - self.origin[1],
-            world_pos[2] - self.origin[2],
+            world_pos[0] - self.offset[0],
+            world_pos[1] - self.offset[1],
+            world_pos[2] - self.offset[2],
         ];
         
         // Apply inverse orientation and spacing
@@ -121,7 +116,7 @@ impl ImageMetadata {
     }
     
     /// Converts voxel indices to world coordinates
-    pub fn voxel_to_world(&self, voxel_pos: [f64; 3]) -> [f64; 3] {
+    pub fn voxel_to_world(&self, voxel_pos: [f32; 3]) -> [f32; 3] {
         let mut world_pos = [0.0; 3];
         
         // Apply spacing and orientation
@@ -129,14 +124,14 @@ impl ImageMetadata {
             for j in 0..3 {
                 world_pos[i] += self.orientation[i][j] * (voxel_pos[j] * self.spacing[j]);
             }
-            world_pos[i] += self.origin[i];
+            world_pos[i] += self.offset[i];
         }
         
         world_pos
     }
 }
 
-fn create_patient_position(anatomical_orientation: &str)-> PatientPosition{
+pub fn create_patient_position(anatomical_orientation: &str)-> PatientPosition{
     match anatomical_orientation {
         "HFS" => PatientPosition::HFS,  // Head First-Supine (头先进仰卧)
         "HFP" => PatientPosition::HFP,  // Head First-Prone (头先进俯卧) 

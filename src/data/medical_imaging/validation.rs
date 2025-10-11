@@ -51,6 +51,24 @@ pub enum ValidationError {
         expected_min: Option<usize>, 
         expected_max: Option<usize> 
     },
+
+    #[error("Invalid dimension: {message}")]
+    InvalidDimension { 
+        message: String, 
+        dimension: String 
+    },
+    
+    #[error("Invalid spacing: {message}")]
+    InvalidSpacing { 
+        message: String, 
+        spacing: String 
+    },
+    
+    #[error("Invalid orientation: {message}")]
+    InvalidOrientation { 
+        message: String, 
+        orientation: String 
+    },
     
     #[error("Medical imaging error: {message}")]
     MedicalImaging { 
@@ -168,11 +186,11 @@ impl MedicalImageValidator {
         
         // Check file existence
         if !path.as_ref().exists() {
-            return ValidationResult::failure(ValidationError::InvalidInput {
+            return ValidationResult::failure(vec![ValidationError::InvalidInput {
                 message: "File does not exist".to_string(),
                 field: Some("file_path".to_string()),
                 context: HashMap::new(),
-            });
+            }]);
         }
         
         // Validate file size
@@ -223,8 +241,8 @@ impl MedicalImageValidator {
         let mut result = ValidationResult::success();
         
         // Calculate expected data size
-        let expected_size = metadata.dimensions.iter().product::<u32>() as usize;
-        let actual_size = data.len();
+        let expected_size = metadata.dimensions.iter().product::<usize>();
+        let actual_size = data.as_bytes().len();
         
         if actual_size != expected_size {
             result.errors.push(ValidationError::InvalidLength {
@@ -274,11 +292,11 @@ impl ValidationResult {
     
     /// Function-level comment: Creates failed validation result with error
     /// Returns a validation result indicating failure with the specified error
-    pub fn failure(error: ValidationError) -> Self {
+    pub fn failure(error: Vec<ValidationError>) -> Self {
         Self {
             is_valid: false,
             warnings: Vec::new(),
-            errors: vec![error],
+            errors: error,
             metadata_issues: Vec::new(),
             data_issues: Vec::new(),
         }
