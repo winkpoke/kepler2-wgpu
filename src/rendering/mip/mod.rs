@@ -58,6 +58,9 @@ pub struct MipUniforms {
     
     // View matrix for coordinate transformation
     pub view_matrix: [[f32; 4]; 4],
+    
+    // Padding to ensure proper alignment (192 bytes total)
+    pub _padding_end: [f32; 6],
 }
 
 impl Default for MipUniforms {
@@ -85,6 +88,7 @@ impl Default for MipUniforms {
                 [0.0, 0.0, 1.0, 0.0],
                 [0.0, 0.0, 0.0, 1.0],
             ],
+            _padding_end: [0.0; 6],
         }
     }
 }
@@ -276,6 +280,10 @@ pub struct MipView {
     config: MipConfig,
     /// Render context for GPU resources
     render_context: MipRenderContext,
+    /// Pre-created texture bind group for rendering
+    texture_bind_group: BindGroup,
+    /// Pre-created uniform bind group for rendering
+    uniform_bind_group: BindGroup,
     /// View position on screen
     position: (i32, i32),
     /// View dimensions
@@ -286,10 +294,16 @@ impl MipView {
     /// Function-level comment: Create a new MIP view using existing RenderContent.
     /// Accepts Arc<RenderContent> from MPR views to enable zero-copy texture sharing.
     pub fn new(render_content: Arc<RenderContent>, device: &Device, surface_format: wgpu::TextureFormat) -> Self {
+        let render_context = MipRenderContext::new(device, surface_format);
+        let texture_bind_group = render_context.create_texture_bind_group(device, &render_content);
+        let uniform_bind_group = render_context.create_uniform_bind_group(device);
+        
         Self {
             render_content,
             config: MipConfig::new(),
-            render_context: MipRenderContext::new(device, surface_format),
+            render_context,
+            texture_bind_group,
+            uniform_bind_group,
             position: (0, 0),
             dimensions: (512, 512),
         }
@@ -320,17 +334,58 @@ impl MipView {
         &mut self.render_context
     }
 
-    /// Function-level comment: Create bind groups for rendering with the current RenderContent.
-    /// Returns (texture_bind_group, uniform_bind_group) for use in render passes.
-    pub fn create_bind_groups(&self, device: &Device) -> (BindGroup, BindGroup) {
-        let texture_bind_group = self.render_context.create_texture_bind_group(device, &self.render_content);
-        let uniform_bind_group = self.render_context.create_uniform_bind_group(device);
-        (texture_bind_group, uniform_bind_group)
+    /// Function-level comment: Get references to the pre-created bind groups.
+    pub fn bind_groups(&self) -> (&BindGroup, &BindGroup) {
+        (&self.texture_bind_group, &self.uniform_bind_group)
     }
 
     /// Function-level comment: Update the MIP uniforms for rendering.
     pub fn update_uniforms(&self, queue: &Queue, uniforms: &MipUniforms) {
         self.render_context.update_uniforms(queue, uniforms);
+    }
+
+    /// Function-level comment: Update MIP uniforms with camera and volume parameters for ray casting.
+    /// Calculates camera vectors and volume parameters needed for MIP ray marching.
+    pub fn update_camera_and_volume_uniforms(
+        &self, 
+        queue: &Queue, 
+        camera: &crate::rendering::mesh::camera::Camera,
+        volume_size: [f32; 3],
+        window_level: f32,
+        window_width: f32,
+    ) {
+        // Calculate camera vectors from view matrix
+        let view_matrix = camera.view_matrix();
+        
+        // Extract camera vectors from view matrix
+        // View matrix transforms world to camera space, so we need the inverse directions
+        let camera_right = [view_matrix.data[0][0], view_matrix.data[1][0], view_matrix.data[2][0]];
+        let camera_up = [view_matrix.data[0][1], view_matrix.data[1][1], view_matrix.data[2][1]];
+        let camera_front = [-view_matrix.data[0][2], -view_matrix.data[1][2], -view_matrix.data[2][2]];
+        
+        // Create MIP uniforms with camera and volume parameters
+        let uniforms = MipUniforms {
+            camera_pos: camera.eye,
+            _padding1: 0.0,
+            camera_front,
+            _padding2: 0.0,
+            camera_up,
+            _padding3: 0.0,
+            camera_right,
+            _padding4: 0.0,
+            volume_size,
+            _padding5: 0.0,
+            ray_step_size: self.config.ray_step_size,
+            max_steps: self.config.max_steps as f32,
+            is_packed_rg8: 0.0, // Assume unpacked format for now
+            _padding6: 0.0,
+            window: window_width,
+            level: window_level,
+            view_matrix: view_matrix.data,
+            _padding_end: [0.0;6],
+        };
+        
+        self.update_uniforms(queue, &uniforms);
     }
 
     /// Function-level comment: Set the view position on screen.
@@ -365,14 +420,33 @@ impl Renderable for MipView {
         // Future: Update uniforms, camera matrices, etc.
     }
 
-    /// Function-level comment: Render MIP view using the configured render pipeline.
-    /// Currently returns Ok for MVP - actual rendering will be implemented in next phase.
+    /// Function-level comment: Render MIP view using ray casting with the configured pipeline.
+    /// Sets viewport, binds pipeline and resources, then draws a fullscreen quad for ray casting.
     fn render(
         &mut self,
-        _render_pass: &mut wgpu::RenderPass,
+        render_pass: &mut wgpu::RenderPass,
     ) -> Result<(), wgpu::SurfaceError> {
-        // MVP: Minimal render implementation
-        // Future: Set pipeline, bind groups, draw quad
+        // Set the MIP render pipeline
+        render_pass.set_pipeline(&self.render_context.pipeline);
+
+        // Set viewport for this view
+        let (x, y) = (self.position.0 as f32, self.position.1 as f32);
+        let (width, height) = (self.dimensions.0 as f32, self.dimensions.1 as f32);
+        render_pass.set_viewport(x, y, width, height, 0.0, 1.0);
+
+        // Bind pre-created texture bind group (volume texture and sampler)
+        render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
+
+        // Bind pre-created uniform bind group (camera and volume parameters)
+        render_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
+
+        // Draw fullscreen quad using triangle strip (4 vertices, no vertex buffer needed)
+        // The vertex shader generates positions using vertex_index
+        render_pass.draw(0..4, 0..1);
+
+        log::debug!("[MIP_RENDER] Rendered MIP view at ({}, {}) with size {}x{}", 
+                   self.position.0, self.position.1, self.dimensions.0, self.dimensions.1);
+
         Ok(())
     }
 }

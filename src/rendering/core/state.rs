@@ -449,6 +449,13 @@ impl State {
         self.layout.update(&self.graphics.queue);
     }
 
+    /// Function-level comment: Check if the layout contains any MIP views for MIP pass execution.
+    fn has_mip_content(&self) -> bool {
+        self.layout.views.iter().any(|view| {
+            view.as_any().downcast_ref::<crate::rendering::mip::MipView>().is_some()
+        })
+    }
+
     /// Function-level comment: Renders the frame using separate render passes for 3D mesh and 2D slice content.
     /// This architecture provides better performance and cleaner separation of concerns.
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -462,19 +469,23 @@ impl State {
             label: Some("Render Encoder"),
         });
 
-        // Create texture pool for this frame
-        let texture_pool = &mut self.texture_pool;
-
         // Determine mesh settings
         let mesh_enabled = self.enable_mesh;
+
+        // Function-level comment: Check if MIP content is available in the layout
+        let mip_enabled = true; // MIP re-enabled after fixing LoadOp::Clear issue
+        let has_mip_content = self.has_mip_content();
+
+        // Create texture pool for this frame
+        let texture_pool = &mut self.texture_pool;
 
         // Function-level comment: Check if mesh content is available and reset error state if needed
         let has_mesh_content = self.layout.views.len() > 2 && 
             self.layout.views[2].as_any().downcast_ref::<crate::rendering::view::MeshView>().is_some();
         
-        // Debug logging for mesh pass execution conditions
-        trace!("Mesh pass conditions - mesh_enabled: {}, has_mesh_content: {}, views_len: {}", 
-               mesh_enabled, has_mesh_content, self.layout.views.len());
+        // Debug logging for pass execution conditions
+        trace!("Pass conditions - mesh_enabled: {}, has_mesh_content: {}, mip_enabled: {}, has_mip_content: {}, views_len: {}", 
+               mesh_enabled, has_mesh_content, mip_enabled, has_mip_content, self.layout.views.len());
         
         if self.layout.views.len() > 2 {
             let view_type = if self.layout.views[2].as_any().downcast_ref::<view::MeshView>().is_some() {
@@ -506,6 +517,8 @@ impl State {
             self.graphics.surface_config.height,
             mesh_enabled,
             has_mesh_content, // has_mesh_content - enable mesh pass when mesh content is available
+            mip_enabled,
+            has_mip_content, // has_mip_content - enable MIP pass when MIP views are present
             |pass_context| {
                 match pass_context.pass_id {
                     crate::rendering::core::PassId::MeshPass => {
@@ -517,6 +530,16 @@ impl State {
                             if let Some(mesh_view) = mesh_view {
                                 // Call the MeshView render method with the pass context
                                 mesh_view.render(pass_context.pass).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+                            }
+                        }
+                        Ok(())
+                    }
+                    crate::rendering::core::PassId::MipPass => {
+                        // Function-level comment: Render MIP content by finding and rendering MIP views in the layout
+                        for view in layout.views.iter_mut() {
+                            // Check if this view is a MipView and render it
+                            if let Some(mip_view) = view.as_any_mut().downcast_mut::<crate::rendering::mip::MipView>() {
+                                mip_view.render(pass_context.pass).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
                             }
                         }
                         Ok(())

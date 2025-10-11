@@ -60,6 +60,9 @@ struct MipUniforms {
     
     // View matrix for coordinate transformation
     view_matrix: mat4x4<f32>,
+    
+    // Padding to ensure 16-byte alignment for uniform buffer requirements
+    _padding_end: vec4<f32>,
 }
 
 @group(1) @binding(0)

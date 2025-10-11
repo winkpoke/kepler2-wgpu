@@ -80,6 +80,8 @@ pub enum PipelineKey {
     VolumeSliceQuad { target_format: wgpu::TextureFormat, vertex_sig: String, bgl_sig: String },
     /// Basic mesh pipeline, parameterized by target format, primitive topology, and depth usage.
     MeshBasic { target_format: wgpu::TextureFormat, topology: wgpu::PrimitiveTopology, use_depth: bool },
+    /// MIP (Maximum Intensity Projection) pipeline, parameterized by target format and quality level.
+    MipBasic { target_format: wgpu::TextureFormat, quality: String },
     /// Custom pipelines keyed by a deterministic descriptor signature.
     Custom { signature: String },
 }
@@ -237,6 +239,119 @@ pub fn get_or_create_texture_quad_pipeline(
         manager.cache_size()
     );
     pipeline
+}
+
+/// Returns a cached MIP pipeline if present, otherwise creates, caches, and returns it.
+/// Uses global swapchain format if set; otherwise falls back to Rgba8Unorm.
+///
+/// Parameters
+/// - `manager`: Pipeline cache used to deduplicate creation.
+/// - `device`: Logical device used to build shader modules and pipelines.
+/// - `bind_group_layout`: Bind group layout for MIP uniforms.
+/// - `quality`: Quality level string for pipeline differentiation.
+///
+/// Returns
+/// - `Arc<wgpu::RenderPipeline>`: Shared pipeline handle for MIP rendering.
+pub fn get_or_create_mip_pipeline(
+    manager: &mut PipelineManager,
+    device: &wgpu::Device,
+    bind_group_layout: &wgpu::BindGroupLayout,
+    quality: &str,
+) -> Arc<wgpu::RenderPipeline> {
+    let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
+    let key = PipelineKey::MipBasic { 
+        target_format, 
+        quality: quality.to_string() 
+    };
+
+    if let Some(p) = { manager.get(&key).cloned() } {
+        manager.hit_count += 1;
+        log::trace!(
+            "Pipeline cache hit: {:?}. Hits={}, Misses={}, Size={}",
+            key,
+            manager.hit_count,
+            manager.miss_count,
+            manager.cache_size()
+        );
+        return p;
+    }
+
+    log::trace!("Pipeline cache miss: {:?}. Creating.", key);
+    let pipeline = create_mip_pipeline(device, bind_group_layout, target_format);
+    let pipeline = Arc::new(pipeline);
+    manager.miss_count += 1;
+    manager.insert(key, pipeline.clone());
+    log::trace!(
+        "Pipeline inserted. Hits={}, Misses={}, Size={}",
+        manager.hit_count,
+        manager.miss_count,
+        manager.cache_size()
+    );
+    pipeline
+}
+
+/// Creates a MIP (Maximum Intensity Projection) render pipeline.
+///
+/// Parameters
+/// - `device`: Device used to create shader modules, layouts, and pipelines.
+/// - `bind_group_layout`: Bind group layout for MIP uniforms.
+/// - `target_format`: Color target format for the render pass.
+///
+/// Returns
+/// - `wgpu::RenderPipeline`: Newly created MIP pipeline.
+pub fn create_mip_pipeline(
+    device: &wgpu::Device,
+    bind_group_layout: &wgpu::BindGroupLayout,
+    target_format: wgpu::TextureFormat,
+) -> wgpu::RenderPipeline {
+    // Load MIP shader with vertex and fragment entry points
+    let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/mip.wgsl"));
+    
+    // Create pipeline layout with MIP bind group
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("MIP Pipeline Layout"),
+        bind_group_layouts: &[bind_group_layout],
+        push_constant_ranges: &[],
+    });
+    
+    // Create the MIP pipeline
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("MIP Pipeline"),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_main"),
+            buffers: &[], // Fullscreen quad generated in vertex shader
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs_main"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: target_format,
+                blend: Some(wgpu::BlendState::REPLACE),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: None,
+            unclipped_depth: false,
+            polygon_mode: wgpu::PolygonMode::Fill,
+            conservative: false,
+        },
+        depth_stencil: None, // No depth for MIP rendering
+        multisample: wgpu::MultisampleState {
+            count: 1,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        },
+        multiview: None,
+        cache: None,
+    })
 }
 
 /// Creates the texture-quad render pipeline used by 2D MPR views.
