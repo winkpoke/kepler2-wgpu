@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **MIP View Bottom-Right Integration**: Integrated MIP (Maximum Intensity Projection) view in the bottom-right corner of the 2x2 grid layout
+  - **Automatic Positioning**: MIP view positioned at grid index 3 (bottom-right) using existing GridLayout strategy
+  - **Responsive Design**: Automatic resizing and positioning across different screen sizes and platforms
+  - **Dual Mode Support**: MIP view available in both mesh-enabled and mesh-disabled modes
+  - **Resource Efficiency**: Shares texture resources with MPR views for optimal memory usage
+  - **Cross-Platform Compatibility**: Verified functionality for both native and WebAssembly builds
+  - **Minimal Code Changes**: Implementation achieved with focused modifications to `load_data_from_ct_volume()` method
+  - Created comprehensive documentation in `doc/2025-01-11T16-30-00Z-mip-view-bottom-right-integration.md`
+
+### Added
+- **MIP (Maximum Intensity Projection) MVP Implementation**: Complete foundation for 3D volume visualization using maximum intensity projection
+  - **Core Data Structures**: `MipConfig`, `MipView`, and `MipRenderContext` with essential fields for ray marching
+  - **Essential Shaders**: Vertex shader for full-screen quad and fragment shader with ray marching implementation
+  - **Pipeline Integration**: Basic integration with existing render pass system and `PassExecutor` framework
+  - **View System Integration**: Full implementation of `View` and `Renderable` traits for seamless integration
+  - **Memory Efficiency**: Reuses existing `RenderContent` through Arc sharing to avoid texture duplication
+  - **Comprehensive Testing**: 6 test cases covering configuration, view creation, trait implementation, and positioning
+  - **Architecture Compliance**: Follows established patterns from MPR and Mesh rendering systems
+  - Created detailed documentation in `doc/2025-01-11T20-30-00Z-mip-mvp-completion-report.md`
+
+### Added
 - **View Layout Refactoring and ViewManager Module**: Comprehensive refactoring of view management system for improved maintainability and functionality
   - **Enhanced Layout Module**: Added view replacement and management methods to `Layout` struct:
     - `replace_view_at()`: Replace view at specific index with proper bounds checking

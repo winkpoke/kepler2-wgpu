@@ -217,7 +217,7 @@ impl GenericMPRView {
 
         let view = RenderContext::new(manager, device, &texture, transform_matrix);
 
-        log::trace!("Created GenericMPRView with orientation: {:?}, scale: {}, translate: {:#?}, pos: {:#?}, dim: {:#?}",
+        log::info!("Created GenericMPRView with orientation: {:?}, scale: {:?}, translate: {:?}, pos: {:?}, dim: {:?}",
             orientation, scale, translate, pos, dim);
         Self {
             ctx: view,

@@ -26,4 +26,4 @@
 23. The codebase must remain buildable, testable, and inspectable at all times.
 24. Do not use perspective projection in medical imaging for accuracy reasons unless asked.
 25. When working with Rust matrices (which are row-major) and shader matrices (which require column-major format), ensure you transpose the matrices before uploading them to maintain data consistency and correct mathematical operations.
-26. Time stamp format shall be ISO 8601 (e.g., 2025-01-01T12:00:00Z).
+26. Time stamp format shall be ISO 8601 with a local time zone offset (e.g., 2025-01-01T12:00:00Z). The current local time zone is Beijing.

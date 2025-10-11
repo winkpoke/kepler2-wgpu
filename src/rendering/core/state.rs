@@ -595,7 +595,7 @@ impl State {
         self.layout.remove_all();
 
         if self.enable_mesh {
-            // Add MPR views to slots 0 and 1 first
+            // Add MPR views to slots 0 and 1 (Transverse and Coronal)
             for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1]].iter() {
                 let view = GenericMPRView::new(
                     manager,
@@ -611,35 +611,19 @@ impl State {
                 self.layout.add_view(Box::new(view));
             }
             
-            // Add MPR view to slot 2 (Sagittal orientation)
-            let view = GenericMPRView::new(
-                manager,
-                &self.graphics.device,
-                texture.clone(),
-                &vol,
-                ALL_ORIENTATIONS[2], // Sagittal for slot 2
-                1.0,
-                [0.0, 0.0, 0.0],
-                (0, 0),
-                (0, 0),
-            );
-            self.layout.add_view(Box::new(view));
+            // Add Mesh view to slot 2 (third position - replacing Sagittal)
+            let mesh_view = self.create_mesh_view(manager, (0, 0), (0, 0));
+            self.layout.add_view(Box::new(mesh_view));
             
-            // Add MPR view to slot 3
-            let view = GenericMPRView::new(
-                manager,
-                &self.graphics.device,
+            // Add MIP view to slot 3 (fourth position - replacing Oblique)
+            let mip_view = crate::rendering::mip::MipView::new(
                 texture.clone(),
-                &vol,
-                ALL_ORIENTATIONS[2], // Sagittal for slot 3
-                1.0,
-                [0.0, 0.0, 0.0],
-                (0, 0),
-                (0, 0),
+                &self.graphics.device,
+                self.graphics.surface_config.format,
             );
-            self.layout.add_view(Box::new(view));
+            self.layout.add_view(Box::new(mip_view));
         } else {
-            // Mesh disabled: add all four MPR views in fixed order.
+            // Mesh disabled: add all four MPR views (including oblique)
             for orientation in ALL_ORIENTATIONS.iter() {
                 let view = GenericMPRView::new(
                     manager,
@@ -655,8 +639,6 @@ impl State {
                 self.layout.add_view(Box::new(view));
             }
         }
-
-
     }
 
     pub fn load_data_from_repo(&mut self, manager: &mut PipelineManager, repo: &DicomRepo, image_series_number: &str) {
@@ -683,7 +665,7 @@ impl State {
     // /// When disabling, recreates a GenericMPRView for slot 2 and restores the cached MPR state if available.
     // pub fn set_mesh_mode_enabled(&mut self, manager: &mut crate::rendering::core::pipeline::PipelineManager, enabled: bool) {
     
-    /// Function-level comment: Enable or disable mesh mode at runtime by swapping the view at slot 2.
+    /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
     pub fn set_mesh_mode_enabled(&mut self, manager: &mut PipelineManager, enabled: bool) {
         if self.enable_mesh == enabled { 
             return; 
@@ -695,17 +677,10 @@ impl State {
             return;
         }
 
-        let index = 2usize;
-        if !self.validate_view_slot(index) {
-            return;
-        }
-
-        let (pos, size) = self.calculate_view_position_and_size(index);
-
-        if enabled {
-            self.enable_mesh_mode(manager, index, pos, size);
-        } else {
-            self.disable_mesh_mode(manager, index, pos, size);
+        // Rebuild the entire layout to ensure proper view configuration
+        if let Some(vol) = &self.last_volume.clone() {
+            self.load_data_from_ct_volume(manager, vol);
+            log::info!("Layout rebuilt for mesh mode: {}", enabled);
         }
     }
 
