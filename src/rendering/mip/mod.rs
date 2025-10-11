@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
-use std::sync::Arc;
+use std::{any::Any, sync::Arc};
 use wgpu::{Device, Queue, RenderPipeline, BindGroupLayout, BindGroup, Buffer, BufferUsages};
 use crate::rendering::content::render_content::RenderContent;
+use crate::rendering::view::View;
 
 /// Function-level comment: Configuration for Maximum Intensity Projection (MIP) rendering.
 /// Provides fixed quality settings for the MVP implementation to minimize complexity
@@ -294,9 +295,15 @@ impl MipView {
     /// Function-level comment: Create a new MIP view using existing RenderContent.
     /// Accepts Arc<RenderContent> from MPR views to enable zero-copy texture sharing.
     pub fn new(render_content: Arc<RenderContent>, device: &Device, surface_format: wgpu::TextureFormat) -> Self {
+        log::info!("[MIP_NEW] Creating MipView with surface format: {:?}", surface_format);
+        log::info!("[MIP_NEW] RenderContent texture format: {:?}", render_content.texture_format);
+        log::info!("[MIP_NEW] RenderContent texture size: {:?}", render_content.texture.size());
+        
         let render_context = MipRenderContext::new(device, surface_format);
         let texture_bind_group = render_context.create_texture_bind_group(device, &render_content);
         let uniform_bind_group = render_context.create_uniform_bind_group(device);
+        
+        log::info!("[MIP_NEW] MipView created successfully");
         
         Self {
             render_content,
@@ -344,88 +351,73 @@ impl MipView {
         self.render_context.update_uniforms(queue, uniforms);
     }
 
-    /// Function-level comment: Update MIP uniforms with camera and volume parameters for ray casting.
-    /// Calculates camera vectors and volume parameters needed for MIP ray marching.
-    pub fn update_camera_and_volume_uniforms(
-        &self, 
-        queue: &Queue, 
-        camera: &crate::rendering::mesh::camera::Camera,
-        volume_size: [f32; 3],
-        window_level: f32,
-        window_width: f32,
-    ) {
-        // Calculate camera vectors from view matrix
-        let view_matrix = camera.view_matrix();
-        
-        // Extract camera vectors from view matrix
-        // View matrix transforms world to camera space, so we need the inverse directions
-        let camera_right = [view_matrix.data[0][0], view_matrix.data[1][0], view_matrix.data[2][0]];
-        let camera_up = [view_matrix.data[0][1], view_matrix.data[1][1], view_matrix.data[2][1]];
-        let camera_front = [-view_matrix.data[0][2], -view_matrix.data[1][2], -view_matrix.data[2][2]];
-        
-        // Create MIP uniforms with camera and volume parameters
-        let uniforms = MipUniforms {
-            camera_pos: camera.eye,
-            _padding1: 0.0,
-            camera_front,
-            _padding2: 0.0,
-            camera_up,
-            _padding3: 0.0,
-            camera_right,
-            _padding4: 0.0,
-            volume_size,
-            _padding5: 0.0,
-            ray_step_size: self.config.ray_step_size,
-            max_steps: self.config.max_steps as f32,
-            is_packed_rg8: 0.0, // Assume unpacked format for now
-            _padding6: 0.0,
-            window: window_width,
-            level: window_level,
-            view_matrix: view_matrix.data,
-            _padding_end: [0.0;6],
-        };
-        
-        self.update_uniforms(queue, &uniforms);
-    }
-
-    /// Function-level comment: Set the view position on screen.
-    pub fn set_position(&mut self, position: (i32, i32)) {
-        self.position = position;
-    }
-
-    /// Function-level comment: Get the current view position.
-    pub fn position(&self) -> (i32, i32) {
-        self.position
-    }
-
-    /// Function-level comment: Set the view dimensions.
-    pub fn set_dimensions(&mut self, dimensions: (u32, u32)) {
-        self.dimensions = dimensions;
-    }
-
-    /// Function-level comment: Get the current view dimensions.
-    pub fn dimensions(&self) -> (u32, u32) {
-        self.dimensions
-    }
-}
-
-use std::any::Any;
-use crate::rendering::view::{View, Renderable};
-
-impl Renderable for MipView {
     /// Function-level comment: Update MIP view state and prepare for rendering.
     /// Currently minimal implementation for MVP.
-    fn update(&mut self, _queue: &wgpu::Queue) {
-        // MVP: Minimal update implementation
-        // Future: Update uniforms, camera matrices, etc.
+    pub fn update(&mut self, queue: &wgpu::Queue) {
+        log::info!("[MIP_UPDATE] Starting MIP update");
+        
+        // Derive texture format flag for shader decoding
+        let is_packed_rg8 = match self.render_content.texture_format {
+            wgpu::TextureFormat::Rg8Unorm => 1.0,
+            _ => 0.0,
+        };
+
+        // Fine-tune window/level for optimal contrast in medical data
+        let (window, level) = if is_packed_rg8 > 0.5 {
+            (4096.0, 2048.0)
+        } else {
+            // Narrower window for better contrast in R16Float medical data
+            (300.0, 150.0)
+        };
+
+        // Construct camera in normalized volume space [0,1]^3 using orthographic setup
+        // Position camera further back to ensure we capture the entire volume
+        let uniforms = MipUniforms {
+            camera_pos: [0.5, 0.5, -1.0],  // Move camera further back
+            _padding1: 0.0,
+            camera_front: [0.0, 0.0, 1.0],
+            _padding2: 0.0,
+            camera_up: [0.0, 1.0, 0.0],
+            _padding3: 0.0,
+            camera_right: [1.0, 0.0, 0.0],
+            _padding4: 0.0,
+            volume_size: [1.0, 1.0, 1.0],
+            _padding5: 0.0,
+            ray_step_size: 0.005,  // Smaller step size for better quality
+            max_steps: 1000.0,     // More steps to ensure we traverse the volume
+            is_packed_rg8,
+            _padding6: 0.0,
+            window,
+            level,
+            // Identity matrix keeps rays in normalized volume space
+            view_matrix: [
+                [1.0, 0.0, 0.0, 0.0],
+                [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0],
+                [0.0, 0.0, 0.0, 1.0],
+            ],
+            _padding_end: [0.0; 6],
+        };
+
+        // Upload uniforms to GPU buffer
+        self.update_uniforms(queue, &uniforms);
+
+        log::info!(
+            "[MIP_UPDATE] Uniforms set: is_packed_rg8={}, window={}, level={}, step={}, max_steps={}, camera_pos=({}, {}, {})",
+            is_packed_rg8, window, level, uniforms.ray_step_size, uniforms.max_steps,
+            uniforms.camera_pos[0], uniforms.camera_pos[1], uniforms.camera_pos[2]
+        );
     }
 
     /// Function-level comment: Render MIP view using ray casting with the configured pipeline.
     /// Sets viewport, binds pipeline and resources, then draws a fullscreen quad for ray casting.
-    fn render(
+    pub fn render(
         &mut self,
         render_pass: &mut wgpu::RenderPass,
     ) -> Result<(), wgpu::SurfaceError> {
+        log::info!("[MIP_RENDER] Starting MIP render at ({}, {}) with size {}x{}",
+                   self.position.0, self.position.1, self.dimensions.0, self.dimensions.1);
+        
         // Set the MIP render pipeline
         render_pass.set_pipeline(&self.render_context.pipeline);
 
@@ -444,10 +436,24 @@ impl Renderable for MipView {
         // The vertex shader generates positions using vertex_index
         render_pass.draw(0..4, 0..1);
 
-        log::debug!("[MIP_RENDER] Rendered MIP view at ({}, {}) with size {}x{}", 
-                   self.position.0, self.position.1, self.dimensions.0, self.dimensions.1);
+        log::info!("[MIP_RENDER] MIP render completed successfully");
 
         Ok(())
+    }
+}
+
+impl crate::rendering::view::Renderable for MipView {
+    /// Function-level comment: Bridge trait implementation to call inherent update method.
+    fn update(&mut self, queue: &wgpu::Queue) {
+        MipView::update(self, queue);
+    }
+
+    /// Function-level comment: Bridge trait implementation to call inherent render method.
+    fn render(
+        &mut self,
+        render_pass: &mut wgpu::RenderPass,
+    ) -> Result<(), wgpu::SurfaceError> {
+        MipView::render(self, render_pass)
     }
 }
 

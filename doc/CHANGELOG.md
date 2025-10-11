@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **MIP View Blank Output**: Initialize and upload MIP uniforms each frame in `MipView::update`, providing valid camera vectors, volume parameters, and window/level defaults for MVP. This resolves the blank MIP view by ensuring the fragment shader receives non-zero parameters.
+  - Camera set in normalized volume space (pos (0.5,0.5,-0.5), front (0,0,1), up (0,1,0), right (1,0,0))
+  - Format-aware window/level defaults (RG8: window=4096, level=2048; Float: window=1.0, level=0.5)
+  - Identity view_matrix to avoid unintended perspective transforms
+  - Documented in `doc/2025-10-11T00-00-00Z-mip-uniforms-initialization-fix.md`
+
 ### Added
 - **MIP View Bottom-Right Integration**: Integrated MIP (Maximum Intensity Projection) view in the bottom-right corner of the 2x2 grid layout
   - **Automatic Positioning**: MIP view positioned at grid index 3 (bottom-right) using existing GridLayout strategy

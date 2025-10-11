@@ -116,9 +116,15 @@ fn sample_volume(coords: vec3<f32>) -> f32 {
     return value;
 }
 
-// Apply window/level transformation for medical imaging
+// Apply window/level transformation for display
 fn apply_window_level(value: f32) -> f32 {
-    return clamp((value - (u_mip.level - u_mip.window / 2.0)) / u_mip.window, 0.0, 1.0);
+    // Standard window/level transformation
+    let windowed = (value - (u_mip.level - u_mip.window / 2.0)) / u_mip.window;
+    let clamped = clamp(windowed, 0.0, 1.0);
+    
+    // Simple gamma correction without aggressive contrast enhancement
+    let gamma = 0.9;
+    return pow(clamped, gamma);
 }
 
 // MIP ray marching function
@@ -163,28 +169,30 @@ fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>) -> f32 {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Convert screen coordinates to normalized device coordinates
+    // Convert texture coordinates to normalized device coordinates [-1, 1]
     let ndc = vec2<f32>(in.tex_coords.x * 2.0 - 1.0, 1.0 - in.tex_coords.y * 2.0);
     
-    // Calculate ray direction from camera through current pixel
-    // Simple orthographic projection for medical imaging accuracy
-    let ray_dir = normalize(u_mip.camera_front);
+    // For orthographic projection, all rays have the same direction
+    // Point rays into the volume (positive Z direction)
+    let ray_dir = vec3<f32>(0.0, 0.0, 1.0);
     
-    // Calculate ray origin based on camera position and screen coordinates
-    let ray_origin = u_mip.camera_pos + 
-                    ndc.x * u_mip.camera_right * 0.5 + 
-                    ndc.y * u_mip.camera_up * 0.5;
+    // Fixed ray generation for orthographic MIP
+    // Ray origin varies across screen (0 to 1 for X and Y), starts at Z = 0 (front face of volume)
+    let ray_origin = vec3<f32>(ndc.x * 0.5 + 0.5, ndc.y * 0.5 + 0.5, 0.0);
     
-    // Transform ray to volume space using view matrix
-    let volume_ray_origin = (u_mip.view_matrix * vec4<f32>(ray_origin, 1.0)).xyz;
-    let volume_ray_dir = normalize((u_mip.view_matrix * vec4<f32>(ray_dir, 0.0)).xyz);
+    // Use ray origin and direction directly in volume space
+    let volume_ray_origin = ray_origin;
+    let volume_ray_dir = ray_dir;
     
     // Perform MIP ray marching
     let max_intensity = mip_ray_march(volume_ray_origin, volume_ray_dir);
     
-    // Apply window/level transformation
-    let final_intensity = apply_window_level(max_intensity);
-    
-    // Return grayscale result
-    return vec4<f32>(vec3<f32>(final_intensity), 1.0);
+    // Apply window/level and return final color
+    if (max_intensity > 0.0) {
+        let processed = apply_window_level(max_intensity);
+        return vec4<f32>(processed, processed, processed, 1.0);
+    } else {
+        // No volume data found - return black
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
 }
