@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Uniform Color Cube for Better Lighting Visualization**: Updated `uniform_color_cube()` function to use the same neutral gray color for all faces instead of different colors per face
+  - **Improved Lighting Isolation**: All faces now use uniform gray color `[0.7, 0.7, 0.7]` to better isolate lighting effects
+  - **Enhanced Debugging**: Easier to distinguish between lighting-induced brightness variations and base color differences
+  - **Medical Imaging Accuracy**: More appropriate for medical contexts where uniform material properties are common
+  - **Consistent Base Color**: All 24 vertices use the same color, making lighting effects more apparent
+  - Documented in `doc/redering/2025-01-12T11-45-00Z-uniform-color-cube-same-color-update.md`
+
 - **MIP View Blank Output**: Initialize and upload MIP uniforms each frame in `MipView::update`, providing valid camera vectors, volume parameters, and window/level defaults for MVP. This resolves the blank MIP view by ensuring the fragment shader receives non-zero parameters.
   - Camera set in normalized volume space (pos (0.5,0.5,-0.5), front (0,0,1), up (0,1,0), right (1,0,0))
   - Format-aware window/level defaults (RG8: window=4096, level=2048; Float: window=1.0, level=0.5)
@@ -15,6 +22,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Documented in `doc/2025-10-11T00-00-00Z-mip-uniforms-initialization-fix.md`
 
 ### Added
+- **Minimal Lighting Integration for Basic Mesh Rendering**: Implemented basic lighting support for 3D mesh visualization with Lambert diffuse and ambient lighting
+  - **Extended Vertex Structure**: Added normal vectors to `MeshVertex` struct for per-vertex lighting calculations
+  - **Basic Lighting Uniforms**: Created `BasicLightingUniforms` structure with directional light support:
+    - Configurable light direction, color, and intensity
+    - Ambient lighting with color and intensity controls
+    - Default lighting setup with white directional light from top-left-front
+  - **Enhanced Shader System**: Updated `mesh_basic.wgsl` with lighting calculations:
+    - Lambert diffuse lighting model for realistic surface shading
+    - Ambient lighting for base illumination in shadowed areas
+    - Per-vertex normal interpolation for smooth lighting transitions
+  - **Pipeline Integration**: Added `create_basic_mesh_pipeline_with_lighting()` function:
+    - Dual bind group support for transform and lighting uniforms
+    - Dedicated lighting bind group layout for fragment shader visibility
+    - Maintains compatibility with existing basic mesh pipeline
+  - **Normal Vector Generation**: Enhanced cube mesh generation with proper face normals:
+    - Accurate normal vectors for each cube face (front, back, top, bottom, left, right)
+    - Consistent winding order for proper lighting calculations
+  - **Cross-Platform Compatibility**: Verified functionality for both native and WebAssembly builds
+  - **Performance Optimized**: Minimal overhead with efficient GPU-based lighting calculations
+  - Created comprehensive documentation in `doc/2025-10-12T10-08-29-minimal-lighting-integration-plan.md`
+
 - **MIP View Bottom-Right Integration**: Integrated MIP (Maximum Intensity Projection) view in the bottom-right corner of the 2x2 grid layout
   - **Automatic Positioning**: MIP view positioned at grid index 3 (bottom-right) using existing GridLayout strategy
   - **Responsive Design**: Automatic resizing and positioning across different screen sizes and platforms

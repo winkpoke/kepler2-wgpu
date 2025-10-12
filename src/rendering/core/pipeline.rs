@@ -772,6 +772,95 @@ pub fn create_fragment_uniform_bind_group<T: bytemuck::Pod>(
 ///
 /// Returns
 /// - `wgpu::RenderPipeline`: Newly created simple pipeline.
+/// Function-level comment: Creates a bind group layout for basic lighting uniforms.
+/// Supports a single directional light with ambient lighting for basic mesh rendering.
+pub fn create_basic_lighting_bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("Basic Lighting Bind Group Layout"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Buffer {
+                ty: wgpu::BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        }],
+    })
+}
+
+/// Function-level comment: Creates a basic mesh pipeline with lighting support using two bind groups.
+/// Supports transform uniforms (bind group 0) and lighting uniforms (bind group 1) for basic 3D lighting.
+pub fn create_basic_mesh_pipeline_with_lighting(
+    device: &wgpu::Device,
+    transform_bind_group_layout: &wgpu::BindGroupLayout,
+    lighting_bind_group_layout: &wgpu::BindGroupLayout,
+    use_depth: bool,
+) -> wgpu::RenderPipeline {
+    // Use the basic mesh shader with lighting support
+    let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/mesh_basic.wgsl"));
+    
+    // Create pipeline layout with two bind groups
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("Basic Mesh Pipeline Layout with Lighting"),
+        bind_group_layouts: &[transform_bind_group_layout, lighting_bind_group_layout],
+        push_constant_ranges: &[],
+    });
+    
+    // Get target format
+    let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
+    
+    // Create the pipeline
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("Basic Mesh Pipeline with Lighting"),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: Some("vs_main"),
+            buffers: &[crate::rendering::mesh::mesh::MeshVertex::desc()],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: Some("fs_main"),
+            targets: &[Some(wgpu::ColorTargetState {
+                format: target_format,
+                blend: Some(wgpu::BlendState::REPLACE),
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+            compilation_options: wgpu::PipelineCompilationOptions::default(),
+        }),
+        primitive: wgpu::PrimitiveState {
+            topology: wgpu::PrimitiveTopology::TriangleList,
+            strip_index_format: None,
+            front_face: wgpu::FrontFace::Ccw,
+            cull_mode: None, // Temporarily disable culling to test visibility
+            unclipped_depth: false,
+            polygon_mode: wgpu::PolygonMode::Fill,
+            conservative: false,
+        },
+        depth_stencil: if use_depth {
+            Some(wgpu::DepthStencilState {
+                format: get_mesh_depth_format(),
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            })
+        } else {
+            None
+        },
+        multisample: wgpu::MultisampleState {
+            count: 1,
+            mask: !0,
+            alpha_to_coverage_enabled: false,
+        },
+        multiview: None,
+        cache: None,
+    })
+}
+
 pub fn create_simple_mesh_pipeline(
     device: &wgpu::Device,
     bind_group_layout: &wgpu::BindGroupLayout,

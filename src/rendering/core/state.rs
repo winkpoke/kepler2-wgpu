@@ -839,7 +839,7 @@ impl State {
             // Reuse cached context
             cached_ctx.clone()
         } else {
-            let mesh = Mesh::unit_cube();
+            let mesh = Mesh::uniform_color_cube();
             let ctx = BasicMeshContext::new(
                 manager,
                 &self.graphics.device,

@@ -362,6 +362,11 @@ impl MeshView {
             
             ctx.update_uniforms(queue, &mvp_matrix_transposed.data);
 
+            // Update lighting uniforms to ensure lighting effects are applied
+            let lighting_uniforms = super::mesh::BasicLightingUniforms::default();
+            ctx.update_lighting_uniforms(queue, &lighting_uniforms);
+            log::trace!("[BASIC_MESH_LIGHTING] Updated lighting uniforms with default values");
+
             // let scale = cgmath::Matrix4::from_scale(0.5);
             // let rotation = cgmath::Matrix4::from_angle_y(cgmath::Rad(self.rotation_angle));
             // let translate = cgmath::Matrix4::from_translation(cgmath::vec3(0.0, 0.0, -5.0));
