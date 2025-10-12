@@ -26,4 +26,5 @@
 23. The codebase must remain buildable, testable, and inspectable at all times.
 24. Do not use perspective projection in medical imaging for accuracy reasons unless asked.
 25. When working with Rust matrices (which are row-major) and shader matrices (which require column-major format), ensure you transpose the matrices before uploading them to maintain data consistency and correct mathematical operations.
-26. Time stamp format shall be YYYY-MM-DDTHH-MM-SS which takes the local time zone into account. The current local time zone is Beijing. Check the system time to make sure the time is correctly handled.
+26. Time stamp format shall be YYYY-MM-DDTHH-MM-SS which takes the local time zone into account. The current local time zone is Beijing. Use "Get-Date -Format "yyyy-MM-ddTHH-mm-ss" to check the system time to make sure the time is correctly handled.
+27. Add `no_run` directives to all code examples in the documentation to indicate they should not be executed during documentation generation. This ensures examples are displayed for reference purposes only while preventing accidental execution during build processes.

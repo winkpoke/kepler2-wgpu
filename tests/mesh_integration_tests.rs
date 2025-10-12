@@ -223,11 +223,3 @@ mod mesh_integration_tests {
         println!("  Current quality: {:?}", stats.current_quality);
     }
 }
-
-#[cfg(not(feature = "mesh"))]
-#[test]
-fn test_mesh_feature_disabled() {
-    /// Test that mesh functionality is properly disabled when feature is not enabled
-    // This test ensures that the project compiles and runs without the mesh feature
-    assert!(true, "Project should compile without mesh feature");
-}

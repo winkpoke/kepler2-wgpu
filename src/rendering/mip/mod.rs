@@ -354,7 +354,7 @@ impl MipView {
     /// Function-level comment: Update MIP view state and prepare for rendering.
     /// Currently minimal implementation for MVP.
     pub fn update(&mut self, queue: &wgpu::Queue) {
-        log::info!("[MIP_UPDATE] Starting MIP update");
+        log::trace!("[MIP_UPDATE] Starting MIP update");
         
         // Derive texture format flag for shader decoding
         let is_packed_rg8 = match self.render_content.texture_format {
@@ -402,7 +402,7 @@ impl MipView {
         // Upload uniforms to GPU buffer
         self.update_uniforms(queue, &uniforms);
 
-        log::info!(
+        log::trace!(
             "[MIP_UPDATE] Uniforms set: is_packed_rg8={}, window={}, level={}, step={}, max_steps={}, camera_pos=({}, {}, {})",
             is_packed_rg8, window, level, uniforms.ray_step_size, uniforms.max_steps,
             uniforms.camera_pos[0], uniforms.camera_pos[1], uniforms.camera_pos[2]
@@ -415,7 +415,7 @@ impl MipView {
         &mut self,
         render_pass: &mut wgpu::RenderPass,
     ) -> Result<(), wgpu::SurfaceError> {
-        log::info!("[MIP_RENDER] Starting MIP render at ({}, {}) with size {}x{}",
+        log::trace!("[MIP_RENDER] Starting MIP render at ({}, {}) with size {}x{}",
                    self.position.0, self.position.1, self.dimensions.0, self.dimensions.1);
         
         // Set the MIP render pipeline
@@ -436,7 +436,7 @@ impl MipView {
         // The vertex shader generates positions using vertex_index
         render_pass.draw(0..4, 0..1);
 
-        log::info!("[MIP_RENDER] MIP render completed successfully");
+        log::trace!("[MIP_RENDER] MIP render completed successfully");
 
         Ok(())
     }

@@ -223,12 +223,3 @@ mod error_handling_tests {
         }
     }
 }
-
-#[cfg(not(feature = "mesh"))]
-mod disabled_tests {
-    #[test]
-    fn test_error_handling_feature_disabled() {
-        /// Test that error handling tests are properly disabled when mesh feature is not enabled
-        assert!(true, "Error handling tests should be skipped when mesh feature is disabled");
-    }
-}
