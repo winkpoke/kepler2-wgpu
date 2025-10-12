@@ -8,7 +8,7 @@
         cargo build 
         cargo test 
 7. Do not use npx, live-server, or any node-based tools for wasm testing. The wasm output will be manually tested in the browser.
-8. All documentation resides under the doc/ folder. Each feature or change must include a short explanation in this folder.
+8. All documentation resides under the doc/ folder and its subfolders. Each feature or change must include a short explanation in this folder.
 9. Development must be incremental and minimal. Add features step by step, starting with the minimal viable product.
 10. Default logging level is INFO.
 11. Use DEBUG level logs for development and debugging.
@@ -26,4 +26,4 @@
 23. The codebase must remain buildable, testable, and inspectable at all times.
 24. Do not use perspective projection in medical imaging for accuracy reasons unless asked.
 25. When working with Rust matrices (which are row-major) and shader matrices (which require column-major format), ensure you transpose the matrices before uploading them to maintain data consistency and correct mathematical operations.
-26. Time stamp format shall be ISO 8601 with a local time zone offset (e.g., 2025-01-01T12:00:00Z). The current local time zone is Beijing.
+26. Time stamp format shall be YYYY-MM-DDTHH-MM-SS which takes the local time zone into account. The current local time zone is Beijing. Check the system time to make sure the time is correctly handled.
