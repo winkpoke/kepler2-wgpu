@@ -2,7 +2,7 @@
 
 use std::{any::Any, sync::Arc};
 use wgpu::{Device, Queue, RenderPipeline, BindGroupLayout, BindGroup, Buffer, BufferUsages};
-use crate::rendering::content::render_content::RenderContent;
+use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::View;
 
 /// Function-level comment: Configuration for Maximum Intensity Projection (MIP) rendering.

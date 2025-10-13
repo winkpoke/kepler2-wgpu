@@ -22,7 +22,7 @@ use winit::{
 
 use crate::data::ct_volume::*;
 use crate::data::dicom::*;
-use crate::rendering::content::render_content::RenderContent;
+use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::*;
 use crate::core::error::KeplerError;
 use crate::rendering::mesh::mesh_texture_pool::MeshTexturePool;
@@ -859,8 +859,6 @@ impl State {
     /// Function-level comment: Create a GenericMPRView for the specified slot with appropriate orientation.
     fn create_mpr_view_for_slot(&self, manager: &mut PipelineManager, 
                                index: usize) -> crate::rendering::view::MprView {
-        use std::sync::Arc;
-        use crate::rendering::content::render_content::RenderContent;
         use crate::rendering::view::{MprView, ALL_ORIENTATIONS};
 
         let vol = self.last_volume.as_ref().unwrap();
@@ -881,9 +879,9 @@ impl State {
     }
 
     /// Function-level comment: Create volume texture based on current texture format settings.
-    fn create_volume_texture(&self, vol: &crate::data::ct_volume::CTVolume) -> std::sync::Arc<crate::rendering::content::render_content::RenderContent> {
+    fn create_volume_texture(&self, vol: &crate::data::ct_volume::CTVolume) -> std::sync::Arc<crate::rendering::view::render_content::RenderContent> {
         use std::sync::Arc;
-        use crate::rendering::content::render_content::RenderContent;
+        use crate::rendering::view::render_content::RenderContent;
 
         if self.enable_float_volume_texture {
             log::info!("Using R16Float volume texture path (toggle)");

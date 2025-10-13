@@ -3,9 +3,6 @@ pub use view::*;
 
 pub use crate::rendering::mesh::mesh_view::MeshView;
 
-mod render_context;
-pub use render_context::*;
-
 mod renderable;
 pub use renderable::*;
 
@@ -21,6 +18,14 @@ pub mod mip;
 // Mesh module is now always available
 pub mod mesh;
 
+// MPR module for Multi-Planar Reconstruction
+pub mod mpr;
+
+// Render content management
+pub mod render_content;
+
 // Re-exports for convenience
 pub use mip::*;
 pub use mesh::*;
+pub use mpr::*;
+pub use render_content::*;

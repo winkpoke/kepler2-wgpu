@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::core::coord::{array_to_slice, Matrix4x4};
-use crate::rendering::content::render_content::RenderContent;
+use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::{
     create_vertex_uniform_bind_group, get_or_create_texture_quad_pipeline, get_swapchain_format,
 };
