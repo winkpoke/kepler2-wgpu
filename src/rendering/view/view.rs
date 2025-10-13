@@ -359,6 +359,10 @@ impl Orientation {
     }
 }
 
+struct MprWgpuImpl {
+    
+}
+
 /// Generic Multi-Planar Reconstruction (MPR) view implementation.
 /// 
 /// This is the main implementation of MPR functionality that supports all anatomical
@@ -380,7 +384,7 @@ impl Orientation {
 /// 3. **Texture Sampling**: Samples the 3D volume at the current slice
 /// 4. **Window/Level Processing**: Applies CT display windowing
 /// 5. **Final Rendering**: Outputs the processed image to the view
-pub struct GenericMPRView {
+pub struct MprView {
     /// Rendering context containing GPU resources and uniforms
     ctx: RenderContext,
     /// Reference to the 3D volume texture data
@@ -403,7 +407,7 @@ pub struct GenericMPRView {
     dim: (u32, u32),
 }
 
-impl GenericMPRView {
+impl MprView {
     /// Create a new GenericMPRView with the specified parameters.
     /// 
     /// Initializes all GPU resources, coordinate systems, and rendering state
@@ -511,7 +515,7 @@ impl GenericMPRView {
     }
 }
 
-impl Drop for GenericMPRView {
+impl Drop for MprView {
     /// Clean up GPU resources when the view is dropped.
     /// 
     /// Logs the destruction for debugging purposes. The actual GPU resource
@@ -521,7 +525,7 @@ impl Drop for GenericMPRView {
     }
 }
 
-impl Renderable for GenericMPRView {
+impl Renderable for MprView {
     /// Update GPU uniforms with current view state.
     /// 
     /// Called every frame to ensure GPU shaders have the latest view parameters.
@@ -586,7 +590,7 @@ impl Renderable for GenericMPRView {
     }
 }
 
-impl View for GenericMPRView {
+impl View for MprView {
     /// Get the current position of this view on screen.
     fn position(&self) -> (i32, i32) {
         log::trace!("View position: {:#?}", self.pos);
@@ -627,7 +631,7 @@ impl View for GenericMPRView {
     }
 }
 
-impl MPRView for GenericMPRView {
+impl MPRView for MprView {
     /// Set the window level (brightness) for CT image display.
     fn set_window_level(&mut self, window_level: f32) {
         self.ctx.uniforms.frag.window_level = window_level;
@@ -710,7 +714,7 @@ impl MPRView for GenericMPRView {
     }
 }
 
-impl StatefulView for GenericMPRView {
+impl StatefulView for MprView {
     /// Save current MPR view state including window/level, position, scale, and translation.
     /// 
     /// Captures all essential parameters needed to restore the view to its current configuration.
@@ -774,7 +778,7 @@ impl StatefulView for GenericMPRView {
 }
 
 // Optional: keep type aliases for old names
-pub type ObliqueView = GenericMPRView;
-pub type SagittalView = GenericMPRView;
-pub type TransverseView = GenericMPRView;
-pub type CoronalView = GenericMPRView;
+pub type ObliqueView = MprView;
+pub type SagittalView = MprView;
+pub type TransverseView = MprView;
+pub type CoronalView = MprView;

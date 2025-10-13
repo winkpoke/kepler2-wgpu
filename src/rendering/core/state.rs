@@ -617,7 +617,7 @@ impl State {
         if self.enable_mesh {
             // Add MPR views to slots 0 and 1 (Transverse and Coronal)
             for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1]].iter() {
-                let view = GenericMPRView::new(
+                let view = MprView::new(
                     manager,
                     &self.graphics.device,
                     texture.clone(),
@@ -646,7 +646,7 @@ impl State {
         } else {
             // Mesh disabled: add all four MPR views (including oblique)
             for orientation in ALL_ORIENTATIONS.iter() {
-                let view = GenericMPRView::new(
+                let view = MprView::new(
                     manager,
                     &self.graphics.device,
                     texture.clone(),
@@ -809,7 +809,7 @@ impl State {
     }
 
     /// Function-level comment: Restore MPR state to the specified view if a snapshot exists.
-    fn restore_mpr_state(&mut self, view: &mut crate::rendering::view::GenericMPRView) {
+    fn restore_mpr_state(&mut self, view: &mut crate::rendering::view::MprView) {
         if let Some(snap) = &self.mpr_state_slot2 {
             view.set_window_level(snap.window_level);
             view.set_window_width(snap.window_width);
@@ -858,16 +858,16 @@ impl State {
 
     /// Function-level comment: Create a GenericMPRView for the specified slot with appropriate orientation.
     fn create_mpr_view_for_slot(&self, manager: &mut PipelineManager, 
-                               index: usize) -> crate::rendering::view::GenericMPRView {
+                               index: usize) -> crate::rendering::view::MprView {
         use std::sync::Arc;
         use crate::rendering::content::render_content::RenderContent;
-        use crate::rendering::view::{GenericMPRView, ALL_ORIENTATIONS};
+        use crate::rendering::view::{MprView, ALL_ORIENTATIONS};
 
         let vol = self.last_volume.as_ref().unwrap();
         let texture = self.create_volume_texture(vol);
         let orientation = ALL_ORIENTATIONS[index]; // Use index to determine orientation
         
-        GenericMPRView::new(
+        MprView::new(
             manager,
             &self.graphics.device,
             texture,

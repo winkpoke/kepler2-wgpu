@@ -53,7 +53,7 @@ impl ViewManager {
     pub fn save_view_state(&mut self, position: &str, view: &dyn View) -> Result<(), String> {
         // Try to downcast to StatefulView using the concrete type
         // Since we know GenericMPRView implements StatefulView, we can try that first
-        if let Some(mpr_view) = view.as_any().downcast_ref::<super::GenericMPRView>() {
+        if let Some(mpr_view) = view.as_any().downcast_ref::<super::MprView>() {
             if let Some(state) = mpr_view.save_state() {
                 if state.is_valid() {
                     log::info!("Saving view state for position: {}", position);
@@ -93,7 +93,7 @@ impl ViewManager {
     pub fn restore_view_state(&self, position: &str, view: &mut dyn View) -> Result<(), String> {
         if let Some(saved_state) = self.saved_states.get(position) {
             // Try to downcast to StatefulView using the concrete type
-            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<super::GenericMPRView>() {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<super::MprView>() {
                 log::info!("Restoring view state for position: {}", position);
                 log::debug!("Restoring state: window_level={}, window_width={}, slice_mm={}, scale={}, translate={:?}", 
                     saved_state.window_level, saved_state.window_width, saved_state.slice_mm, saved_state.scale, saved_state.translate);

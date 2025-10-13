@@ -108,7 +108,7 @@ pub struct MipRenderContext {
     /// Bind group layout for uniforms (group 1)
     pub uniform_bind_group_layout: BindGroupLayout,
     /// Render pipeline for MIP rendering
-    pub pipeline: RenderPipeline,
+    pub pipeline: Arc<RenderPipeline>,
 }
 
 impl MipRenderContext {
@@ -174,7 +174,7 @@ impl MipRenderContext {
         });
 
         // Create render pipeline
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        let pipeline = Arc::new(device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("MIP Render Pipeline"),
             layout: Some(&pipeline_layout),
             vertex: wgpu::VertexState {
@@ -210,7 +210,7 @@ impl MipRenderContext {
             },
             multiview: None,
             cache: None,
-        });
+        }));
 
         Self {
             texture_bind_group_layout,
@@ -341,10 +341,10 @@ pub struct MipView {
 impl MipView {
     /// Function-level comment: Create a new MIP view using existing RenderContent.
     /// Accepts Arc<RenderContent> from MPR views to enable zero-copy texture sharing.
-    pub fn new(wgpuImpl: MipViewWgpuImpl) -> Self {
+    pub fn new(wgpu_impl: MipViewWgpuImpl) -> Self {
         log::info!("[MIP_NEW] MipView created successfully");
         Self {
-            wgpu_impl: wgpuImpl,
+            wgpu_impl,
             config: MipConfig::new(),
             position: (0, 0),
             dimensions: (512, 512),
