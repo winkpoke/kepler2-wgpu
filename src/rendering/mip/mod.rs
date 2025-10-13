@@ -377,7 +377,8 @@ impl MipView {
             (4096.0, 2048.0)
         } else {
             // Narrower window for better contrast in R16Float medical data
-            (300.0, 150.0)
+            // (300.0, 150.0)
+            (2000.0, 100.0)
         };
 
         // Construct camera in normalized volume space [0,1]^3 using orthographic setup
