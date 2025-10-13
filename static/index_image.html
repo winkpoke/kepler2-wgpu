@@ -182,7 +182,7 @@
         <label>输入二维投影文件夹：</label>
         <input id="FilesInput" type="file" multiple accept=".raw,.mhd,.dat" />
         <label>输入重建文件：</label>
-        <input id="mhxInput" type="file" multiple accept=".mha,.mhd" />
+        <input id="mhxInput" type="file" multiple accept=".mha,.mhd,.raw" />
         <div class="row" style="margin-top:8px">
           <button id="btn">运行重建</button>
           <button id="analyzeBtn">分析文件</button>
@@ -278,6 +278,7 @@
       mhd: null,
       raws: [],
       mhx: null,
+      mha: null,
       wasmModule: null,
       len: null,
       render_app: null,
@@ -321,10 +322,13 @@
     // ========= 文件选择处理 =========
     byId("mhxInput").addEventListener("change", async (e) => {
       state.files = Array.from(e.target.files);
-      state.mhx = state.files.find((f) => /\.mha$/i.test(f.name)) || state.files.find((f) => /\.mhd$/i.test(f.name)) || null;
+      state.mha = state.files.find((f) => /\.mha$/i.test(f.name)) || null;
+      state.mhd = state.files.find((f) => /\.mhd$/i.test(f.name)) || null;
+      state.raws = state.files.filter((f) => /\.raw$/i.test(f.name));
+      state.mhx = state.mha || state.mhd || null;
       
       byId("analyzeBtn").disabled = !state.mhx;
-      log(state.mhx ? "重建文件已选择，可以解析" : "请选择重建文件");
+      log(state.mha ? "重建文件已选择，可以解析" : "请选择重建文件");
     });
 
     document.querySelector('#file').addEventListener('change', async () => {
@@ -526,7 +530,7 @@
         byId("progress").value = 30;
 
         // 更新UI显示解析结果
-        byId("mhxName").textContent = state.mhx?.name || "—";
+        byId("mhxName").textContent = state.mhx?.name|| "—";
         byId("elemType").textContent = header.element_type;
         state.dim = [header.dim_x, header.dim_y,header.dim_z];
         byId("dimSize").textContent = `${header.dim_x} × ${header.dim_y} × ${header.dim_z}`;

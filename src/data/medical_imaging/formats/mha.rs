@@ -21,20 +21,24 @@ pub struct MhaParser {
 }
 
 impl MhaParser {
-    /// 解析完整的 MHA 文件，包括头文件和嵌入式数据
-    #[cfg(not(target_arch = "wasm32"))]
-    pub async fn parse_file(path: PathBuf) -> MedicalImagingResult<MedicalVolume>{
-        let file = tokio::fs::read(path).await?;
-        Self::parse_bytes(&file)
+    /// 创建新的 MHA 解析器实例
+    pub fn new(
+        validaton: Option<String>, 
+        compression_handler: CompressionType, 
+        endian_converter: Endianness
+    ) -> Self {
+        Self {
+            validaton,
+            compression_handler,
+            endian_converter,
+        }
     }
 
     /// 解析完整的 MHA 文件，包括头文件和嵌入式数据
-    #[cfg(target_arch = "wasm32")]
-    pub fn parse_file(path: PathBuf) -> MedicalImagingResult<MedicalVolume>{
-        use std::io::Read;
-        let mut f = File::open(&path)?;
-        let mut file = Vec::new();
-        f.read_to_end(&mut file)?;
+    #[cfg(not(target_arch = "wasm32"))]
+    pub async fn parse_file(path: PathBuf) -> MedicalImagingResult<MedicalVolume>{
+        let path = path.join("CT.mha");
+        let file = tokio::fs::read(path).await?;
         Self::parse_bytes(&file)
     }
 

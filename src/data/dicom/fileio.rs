@@ -14,8 +14,7 @@ use tokio::sync::Mutex;
 use super::*;
 use crate::data::ct_volume::CTVolume;
 use crate::data::medical_imaging::formats::*;
-use crate::data::medical_imaging::metadata::volume::MedicalVolume;
-use crate::data::medical_imaging::metadata::PixelData;
+use crate::data::medical_imaging::metadata::{volume::MedicalVolume, PixelData, ImageMetadata};
 
 /// Parses DICOM files from a list of directories and constructs a `DicomRepo`.
 ///
@@ -335,6 +334,7 @@ pub async fn process_single_mha_file(file: File,slope: f32, intercept: f32) -> R
 
 /// Function-level comment: Parses common medical imaging files (MHA, MHD, etc.) for WASM
 /// Uses the unified MedicalImageParser interface to support multiple formats
+/// For MHD files, expects both header (.mhd) and data (.raw/.zraw) files in the array
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[cfg(target_arch = "wasm32")]
 pub async fn parse_common_files_wasm(files: Array, info: js_sys::Uint8Array) -> Result<CTVolume, JsValue> {
@@ -351,74 +351,83 @@ pub async fn parse_common_files_wasm(files: Array, info: js_sys::Uint8Array) -> 
     let intercept = info["intercept"].as_f64()
         .map(|v| v as f32)
         .ok_or(JsValue::from_str("Missing intercept in info"))?;
-    log::info!("mha info: slope = {:?}, intercept = {:?}", slope, intercept);
+    log::info!("Medical imaging info: slope = {:?}, intercept = {:?}", slope, intercept);
 
-    // Filter supported medical imaging files and collect them
-    let mut medical_files = Vec::new();
+    // Collect and categorize medical imaging files
+    let mut mha_files = Vec::new();
+    let mut mhd_files = Vec::new();
+    let mut raw_files = Vec::new();
     let len = files.length() as usize;
     
     for idx in 0..len {
         let file: File = files.get(idx as u32).dyn_into()?;
-        let file_name = file.name();
+        let file_name = file.name().to_lowercase();
         
-        // Check if file has supported extension
-        match get_extension(&file_name) {
-            Ok(ImageFormat::MHA) | Ok(ImageFormat::MHD) => {
-                medical_files.push((file, get_extension(&file_name).unwrap()));
-            },
-            Ok(ImageFormat::NIfTI) | Ok(ImageFormat::DICOM) => {
-                // Future support for additional formats
-                log::warn!("Format {:?} not yet supported in WASM", get_extension(&file_name).unwrap());
-            },
-            _ => {
-                // Skip unsupported files
-                continue;
+        // Categorize files by extension
+        if file_name.ends_with(".mha") {
+            mha_files.push(file);
+        } else if file_name.ends_with(".mhd") {
+            mhd_files.push(file);
+        } else if file_name.ends_with(".raw") || file_name.ends_with(".zraw") {
+            raw_files.push(file);
+        } else {
+            // Check using the extension parser for other formats
+            match get_extension(&file.name()) {
+                Ok(ImageFormat::NIfTI) | Ok(ImageFormat::DICOM) => {
+                    log::warn!("Format {:?} not yet supported in WASM", get_extension(&file.name()).unwrap());
+                },
+                _ => {
+                    log::debug!("Skipping unsupported file: {}", file.name());
+                }
             }
         }
     }
     
-    if medical_files.is_empty() {
-        return Err(JsValue::from_str("No supported medical imaging files found (MHA, MHD)"));
-    }
-
-    // Process the first supported file
-    let (first_file, format) = medical_files.into_iter().next().unwrap();
-    
-    match format {
-        ImageFormat::MHA => {
-            process_single_mha_file(first_file, slope, intercept).await
-        },
-        ImageFormat::MHD => {
-            process_single_mhd_file(first_file, slope, intercept).await
-        },
-        _ => {
-            Err(JsValue::from_str("Unsupported format in processing"))
-        }
-    }
-}
-
-/// Function-level comment: Processes a single MHD file and converts to CTVolume
-/// Handles MHD format parsing with proper error handling for WASM
-#[cfg(target_arch = "wasm32")]
-async fn process_single_mhd_file(file: File, slope: f32, intercept: f32) -> Result<CTVolume, JsValue> {
-    use js_sys::Promise;
-    use wasm_bindgen::closure::Closure;
-    use std::path::PathBuf;
-
-    let file_name = file.name();
-    let file_reader = FileReader::new().map_err(|_| JsValue::from_str("Failed to create FileReader"))?;
-    
-    let promise = Promise::new(&mut |resolve, reject| {
-        let reject_clone = reject.clone();
-        let file_name_clone = file_name.clone();
+    // Process files based on what's available
+    if !mha_files.is_empty() {
+        // Process MHA files (self-contained)
+        log::info!("Processing {} MHA file(s)", mha_files.len());
+        let first_mha = mha_files.into_iter().next().unwrap();
+        process_single_mha_file(first_mha, slope, intercept).await
+    } else if !mhd_files.is_empty() && !raw_files.is_empty() {
+        // Process MHD files (require separate data files)
+        log::info!("Processing MHD files: {} header(s), {} data file(s)", mhd_files.len(), raw_files.len());
         
-        let onload = Closure::<dyn FnMut(ProgressEvent)>::new(move |event: ProgressEvent| {
-            let result = || -> Result<CTVolume, JsValue> {
-                // Read file data
-                let path = file_name_clone.clone();
-                let medical_volume = MhdParser::parse_file(PathBuf::from(path)).unwrap();
-
-                // Convert MedicalVolume to CTVolume using the existing method
+        // Find matching MHD and data file pairs
+        let mut matched_pair = None;
+        for mhd_file in &mhd_files {
+            let mhd_name = mhd_file.name();
+            let base_name = mhd_name.trim_end_matches(".mhd").trim_end_matches(".MHD");
+            
+            // Look for corresponding data file
+            for raw_file in &raw_files {
+                let raw_name = raw_file.name();
+                let raw_base = raw_name.trim_end_matches(".raw")
+                    .trim_end_matches(".RAW")
+                    .trim_end_matches(".zraw")
+                    .trim_end_matches(".ZRAW");
+                
+                if base_name.eq_ignore_ascii_case(raw_base) {
+                    matched_pair = Some((mhd_file.clone(), raw_file.clone()));
+                    log::info!("Found matching MHD pair: {} + {}", mhd_name, raw_name);
+                    break;
+                }
+            }
+            
+            if matched_pair.is_some() {
+                break;
+            }
+        }
+        
+        match matched_pair {
+            Some((header_file, data_file)) => {
+                let header_data = read_file_as_bytes(header_file).await?;
+                let metadata = MhdParser::parse_single_file(&header_data)
+                    .map_err(|e| JsValue::from_str(&format!("MHD parse error: {}", e)))?;
+                let data_bytes = read_file_as_bytes(data_file).await?;
+                let pixel_data = PixelData::UInt8(data_bytes);
+                let medical_volume = MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
+                    .map_err(|e| JsValue::from_str(&format!("Volume creation error: {}", e)))?;
                 let ct_volume = match medical_volume.pixel_data {
                     PixelData::UInt8(data) => {
                         // Extract dimensions from metadata
@@ -443,31 +452,31 @@ async fn process_single_mhd_file(file: File, slope: f32, intercept: f32) -> Resu
                 };
                 
                 Ok(ct_volume)
-            }();
-            
-            match result {
-                Ok(volume) => {
-                        let js_value = serde_wasm_bindgen::to_value(&volume)
-                    .unwrap_or_else(|_| JsValue::from_str("Serialization failed"));
-                let _ = resolve.call1(&JsValue::NULL, &js_value);
-                },
-                Err(err) => {
-                    let _ = reject_clone.call1(&JsValue::NULL, &err);
-                },
+            },
+            None => {
+                Err(JsValue::from_str(
+                    "MHD header files found but no corresponding data files (.raw/.zraw). \
+                     MHD format requires both header and data files."
+                ))
             }
-        });
-        
-        file_reader.set_onload(Some(onload.as_ref().unchecked_ref()));
-        onload.forget();
-        
-        if let Err(e) = file_reader.read_as_array_buffer(&file) {
-            let _ = reject.call1(&JsValue::NULL, &JsValue::from(e));
         }
-    });
-    
-    let results_guard = JsFuture::from(promise).await?;
-    match serde_wasm_bindgen::from_value::<CTVolume>(results_guard) {
-        Ok(volume) => Ok(volume),
-        Err(e) => Err(JsValue::from_str(&format!("Deserialization error: {}", e))),
+    } else if !mhd_files.is_empty() {
+        // MHD files without data files - return error with helpful message
+        Err(JsValue::from_str(
+            "MHD header files found but no corresponding data files (.raw/.zraw). \
+             MHD format requires both header and data files."
+        ))
+    } else {
+        // No supported files found
+        Err(JsValue::from_str(
+            "No supported medical imaging files found. \
+             Supported formats: MHA (self-contained), MHD+RAW (header+data pair)"
+        ))
     }
+}
+
+pub async fn read_file_as_bytes(file: File) -> Result<Vec<u8>, JsValue> {
+    let array_buffer = JsFuture::from(file.array_buffer()).await?;
+    let uint8_array = Uint8Array::new(&array_buffer);
+    Ok(uint8_array.to_vec())
 }

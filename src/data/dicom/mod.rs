@@ -26,5 +26,5 @@ pub use ct_image::*;
 mod dicom_repo;
 pub use dicom_repo::*;
 
-// mod export_dicom;
-// pub use export_dicom::*;
+mod export_dicom;
+pub use export_dicom::*;

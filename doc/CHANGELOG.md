@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **MHD Dual-File Processing in WASM**: Implemented comprehensive support for processing MHD (MetaImage) files consisting of separate header (.mhd) and data (.raw/.zraw) files in WASM environments
+  - Rewrote `process_single_mhd_file()` to use `MhdParser::parse_by_bytes(&header_bytes, &data_bytes)` for proper dual-file handling
+  - Enhanced `parse_common_files_wasm()` with intelligent file matching by name and extension (case-insensitive)
+  - Added comprehensive file validation (extensions, sizes, content) with reasonable limits (1MB for headers, 2GB for data)
+  - Implemented fallback matching strategy when exact name matches aren't found
+  - Added robust error handling for missing data files, mismatched pairs, and processing failures
+  - Used modern async/await patterns with `gloo_timers` for improved readability and timeout handling
+  - Created detailed documentation in `doc/mhd-dual-file-wasm.md`
+
 - **Orthogonal Projection for Medical Visualization**: Implemented orthogonal projection as the default projection type for 3D mesh rendering to ensure accurate dimensional representation without perspective distortion
   - Added `ProjectionType` enum with `Perspective` and `Orthogonal` variants
   - Enhanced `Camera` struct with orthogonal projection parameters (`ortho_left`, `ortho_right`, `ortho_bottom`, `ortho_top`)
