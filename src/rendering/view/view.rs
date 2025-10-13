@@ -34,7 +34,7 @@
 
 use std::any::Any;
 use super::Renderable;
-use crate::core::coord::{array_to_slice, Base};
+use crate::core::coord::Base;
 use crate::core::geometry::GeometryBuilder;
 use crate::CTVolume;
 

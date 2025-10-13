@@ -1,4 +1,4 @@
-use std::{fmt, ops::{Add, AddAssign, Div, Mul, Neg, Sub}};
+use std::{fmt, ops::{Add, Div, Mul, Neg, Sub}};
 use num::Float;
 
 

@@ -5,7 +5,7 @@
 /// succeeds across all target platforms and provides debugging tools for development.
 
 use crate::core::timing::{Instant, DurationExt};
-use wgpu::{Device, ShaderModule, ShaderModuleDescriptor, ShaderSource};
+use wgpu::{ShaderModule, ShaderModuleDescriptor, ShaderSource};
 
 /// Shader validation error types
 #[derive(Debug, Clone)]

@@ -3,16 +3,11 @@ use std::sync::Arc;
 use crate::{
     core::{array_to_slice, Base, GeometryBuilder},
     data::CTVolume,
-    rendering::{MPRView, Orientation, RenderContent, RenderContext, StatefulView, ViewState},
+    rendering::{MPRView, Orientation, RenderContent, StatefulView, ViewState},
     Renderable, View,
 };
 
-struct MprWgpuImpl {
-    /// Rendering context containing GPU resources and uniforms
-    pub(crate) ctx: RenderContext,
-    /// Reference to the 3D volume texture data
-    pub(crate) texture: Arc<RenderContent>,
-}
+use super::{MprRenderContext, MprViewWgpuImpl};
 
 /// Generic Multi-Planar Reconstruction (MPR) view implementation.
 ///
@@ -36,12 +31,12 @@ struct MprWgpuImpl {
 /// 4. **Window/Level Processing**: Applies CT display windowing
 /// 5. **Final Rendering**: Outputs the processed image to the view
 pub struct MprView {
-    /// Internal WGPU implementation details
-    // wgpu_impl: MprWgpuImpl,
-    /// Rendering context containing GPU resources and uniforms
-    ctx: RenderContext,
-    /// Reference to the 3D volume texture data
-    texture: Arc<RenderContent>,
+    /// Shared render context containing pipeline and shared GPU resources
+    render_context: Arc<MprRenderContext>,
+    /// WGPU implementation containing per-view GPU resources
+    wgpu_impl: Arc<MprViewWgpuImpl>,
+    /// Render content containing texture and bind groups
+    content: Arc<RenderContent>,
     /// Current slice position (internal units)
     slice: f32,
     /// Screen-space coordinate system base
@@ -86,7 +81,7 @@ impl MprView {
     /// 2. UV-space base for texture sampling
     /// 3. Transform matrix linking screen to texture coordinates
     pub fn new(
-        manager: &mut crate::rendering::core::pipeline::PipelineManager,
+        render_context: Arc<MprRenderContext>,
         device: &wgpu::Device,
         texture: Arc<RenderContent>,
         vol: &CTVolume,
@@ -97,7 +92,7 @@ impl MprView {
         dim: (u32, u32),
     ) -> Self {
         // Get default slice navigation speed for this orientation
-        let s_speed = orientation.default_slice_speed();
+        let _s_speed = orientation.default_slice_speed();
 
         // Build coordinate system bases for this orientation
         let base_screen = orientation.build_base(vol);
@@ -118,15 +113,21 @@ impl MprView {
         // Create final transformation matrix from screen to UV coordinates
         let transform_matrix = base_screen_cloned.to_base(&base_uv).transpose();
 
-        // Initialize rendering context with GPU resources
-        let view = RenderContext::new(manager, device, &texture, transform_matrix);
+        // Create WGPU implementation with shared context
+        let wgpu_impl = Arc::new(MprViewWgpuImpl::new(
+            render_context.clone(),
+            device,
+            texture.clone(),
+            transform_matrix,
+        ));
 
         log::info!("Created GenericMPRView with orientation: {:?}, scale: {:?}, translate: {:?}, pos: {:?}, dim: {:?}",
             orientation, scale, translate, pos, dim);
 
         Self {
-            ctx: view,
-            texture,
+            render_context,
+            wgpu_impl,
+            content: texture,
             slice,
             base_screen,
             base_uv,
@@ -151,7 +152,7 @@ impl MprView {
     /// 3. **Uncenter**: Move back from center
     /// 4. **Pan**: Apply screen-space translation
     /// 5. **Project**: Transform to UV texture coordinates
-    fn update_transform_matrix(&mut self) {
+    fn update_transform_matrix(&mut self, queue: &wgpu::Queue) {
         let mut base_screen_cloned = self.base_screen.clone();
 
         // Apply transformations in reverse order due to matrix multiplication
@@ -162,7 +163,11 @@ impl MprView {
 
         // Create final transformation matrix and update GPU uniforms
         let transform_matrix = base_screen_cloned.to_base(&self.base_uv).transpose();
-        self.ctx.uniforms.frag.mat = *array_to_slice(&transform_matrix.data);
+        
+        // Update the transformation matrix using the new architecture
+        if let Some(wgpu_impl) = Arc::get_mut(&mut self.wgpu_impl) {
+            wgpu_impl.update_matrix(queue, *array_to_slice(&transform_matrix.data));
+        }
     }
 }
 
@@ -184,24 +189,12 @@ impl Renderable for MprView {
     /// matrix, slice position, and other rendering parameters.
     fn update(&mut self, queue: &wgpu::Queue) {
         // Update slice position for volume sampling
-        self.ctx.uniforms.frag.slice = self.slice;
+        if let Some(wgpu_impl) = Arc::get_mut(&mut self.wgpu_impl) {
+            wgpu_impl.update_slice(queue, self.slice);
+        }
 
         // Recalculate transformation matrix if view parameters changed
-        self.update_transform_matrix();
-
-        // Upload vertex shader uniforms (transformation matrices)
-        queue.write_buffer(
-            &self.ctx.uniform_vert_buffer,
-            0,
-            bytemuck::cast_slice(&[self.ctx.uniforms.vert]),
-        );
-
-        // Upload fragment shader uniforms (slice, window/level, etc.)
-        queue.write_buffer(
-            &self.ctx.uniform_frag_buffer,
-            0,
-            bytemuck::cast_slice(&[self.ctx.uniforms.frag]),
-        );
+        self.update_transform_matrix(queue);
     }
 
     /// Render the MPR view to the current render pass.
@@ -218,8 +211,8 @@ impl Renderable for MprView {
     /// 4. **Geometry**: Bind vertex and index buffers
     /// 5. **Draw**: Issue indexed draw call for the quad
     fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
-        // Set the rendering pipeline for MPR visualization
-        render_pass.set_pipeline(&self.ctx.render_pipeline);
+        // Set the rendering pipeline for MPR visualization (from shared context)
+        render_pass.set_pipeline(&self.render_context.render_pipeline);
 
         // Configure viewport to this view's screen region
         let (x, y) = (self.pos.0 as f32, self.pos.1 as f32);
@@ -227,16 +220,19 @@ impl Renderable for MprView {
         render_pass.set_viewport(x, y, width as f32, height as f32, 0.0, 1.0);
 
         // Bind GPU resources
-        render_pass.set_bind_group(0, &self.ctx.texture_bind_group, &[]); // Volume texture
-        render_pass.set_bind_group(1, &self.ctx.uniform_vert_bind_group, &[]); // Vertex uniforms
-        render_pass.set_bind_group(2, &self.ctx.uniform_frag_bind_group, &[]); // Fragment uniforms
+        // Volume texture (from per-view implementation)
+        render_pass.set_bind_group(0, &self.wgpu_impl.texture_bind_group, &[]);
+        
+        // Per-view uniforms (from WGPU implementation)
+        render_pass.set_bind_group(1, &self.wgpu_impl.uniform_vert_bind_group, &[]); // Vertex uniforms
+        render_pass.set_bind_group(2, &self.wgpu_impl.uniform_frag_bind_group, &[]); // Fragment uniforms
 
-        // Bind geometry buffers
-        render_pass.set_vertex_buffer(0, self.ctx.vertex_buffer.slice(..));
-        render_pass.set_index_buffer(self.ctx.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        // Bind geometry buffers (from shared context)
+        render_pass.set_vertex_buffer(0, self.render_context.vertex_buffer.slice(..));
+        render_pass.set_index_buffer(self.render_context.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
         // Draw the screen-aligned quad
-        render_pass.draw_indexed(0..self.ctx.num_indices, 0, 0..1);
+        render_pass.draw_indexed(0..self.render_context.num_indices, 0, 0..1);
         Ok(())
     }
 }
@@ -285,12 +281,18 @@ impl View for MprView {
 impl MPRView for MprView {
     /// Set the window level (brightness) for CT image display.
     fn set_window_level(&mut self, window_level: f32) {
-        self.ctx.uniforms.frag.window_level = window_level;
+        // Update the internal state - will be synced to GPU in next update() call
+        if let Some(wgpu_impl) = Arc::get_mut(&mut self.wgpu_impl) {
+            wgpu_impl.uniforms.frag.window_level = window_level;
+        }
     }
 
     /// Set the window width (contrast) for CT image display.
     fn set_window_width(&mut self, window_width: f32) {
-        self.ctx.uniforms.frag.window_width = window_width;
+        // Update the internal state - will be synced to GPU in next update() call
+        if let Some(wgpu_impl) = Arc::get_mut(&mut self.wgpu_impl) {
+            wgpu_impl.uniforms.frag.window_width = window_width;
+        }
     }
 
     /// Set the current slice position in millimeters.
@@ -335,12 +337,12 @@ impl MPRView for MprView {
 
     /// Retrieve current window level from fragment uniforms for state snapshotting.
     fn get_window_level(&self) -> f32 {
-        self.ctx.uniforms.frag.window_level
+        self.wgpu_impl.uniforms.frag.window_level
     }
 
     /// Retrieve current window width from fragment uniforms for state snapshotting.
     fn get_window_width(&self) -> f32 {
-        self.ctx.uniforms.frag.window_width
+        self.wgpu_impl.uniforms.frag.window_width
     }
 
     /// Convert internal pan.z (in screen units) back to millimeters using base scale factors.
@@ -419,8 +421,7 @@ impl StatefulView for MprView {
         self.move_to(state.position);
         self.resize(state.dimensions);
 
-        // Update transform matrix to reflect new state
-        self.update_transform_matrix();
+        // Note: Transform matrix will be updated in the next update() call
 
         log::debug!(
             "Restored MPR view state: window_level={}, window_width={}, scale={}, slice_mm={}",

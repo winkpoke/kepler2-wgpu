@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 
-use std::{cell::RefCell, rc::Rc, sync::Arc};
+use std::sync::Arc;
 
 use winit::{
     dpi::PhysicalSize,
@@ -11,7 +11,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::{data::ct_volume, rendering::core::state::{Graphics, State}};
+use crate::rendering::core::state::{Graphics, State};
 use crate::application::gl_canvas::{GLCanvas, UserEvent};
 use winit::event_loop::EventLoopProxy;
 use crate::rendering::core::pipeline::PipelineManager;

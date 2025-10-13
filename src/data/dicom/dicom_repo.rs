@@ -6,7 +6,7 @@ use super::patient::Patient;
 use super::studyset::StudySet;
 use crate::core::coord::{Base, Matrix4x4};
 use crate::data::ct_volume::{CTVolume, CTVolumeGenerator};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 

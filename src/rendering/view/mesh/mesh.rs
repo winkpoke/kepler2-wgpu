@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 
-use bytemuck::{Pod, Zeroable};
 
 /// Function-level comment: Minimal lighting uniform structure for basic mesh lighting MVP.
 /// Supports a single directional light with ambient lighting for simple 3D illumination.

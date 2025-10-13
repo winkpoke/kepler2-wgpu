@@ -2,7 +2,7 @@
 
 use wgpu::{Device, Queue};
 use wgpu::util::DeviceExt;
-use crate::rendering::core::pipeline::{create_simple_mesh_pipeline, create_basic_mesh_pipeline_with_lighting, create_basic_lighting_bind_group_layout, PipelineManager};
+use crate::rendering::core::pipeline::{create_basic_mesh_pipeline_with_lighting, create_basic_lighting_bind_group_layout, PipelineManager};
 use super::mesh::BasicLightingUniforms;
 
 /// Function-level comment: Simplified uniform data structure for basic mesh rendering

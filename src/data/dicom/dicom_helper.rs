@@ -1,7 +1,6 @@
 use dicom_object::InMemDicomObject;
 
 // #[cfg(target_arch = "wasm32")]
-use paste::*;
 
 #[macro_export]
 macro_rules! define_dicom_struct {

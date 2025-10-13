@@ -1,10 +1,8 @@
 #![allow(dead_code)]
 
-use cgmath::SquareMatrix;
 
 use super::{mesh::Mesh, material::Material, camera::Camera, lighting::Lighting, performance::{QualityController, QualityLevel, PerformanceStats}, basic_mesh_context::BasicMeshContext};
 use crate::{core::coord::Matrix4x4, rendering::view::{Renderable, View}, core::timing::{Instant, DurationExt}};
-use std::sync::Arc;
 
 /// Function-level comment: Error types specific to mesh rendering operations
 #[derive(Debug)]

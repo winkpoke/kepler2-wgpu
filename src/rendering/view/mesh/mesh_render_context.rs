@@ -446,8 +446,8 @@ impl MeshRenderContext {
 
     /// Function-level comment: Get buffer memory usage statistics for monitoring and optimization.
     pub fn get_memory_stats(&self) -> (u64, u64, f32, f32) {
-        let vertex_used = (self.num_vertices as u64 * std::mem::size_of::<super::mesh::MeshVertex>() as u64);
-        let index_used = (self.num_indices as u64 * std::mem::size_of::<u32>() as u64);
+        let vertex_used = self.num_vertices as u64 * std::mem::size_of::<super::mesh::MeshVertex>() as u64;
+        let index_used = self.num_indices as u64 * std::mem::size_of::<u32>() as u64;
         let vertex_efficiency = vertex_used as f32 / self.vertex_buffer.size() as f32;
         let index_efficiency = if self.index_buffer.size() > 0 {
             index_used as f32 / self.index_buffer.size() as f32
@@ -461,8 +461,8 @@ impl MeshRenderContext {
     /// Function-level comment: Get detailed buffer performance metrics for optimization analysis.
     /// Returns comprehensive statistics including fragmentation and allocation efficiency.
     pub fn get_detailed_buffer_metrics(&self) -> BufferMetrics {
-        let vertex_used = (self.num_vertices as u64 * std::mem::size_of::<super::mesh::MeshVertex>() as u64);
-        let index_used = (self.num_indices as u64 * std::mem::size_of::<u32>() as u64);
+        let vertex_used = self.num_vertices as u64 * std::mem::size_of::<super::mesh::MeshVertex>() as u64;
+        let index_used = self.num_indices as u64 * std::mem::size_of::<u32>() as u64;
         let total_allocated = self.vertex_buffer.size() + self.index_buffer.size();
         let total_used = vertex_used + index_used;
         

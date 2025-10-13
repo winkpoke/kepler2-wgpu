@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-use log::{trace, debug, error, info, warn};
-use std::path::{Path, PathBuf};
+use log::{trace, info, warn};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io};
 use crate::core::timing::{Instant, DurationExt};
@@ -12,12 +12,9 @@ use crate::rendering::core::pipeline::PipelineManager;
 #[cfg(target_arch = "wasm32")]
 use async_lock::Mutex;
 
-#[cfg(not(target_arch = "wasm32"))]
-use tokio::sync::Mutex;
 use winit::{
-    dpi::PhysicalSize,
     event::*,
-    window::{Window, WindowBuilder},
+    window::Window,
 };
 
 use crate::data::ct_volume::*;
@@ -617,8 +614,12 @@ impl State {
         if self.enable_mesh {
             // Add MPR views to slots 0 and 1 (Transverse and Coronal)
             for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1]].iter() {
-                let view = MprView::new(
+                let render_context = Arc::new(crate::rendering::view::mpr::mpr_render_context::MprRenderContext::new(
                     manager,
+                    &self.graphics.device,
+                ));
+                let view = MprView::new(
+                    render_context,
                     &self.graphics.device,
                     texture.clone(),
                     &vol,
@@ -646,8 +647,12 @@ impl State {
         } else {
             // Mesh disabled: add all four MPR views (including oblique)
             for orientation in ALL_ORIENTATIONS.iter() {
-                let view = MprView::new(
+                let render_context = Arc::new(crate::rendering::view::mpr::mpr_render_context::MprRenderContext::new(
                     manager,
+                    &self.graphics.device,
+                ));
+                let view = MprView::new(
+                    render_context,
                     &self.graphics.device,
                     texture.clone(),
                     &vol,
@@ -865,8 +870,12 @@ impl State {
         let texture = self.create_volume_texture(vol);
         let orientation = ALL_ORIENTATIONS[index]; // Use index to determine orientation
         
-        MprView::new(
+        let render_context = Arc::new(crate::rendering::view::mpr::mpr_render_context::MprRenderContext::new(
             manager,
+            &self.graphics.device,
+        ));
+        MprView::new(
+            render_context,
             &self.graphics.device,
             texture,
             vol,
