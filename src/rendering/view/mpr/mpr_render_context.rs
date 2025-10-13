@@ -81,7 +81,6 @@ impl MprRenderContext {
     /// # Returns
     /// A new MprRenderContext with initialized shared resources
     pub fn new(
-        manager: &mut crate::rendering::core::pipeline::PipelineManager,
         device: &wgpu::Device,
     ) -> Self {
         // Create bind group layout for 3D texture and sampler
@@ -141,19 +140,18 @@ impl MprRenderContext {
         let target_format = crate::rendering::core::pipeline::get_swapchain_format()
             .unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
 
-        // Create render pipeline using centralized cache helper
+        // Create render pipeline directly
         let bgls: [&wgpu::BindGroupLayout; 3] = [
             &texture_bind_group_layout,
             &vertex_bind_group_layout,
             &fragment_bind_group_layout,
         ];
-        let render_pipeline = crate::rendering::core::pipeline::get_or_create_texture_quad_pipeline(
-            manager,
+        let render_pipeline = Arc::new(crate::rendering::core::pipeline::create_texture_quad_pipeline(
             device,
             bgls,
             &[Vertex::desc()],
             target_format,
-        );
+        ));
 
         // Create shared vertex buffer
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {

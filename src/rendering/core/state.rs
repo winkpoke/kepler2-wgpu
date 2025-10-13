@@ -615,7 +615,6 @@ impl State {
             // Add MPR views to slots 0 and 1 (Transverse and Coronal)
             for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1]].iter() {
                 let render_context = Arc::new(crate::rendering::view::mpr::mpr_render_context::MprRenderContext::new(
-                    manager,
                     &self.graphics.device,
                 ));
                 let view = MprView::new(
@@ -648,7 +647,6 @@ impl State {
             // Mesh disabled: add all four MPR views (including oblique)
             for orientation in ALL_ORIENTATIONS.iter() {
                 let render_context = Arc::new(crate::rendering::view::mpr::mpr_render_context::MprRenderContext::new(
-                    manager,
                     &self.graphics.device,
                 ));
                 let view = MprView::new(
@@ -871,7 +869,6 @@ impl State {
         let orientation = ALL_ORIENTATIONS[index]; // Use index to determine orientation
         
         let render_context = Arc::new(crate::rendering::view::mpr::mpr_render_context::MprRenderContext::new(
-            manager,
             &self.graphics.device,
         ));
         MprView::new(
