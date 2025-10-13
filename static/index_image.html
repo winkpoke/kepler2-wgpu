@@ -181,11 +181,11 @@
         <input id="file" type="file" multiple accept=".dcm" />
         <label>输入二维投影文件夹：</label>
         <input id="FilesInput" type="file" multiple accept=".raw,.mhd,.dat" />
-        <label>输入mha文件：</label>
-        <input id="mhaInput" type="file" multiple accept=".mha,.mhd,.raw" />
+        <label>输入重建文件：</label>
+        <input id="mhxInput" type="file" multiple accept=".mha,.mhd" />
         <div class="row" style="margin-top:8px">
           <button id="btn">运行重建</button>
-          <button id="analyzeBtn">分析MHA</button>
+          <button id="analyzeBtn">分析文件</button>
           <button id="rerender">视图显示</button>
         </div>
       <label for="index-input">操作视图窗口:</label>
@@ -229,8 +229,8 @@
           <div id="PatientPosition" class="pill">未提供</div>
           <div>Image Series：</div>
           <div id="ImageSeries" class="pill">未提供</div>
-          <div>检测到的 MHA：</div>
-          <div id="mhaName" class="pill">未提供</div>
+          <div>检测到的重建文件：</div>
+          <div id="mhxName" class="pill">未提供</div>
           <div>体素维度 DimSize：</div>
           <div id="dimSize">—</div>
           <div>体素间距 Spacing：</div>
@@ -240,7 +240,7 @@
           <button id="convertBtn">导出</button>
           <select id="exportOptions" style="width: 400px">
             <option value="dicom">导出当前序列DICOM</option>
-            <option value="mha">导出重建完成的MHA</option>
+            <option value="mhx">导出重建文件</option>
             <option value="png">导出当前选择的图像PNG</option>
             <option value="pnglist">导出当前序列PNG</option>
           </select>
@@ -277,7 +277,7 @@
       dat:null,
       mhd: null,
       raws: [],
-      mha: null,
+      mhx: null,
       wasmModule: null,
       len: null,
       render_app: null,
@@ -319,12 +319,12 @@
     const infoUint8 = toUint8Array(info);
     
     // ========= 文件选择处理 =========
-    byId("mhaInput").addEventListener("change", async (e) => {
+    byId("mhxInput").addEventListener("change", async (e) => {
       state.files = Array.from(e.target.files);
-      state.mha = state.files.find((f) => /\.mha$/i.test(f.name)) || null;
+      state.mhx = state.files.find((f) => /\.mha$/i.test(f.name)) || state.files.find((f) => /\.mhd$/i.test(f.name)) || null;
       
-      byId("analyzeBtn").disabled = !state.mha;
-      log(state.mha ? "MHA文件已选择，可以解析" : "请选择MHA文件");
+      byId("analyzeBtn").disabled = !state.mhx;
+      log(state.mhx ? "重建文件已选择，可以解析" : "请选择重建文件");
     });
 
     document.querySelector('#file').addEventListener('change', async () => {
@@ -369,12 +369,12 @@
     // ========= 按钮选择处理 =========
     byId('rerender').addEventListener('click', async () => {
       log("开始渲染！")
-      if (!state.mha) {
-          alert('请先选择MHA文件！');
+      if (!state.mhx) {
+          alert('请先选择重建文件！');
       }
 
       await ensureWasm();
-      volume = await state.wasmModule.parse_mha_files_wasm(state.files, infoUint8);
+      volume = await state.wasmModule.parse_common_files_wasm(state.files, infoUint8);
       if (state.render_app == null){
         state.render_app = await state.wasmModule.get_render_app();
         gl_canvas = state.render_app.get_glcanvas();
@@ -468,9 +468,9 @@
         lev && gl_canvas.set_window_level(indexValue, lev);
     });
 
-    // ========= MHA文件解析函数 =========
-    async function parseMHAContent(mhaText) {
-      const lines = mhaText.split('\n');
+    // ========= MHX文件解析函数 =========
+    async function parseMHXContent(mhxText) {
+      const lines = mhxText.split('\n');
       const header = {
         element_type: 'MET_FLOAT',
         dim_x: 0,
@@ -481,7 +481,7 @@
         spacing_z: 0
       };
 
-      // 解析MHA文件内容
+      // 解析MHX文件内容
       for (const line of lines) {
         if (!line.trim() || line.startsWith('#')) continue;
 
@@ -517,22 +517,22 @@
         await ensureWasm();
         byId("progress").value = 0;
 
-        // 读取MHA文件内容
-        const mhaText = await state.mha.text();
-        log(`读取MHA文件: ${state.mha.name}`);
+        // 读取MHX文件内容
+        const mhxText = await state.mhx.text();
+        log(`读取MHX文件: ${state.mhx.name}`);
 
-        // 解析MHA头信息
-        const header = await parseMHAContent(mhaText);
+        // 解析MHX头信息
+        const header = await parseMHXContent(mhxText);
         byId("progress").value = 30;
 
         // 更新UI显示解析结果
-        byId("mhaName").textContent = state.mha?.name || "—";
+        byId("mhxName").textContent = state.mhx?.name || "—";
         byId("elemType").textContent = header.element_type;
         state.dim = [header.dim_x, header.dim_y,header.dim_z];
         byId("dimSize").textContent = `${header.dim_x} × ${header.dim_y} × ${header.dim_z}`;
         byId("spacing").textContent = `${header.spacing_x.toFixed(2)}, ${header.spacing_y.toFixed(2)}, ${header.spacing_z.toFixed(2)}`;
 
-        log("MHA 解析完成。", "ok");
+        log("重建文件解析完成。", "ok");
         byId("progress").value = 100;
 
       } catch (err) {
@@ -563,7 +563,7 @@
         }
         byId("progress").value = 25;
 
-        const mhaFile = state.mha;
+        const mhxFile = state.mhx;
 
         const sop_uid = "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.365119";
         // 构造 patient / study 对象
@@ -588,18 +588,18 @@
 
         const patientUint8 = toUint8Array(patient);
         const studyUint8 = toUint8Array(study);
-        if (!mhaFile) {
-          log("未找到 MHA 文件");
+        if (!mhxFile) {
+          log("未找到 MHX 文件");
         }
         else{
-          log("已找到 MHA 文件");
+          log("已找到 MHX 文件");
         }
         byId("progress").value = 50;
 
-        const arrayBuffer = await mhaFile.arrayBuffer();
-        const mhaUint8Array = new Uint8Array(arrayBuffer);
+        const arrayBuffer = await mhxFile.arrayBuffer();
+        const mhxUint8Array = new Uint8Array(arrayBuffer);
         log(`ArrayBuffer大小: ${arrayBuffer.byteLength} bytes`);
-        log(`Uint8Array长度: ${mhaUint8Array.length}`);
+        log(`Uint8Array长度: ${mhxUint8Array.length}`);
         log("开始DICOM转换...");
         byId("progress").value = 75;
 
@@ -610,7 +610,7 @@
             byId("progress").value = 75;
 
             const files = await state.wasmModule.build_ct_dicom_wasm(
-              mhaUint8Array,
+              mhxUint8Array,
               patientUint8,
               studyUint8,
               infoUint8
@@ -628,10 +628,10 @@
             log("✅ DICOM 导出成功！");
             break;
 
-          case "mha":
-            log("开始导出 MHA ...");
-            downloadBlob(new Blob([mhaUint8Array]), "CT_volume.mha");
-            log("✅ MHA 导出成功！");
+          case "mhx":
+            log("开始导出 MHX ...");
+            downloadBlob(new Blob([mhxUint8Array]), "CT_volume.mhx");
+            log("✅ MHX 导出成功！");
             break;
 
           case "png":
@@ -643,7 +643,7 @@
             const ww = byId('window').value;
             const wc = byId('level').value;
 
-            const pngBytes = await state.wasmModule.export_slice_png(mhaUint8Array, sliceIndex, orientation, ww, wc, info.slope, info.intercept);
+            const pngBytes = await state.wasmModule.export_slice_png(mhxUint8Array, sliceIndex, orientation, ww, wc, info.slope, info.intercept);
             const blob_png = new Blob([pngBytes], { type: "image/png" });
             downloadBlob(blob_png, "dicom.png");
             log("✅ PNG 导出成功！");

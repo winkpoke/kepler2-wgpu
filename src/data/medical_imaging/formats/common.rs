@@ -11,7 +11,6 @@ use std::path::Path;
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use async_trait::async_trait;
 
 /// Image format enumeration
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -23,15 +22,14 @@ pub enum ImageFormat {
     Unknown,
 }
 
-#[async_trait]
 pub trait MedicalImageParser {
     /// 解析完整的医学影像文件
-    async fn parse(&self, path: PathBuf) -> MedicalImagingResult<MedicalVolume>{
+    fn parse(&self, path: PathBuf) -> MedicalImagingResult<MedicalVolume>{
         let file_path: &str = path.to_str().ok_or_else(|| MedicalImagingError::InvalidPath {path: path.display().to_string()})?;
         let format = get_extension(file_path).unwrap_or(ImageFormat::Unknown);
         match format {
-            ImageFormat::MHA => MhaParser::parse_file(path).await,
-            ImageFormat::MHD => MhdParser::parse_file(path).await,
+            ImageFormat::MHA => MhaParser::parse_file(path),
+            ImageFormat::MHD => MhdParser::parse_file(path),
             _ => Err(MedicalImagingError::UnsupportedFormat {
                 format: format!("file extension: {}", file_path)
             }),
@@ -44,11 +42,22 @@ pub trait MedicalImageParser {
         let format = get_extension(file_path).unwrap_or(ImageFormat::Unknown);
         match format {
             ImageFormat::MHA => {
-                let file: Vec<u8>= tokio::fs::read(path).await?;
-                MhaParser::parse_metadata_only(&file)
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let file = tokio::fs::read(path).await?;
+                    MhaParser::parse_metadata_only(&file)
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    // For WASM, we'll need to handle file reading differently
+                    // This is a placeholder - actual implementation would need web APIs
+                    Err(MedicalImagingError::UnsupportedFormat { 
+                        format: "MHA file reading not supported in WASM".to_string() 
+                    })
+                }
             },
             ImageFormat::MHD => {
-                let mut mhd = MhdParser::new(None, path.clone(), path.clone());
+                let mhd = MhdParser::new(None, path.clone(), path.clone());
                 mhd.parse_header()
             },
             _ => Err(MedicalImagingError::UnsupportedFormat {

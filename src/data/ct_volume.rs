@@ -7,11 +7,12 @@ use std::fmt;
 use wasm_bindgen::prelude::*;
 
 use crate::core::coord::Base;
+use serde::{Serialize, Deserialize};
 
 
 // Define the CTVolume struct to hold 3D data
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-#[derive(Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct CTVolume {
     pub(crate) dimensions: (usize, usize, usize), // (rows, columns, number of slices)
     pub(crate) voxel_spacing: (f32, f32, f32), // (spacing_x, spacing_y, spacing_z)

@@ -7,6 +7,7 @@ use crate::data::medical_imaging::{
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::fs::File;
 
 /// 功能级注释：解析包含嵌入式数据的 MHA（MetaImage）文件
 /// 处理带有内联图像数据的 ASCII 和二进制头文件
@@ -21,11 +22,22 @@ pub struct MhaParser {
 
 impl MhaParser {
     /// 解析完整的 MHA 文件，包括头文件和嵌入式数据
+    #[cfg(not(target_arch = "wasm32"))]
     pub async fn parse_file(path: PathBuf) -> MedicalImagingResult<MedicalVolume>{
         let file = tokio::fs::read(path).await?;
         Self::parse_bytes(&file)
     }
-    
+
+    /// 解析完整的 MHA 文件，包括头文件和嵌入式数据
+    #[cfg(target_arch = "wasm32")]
+    pub fn parse_file(path: PathBuf) -> MedicalImagingResult<MedicalVolume>{
+        use std::io::Read;
+        let mut f = File::open(&path)?;
+        let mut file = Vec::new();
+        f.read_to_end(&mut file)?;
+        Self::parse_bytes(&file)
+    }
+
     /// 从字节缓冲区解析 MHA，用于 WASM 兼容性
     pub fn parse_bytes(data: &[u8]) -> MedicalImagingResult<MedicalVolume>{
         let metadata = Self::parse_metadata_only(data)?;

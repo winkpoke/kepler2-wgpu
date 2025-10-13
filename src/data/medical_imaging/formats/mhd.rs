@@ -34,11 +34,11 @@ impl MhdParser {
     }
     
     /// 解析 MHD 头文件并加载关联的数据文件
-    pub async fn parse_file(path: PathBuf) -> MedicalImagingResult<MedicalVolume> {
+    pub fn parse_file(path: PathBuf) -> MedicalImagingResult<MedicalVolume> {
         let mut mhd = MhdParser::new(None, path.clone(), path.clone());
         let metadata = mhd.parse_header()?;
         mhd.data_loader = metadata.clone().element_data_file.into();
-        let pixel_data = mhd.load_data_file(&metadata).await?;
+        let pixel_data = mhd.load_data_file(&metadata)?;
         MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
     }
     
@@ -66,7 +66,7 @@ impl MhdParser {
     }
     
     /// 单独加载数据文件
-    pub async fn load_data_file(self, metadata: &ImageMetadata) -> MedicalImagingResult<PixelData>{
+    pub fn load_data_file(self, metadata: &ImageMetadata) -> MedicalImagingResult<PixelData>{
         let dims = metadata.dimensions.clone();
         let n = dims[0] * dims[1] * dims[2];
         let mut temp_buf = vec![0u8; n * 4];
