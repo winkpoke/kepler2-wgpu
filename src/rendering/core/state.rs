@@ -547,13 +547,10 @@ impl State {
                     crate::rendering::core::PassId::SlicePass => {
                         // Function-level comment: Render 2D slice content (MPR views only, skip MeshView)
                         // Iterate through views and only render MPR views, not MeshView
-                        for (index, view) in layout.views.iter_mut().enumerate() {
-                            // Skip slot 2 if it contains a MeshView (when mesh is enabled)
-                            if mesh_enabled && index == 2 {
-                                // Check if this is a MeshView and skip it during slice pass
-                                if view.as_any().downcast_ref::<crate::rendering::view::MeshView>().is_some() {
-                                    continue;
-                                }
+                        for (_, view) in layout.views.iter_mut().enumerate() {
+                            // Check if this is a MeshView and skip it during slice pass
+                            if view.as_any().downcast_ref::<crate::rendering::view::MeshView>().is_some() {
+                                continue;
                             }
                             // Render MPR views only
                             view.render(pass_context.pass).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
@@ -639,11 +636,12 @@ impl State {
             self.layout.add_view(Box::new(mesh_view));
             
             // Add MIP view to slot 3 (fourth position - replacing Oblique)
-            let mip_view = crate::rendering::mip::MipView::new(
+            let mip_wgpu_impl = crate::rendering::MipViewWgpuImpl::new(
                 texture.clone(),
                 &self.graphics.device,
                 self.graphics.surface_config.format,
             );
+            let mip_view = crate::rendering::mip::MipView::new(mip_wgpu_impl);
             self.layout.add_view(Box::new(mip_view));
         } else {
             // Mesh disabled: add all four MPR views (including oblique)

@@ -109,8 +109,6 @@ pub struct MipRenderContext {
     pub uniform_bind_group_layout: BindGroupLayout,
     /// Render pipeline for MIP rendering
     pub pipeline: RenderPipeline,
-    /// Uniform buffer for MIP parameters
-    pub uniform_buffer: Buffer,
 }
 
 impl MipRenderContext {
@@ -160,13 +158,7 @@ impl MipRenderContext {
             ],
         });
 
-        // Create uniform buffer
-        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("MIP Uniform Buffer"),
-            size: std::mem::size_of::<MipUniforms>() as u64,
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+
 
         // Load MIP shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -224,7 +216,6 @@ impl MipRenderContext {
             texture_bind_group_layout,
             uniform_bind_group_layout,
             pipeline,
-            uniform_buffer,
         }
     }
 
@@ -248,50 +239,36 @@ impl MipRenderContext {
     }
 
     /// Function-level comment: Create a bind group for MIP uniforms.
-    /// Binds the uniform buffer to the MIP pipeline.
-    pub fn create_uniform_bind_group(&self, device: &Device) -> BindGroup {
+    /// Binds the provided uniform buffer to the MIP pipeline.
+    pub fn create_uniform_bind_group(&self, device: &Device, uniform_buffer: &Buffer) -> BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("MIP Uniform Bind Group"),
             layout: &self.uniform_bind_group_layout,
             entries: &[
                 wgpu::BindGroupEntry {
                     binding: 0,
-                    resource: self.uniform_buffer.as_entire_binding(),
+                    resource: uniform_buffer.as_entire_binding(),
                 },
             ],
         })
     }
-
-    /// Function-level comment: Update the uniform buffer with new MIP parameters.
-    /// Uploads the MipUniforms data to the GPU buffer.
-    pub fn update_uniforms(&self, queue: &Queue, uniforms: &MipUniforms) {
-        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[*uniforms]));
-    }
 }
 
 
-
-/// Function-level comment: MIP view that integrates with the existing RenderContent architecture.
-/// Provides Maximum Intensity Projection rendering while reusing texture data from MPR views
-/// for zero memory overhead and fast mode switching.
-pub struct MipView {
+pub struct MipViewWgpuImpl {
     /// Shared render content from existing MPR views
     render_content: Arc<RenderContent>,
-    /// MIP configuration settings
-    config: MipConfig,
     /// Render context for GPU resources
     render_context: MipRenderContext,
     /// Pre-created texture bind group for rendering
     texture_bind_group: BindGroup,
     /// Pre-created uniform bind group for rendering
     uniform_bind_group: BindGroup,
-    /// View position on screen
-    position: (i32, i32),
-    /// View dimensions
-    dimensions: (u32, u32),
+    /// Uniform buffer for MIP parameters
+    uniform_buffer: Buffer,
 }
 
-impl MipView {
+impl MipViewWgpuImpl {
     /// Function-level comment: Create a new MIP view using existing RenderContent.
     /// Accepts Arc<RenderContent> from MPR views to enable zero-copy texture sharing.
     pub fn new(render_content: Arc<RenderContent>, device: &Device, surface_format: wgpu::TextureFormat) -> Self {
@@ -301,34 +278,27 @@ impl MipView {
         
         let render_context = MipRenderContext::new(device, surface_format);
         let texture_bind_group = render_context.create_texture_bind_group(device, &render_content);
-        let uniform_bind_group = render_context.create_uniform_bind_group(device);
         
-        log::info!("[MIP_NEW] MipView created successfully");
-        
+        // Create uniform buffer
+        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("MIP Uniform Buffer"),
+                        size: std::mem::size_of::<MipUniforms>() as u64,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let uniform_bind_group = render_context.create_uniform_bind_group(device, &uniform_buffer);
         Self {
             render_content,
-            config: MipConfig::new(),
             render_context,
             texture_bind_group,
             uniform_bind_group,
-            position: (0, 0),
-            dimensions: (512, 512),
+            uniform_buffer,
         }
     }
-
+    
     /// Function-level comment: Get reference to the shared render content.
     pub fn render_content(&self) -> &Arc<RenderContent> {
         &self.render_content
-    }
-
-    /// Function-level comment: Get reference to the MIP configuration.
-    pub fn config(&self) -> &MipConfig {
-        &self.config
-    }
-
-    /// Function-level comment: Get mutable reference to the MIP configuration.
-    pub fn config_mut(&mut self) -> &mut MipConfig {
-        &mut self.config
     }
 
     /// Function-level comment: Get reference to the render context.
@@ -348,7 +318,47 @@ impl MipView {
 
     /// Function-level comment: Update the MIP uniforms for rendering.
     pub fn update_uniforms(&self, queue: &Queue, uniforms: &MipUniforms) {
-        self.render_context.update_uniforms(queue, uniforms);
+        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[*uniforms]));
+    }
+}
+
+
+
+/// Function-level comment: MIP view that integrates with the existing RenderContent architecture.
+/// Provides Maximum Intensity Projection rendering while reusing texture data from MPR views
+/// for zero memory overhead and fast mode switching.
+pub struct MipView {
+    /// WGPU implementation details
+    wgpu_impl: MipViewWgpuImpl,
+    /// MIP configuration settings
+    config: MipConfig,
+    /// View position on screen
+    position: (i32, i32),
+    /// View dimensions
+    dimensions: (u32, u32),
+}
+
+impl MipView {
+    /// Function-level comment: Create a new MIP view using existing RenderContent.
+    /// Accepts Arc<RenderContent> from MPR views to enable zero-copy texture sharing.
+    pub fn new(wgpuImpl: MipViewWgpuImpl) -> Self {
+        log::info!("[MIP_NEW] MipView created successfully");
+        Self {
+            wgpu_impl: wgpuImpl,
+            config: MipConfig::new(),
+            position: (0, 0),
+            dimensions: (512, 512),
+        }
+    }
+
+    /// Function-level comment: Get reference to the MIP configuration.
+    pub fn config(&self) -> &MipConfig {
+        &self.config
+    }
+
+    /// Function-level comment: Get mutable reference to the MIP configuration.
+    pub fn config_mut(&mut self) -> &mut MipConfig {
+        &mut self.config
     }
 
     /// Function-level comment: Update MIP view state and prepare for rendering.
@@ -357,7 +367,7 @@ impl MipView {
         log::trace!("[MIP_UPDATE] Starting MIP update");
         
         // Derive texture format flag for shader decoding
-        let is_packed_rg8 = match self.render_content.texture_format {
+        let is_packed_rg8 = match self.wgpu_impl.render_content().texture_format {
             wgpu::TextureFormat::Rg8Unorm => 1.0,
             _ => 0.0,
         };
@@ -400,7 +410,7 @@ impl MipView {
         };
 
         // Upload uniforms to GPU buffer
-        self.update_uniforms(queue, &uniforms);
+        self.wgpu_impl.update_uniforms(queue, &uniforms);
 
         log::trace!(
             "[MIP_UPDATE] Uniforms set: is_packed_rg8={}, window={}, level={}, step={}, max_steps={}, camera_pos=({}, {}, {})",
@@ -419,7 +429,7 @@ impl MipView {
                    self.position.0, self.position.1, self.dimensions.0, self.dimensions.1);
         
         // Set the MIP render pipeline
-        render_pass.set_pipeline(&self.render_context.pipeline);
+        render_pass.set_pipeline(&self.wgpu_impl.render_context().pipeline);
 
         // Set viewport for this view
         let (x, y) = (self.position.0 as f32, self.position.1 as f32);
@@ -427,10 +437,10 @@ impl MipView {
         render_pass.set_viewport(x, y, width, height, 0.0, 1.0);
 
         // Bind pre-created texture bind group (volume texture and sampler)
-        render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
+        render_pass.set_bind_group(0, &*self.wgpu_impl.bind_groups().0, &[]);
 
         // Bind pre-created uniform bind group (camera and volume parameters)
-        render_pass.set_bind_group(1, &self.uniform_bind_group, &[]);
+        render_pass.set_bind_group(1, &*self.wgpu_impl.bind_groups().1, &[]);
 
         // Draw fullscreen quad using triangle strip (4 vertices, no vertex buffer needed)
         // The vertex shader generates positions using vertex_index

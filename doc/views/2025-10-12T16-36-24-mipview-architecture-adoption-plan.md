@@ -1,4 +1,4 @@
-# MipView Architecture Adoption Plan
+ # MipView Architecture Adoption Plan
 
 **Document**: View System Refactoring Plan  
 **Date**: 2025-10-12T16:36:24  

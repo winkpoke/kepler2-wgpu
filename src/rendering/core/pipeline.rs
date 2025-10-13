@@ -252,7 +252,7 @@ pub fn get_or_create_texture_quad_pipeline(
 ///
 /// Returns
 /// - `Arc<wgpu::RenderPipeline>`: Shared pipeline handle for MIP rendering.
-pub fn get_or_create_mip_pipeline(
+pub fn get_or_create_mip_pipeline_(
     manager: &mut PipelineManager,
     device: &wgpu::Device,
     bind_group_layout: &wgpu::BindGroupLayout,
@@ -277,7 +277,7 @@ pub fn get_or_create_mip_pipeline(
     }
 
     log::trace!("Pipeline cache miss: {:?}. Creating.", key);
-    let pipeline = create_mip_pipeline(device, bind_group_layout, target_format);
+    let pipeline = create_mip_pipeline_(device, bind_group_layout, target_format);
     let pipeline = Arc::new(pipeline);
     manager.miss_count += 1;
     manager.insert(key, pipeline.clone());
@@ -299,7 +299,7 @@ pub fn get_or_create_mip_pipeline(
 ///
 /// Returns
 /// - `wgpu::RenderPipeline`: Newly created MIP pipeline.
-pub fn create_mip_pipeline(
+pub fn create_mip_pipeline_(
     device: &wgpu::Device,
     bind_group_layout: &wgpu::BindGroupLayout,
     target_format: wgpu::TextureFormat,
