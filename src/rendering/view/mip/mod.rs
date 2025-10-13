@@ -163,7 +163,7 @@ impl MipRenderContext {
         // Load MIP shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("MIP Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/mip.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(include_str!("../../shaders/mip.wgsl").into()),
         });
 
         // Create render pipeline layout

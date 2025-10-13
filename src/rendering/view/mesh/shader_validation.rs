@@ -73,7 +73,7 @@ impl<'a> ShaderValidator<'a> {
         let start_time = Instant::now();
         
         // Load and compile the mesh shader
-        let shader_source = include_str!("../shaders/mesh.wgsl");
+        let shader_source = include_str!("../../shaders/mesh.wgsl");
         
         // Attempt compilation to catch syntax errors
         let _shader_module = self.compile_shader("mesh.wgsl", shader_source)?;
@@ -289,7 +289,7 @@ impl<'a> ShaderValidator<'a> {
         let start_time = Instant::now();
         
         // Load and compile the depth shader
-        let shader_source = include_str!("../shaders/mesh_depth.wgsl");
+        let shader_source = include_str!("../../shaders/mesh_depth.wgsl");
         
         let _shader_module = self.compile_shader("mesh_depth.wgsl", shader_source)?;
         

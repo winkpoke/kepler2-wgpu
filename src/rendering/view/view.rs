@@ -360,7 +360,10 @@ impl Orientation {
 }
 
 struct MprWgpuImpl {
-    
+    /// Rendering context containing GPU resources and uniforms
+    pub(crate) ctx: RenderContext,
+    /// Reference to the 3D volume texture data
+    pub(crate) texture: Arc<RenderContent>,
 }
 
 /// Generic Multi-Planar Reconstruction (MPR) view implementation.
@@ -385,6 +388,8 @@ struct MprWgpuImpl {
 /// 4. **Window/Level Processing**: Applies CT display windowing
 /// 5. **Final Rendering**: Outputs the processed image to the view
 pub struct MprView {
+    /// Internal WGPU implementation details
+    // wgpu_impl: MprWgpuImpl,
     /// Rendering context containing GPU resources and uniforms
     ctx: RenderContext,
     /// Reference to the 3D volume texture data
