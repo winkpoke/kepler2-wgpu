@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Window/Level Processing**: Integrated tissue-specific brightness and contrast controls for clinical visualization
   - **Consistent Architecture**: Follows same design principles as MIP rendering for maintainability and consistency
   - Documented in `doc/views/mprview_design.md`
+- **MPR Architecture Transition Plan**: Created detailed step-by-step migration plan to move from current MPR implementation to the designed modular architecture
+  - **8-Step Migration Process**: Comprehensive plan with minimal disruption and maintained compilation at each step
+  - **Risk Mitigation**: Detailed risk assessment and rollback strategies for each transition step
+  - **Resource Sharing Benefits**: Clear path to Arc-based sharing for memory efficiency and thread safety
+  - **Functionality Preservation**: Ensures all existing MPR features remain intact during transition
+  - **Timeline Estimation**: 8-12 hours of focused development time with clear milestones
+  - **Validation Strategy**: Compilation safety, visual verification, and automated testing at each step
+  - Documented in `doc/views/mpr_architecture_transition_plan.md`
 
 ### Fixed
 - **Uniform Color Cube for Better Lighting Visualization**: Updated `uniform_color_cube()` function to use the same neutral gray color for all faces instead of different colors per face
