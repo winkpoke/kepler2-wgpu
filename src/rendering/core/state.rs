@@ -641,7 +641,7 @@ impl State {
                 &self.graphics.device,
                 self.graphics.surface_config.format,
             );
-            let mip_view = crate::rendering::mip::MipView::new(mip_wgpu_impl);
+            let mip_view = crate::rendering::mip::MipView::new(Arc::new(mip_wgpu_impl));
             self.layout.add_view(Box::new(mip_view));
         } else {
             // Mesh disabled: add all four MPR views (including oblique)

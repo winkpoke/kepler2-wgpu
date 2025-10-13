@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **MPR View Architecture Design**: Created comprehensive design document for MPR (Multi-Planar Reconstruction) rendering system following the same modular architecture as MIP views
+  - **Modular Component Design**: Defined clear separation between `MprRenderContext`, `RenderContent`, `MprViewWgpuImpl`, and `MprView`
+  - **Medical Imaging Focus**: Specialized for anatomical orientations (Transverse, Coronal, Sagittal, Oblique) with precise coordinate systems
+  - **Arc-based Sharing**: Designed for efficient resource sharing between multiple MPR views using `Arc<MprViewWgpuImpl>`
+  - **Coordinate System Management**: Supports multiple coordinate systems (screen, UV, medical, volume) for medical accuracy
+  - **Window/Level Processing**: Integrated tissue-specific brightness and contrast controls for clinical visualization
+  - **Consistent Architecture**: Follows same design principles as MIP rendering for maintainability and consistency
+  - Documented in `doc/views/mprview_design.md`
+
 ### Fixed
 - **Uniform Color Cube for Better Lighting Visualization**: Updated `uniform_color_cube()` function to use the same neutral gray color for all faces instead of different colors per face
   - **Improved Lighting Isolation**: All faces now use uniform gray color `[0.7, 0.7, 0.7]` to better isolate lighting effects

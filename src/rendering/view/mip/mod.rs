@@ -329,7 +329,7 @@ impl MipViewWgpuImpl {
 /// for zero memory overhead and fast mode switching.
 pub struct MipView {
     /// WGPU implementation details
-    wgpu_impl: MipViewWgpuImpl,
+    wgpu_impl: Arc<MipViewWgpuImpl>,
     /// MIP configuration settings
     config: MipConfig,
     /// View position on screen
@@ -339,15 +339,15 @@ pub struct MipView {
 }
 
 impl MipView {
-    /// Function-level comment: Create a new MIP view using existing RenderContent.
-    /// Accepts Arc<RenderContent> from MPR views to enable zero-copy texture sharing.
-    pub fn new(wgpu_impl: MipViewWgpuImpl) -> Self {
-        log::info!("[MIP_NEW] MipView created successfully");
+    /// Function-level comment: Create a new MIP view with the given WGPU implementation.
+    /// Initializes the view with default configuration and positioning.
+    /// The WGPU implementation is wrapped in Arc for potential sharing between views.
+    pub fn new(wgpu_impl: Arc<MipViewWgpuImpl>) -> Self {
         Self {
             wgpu_impl,
-            config: MipConfig::new(),
+            config: MipConfig::default(),
             position: (0, 0),
-            dimensions: (512, 512),
+            dimensions: (800, 600),
         }
     }
 
