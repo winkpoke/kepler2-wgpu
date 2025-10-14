@@ -36,6 +36,7 @@ use std::any::Any;
 use super::Renderable;
 use crate::core::coord::Base;
 use crate::core::geometry::GeometryBuilder;
+use crate::rendering::MprView;
 use crate::CTVolume;
 
 /// State snapshot for preserving view configuration during mode switches.
@@ -129,6 +130,7 @@ impl Default for ViewState {
 /// operations needed for view management while allowing concrete implementations
 /// to add specialized functionality.
 pub trait View: Renderable + Any {
+    // type ViewType;
     /// Get the current position of the view on screen (top-left corner in pixels)
     fn position(&self) -> (i32, i32);
     
@@ -147,11 +149,15 @@ pub trait View: Renderable + Any {
     /// Get a mutable reference to this view as Any for type introspection
     fn as_any_mut(&mut self) -> &mut dyn Any;
 
-    /// Attempt to cast this view to an MPRView for medical imaging operations.
-    /// Returns None if this view doesn't support MPR functionality.
-    fn as_mpr(&mut self) -> Option<&mut dyn MPRView> {
-        None
-    }
+    // Attempt to cast this view to an MPRView for medical imaging operations.
+    // Returns None if this view doesn't support MPR functionality.
+    // fn as_mpr(&mut self) -> Option<&mut Self::ViewType> {
+    //     if let Some(view) = self.as_any_mut().downcast_mut::<Self::ViewType>() {
+    //         Some(view)
+    //     } else {
+    //         None
+    //     }
+    // }
 }
 
 /// Enhanced View trait with state management capabilities.
@@ -249,53 +255,53 @@ pub trait ViewFactory {
 /// - **Slice Navigation**: Moves through the volume in millimeter units along the view normal
 /// - **Scale/Pan**: Provides zoom and pan functionality for detailed examination
 /// - **Coordinate Systems**: Handles both screen-space and medical-space coordinates
-pub trait MPRView: View {
-    // === Setters for view parameters ===
+// pub trait MPRView: View {
+//     // === Setters for view parameters ===
     
-    /// Set the window level (brightness control) for CT image display
-    fn set_window_level(&mut self, window_level: f32);
+//     /// Set the window level (brightness control) for CT image display
+//     fn set_window_level(&mut self, window_level: f32);
     
-    /// Set the window width (contrast control) for CT image display
-    fn set_window_width(&mut self, window_width: f32);
+//     /// Set the window width (contrast control) for CT image display
+//     fn set_window_width(&mut self, window_width: f32);
     
-    /// Set the current slice position in millimeters along the view normal
-    fn set_slice_mm(&mut self, z: f32);
+//     /// Set the current slice position in millimeters along the view normal
+//     fn set_slice_mm(&mut self, z: f32);
     
-    /// Set the zoom scale factor (1.0 = original size)
-    fn set_scale(&mut self, scale: f32);
+//     /// Set the zoom scale factor (1.0 = original size)
+//     fn set_scale(&mut self, scale: f32);
     
-    /// Set translation in view/model coordinate space
-    fn set_translate(&mut self, translate: [f32; 3]);
+//     /// Set translation in view/model coordinate space
+//     fn set_translate(&mut self, translate: [f32; 3]);
     
-    /// Set translation in screen coordinate space (for panning)
-    fn set_translate_in_screen_coord(&mut self, translate: [f32; 3]);
+//     /// Set translation in screen coordinate space (for panning)
+//     fn set_translate_in_screen_coord(&mut self, translate: [f32; 3]);
     
-    /// Pan the view in screen space by the specified amounts
-    fn set_pan(&mut self, x: f32, y: f32);
+//     /// Pan the view in screen space by the specified amounts
+//     fn set_pan(&mut self, x: f32, y: f32);
     
-    /// Pan the view by the specified amounts in millimeters
-    fn set_pan_mm(&mut self, x_mm: f32, y_mm: f32);
+//     /// Pan the view by the specified amounts in millimeters
+//     fn set_pan_mm(&mut self, x_mm: f32, y_mm: f32);
     
-    // === Getters for view parameters ===
+//     // === Getters for view parameters ===
     
-    /// Returns current window level used by the fragment shader
-    fn get_window_level(&self) -> f32;
+//     /// Returns current window level used by the fragment shader
+//     fn get_window_level(&self) -> f32;
     
-    /// Returns current window width used by the fragment shader
-    fn get_window_width(&self) -> f32;
+//     /// Returns current window width used by the fragment shader
+//     fn get_window_width(&self) -> f32;
     
-    /// Returns current slice position in millimeters along view normal
-    fn get_slice_mm(&self) -> f32;
+//     /// Returns current slice position in millimeters along view normal
+//     fn get_slice_mm(&self) -> f32;
     
-    /// Returns current scale factor applied in screen space
-    fn get_scale(&self) -> f32;
+//     /// Returns current scale factor applied in screen space
+//     fn get_scale(&self) -> f32;
     
-    /// Returns current pan/translation in screen coordinates [x, y, z]
-    fn get_translate_in_screen_coord(&self) -> [f32; 3];
+//     /// Returns current pan/translation in screen coordinates [x, y, z]
+//     fn get_translate_in_screen_coord(&self) -> [f32; 3];
     
-    /// Returns current translation in view/model coordinates [x, y, z]
-    fn get_translate(&self) -> [f32; 3];
-}
+//     /// Returns current translation in view/model coordinates [x, y, z]
+//     fn get_translate(&self) -> [f32; 3];
+// }
 
 /// Anatomical orientation for MPR views.
 /// 

@@ -212,46 +212,6 @@ impl<T: LayoutStrategy> Layout<T> {
         }
     }
 
-    /// Toggle between different view types at the specified index.
-    /// 
-    /// This is a convenience method that checks the current view type and
-    /// provides a framework for view type switching. The actual view creation
-    /// should be handled by the caller using ViewFactory.
-    pub fn toggle_view_type_at<F>(&mut self, index: usize, view_factory: F) -> Result<(), String>
-    where
-        F: FnOnce(&str) -> Result<Box<dyn View>, String>,
-    {
-        if index >= self.views.len() {
-            return Err(format!("Invalid view index: {}", index));
-        }
-
-        // Get the current view type name
-        let current_view = &self.views[index];
-        let current_type = std::any::type_name_of_val(current_view.as_ref());
-        
-        log::debug!("Current view type at index {}: {}", index, current_type);
-        
-        // Determine the target view type based on current type
-        let target_type = if current_type.contains("MeshView") {
-            "MPRView"
-        } else {
-            "MeshView"
-        };
-
-        // Create the new view using the factory
-        match view_factory(target_type) {
-            Ok(new_view) => {
-                self.replace_view_at(index, new_view);
-                log::info!("Successfully toggled view at index {} to {}", index, target_type);
-                Ok(())
-            }
-            Err(e) => {
-                log::error!("Failed to create {} view: {}", target_type, e);
-                Err(e)
-            }
-        }
-    }
-
     /// Get the total number of views in the layout.
     pub fn view_count(&self) -> usize {
         self.views.len()

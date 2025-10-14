@@ -56,6 +56,8 @@ pub fn read_dicom() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use dicom_object::open_file;
+
     use super::*;
 
     #[test]

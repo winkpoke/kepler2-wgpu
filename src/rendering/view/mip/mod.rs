@@ -499,8 +499,8 @@ impl View for MipView {
         self
     }
 
-    /// Function-level comment: MipView is not an MPR view, so return None.
-    fn as_mpr(&mut self) -> Option<&mut dyn crate::rendering::view::MPRView> {
-        None
-    }
+    // Function-level comment: MipView is not an MPR view, so return None.
+    // fn as_mpr(&mut self) -> Option<&mut dyn crate::rendering::view::MPRView> {
+    //     None
+    // }
 }

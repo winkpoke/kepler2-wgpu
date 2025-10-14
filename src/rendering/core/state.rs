@@ -449,7 +449,7 @@ impl State {
     /// Function-level comment: Check if the layout contains any MIP views for MIP pass execution.
     fn has_mip_content(&self) -> bool {
         self.layout.views.iter().any(|view| {
-            view.as_any().downcast_ref::<crate::rendering::mip::MipView>().is_some()
+            view.as_any().downcast_ref::<MipView>().is_some()
         })
     }
 
@@ -794,7 +794,7 @@ impl State {
     /// Function-level comment: Save the current MPR state from the specified view slot.
     fn save_mpr_state(&mut self, index: usize) {
         if let Some(view) = self.layout.views.get_mut(index) {
-            if let Some(mpr) = view.as_mpr() {
+            if let Some(mpr) = view.as_any_mut().downcast_mut::<MprView>() {
                 let snap = MPRViewState {
                     window_level: mpr.get_window_level(),
                     window_width: mpr.get_window_width(),
@@ -937,7 +937,7 @@ impl State {
 
     pub fn set_window_level(&mut self, index: usize, window_level: f32) {
         let view = self.layout.views.get_mut(index).unwrap();
-        if let Some(mpr_view) = view.as_mpr() {
+        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             if self.enable_float_volume_texture {
                 // Float path uses native HU values
                 mpr_view.set_window_level(window_level);
@@ -951,7 +951,7 @@ impl State {
 
     pub fn set_window_width(&mut self, index: usize, window_width: f32) {
         let view = self.layout.views.get_mut(index).unwrap();
-        if let Some(mpr_view) = view.as_mpr() {
+        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             mpr_view.set_window_width(window_width);
             log::info!("View {} set_window_width: {}", index, window_width);
         }
@@ -959,7 +959,7 @@ impl State {
 
     pub fn set_slice_mm(&mut self, index: usize, z: f32) {
         let view = self.layout.views.get_mut(index).unwrap();
-        if let Some(mpr_view) = view.as_mpr() {
+        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             mpr_view.set_slice_mm(z);
             log::info!("View {} set_slice: {}", index, z);
         }
@@ -967,7 +967,7 @@ impl State {
 
     pub fn set_scale(&mut self, index: usize, scale: f32) {
         let view = self.layout.views.get_mut(index).unwrap();
-        if let Some(mpr_view) = view.as_mpr() {
+        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             mpr_view.set_scale(scale);
             log::info!("View {} set_scale: {}", index, scale);
         }
@@ -975,7 +975,7 @@ impl State {
 
     pub fn set_translate(&mut self, index: usize, translate: [f32; 3]) {
         let view = self.layout.views.get_mut(index).unwrap();
-        if let Some(mpr_view) = view.as_mpr() {
+        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             log::info!("View {} translate: {:#?}", index, translate);
             mpr_view.set_translate(translate);
         }
@@ -983,7 +983,7 @@ impl State {
 
     pub fn set_translate_in_screen_coord(&mut self, index: usize, translate: [f32; 3]) {
         let view = self.layout.views.get_mut(index).unwrap();
-        if let Some(mpr_view) = view.as_mpr() {
+        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             log::info!("View {} move to: {:#?}", index, translate);
             mpr_view.set_translate_in_screen_coord(translate);
         }
@@ -991,7 +991,7 @@ impl State {
 
     pub fn set_pan(&mut self, index: usize, x: f32, y: f32 ) {
         let view = self.layout.views.get_mut(index).unwrap();
-        if let Some(mpr_view) = view.as_mpr() {
+        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             log::info!("View {} move to: {:#?}", index, (x, y));
             mpr_view.set_pan(x, y);
         }
@@ -999,9 +999,9 @@ impl State {
 
     pub fn set_pan_mm(&mut self, index: usize, x_mm: f32, y_mm: f32 ) {
         let view = self.layout.views.get_mut(index).unwrap();
-        if let Some(mpr_view) = view.as_mpr() {
+        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             log::info!("View {} move to mm: {:#?}", index, (x_mm, y_mm));
-            mpr_view.set_pan(x_mm, y_mm);
+            mpr_view.set_pan_mm(x_mm, y_mm);
         }
     }
 

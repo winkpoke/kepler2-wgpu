@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::{
     core::{array_to_slice, Base, GeometryBuilder},
     data::CTVolume,
-    rendering::{MPRView, Orientation, RenderContent, StatefulView, ViewState},
+    rendering::{Orientation, RenderContent, StatefulView, ViewState},
     Renderable, View,
 };
 
@@ -271,16 +271,11 @@ impl View for MprView {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
-
-    /// Cast this view to an MPRView since GenericMPRView implements MPRView.
-    fn as_mpr(&mut self) -> Option<&mut dyn MPRView> {
-        Some(self)
-    }
 }
 
-impl MPRView for MprView {
+impl MprView {
     /// Set the window level (brightness) for CT image display.
-    fn set_window_level(&mut self, window_level: f32) {
+    pub fn set_window_level(&mut self, window_level: f32) {
         // Update the internal state - will be synced to GPU in next update() call
         if let Some(wgpu_impl) = Arc::get_mut(&mut self.wgpu_impl) {
             wgpu_impl.uniforms.frag.window_level = window_level;
@@ -288,7 +283,7 @@ impl MPRView for MprView {
     }
 
     /// Set the window width (contrast) for CT image display.
-    fn set_window_width(&mut self, window_width: f32) {
+    pub fn set_window_width(&mut self, window_width: f32) {
         // Update the internal state - will be synced to GPU in next update() call
         if let Some(wgpu_impl) = Arc::get_mut(&mut self.wgpu_impl) {
             wgpu_impl.uniforms.frag.window_width = window_width;
@@ -299,28 +294,28 @@ impl MPRView for MprView {
     ///
     /// Converts millimeter units to internal coordinate system units
     /// using the volume's scale factors for accurate positioning.
-    fn set_slice_mm(&mut self, z: f32) {
+    pub fn set_slice_mm(&mut self, z: f32) {
         let [_, _, scale_z] = self.base_screen.get_scale_factors();
         self.pan[2] = z / scale_z;
     }
 
     /// Set the zoom scale factor.
-    fn set_scale(&mut self, scale: f32) {
+    pub fn set_scale(&mut self, scale: f32) {
         self.scale = scale;
     }
 
     /// Set translation in view/model coordinate space.
-    fn set_translate(&mut self, translate: [f32; 3]) {
+    pub fn set_translate(&mut self, translate: [f32; 3]) {
         self.translate = translate;
     }
 
     /// Set translation in screen coordinate space (for panning).
-    fn set_translate_in_screen_coord(&mut self, translate: [f32; 3]) {
+    pub fn set_translate_in_screen_coord(&mut self, translate: [f32; 3]) {
         self.pan = translate;
     }
 
     /// Pan the view in screen space.
-    fn set_pan(&mut self, x: f32, y: f32) {
+    pub fn set_pan(&mut self, x: f32, y: f32) {
         self.pan[0] = x;
         self.pan[1] = y;
     }
@@ -329,40 +324,40 @@ impl MPRView for MprView {
     ///
     /// Converts millimeter units to screen coordinate units using
     /// the volume's scale factors for accurate positioning.
-    fn set_pan_mm(&mut self, x_mm: f32, y_mm: f32) {
+    pub fn set_pan_mm(&mut self, x_mm: f32, y_mm: f32) {
         let [scale_x, scale_y, _] = self.base_screen.get_scale_factors();
         self.pan[0] = x_mm / scale_x;
         self.pan[1] = y_mm / scale_y;
     }
 
     /// Retrieve current window level from fragment uniforms for state snapshotting.
-    fn get_window_level(&self) -> f32 {
+    pub fn get_window_level(&self) -> f32 {
         self.wgpu_impl.uniforms.frag.window_level
     }
 
     /// Retrieve current window width from fragment uniforms for state snapshotting.
-    fn get_window_width(&self) -> f32 {
+    pub fn get_window_width(&self) -> f32 {
         self.wgpu_impl.uniforms.frag.window_width
     }
 
     /// Convert internal pan.z (in screen units) back to millimeters using base scale factors.
-    fn get_slice_mm(&self) -> f32 {
+    pub fn get_slice_mm(&self) -> f32 {
         let [_, _, scale_z] = self.base_screen.get_scale_factors();
         self.pan[2] * scale_z
     }
 
     /// Return current screen-space scale factor.
-    fn get_scale(&self) -> f32 {
+    pub fn get_scale(&self) -> f32 {
         self.scale
     }
 
     /// Return current screen-space translation vector.
-    fn get_translate_in_screen_coord(&self) -> [f32; 3] {
+    pub fn get_translate_in_screen_coord(&self) -> [f32; 3] {
         self.pan
     }
 
     /// Return current view/model-space translation vector.
-    fn get_translate(&self) -> [f32; 3] {
+    pub fn get_translate(&self) -> [f32; 3] {
         self.translate
     }
 }
