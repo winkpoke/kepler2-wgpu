@@ -1,13 +1,13 @@
 #![feature(duration_millis_float)]
 
-use log::{debug, error, info, warn};
+use log::warn;
 use winit::event_loop::EventLoopBuilder;
 use std::sync::Arc;
 
 // use wgpu::util::DeviceExt;
 use winit::{
     dpi::PhysicalSize,
-    window::{Window, WindowBuilder},
+    window::WindowBuilder,
 };
 
 // New module organization
@@ -23,7 +23,7 @@ pub use core::{coord, error::KeplerError, timing};
 pub use data::{ct_volume, dicom};
 pub use rendering::{
     view::{View, Renderable, Layout},
-    core::{pipeline::PipelineManager, state::State},
+    core::state::State,
 };
 pub use application::{render_app::RenderApp, gl_canvas::GLCanvas};
 
@@ -31,15 +31,12 @@ pub use application::{render_app::RenderApp, gl_canvas::GLCanvas};
 pub use rendering::mesh;
 
 // Current imports for existing functionality
-use crate::rendering::core::state::Graphics;
 use data::ct_volume::CTVolume;
 use application::gl_canvas::UserEvent;
 
 
 #[cfg(target_arch = "wasm32")]
 use async_lock::Mutex;
-#[cfg(not(target_arch = "wasm32"))]
-use tokio::sync::Mutex;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;

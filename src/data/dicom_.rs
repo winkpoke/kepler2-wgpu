@@ -1,8 +1,8 @@
 use anyhow::Result;
 use bytemuck::cast_slice;
 use dicom_core::Tag;
-use dicom_object::{from_reader, open_file, FileDicomObject, InMemDicomObject};
-use log::{debug, error, info, warn};
+use dicom_object::{from_reader, FileDicomObject, InMemDicomObject};
+use log::warn;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -56,6 +56,8 @@ pub fn read_dicom() -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use dicom_object::open_file;
+
     use super::*;
 
     #[test]

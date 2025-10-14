@@ -10,7 +10,7 @@ mod error_handling_tests {
         QualityLevel, mesh::Mesh,
     };
     use kepler_wgpu::rendering::mesh::mesh_view::FallbackMode;
-    use kepler_wgpu::rendering::core::pipeline::PipelineManager;
+
     use wgpu::{Instance, Backends, DeviceDescriptor, Features, Limits};
 
     /// Helper function to create a test device
@@ -221,14 +221,5 @@ mod error_handling_tests {
             assert!(!message.contains("Debug"), "Error message should not contain debug artifacts");
             assert!(!message.contains("{{"), "Error message should not contain template artifacts");
         }
-    }
-}
-
-#[cfg(not(feature = "mesh"))]
-mod disabled_tests {
-    #[test]
-    fn test_error_handling_feature_disabled() {
-        /// Test that error handling tests are properly disabled when mesh feature is not enabled
-        assert!(true, "Error handling tests should be skipped when mesh feature is disabled");
     }
 }

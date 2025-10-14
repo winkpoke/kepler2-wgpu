@@ -1,10 +1,11 @@
 #![allow(dead_code)]
 
 use crate::core::coord::{array_to_slice, Matrix4x4};
-use crate::rendering::content::render_content::RenderContent;
+use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::{
-    create_vertex_uniform_bind_group, get_or_create_texture_quad_pipeline, get_swapchain_format,
+    create_vertex_uniform_bind_group, get_swapchain_format,
 };
+use super::mpr_render_context::create_texture_quad_pipeline;
 use wgpu::util::DeviceExt;
 
 #[repr(C)]
@@ -86,17 +87,15 @@ pub struct RenderContext {
 }
 
 impl RenderContext {
-    /// Create a RenderContext using the centralized pipeline helper and PipelineManager cache.
-    /// This unifies pipeline acquisition to a single path (no direct PipelineBuilder usage),
+    /// Create a RenderContext using the centralized pipeline helper.
+    /// This creates the texture-quad pipeline directly without caching,
     /// ensuring consistent behavior across native and WASM targets.
     /// Parameters:
-    /// - manager: PipelineManager cache used to retrieve/create the texture-quad pipeline.
     /// - device: wgpu device used for GPU resource creation.
     /// - texture: RenderContent whose 3D texture and sampler are bound to the fragment stage.
     /// - transform_matrix: 4x4 matrix applied to the vertex positions for view transforms.
     /// Returns: A fully initialized RenderContext with pipeline, buffers, bind groups, and uniforms.
     pub fn new(
-        manager: &mut crate::rendering::core::pipeline::PipelineManager,
         device: &wgpu::Device,
         texture: &RenderContent,
         transform_matrix: Matrix4x4<f32>,
@@ -180,13 +179,12 @@ impl RenderContext {
             &vert_bind_group_layout,
             &frag_bind_group_layout,
         ];
-        let render_pipeline = crate::rendering::core::pipeline::get_or_create_texture_quad_pipeline(
-            manager,
+        let render_pipeline = std::sync::Arc::new(create_texture_quad_pipeline(
             device,
             bgls,
             &[Vertex::desc()],
             target_format,
-        );
+        ));
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),

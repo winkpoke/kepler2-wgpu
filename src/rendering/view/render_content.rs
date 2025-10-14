@@ -1,8 +1,6 @@
 #![allow(dead_code)]
 
 use anyhow::*;
-use log::{debug, error, info};
-use wgpu::util::DeviceExt;
 
 pub struct RenderContent {
     pub texture: wgpu::Texture,

@@ -1,5 +1,4 @@
-use crate::{core::coord::{Base, Matrix4x4, Vector3}, data::{dicom::{DicomRepo, CTImage}, ct_volume::CTVolume}};
-use std::ops::{DivAssign, SubAssign};
+use crate::{core::coord::{Base, Matrix4x4}, data::{dicom::{DicomRepo, CTImage}, ct_volume::CTVolume}};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;

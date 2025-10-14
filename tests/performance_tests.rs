@@ -538,12 +538,3 @@ mod performance_tests {
         assert!(stats.average_frame_time_ms >= 0.0);
     }
 }
-
-#[cfg(not(feature = "mesh"))]
-mod disabled_tests {
-    #[test]
-    fn test_performance_monitoring_feature_disabled() {
-        /// Test that performance monitoring is properly disabled when mesh feature is not enabled
-        assert!(true, "Performance monitoring tests should be skipped when mesh feature is disabled");
-    }
-}

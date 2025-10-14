@@ -6,7 +6,7 @@ use super::patient::Patient;
 use super::studyset::StudySet;
 use crate::core::coord::{Base, Matrix4x4};
 use crate::data::ct_volume::{CTVolume, CTVolumeGenerator};
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use std::cmp::Ordering;
 use std::collections::HashMap;
 
@@ -248,7 +248,11 @@ impl DicomRepo {
 
         // Return the constructed CTVolume
         Ok(CTVolume {
+<<<<<<< HEAD
             dimensions: (columns as usize, rows as usize,ct_images.len()),
+=======
+            dimensions: (columns as usize, rows as usize, ct_images.len()),
+>>>>>>> d767294a1bbde909e45644f1c023f8caef6ae0ee
             voxel_spacing,
             voxel_data,
             base: Base {

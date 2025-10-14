@@ -2,7 +2,6 @@ use super::dicom_helper::get_value;
 use crate::define_dicom_struct;
 use anyhow::{anyhow, Result, Context};
 use dicom_object::{FileDicomObject, InMemDicomObject};
-use std::borrow::Cow;
 
 define_dicom_struct!(CTImage, {
     (uid, String, "(0008,0018) SOPInstanceUID", false),              // Unique identifier for the image

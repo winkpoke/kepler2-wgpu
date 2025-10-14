@@ -2,7 +2,7 @@
 
 use wgpu::{Device, Queue};
 
-use crate::rendering::{get_or_create_mesh_pipeline_with_depth, PipelineManager};
+use crate::rendering::{get_or_create_mesh_pipeline_with_depth};
 
 /// Function-level comment: Uniform data structure for camera matrices and position
 #[repr(C)]
@@ -110,12 +110,12 @@ impl MeshRenderContext {
     /// Create a MeshRenderContext using the centralized mesh pipeline helper with indexed triangle rendering.
     /// This acquires a cached MeshBasic pipeline (TriangleList, CCW front face) without depth testing initially.
     /// It uploads both vertex and index buffers for efficient triangle rasterization across native and WASM.
-    pub fn new(manager: &mut PipelineManager, device: &Device, queue: &Queue, mesh: &super::mesh::Mesh, use_depth: bool) -> Self {
+    pub fn new(device: &Device, queue: &Queue, mesh: &super::mesh::Mesh, use_depth: bool) -> Self {
         log::info!("MeshRenderContext::new - Starting");
         
         // Test 1: Check if pipeline creation is the issue
         log::info!("MeshRenderContext::new - Creating pipeline");
-        let pipeline = get_or_create_mesh_pipeline_with_depth(manager, device, use_depth);
+        let pipeline = get_or_create_mesh_pipeline_with_depth(device, use_depth);
         log::info!("MeshRenderContext::new - Pipeline created successfully");
 
         // Test 2: Check if vertex buffer creation is the issue
@@ -354,8 +354,8 @@ impl MeshRenderContext {
 
     /// Function-level comment: Update the pipeline to use depth testing when depth texture is available.
     /// This allows switching from a no-depth pipeline to a depth-enabled pipeline after initialization.
-    pub fn enable_depth(&mut self, manager: &mut crate::rendering::core::pipeline::PipelineManager, device: &Device) {
-        self.pipeline = crate::rendering::core::pipeline::get_or_create_mesh_pipeline_with_depth(manager, device, true);
+    pub fn enable_depth(&mut self, device: &Device) {
+        self.pipeline = crate::rendering::core::pipeline::get_or_create_mesh_pipeline_with_depth(device, true);
     }
 
     /// Function-level comment: Update mesh data with dynamic buffer resizing for efficient memory usage.
@@ -446,8 +446,8 @@ impl MeshRenderContext {
 
     /// Function-level comment: Get buffer memory usage statistics for monitoring and optimization.
     pub fn get_memory_stats(&self) -> (u64, u64, f32, f32) {
-        let vertex_used = (self.num_vertices as u64 * std::mem::size_of::<super::mesh::MeshVertex>() as u64);
-        let index_used = (self.num_indices as u64 * std::mem::size_of::<u32>() as u64);
+        let vertex_used = self.num_vertices as u64 * std::mem::size_of::<super::mesh::MeshVertex>() as u64;
+        let index_used = self.num_indices as u64 * std::mem::size_of::<u32>() as u64;
         let vertex_efficiency = vertex_used as f32 / self.vertex_buffer.size() as f32;
         let index_efficiency = if self.index_buffer.size() > 0 {
             index_used as f32 / self.index_buffer.size() as f32
@@ -461,8 +461,8 @@ impl MeshRenderContext {
     /// Function-level comment: Get detailed buffer performance metrics for optimization analysis.
     /// Returns comprehensive statistics including fragmentation and allocation efficiency.
     pub fn get_detailed_buffer_metrics(&self) -> BufferMetrics {
-        let vertex_used = (self.num_vertices as u64 * std::mem::size_of::<super::mesh::MeshVertex>() as u64);
-        let index_used = (self.num_indices as u64 * std::mem::size_of::<u32>() as u64);
+        let vertex_used = self.num_vertices as u64 * std::mem::size_of::<super::mesh::MeshVertex>() as u64;
+        let index_used = self.num_indices as u64 * std::mem::size_of::<u32>() as u64;
         let total_allocated = self.vertex_buffer.size() + self.index_buffer.size();
         let total_used = vertex_used + index_used;
         

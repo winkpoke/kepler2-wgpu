@@ -18,6 +18,8 @@ pub enum PassId {
     MeshPass,
     /// 2D slice rendering pass (onscreen without depth buffer)
     SlicePass,
+    /// MIP (Maximum Intensity Projection) rendering pass (onscreen without depth buffer)
+    MipPass,
 }
 
 /// Describes a render pass, including its name, output, and clearing behavior.
@@ -65,6 +67,23 @@ impl PassDescriptor {
                 r: 0.1,
                 g: 0.1,
                 b: 0.1,
+                a: 1.0,
+            },
+            uses_depth: false,
+            clear_depth: false,
+        }
+    }
+
+    /// Create a descriptor for the MIP pass (Maximum Intensity Projection without depth)
+    pub fn mip_pass(surface_format: wgpu::TextureFormat) -> Self {
+        Self {
+            name: "MipPass".to_string(),
+            is_offscreen: false,
+            color_format: surface_format,
+            clear_color: wgpu::Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
                 a: 1.0,
             },
             uses_depth: false,
@@ -127,11 +146,14 @@ impl PassRegistry {
     /// # Arguments
     /// * `mesh_enabled` - Whether 3D mesh rendering is enabled
     /// * `has_mesh_content` - Whether there is actual mesh content to render
+    /// * `mip_enabled` - Whether MIP (Maximum Intensity Projection) rendering is enabled
+    /// * `has_mip_content` - Whether there is actual MIP content to render
     /// 
     /// Render order follows the architecture design:
     /// 1. MeshPass (3D) renders first with Clear operation to establish base scene
-    /// 2. SlicePass (2D) renders second with Load operation to overlay on mesh content
-    pub fn build_pass_plan(&self, mesh_enabled: bool, has_mesh_content: bool) -> PassPlan {
+    /// 2. MipPass (volume projection) renders second for 3D volume visualization
+    /// 3. SlicePass (2D) renders third with Load operation to overlay on existing content
+    pub fn build_pass_plan(&self, mesh_enabled: bool, has_mesh_content: bool, mip_enabled: bool, has_mip_content: bool) -> PassPlan {
         let mut plan = PassPlan::new();
 
         // Add mesh pass first for 3D rendering (base layer with Clear)
@@ -139,7 +161,12 @@ impl PassRegistry {
             plan.add_pass(PassId::MeshPass, PassDescriptor::mesh_pass(self.surface_format, true));
         }
 
-        // Add slice pass second for 2D rendering (overlay with Load)
+        // Add MIP pass second for volume projection rendering
+        if mip_enabled && has_mip_content {
+            plan.add_pass(PassId::MipPass, PassDescriptor::mip_pass(self.surface_format));
+        }
+
+        // Add slice pass third for 2D rendering (overlay with Load)
         plan.add_pass(PassId::SlicePass, PassDescriptor::slice_pass(self.surface_format));
 
         plan
@@ -290,6 +317,10 @@ impl PassExecutor {
                 log::error!("Slice pass error (critical): {}", error);
                 // Slice pass errors are critical since they affect 2D rendering
             }
+            PassId::MipPass => {
+                log::warn!("MIP pass error: {}", error);
+                // MIP pass errors are non-critical, just log them
+            }
         }
     }
     
@@ -322,6 +353,8 @@ impl PassExecutor {
     /// * `surface_height` - Height of the surface for offscreen texture sizing
     /// * `mesh_enabled` - Whether mesh rendering is enabled
     /// * `has_mesh_content` - Whether there is mesh content to render
+    /// * `mip_enabled` - Whether MIP rendering is enabled
+    /// * `has_mip_content` - Whether there is MIP content to render
     /// * `render_fn` - Function to execute rendering for each pass
     pub fn execute_frame<F>(
         &mut self,
@@ -333,18 +366,20 @@ impl PassExecutor {
         surface_height: u32,
         mesh_enabled: bool,
         has_mesh_content: bool,
+        mip_enabled: bool,
+        has_mip_content: bool,
         mut render_fn: F,
     ) -> Result<(), Box<dyn std::error::Error>>
     where
         F: FnMut(PassContext) -> Result<(), Box<dyn std::error::Error>>,
     {
         let frame_start_time = Instant::now();
-        log::trace!("[FRAME_EXEC] Starting frame execution - Surface: {}x{}, Mesh enabled: {}, Has mesh content: {}", 
-                    surface_width, surface_height, mesh_enabled, has_mesh_content);
+        log::trace!("[FRAME_EXEC] Starting frame execution - Surface: {}x{}, Mesh enabled: {}, Has mesh content: {}, MIP enabled: {}, Has MIP content: {}", 
+                    surface_width, surface_height, mesh_enabled, has_mesh_content, mip_enabled, has_mip_content);
         
         // Build the pass plan for this frame
         let effective_mesh_enabled = mesh_enabled && !self.mesh_pass_disabled;
-        let plan = self.registry.build_pass_plan(effective_mesh_enabled, has_mesh_content);
+        let plan = self.registry.build_pass_plan(effective_mesh_enabled, has_mesh_content, mip_enabled, has_mip_content);
         let mut frame_success = true;
         
         log::trace!("[FRAME_EXEC] Pass plan: {} passes scheduled, Effective mesh enabled: {}", 
@@ -361,6 +396,7 @@ impl PassExecutor {
             let pass_name = match pass_id {
                 PassId::MeshPass => "MESH",
                 PassId::SlicePass => "SLICE",
+                PassId::MipPass => "MIP",
             };
             log::trace!("[FRAME_EXEC] Executing {} pass: '{}'", pass_name, descriptor.name);
 
@@ -377,6 +413,10 @@ impl PassExecutor {
                 }
                 PassId::SlicePass => {
                     self.execute_slice_pass(encoder, frame_view, texture_pool, descriptor, &mut render_fn)
+                        .map_err(|e| PassExecutionError::RenderingFailed(e.to_string()))
+                }
+                PassId::MipPass => {
+                    self.execute_mip_pass(encoder, frame_view, texture_pool, descriptor, &mut render_fn)
                         .map_err(|e| PassExecutionError::RenderingFailed(e.to_string()))
                 }
             };
@@ -470,7 +510,7 @@ impl PassExecutor {
                 view: frame_view,  // Render directly to surface
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(descriptor.clear_color),
+                    load: wgpu::LoadOp::Load, // Preserve existing content from previous passes (e.g., mesh rendering)
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -570,6 +610,64 @@ impl PassExecutor {
             }
             Err(e) => {
                 log::error!("[SLICE_PASS] Rendering failed after {:.2}ms: {}", rendering_time, e);
+            }
+        }
+
+        render_result
+    }
+
+    /// Execute the MIP pass (onscreen without depth)
+    fn execute_mip_pass<F>(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        frame_view: &wgpu::TextureView,
+        texture_pool: &TexturePoolType,
+        descriptor: &PassDescriptor,
+        render_fn: &mut F,
+    ) -> Result<(), Box<dyn std::error::Error>>
+    where
+        F: FnMut(PassContext) -> Result<(), Box<dyn std::error::Error>>,
+    {
+        let start_time = Instant::now();
+        log::trace!("[MIP_PASS] Starting execution - Pass: '{}', Target: Surface (onscreen)", 
+                    descriptor.name);
+        log::trace!("[MIP_PASS] Clear color: {:?}, Clear depth: {}", 
+                    descriptor.clear_color, descriptor.clear_depth);
+
+        // Begin MIP render pass (renders directly to surface)
+        let render_pass_start = Instant::now();
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some(&descriptor.name),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: frame_view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None, // No depth for MIP rendering
+            occlusion_query_set: None,
+            timestamp_writes: None,
+        });
+        log::trace!("[MIP_PASS] Render pass creation completed in {:.2}ms", 
+                    render_pass_start.elapsed().as_millis_f64());
+        log::trace!("[MIP_PASS] Depth attachment: DISABLED (MIP rendering)");
+
+        // Execute rendering
+        let rendering_start = Instant::now();
+        let context = PassContext::new(&mut render_pass, descriptor, PassId::MipPass);
+        let render_result = render_fn(context);
+        let rendering_time = rendering_start.elapsed().as_millis_f64();
+
+        match &render_result {
+            Ok(_) => {
+                log::trace!("[MIP_PASS] Rendering completed successfully in {:.2}ms", rendering_time);
+                log::trace!("[MIP_PASS] Total execution time: {:.2}ms", 
+                            start_time.elapsed().as_millis_f64());
+            }
+            Err(e) => {
+                log::error!("[MIP_PASS] Rendering failed after {:.2}ms: {}", rendering_time, e);
             }
         }
 

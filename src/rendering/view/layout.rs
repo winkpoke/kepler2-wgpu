@@ -164,6 +164,59 @@ impl<T: LayoutStrategy> Layout<T> {
         self.views.clear();
     }
 
+    /// Replace a view at the specified index with a new view.
+    /// 
+    /// Returns the old view if the index is valid, or None if out of bounds.
+    /// The new view is automatically positioned and sized according to the layout strategy.
+    pub fn replace_view_at(&mut self, index: usize, mut new_view: Box<dyn View>) -> Option<Box<dyn View>> {
+        if index >= self.views.len() {
+            log::warn!("Attempted to replace view at invalid index: {}", index);
+            return None;
+        }
+
+        let total_views = self.views.len() as u32;
+        let (pos, size) = self.strategy.calculate_position_and_size(index as u32, total_views, self.dim);
+        
+        log::info!("Replacing view at index {} with position: {:?} and size: {:?}", index, pos, size);
+        new_view.move_to(pos);
+        new_view.resize(size);
+        
+        Some(std::mem::replace(&mut self.views[index], new_view))
+    }
+
+    /// Get a mutable reference to a view by index.
+    /// 
+    /// Returns None if the index is out of bounds.
+    pub fn get_view_mut(&mut self, index: usize) -> Option<&mut Box<dyn View>> {
+        if index >= self.views.len() {
+            return None;
+        }
+        self.views.get_mut(index)
+    }
+
+    /// Check if a view at the specified index is of a specific type.
+    /// 
+    /// This method uses type name comparison to determine view type.
+    /// Returns false if the index is out of bounds.
+    pub fn is_view_type<V: View + 'static>(&self, index: usize) -> bool {
+        if let Some(view) = self.get_view_by_index(index) {
+            // Use type_name for type checking
+            let target_type = std::any::type_name::<V>();
+            let actual_type = std::any::type_name_of_val(view.as_ref());
+            
+            // For more robust type checking, we can also check if the type names contain
+            // the expected view type (e.g., "MeshView" or "GenericMPRView")
+            actual_type.contains(&target_type.split("::").last().unwrap_or(target_type))
+        } else {
+            false
+        }
+    }
+
+    /// Get the total number of views in the layout.
+    pub fn view_count(&self) -> usize {
+        self.views.len()
+    }
+
     /// Resize the parent dimensions and recompute each view's position and size.
     ///
     /// TODO: Cache per-cell dimensions for strategies like `GridLayout` to minimize repeated math.
