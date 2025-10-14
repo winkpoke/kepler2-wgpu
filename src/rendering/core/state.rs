@@ -740,9 +740,8 @@ impl State {
     }
 
     /// Function-level comment: Disable mesh mode by creating GenericMPRView and restoring MPR state.
-    fn disable_mesh_mode(&mut self, manager: &mut PipelineManager, 
-                        index: usize, pos: (i32, i32), size: (u32, u32)) {
-        let mut view = self.create_mpr_view_for_slot(manager, index);
+    fn disable_mesh_mode(&mut self, index: usize, pos: (i32, i32), size: (u32, u32)) {
+        let mut view = self.create_mpr_view_for_slot(index);
         self.restore_mpr_state(&mut view);
         
         view.move_to(pos);
@@ -860,8 +859,7 @@ impl State {
     }
 
     /// Function-level comment: Create a GenericMPRView for the specified slot with appropriate orientation.
-    fn create_mpr_view_for_slot(&self, manager: &mut PipelineManager, 
-                               index: usize) -> crate::rendering::view::MprView {
+    fn create_mpr_view_for_slot(&self, index: usize) -> crate::rendering::view::MprView {
         use crate::rendering::view::{MprView, ALL_ORIENTATIONS};
 
         let vol = self.last_volume.as_ref().unwrap();
