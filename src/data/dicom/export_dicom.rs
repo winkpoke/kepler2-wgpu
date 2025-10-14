@@ -4,7 +4,7 @@ use super::{
 };
 use crate::data::medical_imaging::{
     formats::mha::*,
-    metadata::{MedicalVolume, PixelType}, PixelData
+    metadata::{PixelType, PixelData},
 };
 
 use anyhow::{anyhow, Result};
@@ -160,7 +160,6 @@ fn inject_image<S: DicomSink>(
     ];
 
     let orientation = metadata.orientation;
-    let transform: Vec<f32> = orientation.into_iter().flatten().collect();
     let data = medical_volume.pixel_data.as_bytes().to_vec();
     let voxel_count = col * row * depth;
 
@@ -179,11 +178,10 @@ fn inject_image<S: DicomSink>(
             for new_x in 0..depth {
                 for new_y in 0..row {
                     for new_z in 0..col{
-                        // 绕y轴顺时针旋转90度的坐标映射
                         let old_x = new_z; 
                         let old_y = new_y; 
                         let old_z = new_x;
-                        
+
                         let old_idx = old_z * (row * col) + old_y * col + old_x;
                         let new_idx = new_z * (row * depth) + new_y * depth + new_x;
                         rotated_i16[new_idx] = vol[old_idx];

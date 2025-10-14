@@ -1,5 +1,4 @@
 use anyhow::Result;
-#[cfg(not(target_arch = "wasm32"))]
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
@@ -476,6 +475,8 @@ pub async fn parse_common_files_wasm(files: Array, info: js_sys::Uint8Array) -> 
     }
 }
 
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+#[cfg(target_arch = "wasm32")]
 pub async fn read_file_as_bytes(file: File) -> Result<Vec<u8>, JsValue> {
     let array_buffer = JsFuture::from(file.array_buffer()).await?;
     let uint8_array = Uint8Array::new(&array_buffer);
