@@ -1,4 +1,5 @@
 use anyhow::Result;
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::{
     atomic::{AtomicUsize, Ordering},
     Arc,
@@ -14,7 +15,7 @@ use tokio::sync::Mutex;
 use super::*;
 use crate::data::ct_volume::CTVolume;
 use crate::data::medical_imaging::formats::*;
-use crate::data::medical_imaging::metadata::{volume::MedicalVolume, PixelData, ImageMetadata};
+use crate::data::medical_imaging::metadata::{volume::MedicalVolume, PixelData};
 
 /// Parses DICOM files from a list of directories and constructs a `DicomRepo`.
 ///
@@ -479,4 +480,86 @@ pub async fn read_file_as_bytes(file: File) -> Result<Vec<u8>, JsValue> {
     let array_buffer = JsFuture::from(file.array_buffer()).await?;
     let uint8_array = Uint8Array::new(&array_buffer);
     Ok(uint8_array.to_vec())
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+#[cfg(target_arch = "wasm32")]
+pub async fn build_ct_dicom_wasm(
+    mha_bytes: js_sys::Uint8Array,
+    patient: js_sys::Uint8Array,
+    study: js_sys::Uint8Array,
+    info: js_sys::Uint8Array,
+) -> Result<JsValue,JsValue> {
+    //patient JSON
+    let mut p_buf = vec![0u8; patient.length() as usize];
+    patient.copy_to(&mut p_buf[..]);
+    let patient_json = String::from_utf8(p_buf)
+        .map_err(|e| JsValue::from_str(&format!("UTF8 decode error: {}", e)))?;
+    let patient: serde_json::Value = serde_json::from_str(&patient_json)
+        .map_err(|e| JsValue::from_str(&format!("JSON parse error: {}", e)))?;
+    let patient = Patient {
+        patient_id: patient["patient_id"].as_str().unwrap_or("").to_string(),
+        name: patient["name"].as_str().unwrap_or("").to_string(),
+        birthdate: patient["birthdate"].as_str().map(|s| s.to_string()),
+        sex: patient["sex"].as_str().map(|s|s.to_string())
+    };
+
+    //study JSON
+    let mut s_buf = vec![0u8; study.length() as usize];
+    study.copy_to(&mut s_buf[..]);
+    let study_json = String::from_utf8(s_buf)
+        .map_err(|e| JsValue::from_str(&format!("UTF8 decode error: {}", e)))?;
+    let study: serde_json::Value = serde_json::from_str(&study_json)
+        .map_err(|e| JsValue::from_str(&format!("JSON parse error: {}", e)))?;
+    let uid = generate_uid();
+    let study = StudySet {
+        uid: uid.clone(),
+        study_id: study["study_id"].as_str().unwrap_or("").to_string(),
+        patient_id: study["patient_id"].as_str().unwrap_or("").to_string(),
+        date: study["date"].as_str().unwrap_or("").to_string(),
+        description: study["description"].as_str().map(|s| s.to_string()),
+    };
+
+    // info JSON
+    let mut buf = vec![0u8; info.length() as usize];
+    info.copy_to(&mut buf[..]);
+    let info_json = String::from_utf8(buf)
+        .map_err(|e| JsValue::from_str(&format!("UTF8 decode error: {}", e)))?;
+    let info: serde_json::Value = serde_json::from_str(&info_json)
+        .map_err(|e| JsValue::from_str(&format!("JSON parse error: {}", e)))?;
+    let kv = info["kv"].as_f64().ok_or(JsValue::from_str("Missing kv in info"))?;
+    let m_as = info["mAs"].as_f64().ok_or(JsValue::from_str("Missing mAs in info"))?;
+        let slope = info["slope"].as_f64()
+        .map(|v| v as f32)
+        .ok_or(JsValue::from_str("Missing slope in info"))?;
+    let intercept = info["intercept"].as_f64()
+        .map(|v| v as f32)
+        .ok_or(JsValue::from_str("Missing intercept in info"))?;
+    log::info!("dicom info: kv={}, mAs={}, slope = {:?}, intercept = {:?}", kv, m_as, slope, intercept);
+
+    // MHA bytes
+    let mut buf = vec![0u8; mha_bytes.length() as usize];
+    mha_bytes.copy_to(&mut buf[..]);
+
+    // Build DICOM files in memory
+    let mut sink = MemSink::new();
+    build_ct_dicom(
+        &buf,
+        &patient,
+        &study,
+        kv, m_as,
+        slope, intercept,
+        &mut sink
+    ).map_err(|e| JsValue::from_str(&format!("build_ct_dicom failed: {}", e)))?;
+
+    // Convert the files in MemSink to a JavaScript array of objects
+    let js_array = js_sys::Array::new();
+    for (filename, data) in sink.files {
+        let obj = js_sys::Object::new();
+        js_sys::Reflect::set(&obj, &"filename".into(), &JsValue::from_str(&filename))?;
+        js_sys::Reflect::set(&obj, &"data".into(), &js_sys::Uint8Array::from(data.as_slice()))?;
+        js_array.push(&obj);
+    }
+
+    Ok(js_array.into())
 }
