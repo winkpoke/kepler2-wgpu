@@ -166,36 +166,10 @@ fn inject_image<S: DicomSink>(
     // little endian
     let vol = PixelData::create_pixel_data(data, metadata.pixel_type, voxel_count, slope, intercept)?;
     let mut buffer = Vec::with_capacity(vol.len() * 2);
-    let buffer = match metadata.pixel_type {
-        PixelType::Int16 => {
-            for val in vol{
-                buffer.extend_from_slice(&val.to_le_bytes());
-            }
-            buffer
-        }
-        PixelType::Float32 => {
-            let mut rotated_i16 = vec![0i16; row * col * depth];
-            for new_x in 0..depth {
-                for new_y in 0..row {
-                    for new_z in 0..col{
-                        let old_x = new_z; 
-                        let old_y = new_y; 
-                        let old_z = new_x;
+    for v in vol {
+        buffer.extend_from_slice(&v.to_le_bytes());
+    }
 
-                        let old_idx = old_z * (row * col) + old_y * col + old_x;
-                        let new_idx = new_z * (row * depth) + new_y * depth + new_x;
-                        rotated_i16[new_idx] = vol[old_idx];
-                    }
-                }
-            }
-            for val in rotated_i16 {
-                buffer.extend_from_slice(&val.to_le_bytes());
-            }
-            buffer
-        }
-        _ => return Err(anyhow!("不支持的 mha element type: {:?}", metadata.pixel_type)),
-    };
-    
     // generate dicom slice
     for z in 0..depth {
         let start = z * col * row * (16 as usize / 8);
@@ -413,7 +387,7 @@ mod tests {
     #[test]
     fn test_build_ct_dicom() {
         // 测试路径
-        let path = "C:/share/input/CT_new.mha";
+        let path = "C:/share/input/CT.mha";
         let data = fs::read(path);
         let mha_path = data.as_ref().map(|v| v.as_slice()).unwrap();
         let out_dir = Path::new("C:/share").join(Local::now().format("%Y-%m-%d").to_string());

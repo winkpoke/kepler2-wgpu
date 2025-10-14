@@ -71,16 +71,16 @@ impl MedicalVolume {
 
         // translation matrix
         let translation_matrix = Matrix4x4::from_array([
-            1.0, 0.0, 0.0, offset[0],
-            0.0, 1.0, 0.0, offset[1],
-            0.0, 0.0, 1.0, offset[2],
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
             0.0, 0.0, 0.0, 1.0,
         ]);
 
         let direction_matrix = Matrix4x4::from_array([
-            transform[0], transform[1], transform[2], 0.0,
-            transform[3], transform[4], transform[5], 0.0,
-            transform[6], transform[7], transform[8], 0.0,
+            1.0, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
             0.0, 0.0, 0.0, 1.0,
         ]);
 
