@@ -215,7 +215,6 @@ pub trait ViewFactory {
     /// camera settings and rendering pipeline.
     fn create_mesh_view(
         &self, 
-        manager: &mut crate::rendering::core::pipeline::PipelineManager, 
         pos: (i32, i32), 
         size: (u32, u32)
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>>;
@@ -228,14 +227,12 @@ pub trait ViewFactory {
     /// 
     /// ## Parameters
     /// 
-    /// - `manager`: Pipeline manager for GPU resource management
     /// - `vol`: CT volume data containing the medical imaging dataset
     /// - `orientation`: Anatomical orientation (Transverse, Coronal, Sagittal, Oblique)
     /// - `pos`: Initial position on screen
     /// - `size`: Initial dimensions of the view
     fn create_mpr_view(
         &self, 
-        manager: &mut crate::rendering::core::pipeline::PipelineManager, 
         vol: &CTVolume, 
         orientation: Orientation, 
         pos: (i32, i32), 

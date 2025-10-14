@@ -129,12 +129,11 @@ impl ViewManager {
     /// * `Err(String)` - Factory error or creation failure
     pub fn create_mesh_view(
         &self,
-        manager: &mut crate::rendering::core::pipeline::PipelineManager,
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, String> {
         log::info!("Creating mesh view through ViewManager at pos: {:?}, size: {:?}", pos, size);
-        self.factory.create_mesh_view(manager, pos, size)
+        self.factory.create_mesh_view(pos, size)
             .map_err(|e| {
                 log::error!("Failed to create mesh view: {}", e);
                 format!("{}", e)
@@ -144,7 +143,6 @@ impl ViewManager {
     /// Create a new MPR view using the configured factory.
     ///
     /// # Arguments
-    /// * `manager` - Pipeline manager for resource creation
     /// * `vol` - CT volume data for MPR rendering
     /// * `orientation` - MPR orientation (Axial, Coronal, Sagittal)
     /// * `pos` - Position (x, y) for the view
@@ -155,7 +153,6 @@ impl ViewManager {
     /// * `Err(String)` - Factory error or creation failure
     pub fn create_mpr_view(
         &self,
-        manager: &mut crate::rendering::core::pipeline::PipelineManager,
         vol: &crate::data::ct_volume::CTVolume,
         orientation: super::Orientation,
         pos: (i32, i32),
@@ -163,7 +160,7 @@ impl ViewManager {
     ) -> Result<Box<dyn View>, String> {
         log::info!("Creating MPR view through ViewManager with orientation: {:?} at pos: {:?}, size: {:?}", 
                    orientation, pos, size);
-        self.factory.create_mpr_view(manager, vol, orientation, pos, size)
+        self.factory.create_mpr_view(vol, orientation, pos, size)
             .map_err(|e| {
                 log::error!("Failed to create MPR view: {}", e);
                 format!("{}", e)
@@ -228,16 +225,14 @@ mod tests {
     impl ViewFactory for MockViewFactory {
         fn create_mesh_view(
             &self,
-            _manager: &mut crate::rendering::core::pipeline::PipelineManager,
             _pos: (i32, i32),
             _size: (u32, u32),
         ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
             Err("Mock factory - not implemented".into())
         }
-
+        
         fn create_mpr_view(
             &self,
-            _manager: &mut crate::rendering::core::pipeline::PipelineManager,
             _vol: &crate::data::ct_volume::CTVolume,
             _orientation: Orientation,
             _pos: (i32, i32),

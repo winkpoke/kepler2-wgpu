@@ -86,17 +86,15 @@ pub struct RenderContext {
 }
 
 impl RenderContext {
-    /// Create a RenderContext using the centralized pipeline helper and PipelineManager cache.
-    /// This unifies pipeline acquisition to a single path (no direct PipelineBuilder usage),
+    /// Create a RenderContext using the centralized pipeline helper.
+    /// This creates the texture-quad pipeline directly without caching,
     /// ensuring consistent behavior across native and WASM targets.
     /// Parameters:
-    /// - manager: PipelineManager cache used to retrieve/create the texture-quad pipeline.
     /// - device: wgpu device used for GPU resource creation.
     /// - texture: RenderContent whose 3D texture and sampler are bound to the fragment stage.
     /// - transform_matrix: 4x4 matrix applied to the vertex positions for view transforms.
     /// Returns: A fully initialized RenderContext with pipeline, buffers, bind groups, and uniforms.
     pub fn new(
-        manager: &mut crate::rendering::core::pipeline::PipelineManager,
         device: &wgpu::Device,
         texture: &RenderContent,
         transform_matrix: Matrix4x4<f32>,
@@ -181,7 +179,6 @@ impl RenderContext {
             &frag_bind_group_layout,
         ];
         let render_pipeline = crate::rendering::core::pipeline::get_or_create_texture_quad_pipeline(
-            manager,
             device,
             bgls,
             &[Vertex::desc()],

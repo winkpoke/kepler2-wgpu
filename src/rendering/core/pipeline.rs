@@ -25,7 +25,6 @@
 //! - Add tests covering cache hit/miss behavior and signature correctness.
 #![allow(dead_code)]
 
-use std::collections::HashMap;
 use wgpu::util::DeviceExt;
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
@@ -70,225 +69,30 @@ pub fn get_mesh_depth_format() -> wgpu::TextureFormat {
     wgpu::TextureFormat::Depth24Plus
 }
 
-/// Minimal pipeline cache key for render pipelines.
-///
-/// Keys group pipelines by characteristics that affect pipeline creation. This ensures we reuse
-/// identical pipelines rather than re-compiling them. Keys should be deterministic across builds.
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum PipelineKey {
-    /// Volume slice quad pipeline, parameterized by the target surface format, layout signatures, and optional depth format.
-    VolumeSliceQuad { target_format: wgpu::TextureFormat, vertex_sig: String, bgl_sig: String },
-    /// Basic mesh pipeline, parameterized by target format, primitive topology, and depth usage.
-    MeshBasic { target_format: wgpu::TextureFormat, topology: wgpu::PrimitiveTopology, use_depth: bool },
-    /// MIP (Maximum Intensity Projection) pipeline, parameterized by target format and quality level.
-    MipBasic { target_format: wgpu::TextureFormat, quality: String },
-    /// Custom pipelines keyed by a deterministic descriptor signature.
-    Custom { signature: String },
-}
+// Pipeline creation is now handled directly without caching for simplified architecture.
 
-/// Pipeline manager for caching and retrieving `wgpu::RenderPipeline` objects.
-///
-/// Responsibilities
-/// - Maintain a map of pipelines keyed by `PipelineKey`.
-/// - Provide hit/miss counters for basic cache instrumentation.
-/// - Offer helper operations to insert, clear, and snapshot keys.
-///
-/// Concurrency
-/// - This manager is not thread-safe and expects exclusive `&mut` access. If you need concurrent
-///   access, consider `Arc<Mutex<PipelineManager>>` or redesign to use atomics for counters and
-///   immutable values for pipeline storage.
-pub struct PipelineManager {
-    /// Cache storage keyed by pipeline descriptors that influence pipeline creation.
-    pipelines: HashMap<PipelineKey, Arc<wgpu::RenderPipeline>>, 
-    /// Total number of cache hits observed.
-    hit_count: usize,
-    /// Total number of cache misses observed.
-    miss_count: usize,
-}
-
-impl PipelineManager {
-    /// Creates a new, empty pipeline manager.
-    pub fn new() -> Self {
-        Self { pipelines: HashMap::new(), hit_count: 0, miss_count: 0 }
-    }
-
-    /// Returns a reference to a cached pipeline by key if it exists.
-    ///
-    /// Parameters
-    /// - `key`: The `PipelineKey` to look up.
-    ///
-    /// Returns
-    /// - `Option<&Arc<wgpu::RenderPipeline>>`: Reference to the cached pipeline if present.
-    pub fn get(&self, key: &PipelineKey) -> Option<&Arc<wgpu::RenderPipeline>> {
-        self.pipelines.get(key)
-    }
-
-    /// Inserts or replaces a pipeline under the given key.
-    ///
-    /// Parameters
-    /// - `key`: Key describing the pipeline.
-    /// - `pipeline`: The `wgpu::RenderPipeline` wrapped in `Arc` to allow shared ownership.
-    ///
-    /// Notes
-    /// - Replacing an existing pipeline under the same key will overwrite the previous value.
-    pub fn insert(&mut self, key: PipelineKey, pipeline: Arc<wgpu::RenderPipeline>) {
-        log::info!("Inserted pipeline {:?}", &key);
-        self.pipelines.insert(key, pipeline);
-    }
-
-    /// Removes a pipeline from the cache and returns it if present.
-    pub fn remove(&mut self, key: &PipelineKey) -> Option<Arc<wgpu::RenderPipeline>> {
-        self.pipelines.remove(key)
-    }
-
-    /// Clears all cached pipelines and resets counters.
-    ///
-    /// Notes
-    /// - Clearing pipelines invalidates GPU state references. Ensure no active render passes rely on
-    ///   these pipelines at the time of clearing.
-    pub fn clear(&mut self) {
-        self.pipelines.clear();
-        self.hit_count = 0;
-        self.miss_count = 0;
-    }
-
-    /// Checks if a pipeline with the given key exists.
-    pub fn exists(&self, key: &PipelineKey) -> bool {
-        self.pipelines.contains_key(key)
-    }
-
-    /// Returns current cache size.
-    pub fn cache_size(&self) -> usize { self.pipelines.len() }
-
-    /// Clears all cached pipelines. Alias for `clear()`.
-    pub fn invalidate_all(&mut self) {
-        self.clear();
-    }
-
-    /// Records a cache hit in the manager's monitoring counters.
-    pub fn record_hit(&mut self) { self.hit_count += 1; }
-
-    /// Records a cache miss in the manager's monitoring counters.
-    pub fn record_miss(&mut self) { self.miss_count += 1; }
-
-    /// Returns the total number of cache hits observed since initialization.
-    pub fn hits(&self) -> usize { self.hit_count }
-
-    /// Returns the total number of cache misses observed since initialization.
-    pub fn misses(&self) -> usize { self.miss_count }
-
-    /// Returns a snapshot of the current set of pipeline keys in the cache.
-    pub fn keys_snapshot(&self) -> Vec<PipelineKey> { self.pipelines.keys().cloned().collect() }
-}
-
-// Removed global PIPELINE_MANAGER singleton to support WASM and instance-based management.
-
-/// Returns a cached texture-quad pipeline if present, otherwise creates, caches, and returns it.
+/// Creates a texture-quad pipeline for 2D MPR views.
 ///
 /// Parameters
-/// - `manager`: Pipeline cache used to deduplicate `wgpu::RenderPipeline` creation.
 /// - `device`: Logical device used for pipeline creation.
 /// - `bind_group_layouts`: Trio of bind group layouts in order [texture, vertex uniforms, fragment uniforms].
 /// - `vertex_buffers`: Vertex buffer layouts describing the quad vertex input.
 /// - `target_format`: Color target format; typically the swapchain/surface format.
 ///
 /// Returns
-/// - `Arc<wgpu::RenderPipeline>`: Shared reference to the cached or newly created pipeline.
-///
-/// Notes
-/// - Keying uses string-based signatures of vertex layouts and bind group layouts to ensure stability across runs.
-/// - Hit/miss counters are updated for simple cache instrumentation.
-///
-/// TODO
-/// - Replace string signatures with a compact, stable hash (e.g., `ahash`) to reduce key memory and compare time.
-/// - Support MSAA and depth-stencil variants via extended `PipelineKey` fields.
+/// - `Arc<wgpu::RenderPipeline>`: Shared reference to the newly created pipeline.
 pub fn get_or_create_texture_quad_pipeline(
-    manager: &mut PipelineManager,
     device: &wgpu::Device,
     bind_group_layouts: [&wgpu::BindGroupLayout; 3],
     vertex_buffers: &[wgpu::VertexBufferLayout<'static>],
     target_format: wgpu::TextureFormat,
 ) -> Arc<wgpu::RenderPipeline> {
-    // Compute signatures for cache key stability. These reflect inputs that influence pipeline creation.
-    let vertex_sig = vertex_layout_signature(vertex_buffers);
-    let bgl_sig = default_slice_bgl_signature();
-
-    // Compose the cache key from target format and layout signatures.
-    let key = PipelineKey::VolumeSliceQuad { target_format, vertex_sig: vertex_sig.clone(), bgl_sig: bgl_sig.clone() };
-    if let Some(p) = { manager.get(&key).cloned() } {
-        manager.hit_count += 1;
-        log::trace!(
-            "Pipeline cache hit: {:?}. Hits={}, Misses={}, Size={}",
-            key,
-            manager.hit_count,
-            manager.miss_count,
-            manager.cache_size()
-        );
-        return p;
-    }
-
-    log::trace!("Pipeline cache miss: {:?}. Creating.", key);
+    log::trace!("Creating texture quad pipeline for target format: {:?}", target_format);
     let pipeline = create_texture_quad_pipeline(device, bind_group_layouts, vertex_buffers, target_format);
-    let pipeline = Arc::new(pipeline);
-    manager.miss_count += 1;
-    manager.insert(key, pipeline.clone());
-    log::trace!(
-        "Pipeline inserted. Hits={}, Misses={}, Size={}",
-        manager.hit_count,
-        manager.miss_count,
-        manager.cache_size()
-    );
-    pipeline
+    Arc::new(pipeline)
 }
 
-/// Returns a cached MIP pipeline if present, otherwise creates, caches, and returns it.
-/// Uses global swapchain format if set; otherwise falls back to Rgba8Unorm.
-///
-/// Parameters
-/// - `manager`: Pipeline cache used to deduplicate creation.
-/// - `device`: Logical device used to build shader modules and pipelines.
-/// - `bind_group_layout`: Bind group layout for MIP uniforms.
-/// - `quality`: Quality level string for pipeline differentiation.
-///
-/// Returns
-/// - `Arc<wgpu::RenderPipeline>`: Shared pipeline handle for MIP rendering.
-pub fn get_or_create_mip_pipeline_(
-    manager: &mut PipelineManager,
-    device: &wgpu::Device,
-    bind_group_layout: &wgpu::BindGroupLayout,
-    quality: &str,
-) -> Arc<wgpu::RenderPipeline> {
-    let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
-    let key = PipelineKey::MipBasic { 
-        target_format, 
-        quality: quality.to_string() 
-    };
 
-    if let Some(p) = { manager.get(&key).cloned() } {
-        manager.hit_count += 1;
-        log::trace!(
-            "Pipeline cache hit: {:?}. Hits={}, Misses={}, Size={}",
-            key,
-            manager.hit_count,
-            manager.miss_count,
-            manager.cache_size()
-        );
-        return p;
-    }
-
-    log::trace!("Pipeline cache miss: {:?}. Creating.", key);
-    let pipeline = create_mip_pipeline_(device, bind_group_layout, target_format);
-    let pipeline = Arc::new(pipeline);
-    manager.miss_count += 1;
-    manager.insert(key, pipeline.clone());
-    log::trace!(
-        "Pipeline inserted. Hits={}, Misses={}, Size={}",
-        manager.hit_count,
-        manager.miss_count,
-        manager.cache_size()
-    );
-    pipeline
-}
 
 /// Creates a MIP (Maximum Intensity Projection) render pipeline.
 ///
@@ -364,7 +168,7 @@ pub fn create_mip_pipeline_(
 /// - `target_format`: Color target format for the render pass (swapchain/surface format).
 ///
 /// Returns
-/// - `wgpu::RenderPipeline`: Newly created pipeline. Callers are expected to cache it via `PipelineManager`.
+/// - `wgpu::RenderPipeline`: Newly created pipeline. Callers should manage pipeline lifecycle as needed.
 ///
 /// Notes
 /// - Pipeline state is fully specified for deterministic behavior across platforms.
@@ -428,11 +232,10 @@ pub fn create_texture_quad_pipeline(
     })
 }
 
-/// Returns a cached basic mesh pipeline (no bind groups) if present, otherwise creates, caches, and returns it.
-/// Uses global swapchain format if set; otherwise falls back to Rgba8Unorm. Keyed by target format and topology.
+/// Creates a basic mesh pipeline with depth testing enabled.
+/// Uses global swapchain format if set; otherwise falls back to Rgba8Unorm.
 ///
 /// Parameters
-/// - `manager`: Pipeline cache used to deduplicate creation.
 /// - `device`: Logical device used to build shader modules and pipelines.
 ///
 /// Returns
@@ -441,43 +244,26 @@ pub fn create_texture_quad_pipeline(
 /// Notes
 /// - This pipeline has no bind groups and renders points using `MeshVertex::desc()` layout.
 /// - Uses REPLACE blending; adjust if you need alpha.
-///
-/// TODO
-/// - Parameterize topology and pipeline state (cull mode, MSAA, depth) via input args or `PipelineKey`.
-/// - Add bind groups for uniforms and textures as needed.
-pub fn get_or_create_mesh_pipeline(manager: &mut PipelineManager, device: &wgpu::Device) -> Arc<wgpu::RenderPipeline> {
-    get_or_create_mesh_pipeline_with_depth(manager, device, true)
+pub fn get_or_create_mesh_pipeline(device: &wgpu::Device) -> Arc<wgpu::RenderPipeline> {
+    get_or_create_mesh_pipeline_with_depth(device, true)
 }
 
-/// Returns a cached basic mesh pipeline with configurable depth testing.
+/// Creates a basic mesh pipeline with configurable depth testing.
 /// This allows creating pipelines with or without depth-stencil state based on render pass requirements.
 ///
 /// Parameters
-/// - `manager`: Pipeline cache used to deduplicate creation.
 /// - `device`: Logical device used to build shader modules and pipelines.
 /// - `use_depth`: Whether to enable depth testing and depth buffer writes.
 ///
 /// Returns
 /// - `Arc<wgpu::RenderPipeline>`: Shared pipeline handle for mesh rendering.
-pub fn get_or_create_mesh_pipeline_with_depth(manager: &mut PipelineManager, device: &wgpu::Device, use_depth: bool) -> Arc<wgpu::RenderPipeline> {
-    // Updated topology: TriangleList for proper mesh rasterization. Depth testing remains enabled.
+pub fn get_or_create_mesh_pipeline_with_depth(device: &wgpu::Device, use_depth: bool) -> Arc<wgpu::RenderPipeline> {
+    log::trace!("Creating mesh pipeline with depth: {}", use_depth);
+    
+    // Get target format and topology
     let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
     let topology = wgpu::PrimitiveTopology::TriangleList;
-    let key = PipelineKey::MeshBasic { target_format, topology, use_depth };
-
-    if let Some(p) = { manager.get(&key).cloned() } {
-        manager.hit_count += 1;
-        log::trace!(
-            "Pipeline cache hit: {:?}. Hits={}, Misses={}, Size={}",
-            key,
-            manager.hit_count,
-            manager.miss_count,
-            manager.cache_size()
-        );
-        return p;
-    }
-
-    log::trace!("Pipeline cache miss: {:?}. Creating.", key);
+    
     // Mesh shader with both vertex and fragment stages.
     let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/mesh.wgsl"));
     
@@ -601,16 +387,7 @@ pub fn get_or_create_mesh_pipeline_with_depth(manager: &mut PipelineManager, dev
         cache: None,
     });
 
-    let pipeline = Arc::new(pipeline);
-    manager.miss_count += 1;
-    manager.insert(key, pipeline.clone());
-    log::trace!(
-        "Pipeline inserted. Hits={}, Misses={}, Size={}",
-        manager.hit_count,
-        manager.miss_count,
-        manager.cache_size()
-    );
-    pipeline
+    Arc::new(pipeline)
 }
 
 /// Computes a deterministic signature string for the provided vertex buffer layouts.
@@ -929,132 +706,4 @@ pub fn create_simple_mesh_pipeline(
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    /// Ensures that identical vertex layouts and bind group layout signatures produce identical PipelineKey values and hashes.
-    #[test]
-    fn pipeline_key_volume_slice_quad_stability() {
-        // Define static vertex attribute arrays to satisfy the 'static lifetime requirement.
-        static ATTRS_A: [wgpu::VertexAttribute; 2] = [
-            wgpu::VertexAttribute { shader_location: 0, offset: 0, format: wgpu::VertexFormat::Float32x3 },
-            wgpu::VertexAttribute { shader_location: 1, offset: 12, format: wgpu::VertexFormat::Float32x2 },
-        ];
-        static ATTRS_B: [wgpu::VertexAttribute; 2] = [
-            wgpu::VertexAttribute { shader_location: 0, offset: 0, format: wgpu::VertexFormat::Float32x3 },
-            wgpu::VertexAttribute { shader_location: 1, offset: 12, format: wgpu::VertexFormat::Float32x2 },
-        ];
-
-        let vb_layout_1 = wgpu::VertexBufferLayout {
-            array_stride: 20,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &ATTRS_A,
-        };
-        let vb_layout_2 = wgpu::VertexBufferLayout {
-            array_stride: 20,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &ATTRS_B,
-        };
-
-        let sig1 = vertex_layout_signature(&[vb_layout_1]);
-        let sig2 = vertex_layout_signature(&[vb_layout_2]);
-        assert_eq!(sig1, sig2, "Vertex layout signatures should match for identical layouts");
-
-        let bgl_sig1 = default_slice_bgl_signature();
-        let bgl_sig2 = default_slice_bgl_signature();
-
-        let key1 = PipelineKey::VolumeSliceQuad { target_format: wgpu::TextureFormat::Rgba8Unorm, vertex_sig: sig1.clone(), bgl_sig: bgl_sig1 };
-        let key2 = PipelineKey::VolumeSliceQuad { target_format: wgpu::TextureFormat::Rgba8Unorm, vertex_sig: sig2.clone(), bgl_sig: bgl_sig2 };
-        assert_eq!(key1, key2, "PipelineKey values should be equal for identical inputs");
-
-        let mut h1 = DefaultHasher::new();
-        key1.hash(&mut h1);
-        let mut h2 = DefaultHasher::new();
-        key2.hash(&mut h2);
-        assert_eq!(h1.finish(), h2.finish(), "PipelineKey hashes should be equal for identical inputs");
-    }
-
-    /// Verifies that changes in target format or vertex layout impact the PipelineKey as expected.
-    #[test]
-    fn pipeline_key_variation_on_format_or_layout() {
-        static ATTRS_BASE: [wgpu::VertexAttribute; 2] = [
-            wgpu::VertexAttribute { shader_location: 0, offset: 0, format: wgpu::VertexFormat::Float32x3 },
-            wgpu::VertexAttribute { shader_location: 1, offset: 12, format: wgpu::VertexFormat::Float32x2 },
-        ];
-        static ATTRS_CHANGED: [wgpu::VertexAttribute; 2] = [
-            wgpu::VertexAttribute { shader_location: 0, offset: 0, format: wgpu::VertexFormat::Float32x3 },
-            wgpu::VertexAttribute { shader_location: 1, offset: 16, format: wgpu::VertexFormat::Float32x2 },
-        ];
-
-        let vb_base = wgpu::VertexBufferLayout {
-            array_stride: 20,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &ATTRS_BASE,
-        };
-        let vb_changed = wgpu::VertexBufferLayout {
-            array_stride: 24,
-            step_mode: wgpu::VertexStepMode::Vertex,
-            attributes: &ATTRS_CHANGED,
-        };
-
-        let sig_base = vertex_layout_signature(&[vb_base]);
-        let sig_changed = vertex_layout_signature(&[vb_changed]);
-        assert_ne!(sig_base, sig_changed, "Signatures should differ when vertex layout changes");
-
-        let key_fmt_a = PipelineKey::VolumeSliceQuad { target_format: wgpu::TextureFormat::Rgba8Unorm, vertex_sig: sig_base.clone(), bgl_sig: default_slice_bgl_signature() };
-        let key_fmt_b = PipelineKey::VolumeSliceQuad { target_format: wgpu::TextureFormat::Bgra8Unorm, vertex_sig: sig_base.clone(), bgl_sig: default_slice_bgl_signature() };
-        assert_ne!(key_fmt_a, key_fmt_b, "Keys should differ for different target formats");
-
-        let key_layout_a = PipelineKey::VolumeSliceQuad { target_format: wgpu::TextureFormat::Rgba8Unorm, vertex_sig: sig_base, bgl_sig: default_slice_bgl_signature() };
-        let key_layout_b = PipelineKey::VolumeSliceQuad { target_format: wgpu::TextureFormat::Rgba8Unorm, vertex_sig: sig_changed, bgl_sig: default_slice_bgl_signature() };
-        assert_ne!(key_layout_a, key_layout_b, "Keys should differ for different vertex layout signatures");
-    }
-
-    /// Validates PipelineManager hit/miss counters and invalidate_all behavior without GPU dependencies.
-    #[test]
-    fn pipeline_manager_counters_and_invalidate_all() {
-        // Create a new manager and verify initial counters are zero.
-        let mut mgr = PipelineManager::new();
-        assert_eq!(mgr.hits(), 0, "Initial hits should be 0");
-        assert_eq!(mgr.misses(), 0, "Initial misses should be 0");
-        assert_eq!(mgr.cache_size(), 0, "Initial cache size should be 0");
-
-        // Record a few hits and misses; these do not require GPU resources.
-        mgr.record_hit();
-        mgr.record_hit();
-        mgr.record_miss();
-        assert_eq!(mgr.hits(), 2, "Hits should reflect recorded events");
-        assert_eq!(mgr.misses(), 1, "Misses should reflect recorded events");
-
-        // Validate cache state before invalidation; no pipelines inserted.
-        assert_eq!(mgr.cache_size(), 0, "Cache should remain empty when no pipelines are inserted");
-
-        // Invalidate all should clear pipelines and reset counters to zero.
-        mgr.invalidate_all();
-        assert_eq!(mgr.hits(), 0, "Hits should reset to 0 after invalidation");
-        assert_eq!(mgr.misses(), 0, "Misses should reset to 0 after invalidation");
-        assert_eq!(mgr.cache_size(), 0, "Cache size should be 0 after invalidation");
-    }
-
-    /// Ensures MeshBasic PipelineKey equality for identical inputs and inequality for differing topology, format, or depth usage.
-    #[test]
-    fn pipeline_key_mesh_basic_variations() {
-        let fmt_a = wgpu::TextureFormat::Rgba8Unorm;
-        let fmt_b = wgpu::TextureFormat::Bgra8Unorm;
-        let key_tri_a = PipelineKey::MeshBasic { target_format: fmt_a, topology: wgpu::PrimitiveTopology::TriangleList, use_depth: true };
-        let key_tri_a2 = PipelineKey::MeshBasic { target_format: fmt_a, topology: wgpu::PrimitiveTopology::TriangleList, use_depth: true };
-        assert_eq!(key_tri_a, key_tri_a2, "Identical MeshBasic keys should be equal");
-
-        let key_topo_diff = PipelineKey::MeshBasic { target_format: fmt_a, topology: wgpu::PrimitiveTopology::PointList, use_depth: true };
-        assert_ne!(key_tri_a, key_topo_diff, "Keys should differ for different topology");
-
-        let key_fmt_diff = PipelineKey::MeshBasic { target_format: fmt_b, topology: wgpu::PrimitiveTopology::TriangleList, use_depth: true };
-        assert_ne!(key_tri_a, key_fmt_diff, "Keys should differ for different target format");
-
-        let key_depth_diff = PipelineKey::MeshBasic { target_format: fmt_a, topology: wgpu::PrimitiveTopology::TriangleList, use_depth: false };
-        assert_ne!(key_tri_a, key_depth_diff, "Keys should differ for different depth usage");
-    }
-}
+// Tests removed - pipeline creation is now handled directly without caching.

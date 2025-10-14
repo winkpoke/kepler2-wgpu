@@ -6,7 +6,6 @@ use std::sync::Arc;
 use std::{fs, io};
 use crate::core::timing::{Instant, DurationExt};
 use crate::rendering::view;
-use crate::rendering::core::pipeline::PipelineManager;
 
 // use wgpu::util::DeviceExt;
 #[cfg(target_arch = "wasm32")]
@@ -359,23 +358,23 @@ impl State {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    /// Loads local DICOM data and forwards PipelineManager for pipeline retrieval.
+    /// Loads local DICOM data for pipeline creation.
     /// Native-only helper used during development/testing.
-    pub async fn load_data(&mut self, manager: &mut PipelineManager) {
+    pub async fn load_data(&mut self) {
         let repo = {
             // Start the timer
             let start_time = Instant::now();
-
+    
             let file_names = list_files_in_directory("C:\\share\\imrt").unwrap();
             let repo =
-                fileio::parse_dcm_directories(vec!["C:\\share\\imrt", "C:\\share\\head_mold"])
+                fileio::parse_dcm_directories(vec!["C:\\share\\imrt", "C:\\share\\head_mold"]) 
                     .await
                     .unwrap();
             println!("DicomRepo:\n{}", repo.to_string());
             println!("Patients:\n{:?}", repo.get_all_patients());
             // Stop the timer
             let elapsed_time = start_time.elapsed();
-
+    
             // Print the repository and performance details
             // println!("Parsed repository: {:?}", repo);
             println!(
@@ -385,7 +384,6 @@ impl State {
             repo
         };
         self.load_data_from_repo(
-            manager,
             &repo,
             "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.964561",
         );
@@ -568,7 +566,7 @@ impl State {
         Ok(())
     }
 
-    pub fn load_data_from_ct_volume(&mut self, manager: &mut PipelineManager, vol: &CTVolume) {
+    pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume) {
         self.last_volume = Some(vol.clone());
         let texture = if self.enable_float_volume_texture {
             info!("Using R16Float volume texture path");
@@ -608,9 +606,9 @@ impl State {
                 vol.dimensions.2 as u32,
             ).unwrap())
         };
-
+    
         self.layout.remove_all();
-
+    
         if self.enable_mesh {
             // Add MPR views to slots 0 and 1 (Transverse and Coronal)
             for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1]].iter() {
@@ -632,7 +630,7 @@ impl State {
             }
             
             // Add Mesh view to slot 2 (third position - replacing Sagittal)
-            let mesh_view = self.create_mesh_view(manager, (0, 0), (0, 0));
+            let mesh_view = self.create_mesh_view((0, 0), (0, 0));
             self.layout.add_view(Box::new(mesh_view));
             
             // Add MIP view to slot 3 (fourth position - replacing Oblique)
@@ -665,9 +663,9 @@ impl State {
         }
     }
 
-    pub fn load_data_from_repo(&mut self, manager: &mut PipelineManager, repo: &DicomRepo, image_series_number: &str) {
+    pub fn load_data_from_repo(&mut self, repo: &DicomRepo, image_series_number: &str) {
         let vol = repo.generate_ct_volume(image_series_number).unwrap();
-        self.load_data_from_ct_volume(manager, &vol);
+        self.load_data_from_ct_volume(&vol);
     }
 
     /// Function-level comment: Returns whether mesh mode is currently enabled.
@@ -684,26 +682,21 @@ impl State {
         }
     }
 
-    // /// Function-level comment: Enable or disable mesh mode at runtime by swapping the view at slot 2.
-    // /// When enabling, replaces slot 2 with a MeshView and snapshots the previous MPR state.
-    // /// When disabling, recreates a GenericMPRView for slot 2 and restores the cached MPR state if available.
-    // pub fn set_mesh_mode_enabled(&mut self, manager: &mut crate::rendering::core::pipeline::PipelineManager, enabled: bool) {
-    
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
-    pub fn set_mesh_mode_enabled(&mut self, manager: &mut PipelineManager, enabled: bool) {
+    pub fn set_mesh_mode_enabled(&mut self, enabled: bool) {
         if self.enable_mesh == enabled { 
             return; 
         }
         self.enable_mesh = enabled;
-
+    
         if self.last_volume.is_none() {
             log::info!("Mesh mode set to {} without loaded volume; will apply on next data load.", enabled);
             return;
         }
-
+    
         // Rebuild the entire layout to ensure proper view configuration
         if let Some(vol) = &self.last_volume.clone() {
-            self.load_data_from_ct_volume(manager, vol);
+            self.load_data_from_ct_volume(vol);
             log::info!("Layout rebuilt for mesh mode: {}", enabled);
         }
     }
@@ -727,14 +720,14 @@ impl State {
     }
 
     /// Function-level comment: Enable mesh mode by creating depth texture, saving MPR state, and creating MeshView.
-    fn enable_mesh_mode(&mut self, manager: &mut PipelineManager, 
+    fn enable_mesh_mode(&mut self, 
                        index: usize, pos: (i32, i32), size: (u32, u32)) {
         if !self.ensure_depth_texture() {
             return;
         }
-
+    
         self.save_mpr_state(index);
-        let mesh_view = self.create_mesh_view(manager, pos, size);
+        let mesh_view = self.create_mesh_view(pos, size);
         self.layout.views[index] = Box::new(mesh_view);
         log::info!("MeshView placed at slot {} with position {:?} and size {:?}.", index, pos, size);
     }
@@ -824,12 +817,12 @@ impl State {
     }
 
     /// Function-level comment: Create a MeshView with cached or new BasicMeshContext.
-    fn create_mesh_view(&mut self, manager: &mut PipelineManager, 
+    fn create_mesh_view(&mut self, 
                        pos: (i32, i32), size: (u32, u32)) -> crate::rendering::view::MeshView {
         use std::sync::Arc;
         use crate::rendering::mesh::{mesh::Mesh, basic_mesh_context::BasicMeshContext};
         use crate::rendering::view::{MeshView, View as _};
-
+    
         let mut mesh_view = MeshView::new();
         mesh_view.set_rotation_enabled(true);
         log::info!("Mesh rotation enabled");
@@ -841,7 +834,6 @@ impl State {
         } else {
             let mesh = Mesh::uniform_color_cube();
             let ctx = BasicMeshContext::new(
-                manager,
                 &self.graphics.device,
                 &self.graphics.queue,
                 &mesh,
@@ -861,7 +853,7 @@ impl State {
     /// Function-level comment: Create a GenericMPRView for the specified slot with appropriate orientation.
     fn create_mpr_view_for_slot(&self, index: usize) -> crate::rendering::view::MprView {
         use crate::rendering::view::{MprView, ALL_ORIENTATIONS};
-
+    
         let vol = self.last_volume.as_ref().unwrap();
         let texture = self.create_volume_texture(vol);
         let orientation = ALL_ORIENTATIONS[index]; // Use index to determine orientation
@@ -886,7 +878,7 @@ impl State {
     fn create_volume_texture(&self, vol: &crate::data::ct_volume::CTVolume) -> std::sync::Arc<crate::rendering::view::render_content::RenderContent> {
         use std::sync::Arc;
         use crate::rendering::view::render_content::RenderContent;
-
+    
         if self.enable_float_volume_texture {
             log::info!("Using R16Float volume texture path (toggle)");
             let bytes: Vec<u8> = {
@@ -1095,9 +1087,9 @@ impl State {
         }
     }
 
-    /// Toggle the volume texture format (R16Float vs Rg8Unorm) and reload the CT volume using the given PipelineManager.
+    /// Toggle the volume texture format (R16Float vs Rg8Unorm) and reload the CT volume.
     /// Ensures hardware support when enabling float textures and reinitializes views.
-    pub fn toggle_float_volume_texture(&mut self, manager: &mut PipelineManager) {
+    pub fn toggle_float_volume_texture(&mut self) {
         if !self.toggle_enabled {
             log::warn!("Toggle feature is disabled; ignoring.");
             return;
@@ -1118,7 +1110,7 @@ impl State {
         );
         if let Some(vol) = self.last_volume.clone() {
             // Clone to avoid borrowing self immutably while mutably reloading
-            self.load_data_from_ct_volume(manager, &vol);
+            self.load_data_from_ct_volume(&vol);
         } else {
             log::warn!("No cached CTVolume to reload after toggle.");
         }

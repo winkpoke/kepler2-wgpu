@@ -14,7 +14,6 @@ use winit::{
 use crate::rendering::core::state::{Graphics, State};
 use crate::application::gl_canvas::{GLCanvas, UserEvent};
 use winit::event_loop::EventLoopProxy;
-use crate::rendering::core::pipeline::PipelineManager;
 
 
 #[cfg(target_arch = "wasm32")]
@@ -31,7 +30,6 @@ pub struct RenderApp {
     pub(crate) state: Option<State>,
     pub(crate) event_loop: Option<EventLoop<UserEvent>>,
     pub(crate) proxy: Option<EventLoopProxy<UserEvent>>,
-    pipeline_manager: PipelineManager,
 }
 
 impl RenderApp {
@@ -41,7 +39,6 @@ impl RenderApp {
             state: Some(state),
             event_loop: Some(event_loop),
             proxy: Some(proxy),
-            pipeline_manager: PipelineManager::new(),
         }
     }
     
@@ -50,31 +47,11 @@ impl RenderApp {
             match Graphics::new(window.clone()).await {
                 Ok(graphics) => {
                     state.swap_graphics(graphics);
-                    // Function-level comment: Invalidate pipeline cache after device/graphics swap to prevent stale pipeline usage across devices.
-                    self.pipeline_manager.invalidate_all();
-                    log::info!("PipelineManager cache invalidated due to graphics/device swap.");
+                    log::info!("Graphics swapped successfully.");
                 },
                 Err(e) => log::error!("Failed to create graphics: {}", e),
             }
         }
-    }
-
-    /// Internal helper to create a texture-quad pipeline using the provided target format.
-    /// Phase 1: direct creation; Phase 2: consult PipelineManager cache.
-    fn create_texture_quad_pipeline_internal(
-        &mut self,
-        device: &wgpu::Device,
-        bind_group_layouts: [&wgpu::BindGroupLayout; 3],
-        vertex_buffers: &[wgpu::VertexBufferLayout<'static>],
-        target_format: wgpu::TextureFormat,
-    ) -> std::sync::Arc<wgpu::RenderPipeline> {
-        crate::rendering::core::pipeline::get_or_create_texture_quad_pipeline(
-            &mut self.pipeline_manager,
-            device,
-            bind_group_layouts,
-            vertex_buffers,
-            target_format,
-        )
     }
 }
 
@@ -91,7 +68,6 @@ impl RenderApp {
         let event_loop = self.event_loop.take().unwrap();
         let mut state = self.state.take().unwrap();
         let proxy = self.proxy.take().unwrap();
-        let mut pipeline_manager = std::mem::replace(&mut self.pipeline_manager, PipelineManager::new());
 
         let mut surface_configured = false;
 
@@ -133,7 +109,7 @@ impl RenderApp {
                     state.set_translate_in_screen_coord(index, translate);
                 }
                 Event::UserEvent(UserEvent::LoadDataFromCTVolume(volume)) => {
-                    state.load_data_from_ct_volume(&mut pipeline_manager, &volume);
+                    state.load_data_from_ct_volume(&volume);
                     log::info!("Loaded data from CTVolume");
                 }
                 Event::UserEvent(UserEvent::Resize(width, height)) => {
@@ -160,9 +136,6 @@ impl RenderApp {
                     let window = Arc::new(WindowBuilder::new().build(target).unwrap());
                     #[cfg(target_arch = "wasm32")]
                     {
-                        // Function-level comment: Invalidate pipeline cache before recreating graphics on web to ensure pipelines are rebuilt for the new device/context.
-                        pipeline_manager.invalidate_all();
-                        log::info!("PipelineManager cache invalidated due to upcoming graphics/device recreation.");
                         // Winit prevents sizing with CSS, so we have to set
                         // the size manually when on web.
                         use winit::dpi::PhysicalSize;
@@ -196,9 +169,6 @@ impl RenderApp {
                     log::info!("GraphicsReady event received.");
                     state.swap_graphics(graphics);
                     state.resize(PhysicalSize { width: 800, height: 800 });
-                    // Function-level comment: Invalidate pipeline cache on device/graphics swap before loading data to rebuild pipelines on the new device.
-                    pipeline_manager.invalidate_all();
-                    log::info!("PipelineManager cache invalidated on GraphicsReady.");
                     proxy.send_event(UserEvent::LoadDataFromCTVolume(volume)).unwrap();
                     log::info!("Graphics swapped in state.");
                 }
@@ -207,18 +177,16 @@ impl RenderApp {
                     state.layout.remove_all();
                 }
                 Event::UserEvent(UserEvent::ReloadShaders) => {
-                    // Function-level comment: Invalidate all pipelines in response to shader reload request.
-                    pipeline_manager.invalidate_all();
-                    log::info!("ReloadShaders event: PipelineManager cache invalidated; pipelines will rebuild lazily.");
+                    // Function-level comment: Shader reload is now handled by individual render contexts that recreate their pipelines as needed.
+                    log::info!("ReloadShaders event: render contexts will rebuild pipelines lazily.");
                 }
                 Event::UserEvent(UserEvent::InvalidatePipelines) => {
-                    // Function-level comment: Explicit pipeline invalidation request.
-                    pipeline_manager.invalidate_all();
-                    log::info!("InvalidatePipelines event: PipelineManager cache invalidated.");
+                    // Function-level comment: Pipeline invalidation is now handled by individual render contexts.
+                    log::info!("InvalidatePipelines event: render contexts will rebuild pipelines as needed.");
                 }
                 Event::UserEvent(UserEvent::SetEnableMesh(enabled)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_mesh_mode_enabled(&mut pipeline_manager, enabled);
+                    state.set_mesh_mode_enabled(enabled);
                     log::info!("EnableMesh toggled at runtime: {}", enabled);
                 }
                 Event::WindowEvent {
@@ -252,7 +220,7 @@ impl RenderApp {
                                     },
                                 ..
                             } => {
-                                // Function-level comment: On 'R' key press, request shader reload via event to invalidate pipelines.
+                                // Function-level comment: On 'R' key press, request shader reload via event.
                                 if let Err(e) = proxy.send_event(UserEvent::ReloadShaders) {
                                     log::error!("Failed to send ReloadShaders event on KeyR: {:?}", e);
                                 } else {
@@ -283,7 +251,7 @@ impl RenderApp {
                             } => {
                                 // Function-level comment: Toggle mesh mode on 'M' key press at runtime.
                                 let new_enabled = !state.mesh_mode_enabled();
-                                state.set_mesh_mode_enabled(&mut pipeline_manager, new_enabled);
+                                state.set_mesh_mode_enabled(new_enabled);
                                 log::info!("KeyM pressed: mesh mode toggled to {}", new_enabled);
                             }
                             WindowEvent::RedrawRequested => {
@@ -303,9 +271,8 @@ impl RenderApp {
                                         let width = state.graphics.surface_config.width;
                                         let height = state.graphics.surface_config.height;
                                         let size = PhysicalSize::<u32> {width, height};
-                                        // Function-level comment: Invalidate all pipelines on surface reconfiguration to avoid stale pipelines referencing old swapchain/format.
-                                        pipeline_manager.invalidate_all();
-                                        log::info!("PipelineManager cache invalidated due to surface error {:?}", "Lost/Outdated");
+                                        // Function-level comment: Surface reconfiguration handled by individual render contexts.
+                                        log::info!("Surface error {:?} - render contexts will rebuild pipelines as needed", "Lost/Outdated");
                                         state.resize(size);
                                     }
                                     // The system is out of memory, we should probably quit

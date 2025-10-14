@@ -23,7 +23,7 @@ pub use core::{coord, error::KeplerError, timing};
 pub use data::{ct_volume, dicom};
 pub use rendering::{
     view::{View, Renderable, Layout},
-    core::{pipeline::PipelineManager, state::State},
+    core::state::State,
 };
 pub use application::{render_app::RenderApp, gl_canvas::GLCanvas};
 

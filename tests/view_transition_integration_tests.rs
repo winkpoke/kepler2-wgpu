@@ -5,40 +5,20 @@
 
 #[cfg(test)]
 mod view_transition_integration_tests {
-    use kepler_wgpu::rendering::core::pipeline::PipelineManager;
     use kepler_wgpu::rendering::view::view_manager::ViewManager;
 
-    #[test]
-    fn test_pipeline_manager_integration() {
-        // Test PipelineManager integration patterns
-        let mut manager = PipelineManager::new();
-        
-        // Test initial state
-        assert_eq!(manager.cache_size(), 0);
-        assert_eq!(manager.hits(), 0);
-        assert_eq!(manager.misses(), 0);
-        
-        // Test operations that might occur during view transitions
-        manager.clear();
-        assert_eq!(manager.cache_size(), 0);
-        
-        // Test that manager remains in valid state after operations
-        let keys = manager.keys_snapshot();
-        assert!(keys.is_empty());
-    }
+    // PipelineManager integration test removed - PipelineManager has been removed from the codebase
 
     #[test]
     fn test_view_manager_integration() {
         // Test ViewManager integration with mock factory
         use kepler_wgpu::rendering::view::{ViewFactory, View};
-        use kepler_wgpu::rendering::core::pipeline::PipelineManager;
         
         struct MockViewFactory;
         
         impl ViewFactory for MockViewFactory {
             fn create_mesh_view(
                 &self,
-                _manager: &mut PipelineManager,
                 _pos: (i32, i32),
                 _size: (u32, u32),
             ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
@@ -47,7 +27,6 @@ mod view_transition_integration_tests {
             
             fn create_mpr_view(
                 &self,
-                _manager: &mut PipelineManager,
                 _volume: &kepler_wgpu::data::ct_volume::CTVolume,
                 _orientation: kepler_wgpu::rendering::view::Orientation,
                 _pos: (i32, i32),
@@ -59,24 +38,19 @@ mod view_transition_integration_tests {
         
         let factory = Box::new(MockViewFactory);
         let mut view_manager = ViewManager::new(factory);
-        let mut pipeline_manager = PipelineManager::new();
         
-        // Test integration between managers
+        // Test ViewManager operations
         assert_eq!(view_manager.saved_state_count(), 0);
-        assert_eq!(pipeline_manager.cache_size(), 0);
         
         // Test state operations
         view_manager.clear_states();
-        pipeline_manager.clear();
         
         assert_eq!(view_manager.saved_state_count(), 0);
-        assert_eq!(pipeline_manager.cache_size(), 0);
     }
 
     #[test]
     fn test_complete_workflow_simulation() {
         // Simulate a complete workflow without actual GPU resources
-        let mut pipeline_manager = PipelineManager::new();
         
         // Simulate workflow steps
         let workflow_steps = [
@@ -92,7 +66,6 @@ mod view_transition_integration_tests {
             match *step {
                 "initialize" => {
                     // Simulate initialization
-                    assert_eq!(pipeline_manager.cache_size(), 0);
                     step_count += 1;
                 },
                 "enable_mesh_mode" => {
@@ -109,7 +82,6 @@ mod view_transition_integration_tests {
                 },
                 "cleanup" => {
                     // Simulate cleanup
-                    pipeline_manager.clear();
                     step_count += 1;
                 },
                 _ => {}
@@ -117,7 +89,6 @@ mod view_transition_integration_tests {
         }
         
         assert_eq!(step_count, workflow_steps.len());
-        assert_eq!(pipeline_manager.cache_size(), 0);
     }
 
     #[test]
@@ -156,40 +127,62 @@ mod view_transition_integration_tests {
 
     #[test]
     fn test_concurrent_operations_simulation() {
-        // Simulate concurrent operations that might occur during transitions
-        let mut pipeline_manager = PipelineManager::new();
-        let mut operation_count = 0;
+        // Simulate concurrent operations without actual threading
+        struct MockViewFactory;
         
-        // Simulate multiple concurrent operations
-        for i in 0..50 {
-            match i % 4 {
-                0 => {
-                    // Simulate cache operation
-                    let _keys = pipeline_manager.keys_snapshot();
-                    operation_count += 1;
+        impl kepler_wgpu::rendering::view::ViewFactory for MockViewFactory {
+            fn create_mesh_view(
+                &self,
+                _pos: (i32, i32),
+                _size: (u32, u32),
+            ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>> {
+                Err("Mock factory - not implemented".into())
+            }
+            
+            fn create_mpr_view(
+                &self,
+                _volume: &kepler_wgpu::data::ct_volume::CTVolume,
+                _orientation: kepler_wgpu::rendering::view::Orientation,
+                _pos: (i32, i32),
+                _size: (u32, u32),
+            ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>> {
+                Err("Mock factory - not implemented".into())
+            }
+        }
+        
+        let factory = Box::new(MockViewFactory);
+        let mut view_manager = ViewManager::new(factory);
+        
+        // Simulate concurrent operations
+        let operations = [
+            "operation_a",
+            "operation_b", 
+            "operation_c"
+        ];
+        
+        let mut completed_operations = 0;
+        for operation in &operations {
+            match *operation {
+                "operation_a" => {
+                    // Simulate operation A
+                    completed_operations += 1;
                 },
-                1 => {
-                    // Simulate clear operation
-                    pipeline_manager.clear();
-                    operation_count += 1;
+                "operation_b" => {
+                    // Simulate operation B
+                    assert_eq!(view_manager.saved_state_count(), 0);
+                    completed_operations += 1;
                 },
-                2 => {
-                    // Simulate stats check
-                    let _hits = pipeline_manager.hits();
-                    let _misses = pipeline_manager.misses();
-                    operation_count += 1;
-                },
-                3 => {
-                    // Simulate size check
-                    let _size = pipeline_manager.cache_size();
-                    operation_count += 1;
+                "operation_c" => {
+                    // Simulate operation C
+                    view_manager.clear_states();
+                    completed_operations += 1;
                 },
                 _ => {}
             }
         }
         
-        assert_eq!(operation_count, 50);
-        assert_eq!(pipeline_manager.cache_size(), 0); // Should be 0 due to clear operations
+        assert_eq!(completed_operations, operations.len());
+        assert_eq!(view_manager.saved_state_count(), 0);
     }
 
     #[test]
@@ -228,20 +221,44 @@ mod view_transition_integration_tests {
         
         let start = Instant::now();
         
-        let mut pipeline_manager = PipelineManager::new();
+        struct MockViewFactory;
+        
+        impl kepler_wgpu::rendering::view::ViewFactory for MockViewFactory {
+            fn create_mesh_view(
+                &self,
+                _pos: (i32, i32),
+                _size: (u32, u32),
+            ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>> {
+                Err("Mock factory - not implemented".into())
+            }
+            
+            fn create_mpr_view(
+                &self,
+                _volume: &kepler_wgpu::data::ct_volume::CTVolume,
+                _orientation: kepler_wgpu::rendering::view::Orientation,
+                _pos: (i32, i32),
+                _size: (u32, u32),
+            ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>> {
+                Err("Mock factory - not implemented".into())
+            }
+        }
+        
+        let factory = Box::new(MockViewFactory);
+        let mut view_manager = ViewManager::new(factory);
         
         // Perform many operations to test performance
         for i in 0..1000 {
             match i % 3 {
                 0 => {
-                    let _keys = pipeline_manager.keys_snapshot();
+                    let _count = view_manager.saved_state_count();
                 },
                 1 => {
-                    let _stats = (pipeline_manager.hits(), pipeline_manager.misses());
+                    // Simulate state operations
+                    let _count = view_manager.saved_state_count();
                 },
                 2 => {
                     if i % 10 == 0 {
-                        pipeline_manager.clear();
+                        view_manager.clear_states();
                     }
                 },
                 _ => {}
@@ -257,29 +274,50 @@ mod view_transition_integration_tests {
     #[test]
     fn test_memory_management_patterns() {
         // Test memory management patterns used in view transitions
+        struct MockViewFactory;
+        
+        impl kepler_wgpu::rendering::view::ViewFactory for MockViewFactory {
+            fn create_mesh_view(
+                &self,
+                _pos: (i32, i32),
+                _size: (u32, u32),
+            ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>> {
+                Err("Mock factory - not implemented".into())
+            }
+            
+            fn create_mpr_view(
+                &self,
+                _volume: &kepler_wgpu::data::ct_volume::CTVolume,
+                _orientation: kepler_wgpu::rendering::view::Orientation,
+                _pos: (i32, i32),
+                _size: (u32, u32),
+            ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>> {
+                Err("Mock factory - not implemented".into())
+            }
+        }
+        
         let mut managers = Vec::new();
         
         // Create multiple managers to test memory patterns
         for _ in 0..10 {
-            let manager = PipelineManager::new();
+            let factory = Box::new(MockViewFactory);
+            let manager = ViewManager::new(factory);
             managers.push(manager);
         }
         
         // Test that all managers are properly initialized
         for manager in &managers {
-            assert_eq!(manager.cache_size(), 0);
-            assert_eq!(manager.hits(), 0);
-            assert_eq!(manager.misses(), 0);
+            assert_eq!(manager.saved_state_count(), 0);
         }
         
         // Clear all managers
         for manager in &mut managers {
-            manager.clear();
+            manager.clear_states();
         }
         
         // Test that all managers are properly cleared
         for manager in &managers {
-            assert_eq!(manager.cache_size(), 0);
+            assert_eq!(manager.saved_state_count(), 0);
         }
         
         // Managers should be properly dropped when vector goes out of scope
@@ -288,14 +326,11 @@ mod view_transition_integration_tests {
     #[test]
     fn test_state_consistency_across_components() {
         // Test state consistency across multiple components
-        let mut pipeline_manager = PipelineManager::new();
-        
         struct MockViewFactory;
         
         impl kepler_wgpu::rendering::view::ViewFactory for MockViewFactory {
             fn create_mesh_view(
                 &self,
-                _manager: &mut PipelineManager,
                 _pos: (i32, i32),
                 _size: (u32, u32),
             ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>> {
@@ -304,7 +339,6 @@ mod view_transition_integration_tests {
             
             fn create_mpr_view(
                  &self,
-                 _manager: &mut PipelineManager,
                  _volume: &kepler_wgpu::data::ct_volume::CTVolume,
                  _orientation: kepler_wgpu::rendering::view::Orientation,
                  _pos: (i32, i32),
@@ -317,14 +351,13 @@ mod view_transition_integration_tests {
         let factory = Box::new(MockViewFactory);
         let mut view_manager = ViewManager::new(factory);
         
-        // Test consistency between components
-        assert_eq!(pipeline_manager.cache_size(), view_manager.saved_state_count());
+        // Test initial state
+        assert_eq!(view_manager.saved_state_count(), 0);
         
-        // Perform operations on both components
-        pipeline_manager.clear();
+        // Perform operations
         view_manager.clear_states();
         
-        // Both should remain consistent
-        assert_eq!(pipeline_manager.cache_size(), view_manager.saved_state_count());
+        // State should remain consistent
+        assert_eq!(view_manager.saved_state_count(), 0);
     }
 }

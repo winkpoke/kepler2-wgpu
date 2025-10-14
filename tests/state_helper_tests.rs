@@ -5,46 +5,14 @@
 
 #[cfg(test)]
 mod state_helper_tests {
-    use kepler_wgpu::rendering::core::pipeline::PipelineManager;
     use kepler_wgpu::rendering::view::view_manager::ViewManager;
 
-    #[test]
-    fn test_pipeline_manager_creation() {
-        // Test PipelineManager creation and basic functionality
-        let manager = PipelineManager::new();
-        
-        // Test basic properties
-        assert_eq!(manager.cache_size(), 0);
-        assert_eq!(manager.hits(), 0);
-        assert_eq!(manager.misses(), 0);
-        
-        // Test that keys snapshot is empty initially
-        let keys = manager.keys_snapshot();
-        assert!(keys.is_empty());
-    }
-
-    #[test]
-    fn test_pipeline_manager_cache_operations() {
-        // Test PipelineManager cache operations
-        let mut manager = PipelineManager::new();
-        
-        // Initially empty
-        assert_eq!(manager.cache_size(), 0);
-        
-        // Test clearing empty cache
-        manager.clear();
-        assert_eq!(manager.cache_size(), 0);
-        
-        // Test hit/miss counters
-        assert_eq!(manager.hits(), 0);
-        assert_eq!(manager.misses(), 0);
-    }
+    // PipelineManager tests removed - PipelineManager has been removed from the codebase
 
     #[test]
     fn test_view_manager_creation() {
         // Test ViewManager creation using mock factory
         use kepler_wgpu::rendering::view::{ViewFactory, View};
-        use kepler_wgpu::rendering::core::pipeline::PipelineManager;
         
         // Mock factory for testing
         struct MockViewFactory;
@@ -52,7 +20,6 @@ mod state_helper_tests {
         impl ViewFactory for MockViewFactory {
             fn create_mesh_view(
                 &self,
-                _manager: &mut PipelineManager,
                 _pos: (i32, i32),
                 _size: (u32, u32),
             ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
@@ -61,7 +28,6 @@ mod state_helper_tests {
             
             fn create_mpr_view(
                 &self,
-                _manager: &mut PipelineManager,
                 _volume: &kepler_wgpu::data::ct_volume::CTVolume,
                 _orientation: kepler_wgpu::rendering::view::Orientation,
                 _pos: (i32, i32),
@@ -82,7 +48,6 @@ mod state_helper_tests {
     fn test_view_manager_state_operations() {
         // Test ViewManager state management operations
         use kepler_wgpu::rendering::view::{ViewFactory, View};
-        use kepler_wgpu::rendering::core::pipeline::PipelineManager;
         
         // Mock factory for testing
         struct MockViewFactory;
@@ -90,7 +55,6 @@ mod state_helper_tests {
         impl ViewFactory for MockViewFactory {
             fn create_mesh_view(
                 &self,
-                _manager: &mut PipelineManager,
                 _pos: (i32, i32),
                 _size: (u32, u32),
             ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
@@ -99,7 +63,6 @@ mod state_helper_tests {
             
             fn create_mpr_view(
                 &self,
-                _manager: &mut PipelineManager,
                 _volume: &kepler_wgpu::data::ct_volume::CTVolume,
                 _orientation: kepler_wgpu::rendering::view::Orientation,
                 _pos: (i32, i32),

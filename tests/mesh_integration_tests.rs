@@ -11,7 +11,7 @@ mod mesh_integration_tests {
         shader_validation::ShaderValidator,
         mesh::Mesh,
     };
-    use kepler_wgpu::rendering::core::pipeline::PipelineManager;
+
     use wgpu::{Instance, Backends, DeviceDescriptor, Features, Limits};
 
     /// Helper function to create a test device
