@@ -5,7 +5,9 @@ use crate::data::medical_imaging::{
     ImageFormat
 };
 use std::{collections::HashMap, io::Read};
-use std::{fs::File, io::{BufRead,BufReader}};
+use std::fs::File;
+#[cfg(not(target_arch = "wasm32"))]
+use std::io::{BufRead,BufReader};
 use std::path::PathBuf;
 
 /// 功能级注释：解析具有独立数据文件的 MHD（MetaIO）文件
@@ -108,6 +110,7 @@ impl MhdParser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(target_arch = "wasm32"))]
     use std::path::PathBuf;
     use std::fs;
     

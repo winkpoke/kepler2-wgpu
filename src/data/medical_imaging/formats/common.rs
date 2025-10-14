@@ -10,6 +10,7 @@ use crate::data::medical_imaging::{
 use std::path::Path;
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 
 /// Image format enumeration

@@ -6,7 +6,9 @@ use crate::data::medical_imaging::{
     ImageFormat,
 };
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs::File;
 
 /// 功能级注释：解析包含嵌入式数据的 MHA（MetaImage）文件

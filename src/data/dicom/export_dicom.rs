@@ -6,7 +6,6 @@ use crate::data::medical_imaging::{
     formats::mha::*,
     metadata::{MedicalVolume, PixelType}
 };
-use crate::data::CTVolume;
 
 use anyhow::{anyhow, Result};
 use dicom_core::{value::PrimitiveValue, DataElement, VR};
