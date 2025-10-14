@@ -1,4 +1,4 @@
-use crate::data::medical_imaging::error::MedicalImagingResult;
+use crate::data::medical_imaging::error::{MedicalImagingError, MedicalImagingResult};
 
 /// Function-level comment: Endianness enumeration
 /// Defines byte order for multi-byte pixel types
@@ -58,5 +58,40 @@ impl PixelData {
             Self::Float32(data) => bytemuck::cast_slice(data),
             Self::Float64(data) => bytemuck::cast_slice(data),
         }
+    }
+
+    // analyze raw data according to ElementType
+    pub fn create_pixel_data(
+        raw_data: Vec<u8>,
+        pixel_type: PixelType,
+        voxel_count: usize,
+        slope: f32,
+        intercept: f32,
+    ) -> MedicalImagingResult<Vec<i16>> {
+        let mut voxel_data = Vec::with_capacity(voxel_count);
+        match pixel_type {
+            PixelType::Int16 => {
+                for chunk in raw_data.chunks_exact(2).take(voxel_count) {
+                    let val = i16::from_le_bytes([chunk[0], chunk[1]]);
+                    voxel_data.push(val);
+                }
+            }
+            PixelType::Float32 => {
+                for chunk in raw_data.chunks_exact(4).take(voxel_count) {
+                    let val = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+                    let val = (val * slope + intercept).round() as i16;
+                    voxel_data.push(val);
+                }
+            }
+            other => return Err(MedicalImagingError::UnsupportedPixelType{ pixel_type: format!("{:?}", other) }),
+        };
+
+        for value in &mut voxel_data {
+            if *value < -1024 {
+                    *value = -1024;
+                }
+        }
+
+        Ok(voxel_data)
     }
 }

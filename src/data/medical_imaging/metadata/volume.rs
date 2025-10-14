@@ -54,31 +54,9 @@ impl MedicalVolume {
         let raw = data.clone();
 
         let voxel_count = col * row * depth;
-        let mut voxel_data = Vec::with_capacity(voxel_count);
 
         // analyze raw data according to ElementType
-        match pixel_type {
-            PixelType::Int16 => {
-                for chunk in raw.chunks_exact(2).take(voxel_count) {
-                    let val = i16::from_le_bytes([chunk[0], chunk[1]]);
-                    voxel_data.push(val);
-                }
-            }
-            PixelType::Float32 => {
-                for chunk in raw.chunks_exact(4).take(voxel_count) {
-                    let val = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-                    let val = (val * slope + intercept).round() as i16;
-                    voxel_data.push(val);
-                }
-            }
-            other => return Err(format!("Unsupported PixelType: {:?}", other)),
-        }
-
-        for value in &mut voxel_data {
-            if *value < -1024 {
-                *value = -1024;
-            }
-        }
+        let voxel_data = PixelData::create_pixel_data(raw,pixel_type, voxel_count, slope, intercept).map_err(|e| e.to_string())?;
 
         // series
         let uid = "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.365119";

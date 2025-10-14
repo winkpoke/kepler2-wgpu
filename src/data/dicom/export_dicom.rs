@@ -4,7 +4,7 @@ use super::{
 };
 use crate::data::medical_imaging::{
     formats::mha::*,
-    metadata::{MedicalVolume, PixelType}
+    metadata::{MedicalVolume, PixelType}, PixelData
 };
 
 use anyhow::{anyhow, Result};
@@ -162,20 +162,10 @@ fn inject_image<S: DicomSink>(
     let orientation = metadata.orientation;
     let transform: Vec<f32> = orientation.into_iter().flatten().collect();
     let data = medical_volume.pixel_data.as_bytes().to_vec();
+    let voxel_count = col * row * depth;
 
     // little endian
-    let pixel_data = MedicalVolume::generate_ct_volume_mha(
-        [col, row, depth],
-        data,
-        metadata.pixel_type,
-        spacing.to_vec(),
-        metadata.offset.to_vec(),
-        transform,
-        slope,
-        intercept,
-    ).unwrap();
-
-    let vol = pixel_data.voxel_data;
+    let vol = PixelData::create_pixel_data(data, metadata.pixel_type, voxel_count, slope, intercept)?;
     let mut buffer = Vec::with_capacity(vol.len() * 2);
     let buffer = match metadata.pixel_type {
         PixelType::Int16 => {
@@ -222,7 +212,7 @@ fn inject_image<S: DicomSink>(
         let dz = *spacing.get(2).unwrap_or(&1.0);
         let instance_no = (z + 1) as i32;
         let slice_loc = (z as f32) * dz;
-        let base = pixel_data.base.matrix.get_column(3);
+        let base = metadata.offset.clone();
         let (col_dir,row_dir, pos) = match metadata.pixel_type {
             PixelType::Int16 => {
                 let [col_dir,row_dir, slice_dir] = orientation;
