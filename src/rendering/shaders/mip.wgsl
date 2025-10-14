@@ -42,6 +42,7 @@ struct MipUniforms {
     // Window/Level for medical imaging
     window: f32,
     level: f32,
+    _padding0: vec2<f32>,
 }
 
 @group(1) @binding(0)
