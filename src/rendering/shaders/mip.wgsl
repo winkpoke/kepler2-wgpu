@@ -30,39 +30,18 @@ var t_volume: texture_3d<f32>;
 @group(0) @binding(1)
 var s_volume: sampler;
 
-// MIP uniforms
+// MIP uniforms - only fields actually used in the shader
 struct MipUniforms {
-    // Camera parameters
-    camera_pos: vec3<f32>,
-    _padding1: f32,
-    camera_front: vec3<f32>,
-    _padding2: f32,
-    camera_up: vec3<f32>,
-    _padding3: f32,
-    camera_right: vec3<f32>,
-    _padding4: f32,
-    
-    // Volume parameters
-    volume_size: vec3<f32>,
-    _padding5: f32,
-    
     // Ray marching parameters
     ray_step_size: f32,
     max_steps: f32,
     
     // Texture format parameters (reused from existing logic)
     is_packed_rg8: f32,
-    _padding6: f32,
     
     // Window/Level for medical imaging
     window: f32,
     level: f32,
-    
-    // View matrix for coordinate transformation
-    view_matrix: mat4x4<f32>,
-    
-    // Padding to ensure 16-byte alignment for uniform buffer requirements
-    _padding_end: vec4<f32>,
 }
 
 @group(1) @binding(0)

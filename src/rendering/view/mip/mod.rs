@@ -31,65 +31,30 @@ impl Default for MipConfig {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct MipUniforms {
-    // Camera parameters
-    pub camera_pos: [f32; 3],
-    pub _padding1: f32,
-    pub camera_front: [f32; 3],
-    pub _padding2: f32,
-    pub camera_up: [f32; 3],
-    pub _padding3: f32,
-    pub camera_right: [f32; 3],
-    pub _padding4: f32,
-    
-    // Volume parameters
-    pub volume_size: [f32; 3],
-    pub _padding5: f32,
-    
     // Ray marching parameters
     pub ray_step_size: f32,
     pub max_steps: f32,
     
-    // Texture format parameters
+    // Texture format parameters (reused from existing logic)
     pub is_packed_rg8: f32,
-    pub _padding6: f32,
     
     // Window/Level for medical imaging
     pub window: f32,
     pub level: f32,
     
-    // View matrix for coordinate transformation
-    pub view_matrix: [[f32; 4]; 4],
-    
-    // Padding to ensure proper alignment (192 bytes total)
-    pub _padding_end: [f32; 6],
+    // Padding to ensure 16-byte alignment for uniform buffer requirements
+    pub _padding: [f32; 3],
 }
 
 impl Default for MipUniforms {
     fn default() -> Self {
         Self {
-            camera_pos: [0.0, 0.0, -2.0],
-            _padding1: 0.0,
-            camera_front: [0.0, 0.0, 1.0],
-            _padding2: 0.0,
-            camera_up: [0.0, 1.0, 0.0],
-            _padding3: 0.0,
-            camera_right: [1.0, 0.0, 0.0],
-            _padding4: 0.0,
-            volume_size: [1.0, 1.0, 1.0],
-            _padding5: 0.0,
             ray_step_size: 0.01,
             max_steps: 512.0,
             is_packed_rg8: 1.0,  // Default to packed format
-            _padding6: 0.0,
             window: 1000.0,
             level: 500.0,
-            view_matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
-            _padding_end: [0.0; 6],
+            _padding: [0.0; 3],
         }
     }
 }
@@ -381,42 +346,22 @@ impl MipView {
             (2000.0, 100.0)
         };
 
-        // Construct camera in normalized volume space [0,1]^3 using orthographic setup
-        // Position camera further back to ensure we capture the entire volume
+        // Create uniforms with only the fields used in the shader
         let uniforms = MipUniforms {
-            camera_pos: [0.5, 0.5, -1.0],  // Move camera further back
-            _padding1: 0.0,
-            camera_front: [0.0, 0.0, 1.0],
-            _padding2: 0.0,
-            camera_up: [0.0, 1.0, 0.0],
-            _padding3: 0.0,
-            camera_right: [1.0, 0.0, 0.0],
-            _padding4: 0.0,
-            volume_size: [1.0, 1.0, 1.0],
-            _padding5: 0.0,
             ray_step_size: 0.005,  // Smaller step size for better quality
             max_steps: 1000.0,     // More steps to ensure we traverse the volume
             is_packed_rg8,
-            _padding6: 0.0,
             window,
             level,
-            // Identity matrix keeps rays in normalized volume space
-            view_matrix: [
-                [1.0, 0.0, 0.0, 0.0],
-                [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0],
-                [0.0, 0.0, 0.0, 1.0],
-            ],
-            _padding_end: [0.0; 6],
+            _padding: [0.0; 3],
         };
 
         // Upload uniforms to GPU buffer
         self.wgpu_impl.update_uniforms(queue, &uniforms);
 
         log::trace!(
-            "[MIP_UPDATE] Uniforms set: is_packed_rg8={}, window={}, level={}, step={}, max_steps={}, camera_pos=({}, {}, {})",
-            is_packed_rg8, window, level, uniforms.ray_step_size, uniforms.max_steps,
-            uniforms.camera_pos[0], uniforms.camera_pos[1], uniforms.camera_pos[2]
+            "[MIP_UPDATE] Uniforms set: is_packed_rg8={}, window={}, level={}, step={}, max_steps={}",
+            is_packed_rg8, window, level, uniforms.ray_step_size, uniforms.max_steps
         );
     }
 
