@@ -88,7 +88,9 @@ pub fn get_or_create_texture_quad_pipeline(
     target_format: wgpu::TextureFormat,
 ) -> Arc<wgpu::RenderPipeline> {
     log::trace!("Creating texture quad pipeline for target format: {:?}", target_format);
-    let pipeline = create_texture_quad_pipeline(device, bind_group_layouts, vertex_buffers, target_format);
+    let pipeline = crate::rendering::view::mpr::mpr_render_context::create_texture_quad_pipeline(
+        device, bind_group_layouts, vertex_buffers, target_format
+    );
     Arc::new(pipeline)
 }
 
@@ -177,60 +179,7 @@ pub fn create_mip_pipeline_(
 ///
 /// TODO
 /// - Parameterize MSAA (`multisample.count`) and culling for performance/quality trade-offs.
-pub fn create_texture_quad_pipeline(
-    device: &wgpu::Device,
-    bind_group_layouts: [&wgpu::BindGroupLayout; 3],
-    vertex_buffers: &[wgpu::VertexBufferLayout<'static>],
-    target_format: wgpu::TextureFormat,
-) -> wgpu::RenderPipeline {
-    // Single shader module with both vertex and fragment entry points.
-    let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/shader_tex.wgsl"));
-    // Pipeline layout defines bind group layout order; must match shader binding expectations.
-    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("Render Pipeline Layout"),
-        bind_group_layouts: &bind_group_layouts,
-        push_constant_ranges: &[],
-    });
 
-    // Full pipeline descriptor. All fields annotated for clarity.
-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("Render Pipeline"),
-        layout: Some(&pipeline_layout),
-        vertex: wgpu::VertexState {
-            module: &shader,
-            entry_point: Some("vs_main"), // WGSL entry point for vertex stage
-            buffers: vertex_buffers,        // Vertex buffer layouts (position, texcoord, etc.)
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: &shader,
-            entry_point: Some("fs_main"), // WGSL entry point for fragment stage
-            targets: &[Some(wgpu::ColorTargetState {
-                format: target_format,             // Target color format (swapchain surface)
-                blend: Some(wgpu::BlendState::REPLACE), // No blending; write replaces previous value
-                write_mask: wgpu::ColorWrites::ALL,     // Write all color channels
-            })],
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        }),
-        primitive: wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList, // Quad rendered as two triangles
-            strip_index_format: None,
-            front_face: wgpu::FrontFace::Ccw,
-            cull_mode: None,                    // No face culling; adjust for performance if needed
-            polygon_mode: wgpu::PolygonMode::Fill,
-            unclipped_depth: false,
-            conservative: false,
-        },
-        depth_stencil: None, // No depth testing for 2D slice rendering
-        multisample: wgpu::MultisampleState {
-            count: 1,                          // No MSAA; parameterize for quality improvements
-            mask: !0,
-            alpha_to_coverage_enabled: false,
-        },
-        multiview: None,
-        cache: None,
-    })
-}
 
 /// Creates a basic mesh pipeline with depth testing enabled.
 /// Uses global swapchain format if set; otherwise falls back to Rgba8Unorm.

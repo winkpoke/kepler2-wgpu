@@ -3,8 +3,9 @@
 use crate::core::coord::{array_to_slice, Matrix4x4};
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::{
-    create_vertex_uniform_bind_group, get_or_create_texture_quad_pipeline, get_swapchain_format,
+    create_vertex_uniform_bind_group, get_swapchain_format,
 };
+use super::mpr_render_context::create_texture_quad_pipeline;
 use wgpu::util::DeviceExt;
 
 #[repr(C)]
@@ -178,12 +179,12 @@ impl RenderContext {
             &vert_bind_group_layout,
             &frag_bind_group_layout,
         ];
-        let render_pipeline = crate::rendering::core::pipeline::get_or_create_texture_quad_pipeline(
+        let render_pipeline = std::sync::Arc::new(create_texture_quad_pipeline(
             device,
             bgls,
             &[Vertex::desc()],
             target_format,
-        );
+        ));
 
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
