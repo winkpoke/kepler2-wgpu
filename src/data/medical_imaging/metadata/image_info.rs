@@ -3,6 +3,7 @@ use crate::data::medical_imaging::{
     pixel_data::{PixelType, Endianness},
     formats::CompressionType,
 };
+use std::fmt;
 
 /// Patient position enumeration
 /// Represents different positions of the patient in the imaging setup
@@ -198,5 +199,22 @@ pub fn create_patient_position(anatomical_orientation: &str)-> PatientPosition{
             log::info!("Unknown anatomical orientation: {}, defaulting to HFS", anatomical_orientation);
             PatientPosition::HFS
         }
+    }
+}
+
+impl fmt::Display for PatientPosition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            PatientPosition::HFS => "HFS",
+            PatientPosition::HFP => "HFP",
+            PatientPosition::FFS => "FFS",
+            PatientPosition::FFP => "FFP",
+            PatientPosition::HFDR => "HFDR",
+            PatientPosition::HFDL => "HFDL",
+            PatientPosition::FFDR => "FFDR",
+            PatientPosition::FFDL => "FFDL",
+            PatientPosition::Unknown => "Unknown",
+        };
+        write!(f, "{}", s)
     }
 }

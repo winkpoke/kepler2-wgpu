@@ -2,20 +2,20 @@ use super::{
     patient::Patient,
     studyset::StudySet
 };
-
 use crate::data::medical_imaging::{
-    data::DicomSink,
-    format::mha::*
+    formats::mha::*,
+    metadata::{MedicalVolume, PixelType}
 };
+use crate::data::CTVolume;
 
 use anyhow::{anyhow, Result};
 use dicom_core::{value::PrimitiveValue, DataElement, VR};
 use dicom_dictionary_std::tags;
 use dicom_object::{DefaultDicomObject, FileMetaTableBuilder, InMemDicomObject};
-use std::path::PathBuf;
 use uuid::Uuid;
 use chrono::Local;
 use sha1::{Sha1, Digest};
+use std::path::PathBuf;
 
 /// generate dicom uid
 pub fn generate_uid() -> String {
@@ -147,29 +147,45 @@ fn inject_image<S: DicomSink>(
     intercept: f32,
     sink: &mut S,
 ) -> Result<()> {
-    let ct_volume = mha::MhaParser::from_bytes(mha_path).unwrap();
-    let  patient_position = ct_volume.base.label.clone();
+    let medical_volume = MhaParser::parse_bytes(mha_path)?;
+    let metadata = medical_volume.metadata;
+    let patient_position = metadata.patient_position;
 
-    let col = ct_volume.dimensions.0; 
-    let row = ct_volume.dimensions.1; 
-    let depth = ct_volume.dimensions.2; 
+    let col = metadata.dimensions[0]; 
+    let row = metadata.dimensions[1]; 
+    let depth = metadata.dimensions[2]; 
     let spacing: &[f32] = &[
-        ct_volume.voxel_spacing.0, 
-        ct_volume.voxel_spacing.1, 
-        ct_volume.voxel_spacing.2
+        metadata.spacing[0], 
+        metadata.spacing[1], 
+        metadata.spacing[2]
     ];
 
+    let orientation = metadata.orientation;
+    let transform: Vec<f32> = orientation.into_iter().flatten().collect();
+    let data = medical_volume.pixel_data.as_bytes().to_vec();
+
     // little endian
-    let vol = ct_volume.voxel_data;
+    let pixel_data = MedicalVolume::generate_ct_volume_mha(
+        [col, row, depth],
+        data,
+        metadata.pixel_type,
+        spacing.to_vec(),
+        metadata.offset.to_vec(),
+        transform,
+        slope,
+        intercept,
+    ).unwrap();
+
+    let vol = pixel_data.voxel_data;
     let mut buffer = Vec::with_capacity(vol.len() * 2);
-    let buffer = match header.element_type.as_str() {
-        "MET_SHORT" | "MET_INT16" => {
+    let buffer = match metadata.pixel_type {
+        PixelType::Int16 => {
             for val in vol{
                 buffer.extend_from_slice(&val.to_le_bytes());
             }
             buffer
         }
-        "MET_FLOAT" => {
+        PixelType::Float32 => {
             let mut rotated_i16 = vec![0i16; row * col * depth];
             for new_x in 0..depth {
                 for new_y in 0..row {
@@ -190,7 +206,7 @@ fn inject_image<S: DicomSink>(
             }
             buffer
         }
-        _ => return Err(anyhow!("不支持的 mha element type: {}", header.element_type)),
+        _ => return Err(anyhow!("不支持的 mha element type: {:?}", metadata.pixel_type)),
     };
     
     // generate dicom slice
@@ -207,11 +223,10 @@ fn inject_image<S: DicomSink>(
         let dz = *spacing.get(2).unwrap_or(&1.0);
         let instance_no = (z + 1) as i32;
         let slice_loc = (z as f32) * dz;
-        let base = ct_volume.base.matrix.get_column(3);
-        let (col_dir,row_dir, pos) = match header.element_type.as_str() {
-            "MET_SHORT" | "MET_INT16" => {
-                let transform: &[f32] = &header.transform;
-                let (col_dir,row_dir, slice_dir) = orientation_dirs(&transform);
+        let base = pixel_data.base.matrix.get_column(3);
+        let (col_dir,row_dir, pos) = match metadata.pixel_type {
+            PixelType::Int16 => {
+                let [col_dir,row_dir, slice_dir] = orientation;
                 let pos = [
                     base[0] + slice_loc * slice_dir[0],
                     base[1] + slice_loc * slice_dir[1],
@@ -219,7 +234,7 @@ fn inject_image<S: DicomSink>(
                 ];
                 (col_dir, row_dir, pos)
             }
-            "MET_FLOAT" => {
+            PixelType::Float32 => {
                 let col_dir=[1.0, 0.0, 0.0];
                 let row_dir=[0.0, 1.0, 0.0];
                 let pos = [
@@ -229,7 +244,7 @@ fn inject_image<S: DicomSink>(
                 ];
                 (col_dir, row_dir, pos)
             }
-            _ => return Err(anyhow!("不支持的 mha element type: {}", header.element_type)),
+            _ => return Err(anyhow!("不支持的 mha element type: {:?}", metadata.pixel_type)),
         };
 
         if z == 5 {
@@ -251,7 +266,7 @@ fn inject_image<S: DicomSink>(
             obj.clone(),
             &mut meta.clone(),
             sop_instance_uid,
-            patient_position.clone(),
+            patient_position.to_string(),
             row, 
             col,
             spacing,
@@ -354,6 +369,40 @@ fn write_ct_dicom_slice<S: DicomSink>(
     base.write_all(&mut out_buf).map_err(|e| anyhow!("failed to serialize dicom to memory: {}", e))?;
     sink.save_slice(filename, out_buf)?;
     Ok(())
+}
+
+// dicom sink trait
+pub trait DicomSink {
+    fn save_slice(&mut self, filename: String, data: Vec<u8>) -> Result<()>;
+}
+
+pub struct FsSink {
+    pub(crate) out_dir: PathBuf,
+}
+
+impl DicomSink for FsSink {
+    fn save_slice(&mut self, filename: String, data: Vec<u8>) -> Result<()> {
+        let out_path = self.out_dir.join(filename);
+        std::fs::write(&out_path, data)?;
+        Ok(())
+    }
+}
+
+pub struct MemSink {
+    pub(crate) files: Vec<(String, Vec<u8>)>,
+}
+
+impl MemSink {
+    pub fn new() -> Self {
+        Self { files: Vec::new() }
+    }
+}
+
+impl DicomSink for MemSink {
+    fn save_slice(&mut self, filename: String, data: Vec<u8>) -> Result<()> {
+        self.files.push((filename, data));
+        Ok(())
+    }
 }
 
 #[cfg(test)]
