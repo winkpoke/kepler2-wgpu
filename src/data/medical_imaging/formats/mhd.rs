@@ -109,28 +109,7 @@ impl MhdParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(not(target_arch = "wasm32"))]
-    use std::path::PathBuf;
     use std::fs;
-    
-    // #[test]
-    // #[cfg(not(target_arch = "wasm32"))]
-    // fn test_parse_file() {
-    //     let path = PathBuf::from("C:/share/input");
-    //     let volume = MhdParser::parse_file(path).unwrap();
-    //     let header = volume.metadata;
-    //     let pixel_data = volume.pixel_data;
-    //     println!("=== MHDHeader 解析结果 ===");
-    //     println!("维度 (DimSize): {:?}", header.dimensions);
-    //     println!("体素间距 (ElementSpacing): {:?}", header.spacing);
-    //     println!("数据类型 (ElementType): {:?}", header.pixel_type);
-    //     println!("数据文件 (ElementDataFile): {}", header.element_data_file);
-    //     println!("原点偏移 (Offset): {:?}", header.offset);
-    //     println!("方向矩阵 (TransformMatrix): {:?}", header.orientation);
-    //     println!("患者体位：{:?}",header.patient_position);
-    //     println!("数据偏移 (data_offset，仅 .mha 有): {:?}", header.data_offset);
-    //     println!("像素前20个数据: {:?}", &pixel_data.as_bytes()[..20]);
-    // }
 
     #[test]
     fn test_parse_by_bytes(){

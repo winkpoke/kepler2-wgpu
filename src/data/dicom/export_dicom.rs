@@ -265,8 +265,8 @@ fn write_ct_dicom_slice<S: DicomSink>(
 ) -> Result<()> {
     let slope = 1.0;
     let intercept=0.0;
-    let win_center = (0.0 + 1.0) / 2.0;
-    let win_width = f32::max(1.0 - 0.0, 1.0);
+    let win_center = 250;
+    let win_width = 1500;
  
     // 更新文件元信息中的 MEDIA_STORAGE_SOP_INSTANCE_UID
     base.put(DataElement::new(tags::SOP_INSTANCE_UID, VR::UI, PrimitiveValue::from(sop_instance_uid.clone())));
@@ -318,9 +318,8 @@ fn write_ct_dicom_slice<S: DicomSink>(
     base.put(DataElement::new(tags::RESCALE_TYPE, VR::LO, PrimitiveValue::from("HU")));
 
     // ww/wc
-    let ww = if win_width <= 0.0 { 1.0 } else { win_width };
     base.put(DataElement::new(tags::WINDOW_CENTER, VR::DS, PrimitiveValue::from(format!("{:.3}", win_center))));
-    base.put(DataElement::new(tags::WINDOW_WIDTH, VR::DS, PrimitiveValue::from(format!("{:.3}", ww))));
+    base.put(DataElement::new(tags::WINDOW_WIDTH, VR::DS, PrimitiveValue::from(format!("{:.3}", win_width))));
 
     // Pixel Data
     base.put(DataElement::new(tags::PIXEL_DATA, VR::OW, PrimitiveValue::from(buf)));
