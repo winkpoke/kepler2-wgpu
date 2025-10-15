@@ -60,7 +60,20 @@ impl PixelData {
         }
     }
 
-    // analyze raw data according to ElementType
+    /// Creates pixel data from raw bytes with specified type and applies slope/intercept
+    /// 
+    /// # Arguments
+    /// * `raw_data` - Raw pixel data bytes
+    /// * `pixel_type` - Type of pixel data
+    /// * `voxel_count` - Number of voxels to process
+    /// * `slope` - Slope value for scaling
+    /// * `intercept` - Intercept value for scaling
+    /// 
+    /// # Returns
+    /// * `MedicalImagingResult<Vec<i16>>` - Processed pixel data with applied slope/intercept
+    /// 
+    /// # Errors
+    /// * `UnsupportedPixelType` - If pixel type is not Int16 or Float32
     pub fn create_pixel_data(
         raw_data: Vec<u8>,
         pixel_type: PixelType,
