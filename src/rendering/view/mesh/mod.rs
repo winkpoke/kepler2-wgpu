@@ -6,7 +6,6 @@
 pub mod mesh;
 pub mod material;
 pub mod camera;
-pub mod lighting;
 pub mod mesh_view;
 pub mod mesh_render_context;
 pub mod basic_mesh_context;
