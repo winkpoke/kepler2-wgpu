@@ -124,10 +124,182 @@ pub struct DataIssue {
 /// Integrity checker trait
 pub trait IntegrityChecker {
     fn check_integrity(&self, data: &[u8]) -> ValidationResult{
-        ValidationResult::success()
+        if data.is_empty(){
+            return ValidationResult::failure(vec![ValidationError::InvalidInput {
+                message: "Empty data".to_string(),
+                field: Some("data".to_string()),
+                context: HashMap::new(),
+            }]);
+        }
+        else {
+            ValidationResult::success()
+        }
     }
     fn checker_name(&self) -> &str{
         "IntegrityChecker"
+    }
+}
+
+/// Function-level comment: Basic data size integrity checker
+/// Validates that data meets minimum size requirements
+#[derive(Debug)]
+pub struct DataSizeChecker {
+    pub min_size: usize,
+    pub max_size: Option<usize>,
+}
+
+impl DataSizeChecker {
+    pub fn new(min_size: usize, max_size: Option<usize>) -> Self {
+        Self { min_size, max_size }
+    }
+}
+
+impl IntegrityChecker for DataSizeChecker {
+    fn check_integrity(&self, data: &[u8]) -> ValidationResult {
+        let mut errors = Vec::new();
+        
+        if data.len() < self.min_size {
+            errors.push(ValidationError::InvalidLength {
+                message: format!("Data size {} is below minimum {}", data.len(), self.min_size),
+                actual: data.len(),
+                expected_min: Some(self.min_size),
+                expected_max: self.max_size,
+            });
+        }
+        
+        if let Some(max_size) = self.max_size {
+            if data.len() > max_size {
+                errors.push(ValidationError::InvalidLength {
+                    message: format!("Data size {} exceeds maximum {}", data.len(), max_size),
+                    actual: data.len(),
+                    expected_min: Some(self.min_size),
+                    expected_max: Some(max_size),
+                });
+            }
+        }
+        
+        if errors.is_empty() {
+            ValidationResult::success()
+        } else {
+            ValidationResult::failure(errors)
+        }
+    }
+    
+    fn checker_name(&self) -> &str {
+        "DataSizeChecker"
+    }
+}
+
+/// Function-level comment: Checksum integrity checker
+/// Validates data integrity using simple checksum algorithms
+#[derive(Debug)]
+pub struct ChecksumChecker {
+    pub expected_checksum: u32,
+    pub algorithm: ChecksumAlgorithm,
+}
+
+#[derive(Debug, Clone)]
+pub enum ChecksumAlgorithm {
+    Simple,
+    Crc32,
+}
+
+impl ChecksumChecker {
+    pub fn new(expected_checksum: u32, algorithm: ChecksumAlgorithm) -> Self {
+        Self { expected_checksum, algorithm }
+    }
+    
+    fn calculate_checksum(&self, data: &[u8]) -> u32 {
+        match self.algorithm {
+            ChecksumAlgorithm::Simple => {
+                data.iter().map(|&b| b as u32).sum()
+            },
+            ChecksumAlgorithm::Crc32 => {
+                // Simplified CRC32 implementation for demonstration
+                let mut crc = 0xFFFFFFFF_u32;
+                for &byte in data {
+                    crc ^= byte as u32;
+                    for _ in 0..8 {
+                        if crc & 1 != 0 {
+                            crc = (crc >> 1) ^ 0xEDB88320;
+                        } else {
+                            crc >>= 1;
+                        }
+                    }
+                }
+                !crc
+            }
+        }
+    }
+}
+
+impl IntegrityChecker for ChecksumChecker {
+    fn check_integrity(&self, data: &[u8]) -> ValidationResult {
+        let calculated_checksum = self.calculate_checksum(data);
+        
+        if calculated_checksum != self.expected_checksum {
+            ValidationResult::failure(vec![ValidationError::MedicalImaging {
+                message: format!(
+                    "Checksum mismatch: expected {}, got {}",
+                    self.expected_checksum, calculated_checksum
+                ),
+                error_code: "CHECKSUM_MISMATCH".to_string(),
+            }])
+        } else {
+            ValidationResult::success()
+        }
+    }
+    
+    fn checker_name(&self) -> &str {
+        "ChecksumChecker"
+    }
+}
+
+/// Function-level comment: Medical imaging header integrity checker
+/// Validates medical imaging specific header patterns and magic numbers
+#[derive(Debug)]
+pub struct MedicalHeaderChecker {
+    pub expected_magic: Vec<u8>,
+    pub header_size: usize,
+}
+
+impl MedicalHeaderChecker {
+    pub fn new(expected_magic: Vec<u8>, header_size: usize) -> Self {
+        Self { expected_magic, header_size }
+    }
+}
+
+impl IntegrityChecker for MedicalHeaderChecker {
+    fn check_integrity(&self, data: &[u8]) -> ValidationResult {
+        let mut errors = Vec::new();
+        
+        if data.len() < self.header_size {
+            errors.push(ValidationError::InvalidLength {
+                message: format!("Data too short for header: {} < {}", data.len(), self.header_size),
+                actual: data.len(),
+                expected_min: Some(self.header_size),
+                expected_max: None,
+            });
+        }
+        
+        if data.len() >= self.expected_magic.len() {
+            if !data.starts_with(&self.expected_magic) {
+                errors.push(ValidationError::InvalidFormat {
+                    message: "Invalid magic number in header".to_string(),
+                    expected_format: format!("Magic bytes: {:?}", self.expected_magic),
+                });
+            }
+        }
+        
+        if errors.is_empty() {
+            ValidationResult::success()
+        } else {
+            ValidationResult::failure(errors)
+        }
+    }
+    
+    fn checker_name(&self) -> &str {
+        "MedicalHeaderChecker"
     }
 }
 
@@ -159,6 +331,28 @@ impl MedicalImageValidator {
         let validator = ValidationResult::combine(results);
         self.format_validators.insert(format, validator.clone());
         validator
+    }
+
+    /// Function-level comment: Adds an integrity checker to the validator
+    /// Registers a new integrity checker that will be used during validation
+    pub fn add_integrity_checker(&mut self, checker: Box<dyn IntegrityChecker>) {
+        self.integrity_checkers.push(checker);
+    }
+
+    /// Function-level comment: Runs all integrity checkers on provided data
+    /// Executes all registered integrity checkers and combines their results
+    pub fn run_integrity_checks(&self, data: &[u8]) -> ValidationResult {
+        if self.integrity_checkers.is_empty() {
+            return ValidationResult::success();
+        }
+
+        let mut results = Vec::new();
+        for checker in &self.integrity_checkers {
+            let result = checker.check_integrity(data);
+            results.push(result);
+        }
+
+        ValidationResult::combine(results)
     }
 
     /// Function-level comment: Validates complete medical image file
