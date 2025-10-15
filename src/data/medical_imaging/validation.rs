@@ -10,7 +10,6 @@
 use std::collections::HashMap;
 use std::path::Path;
 use thiserror::Error;
-use async_trait::async_trait;
 
 use crate::data::medical_imaging::{
     metadata::{ImageMetadata,PixelData},
@@ -128,36 +127,8 @@ pub trait IntegrityChecker {
         ValidationResult::success()
     }
     fn checker_name(&self) -> &str{
-        "DefaultIntegrityChecker"
+        "IntegrityChecker"
     }
-}
-
-/// Core validation trait for synchronous validation
-pub trait Validator<T> {
-    /// Validate the input value
-    fn validate(&self, value: &T) -> Result<ValidationResult, ValidationError>;
-    
-    /// Get validator name for debugging
-    fn name(&self) -> &'static str;
-}
-
-/// Async validation trait for I/O bound operations
-#[async_trait]
-pub trait AsyncValidator<T> {
-    /// Asynchronously validate the input value
-    async fn validate_async(&self, value: &T) -> Result<ValidationResult, ValidationError>;
-    
-    /// Get validator name for debugging
-    fn name(&self) -> &'static str;
-}
-
-/// Custom validation rule trait
-pub trait ValidationRule<T> {
-    /// Apply the validation rule
-    fn apply(&self, value: &T) -> Result<(), ValidationError>;
-    
-    /// Get rule name
-    fn rule_name(&self) -> &str;
 }
 
 /// Function-level comment: Comprehensive file and data validation
@@ -177,6 +148,17 @@ impl MedicalImageValidator {
             format_validators: HashMap::new(),
             integrity_checkers: Vec::new(),
         }
+    }
+
+    pub fn add_format_validator(&mut self, format: ImageFormat, metadata: &ImageMetadata, pixel_data: &PixelData) -> ValidationResult {
+        let mut results = Vec::new();
+        let metadata_validation_results = self.validate_metadata(&metadata);
+        results.push(metadata_validation_results);
+        let pixel_data_validation_results = self.validate_pixel_data(&pixel_data, &metadata);
+        results.push(pixel_data_validation_results);
+        let validator = ValidationResult::combine(results);
+        self.format_validators.insert(format, validator.clone());
+        validator
     }
 
     /// Function-level comment: Validates complete medical image file
@@ -210,29 +192,44 @@ impl MedicalImageValidator {
     /// Function-level comment: Validates metadata consistency
     /// Checks metadata fields for consistency and medical imaging standards compliance
     pub fn validate_metadata(&self, metadata: &ImageMetadata) -> ValidationResult {
-        let mut result = ValidationResult::success();
-        
+        let mut errors = Vec::new();
+
         // Validate dimensions
-        if metadata.dimensions.iter().any(|&d| d == 0) {
-            result.errors.push(ValidationError::InvalidInput {
-                message: "Image dimensions cannot be zero".to_string(),
-                field: Some("dimensions".to_string()),
-                context: HashMap::new(),
-            });
-            result.is_valid = false;
+        for (i, &dim) in metadata.dimensions.iter().enumerate() {
+            if dim == 0 {
+                errors.push(ValidationError::InvalidDimension {
+                    message: "Dimension cannot be zero".to_string(),
+                    dimension: format!("dimensions[{}]", i),
+                });
+            }
         }
-        
+
         // Validate spacing
-        if metadata.spacing.iter().any(|&s| s <= 0.0) {
-            result.errors.push(ValidationError::InvalidInput {
-                message: "Image spacing must be positive".to_string(),
-                field: Some("spacing".to_string()),
-                context: HashMap::new(),
-            });
-            result.is_valid = false;
+        for (i, &sp) in metadata.spacing.iter().enumerate() {
+            if sp <= 0.0 {
+                errors.push(ValidationError::InvalidSpacing {
+                    message: "Spacing cannot be zero or negative".to_string(),
+                    spacing: format!("spacing[{}]", i),
+                });
+            }
         }
-        
-        result
+
+        // Validate orientation matrix (must be orthonormal)
+        let det = metadata.orientation[0][0] * (metadata.orientation[1][1] * metadata.orientation[2][2] - metadata.orientation[1][2] * metadata.orientation[2][1])
+                - metadata.orientation[0][1] * (metadata.orientation[1][0] * metadata.orientation[2][2] - metadata.orientation[1][2] * metadata.orientation[2][0])
+                + metadata.orientation[0][2] * (metadata.orientation[1][0] * metadata.orientation[2][1] - metadata.orientation[1][1] * metadata.orientation[2][0]);
+        if det.abs() < 1e-6 {
+            errors.push(ValidationError::InvalidOrientation {
+                message: "Orientation matrix must be orthonormal".to_string(),
+                orientation: "orientation".to_string(),
+            });
+        }
+
+        if errors.is_empty() {
+            ValidationResult::success()
+        } else {
+            ValidationResult::failure(errors)
+        }
     }
     
     /// Function-level comment: Validates pixel data integrity
