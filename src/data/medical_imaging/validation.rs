@@ -447,14 +447,6 @@ impl MedicalImageValidator {
         
         result
     }
-    
-    /// Function-level comment: Performs checksum validation if available
-    /// Validates file integrity using checksums when available
-    pub fn validate_checksum<P: AsRef<Path>>(&self, path: P) -> ValidationResult {
-        // For now, return success - checksum validation would be implemented
-        // based on specific file format requirements
-        ValidationResult::success()
-    }
 }
 
 /// Function-level comment: Validation result with detailed diagnostics
