@@ -1,29 +1,30 @@
 use crate::data::medical_imaging::{
     error::*, 
     metadata::{MedicalVolume,  ImageMetadata, PixelData},
-    ImageFormat
+    ImageFormat,
+    validation::MedicalImageValidator,
 };
 use std::{collections::HashMap, io::Read};
 use std::fs::File;
 use std::io::{BufRead,BufReader};
 use std::path::PathBuf;
 
-/// 功能级注释：解析具有独立数据文件的 MHD（MetaIO）文件
-/// 处理引用外部原始或压缩数据的头文件
+/// Function-level comment: Parses MHD (MetaIO) files with separate data files
+/// Handles header files that reference external raw or compressed data
 pub struct MhdParser {
-    /// 验证 MHD 头文件格式
-    validator: Option<String>,
-    /// 解析相对于头文件的数据文件路径
+    /// Validates MHD header format
+    validator: MedicalImageValidator,
+    /// Resolves data file paths relative to header
     path_resolver: PathBuf,
-    /// 加载数据文件的路径
+    /// Handles various data file formats
     data_loader: PathBuf,
 }
 
 impl MhdParser {
-    /// 创建新的 MHD 解析器实例
+    /// Creates a new MHD parser instance
     pub fn new(
-        validator: Option<String>, 
-        path_resolver: PathBuf, 
+        validator: MedicalImageValidator,
+        path_resolver: PathBuf,
         data_loader: PathBuf
     ) -> Self {
         Self {
@@ -33,24 +34,25 @@ impl MhdParser {
         }
     }
     
-    /// 解析 MHD 头文件并加载关联的数据文件
+    /// Parses MHD header file and loads associated data file
     #[cfg(not(target_arch = "wasm32"))]
     pub async fn parse_file(path: PathBuf) -> MedicalImagingResult<MedicalVolume> {
-        let mut mhd = MhdParser::new(None, PathBuf::new(), path.clone());
+        let mut mhd = MhdParser::new(MedicalImageValidator::new(), PathBuf::new(), path.clone());
         let mhd_path = mhd.data_loader.clone().join("CT.mhd");
         let bytes_mhd = tokio::fs::read(mhd_path).await?;
         let metadata = Self::parse_single_file(&bytes_mhd)?;
         let pixel_data = mhd.load_data_file(&metadata)?;
         MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
     }
-
+        
+    /// Parses MHD header file from raw bytes and loads pixel data
     pub fn parse_by_bytes(mhd:&[u8],data: &[u8]) -> MedicalImagingResult<MedicalVolume>{
         let metadata = Self::parse_single_file(mhd)?;
         let pixel_data = PixelData::UInt8(data.to_vec());
         MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
     }
     
-    /// 单独加载数据文件
+    /// Loads pixel data from associated data file
     pub fn load_data_file(self, metadata: &ImageMetadata) -> MedicalImagingResult<PixelData>{
         let dims = metadata.dimensions.clone();
         let n = dims[0] * dims[1] * dims[2];
@@ -62,7 +64,7 @@ impl MhdParser {
         Ok(PixelData::UInt8(temp_buf))
     }
     
-    /// 仅解析头文件而不加载数据文件
+    /// Parses MHD header file from raw bytes
     pub fn parse_single_file(mhd_data: &[u8]) -> MedicalImagingResult<ImageMetadata> {
         let mut kv: HashMap<String, String> = HashMap::new();
         let data_offset: Option<usize> = None;

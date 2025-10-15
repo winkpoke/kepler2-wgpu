@@ -6,7 +6,7 @@ use crate::data::medical_imaging::{
     metadata::{Endianness, ImageMetadata, MedicalVolume, PixelData}, 
     CompressionType,
     ImageFormat, 
-    ValidationResult,
+    validation::MedicalImageValidator,
 };
 use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
@@ -17,11 +17,11 @@ use std::fs::File;
 /// Function-level comment: MHA format parser
 /// Implements parsing for MHA files (MetaImage format with embedded data)
 pub struct MhaParser {
-    /// 验证 MHA 文件签名和格式
-    validation: Option<String>,
-    /// 处理不同的压缩方案
+    /// Validates MHA file format and signature
+    validator: MedicalImageValidator,
+    /// Handles different compression schemes
     compression_handler: CompressionType,
-    /// 管理字节序转换
+    /// Manages byte order conversion
     endian_converter: Endianness,
 }
 
