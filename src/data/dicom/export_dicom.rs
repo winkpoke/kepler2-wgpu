@@ -4,7 +4,7 @@ use super::{
 };
 use crate::data::medical_imaging::{
     formats::mha::*,
-    metadata::{PixelType, PixelData},
+    metadata::{PixelData, PixelType}, MhdParser,
 };
 
 use anyhow::{anyhow, Result};
@@ -72,6 +72,7 @@ fn change_dicom_uid(root: &str,twice:bool) -> String {
 /// generate ct dicom
 pub fn build_ct_dicom<S: DicomSink>(
     mha_path: &[u8],
+    data_path: Option<&[u8]>,
     patient: &Patient,
     study: &StudySet,
     kv: f64,
@@ -131,7 +132,7 @@ pub fn build_ct_dicom<S: DicomSink>(
     obj.put(DataElement::new(tags::SERIES_TIME, VR::TM, PrimitiveValue::from(now.format("%H%M%S").to_string())));
 
     // generate image info
-    inject_image(&mut obj, &mut meta, series_uid, mha_path, slope, intercept, sink)?;
+    inject_image(&mut obj, &mut meta, series_uid, mha_path, data_path,slope, intercept, sink)?;
     
     Ok(())
 }
@@ -142,11 +143,16 @@ fn inject_image<S: DicomSink>(
     meta: &mut FileMetaTableBuilder,
     series_uid: String,
     mha_path: &[u8], 
+    data_path: Option<&[u8]>,
     slope: f32,
     intercept: f32,
     sink: &mut S,
 ) -> Result<()> {
-    let medical_volume = MhaParser::parse_bytes(mha_path)?;
+    let medical_volume = if let Some(data_path) = data_path {
+        MhdParser::parse_by_bytes(mha_path, data_path)?
+    }else{
+        MhaParser::parse_bytes(mha_path)?
+    };
     let metadata = medical_volume.metadata;
     let patient_position = metadata.patient_position;
 
@@ -416,6 +422,56 @@ mod tests {
         let mut sink = FsSink { out_dir };
         let result = build_ct_dicom(
             mha_path, 
+            None,
+            &patient, 
+            &study,
+            120.0,   // kV
+            70.0,    // mAs
+            1612.903, // slope
+            -1016.129,   // intercept
+            &mut sink);
+        assert!(result.is_ok());
+
+        println!("✅ build_ct_dicom 执行成功！");
+    }
+
+    #[test]
+    fn test_build_ct_dicom_raw() {
+        // 测试路径
+        let mhd_path = "C:/share/input/CT.mhd";
+        let data_path = "C:/share/input/CT.raw";
+        let mhd = fs::read(mhd_path);
+        let data = fs::read(data_path);
+        let mhd_path = mhd.as_ref().map(|v| v.as_slice()).unwrap();
+        let data_path = Some(data.as_ref().map(|v| v.as_slice()).unwrap());
+        let out_dir = Path::new("C:/share").join(Local::now().format("%Y-%m-%d").to_string());
+        std::fs::create_dir_all(&out_dir).unwrap();
+
+        // 生成一个 SOPInstanceUID
+        let study_uid = generate_uid();
+        println!("Generated Study UID: {}", study_uid);
+
+        // 构造虚拟的 patient / study
+        let patient = Patient {
+            patient_id: "P001".to_string(),
+            name: "zhangsan".to_string(),
+            birthdate: Some("19800101".to_string()),
+            sex: Some("M".to_string())
+        };
+
+        let study = StudySet {
+            uid: study_uid.to_string(),
+            study_id: "STUDY001".to_string(),
+            patient_id: "P001".to_string(),
+            date: "20250908".to_string(),
+            description: Some("zhutiCT".to_string())
+        };
+
+        // 调用函数
+        let mut sink = FsSink { out_dir };
+        let result = build_ct_dicom(
+            mhd_path, 
+            data_path,
             &patient, 
             &study,
             120.0,   // kV

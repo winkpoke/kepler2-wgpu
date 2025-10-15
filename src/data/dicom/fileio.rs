@@ -487,6 +487,7 @@ pub async fn read_file_as_bytes(file: File) -> Result<Vec<u8>, JsValue> {
 #[cfg(target_arch = "wasm32")]
 pub async fn build_ct_dicom_wasm(
     mha_bytes: js_sys::Uint8Array,
+    data_bytes: Option<js_sys::Uint8Array>,
     patient: js_sys::Uint8Array,
     study: js_sys::Uint8Array,
     info: js_sys::Uint8Array,
@@ -543,9 +544,18 @@ pub async fn build_ct_dicom_wasm(
     mha_bytes.copy_to(&mut buf[..]);
 
     // Build DICOM files in memory
+    let data_buf_option = if let Some(data_bytes) = data_bytes {
+        let mut data_buf = vec![0u8; data_bytes.length() as usize];
+        data_bytes.copy_to(&mut data_buf[..]);
+        Some(data_buf)
+    } else {
+        None
+    };
+    
     let mut sink = MemSink::new();
     build_ct_dicom(
         &buf,
+        data_buf_option.as_ref().map(|v| v.as_slice()),
         &patient,
         &study,
         kv, m_as,
