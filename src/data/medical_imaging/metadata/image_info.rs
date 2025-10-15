@@ -4,8 +4,11 @@
 use crate::data::medical_imaging::{
     pixel_data::{PixelType, Endianness},
     formats::CompressionType,
+    error::{MedicalImagingError, MedicalImagingResult},
 };
 use std::fmt;
+use anyhow::{anyhow, Result};
+use std::collections::HashMap;
 
 /// Comprehensive medical image metadata
 /// Preserves all spatial and acquisition information critical for medical application
@@ -74,6 +77,116 @@ impl ImageMetadata {
         }
         
         world_pos
+    }
+
+    // Parses a string of integers into a vector of usize
+    fn parse_ints(s: &str) -> Result<Vec<usize>> {
+        s.split_whitespace()
+            .map(|x| x.parse().map_err(|e| anyhow!("parse int: {}", e)))
+            .collect()
+    }
+
+    // Parses a string of floating-point numbers into a vector of f32
+    fn parse_floats(s: &str) -> Result<Vec<f32>> {
+        s.split_whitespace()
+            .map(|x| x.parse().map_err(|e| anyhow!("parse float: {}", e)))
+            .collect()
+    }
+
+    // Computes the orientation directions from a transform matrix
+    fn orientation_dirs(transform: Vec<f32>) -> [[f32; 3]; 3] {
+        match transform.len() {
+            9 => {
+                let col= [transform[0], transform[1], transform[2]]; // x 
+                let row = [transform[3], transform[4], transform[5]]; // y 
+                let slice = [transform[6], transform[7], transform[8]]; // z 
+                [col, row, slice]
+            }
+            6 => {
+                let col = [transform[0], transform[1], transform[2]];
+                let row = [transform[3], transform[4], transform[5]];
+                let slice = [0.0, 0.0, 1.0];
+                [col, row, slice]
+            }
+            _ => [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        }
+    }
+
+    // Extracts metadata from a MHX header
+    pub fn get_header(kv: HashMap<String, String>, data_offset: Option<usize>) -> MedicalImagingResult<ImageMetadata>{
+        let dim = Self::parse_ints(kv.get("DimSize")
+            .ok_or_else(|| MedicalImagingError::UnsupportedFormat {
+                format: format!("DimSize: {}", kv.get("DimSize").unwrap_or(&"".to_string()))
+            })?).map_err(|e| MedicalImagingError::UnsupportedFormat {
+                format: format!("DimSize: {}", e)
+            })?;
+
+        let element_type = kv
+            .get("ElementType")
+            .ok_or_else(|| MedicalImagingError::UnsupportedFormat {
+                format: format!("ElementType: {}", kv.get("ElementType").unwrap_or(&"".to_string()))
+            })?
+            .to_string();
+        let pixel_type = match element_type.as_str() {
+            "MET_UCHAR" => PixelType::UInt8,
+            "MET_USHORT" => PixelType::UInt16,
+            "MET_SHORT" => PixelType::Int16,
+            "MET_INT" => PixelType::Int32,
+            "MET_FLOAT" => PixelType::Float32,
+            "MET_DOUBLE" => PixelType::Float64,
+            _ => return Err(MedicalImagingError::UnsupportedFormat {
+                format: format!("pixel type: {}", element_type)
+            }),
+        };
+
+        let spacing = Self::parse_floats(kv.get("ElementSpacing")
+            .ok_or_else(|| MedicalImagingError::UnsupportedFormat {
+                format: format!("ElementSpacing: {}", kv.get("ElementSpacing").unwrap_or(&"".to_string()))
+            })?).map_err(|e| MedicalImagingError::UnsupportedFormat {
+                format: format!("ElementSpacing: {}", e)
+            })?;
+        let offset = Self::parse_floats(kv.get("Offset")
+            .ok_or_else(|| MedicalImagingError::UnsupportedFormat {
+                format: format!("Offset: {}", kv.get("Offset").unwrap_or(&"".to_string()))
+            })?).map_err(|e| MedicalImagingError::UnsupportedFormat {
+                format: format!("Offset: {}", e)
+            })?;
+        let transform = Self::parse_floats(kv.get("TransformMatrix")
+            .ok_or_else(|| MedicalImagingError::UnsupportedFormat {
+                format: format!("TransformMatrix: {}", kv.get("TransformMatrix").unwrap_or(&"".to_string()))
+            })?).map_err(|e| MedicalImagingError::UnsupportedFormat {
+                format: format!("TransformMatrix: {}", e)
+            })?;
+        let orientation = Self::orientation_dirs(transform);
+
+        let anatomical_orientation = kv.get("AnatomicalOrientation")
+            .ok_or_else(|| MedicalImagingError::UnsupportedFormat {
+                format: format!("AnatomicalOrientation: {}", kv.get("AnatomicalOrientation").unwrap_or(&"".to_string()))
+            })?
+            .to_string();
+
+        let anatomical_orientation = anatomical_orientation.as_str();
+        let patient_position = create_patient_position(anatomical_orientation);
+
+        let element_data_file = kv
+            .get("ElementDataFile")
+            .ok_or_else(|| MedicalImagingError::UnsupportedFormat {
+                format: format!("ElementDataFile: {}", kv.get("ElementDataFile").unwrap_or(&"".to_string()))
+            })?
+            .to_string();
+
+        Ok(ImageMetadata {
+            dimensions: dim,
+            spacing,
+            offset,
+            orientation,
+            pixel_type,
+            endianness: Endianness::Little,
+            patient_position,
+            compression: None,
+            data_offset,
+            element_data_file,
+        })
     }
 }
 
