@@ -3,33 +3,34 @@ use crate::data::medical_imaging::{
     pixel_data::{PixelData, PixelType},
     formats::ImageFormat,
     error:: MedicalImagingResult,
-    validation::ValidationResult,
+    validation::{ValidationResult, MedicalImageValidator},
 };
 use crate::data::CTVolume;
 use crate::core::coord::{Base, Matrix4x4};
 
-/// 标准化的 3D 医学体积表示
-/// 保留所有元数据并提供对像素数据的高效访问
+/// Function-level comment: Standardized 3D medical volume representation
+/// Preserves all metadata and provides efficient access to pixel data
 #[derive(Debug, Clone)]
 pub struct MedicalVolume {
-    /// 包括空间信息的图像元数据
+    /// Image metadata including spatial information
     pub metadata: ImageMetadata,
-    /// 具有类型安全访问的像素数据
+    /// Pixel data with type-safe access
     pub pixel_data: PixelData,
-    /// 原始文件格式，用于来源追踪
+    /// Original file format for provenance tracking
     pub source_format: ImageFormat,
-    /// 验证状态和完整性检查
+    /// Validation status and integrity checks
     pub validation_status: ValidationResult,
 }
 
 impl MedicalVolume {
-    /// 创建经过验证的新医学体积
+    /// Creates new medical volume with validation
     pub fn new(
         metadata: ImageMetadata, 
         pixel_data: PixelData, 
         source_format: ImageFormat
     ) -> MedicalImagingResult<Self>{
-        let validation_status = metadata.validate();
+        let mut validator = MedicalImageValidator::new();
+        let validation_status = validator.add_format_validator(source_format.clone(), &metadata, &pixel_data);
         Ok(Self {
             metadata,
             pixel_data,
@@ -38,6 +39,7 @@ impl MedicalVolume {
         })
     }
 
+    /// Generates CT volume from MHA file
     pub fn generate_ct_volume_mha(
         dim: [usize; 3], 
         data: Vec<u8>,
@@ -112,15 +114,11 @@ impl MedicalVolume {
         Ok(ct_volume_mha)
     }
     
-    // /// 转换为不同的像素数据类型
     // pub fn convert_pixel_type<T: PixelType>(&self) -> MedicalImagingResult<MedicalVolume>;
     
-    // /// 在指定索引处提取 2D 切片
     // pub fn extract_slice(&self, axis: Axis, index: usize) -> MedicalImagingResult<MedicalSlice>;
     
-    // /// 将体积重新采样到新间距
-    // pub fn resample(&self, new_spacing: [f64; 3]) -> MedicalImagingResult<MedicalVolume>;
     
-    // /// 验证数据完整性
-    // pub fn validate(&self) -> ValidationResult;
+    // Resamples volume to new spacing
+    // pub fn resample(&self, new_spacing: [f32; 3]) -> MedicalImagingResult<MedicalVolume>;
 }
