@@ -1,6 +1,5 @@
 use crate::data::medical_imaging::{
     error::*, 
-    get_header, 
     metadata::{MedicalVolume,  ImageMetadata, PixelData},
     ImageFormat
 };
@@ -96,7 +95,7 @@ impl MhdParser {
         }
 
         // Parse the metadata from header key-value pairs
-        let mut metadata = get_header(kv, data_offset)?;
+        let mut metadata = ImageMetadata::get_header(kv, data_offset)?;
         
         // Mark that this is a header-only parse for WASM
         metadata.element_data_file = "WASM_HEADER_ONLY".to_string();

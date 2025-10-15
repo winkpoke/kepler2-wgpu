@@ -1,9 +1,12 @@
+/// Function-level comment: MHA (MetaImage) format parser implementation
+/// Handles parsing of MHA files with embedded binary data according to MetaImage specification
+
 use crate::data::medical_imaging::{
     error::*, 
-    get_header, 
-    metadata::{Endianness, MedicalVolume,  ImageMetadata, PixelData}, 
+    metadata::{Endianness, ImageMetadata, MedicalVolume, PixelData}, 
     CompressionType,
-    ImageFormat,
+    ImageFormat, 
+    ValidationResult,
 };
 use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
@@ -11,11 +14,11 @@ use std::path::PathBuf;
 #[cfg(not(target_arch = "wasm32"))]
 use std::fs::File;
 
-/// 功能级注释：解析包含嵌入式数据的 MHA（MetaImage）文件
-/// 处理带有内联图像数据的 ASCII 和二进制头文件
+/// Function-level comment: MHA format parser
+/// Implements parsing for MHA files (MetaImage format with embedded data)
 pub struct MhaParser {
     /// 验证 MHA 文件签名和格式
-    validaton: Option<String>,
+    validation: Option<String>,
     /// 处理不同的压缩方案
     compression_handler: CompressionType,
     /// 管理字节序转换
@@ -23,20 +26,7 @@ pub struct MhaParser {
 }
 
 impl MhaParser {
-    /// 创建新的 MHA 解析器实例
-    pub fn new(
-        validaton: Option<String>, 
-        compression_handler: CompressionType, 
-        endian_converter: Endianness
-    ) -> Self {
-        Self {
-            validaton,
-            compression_handler,
-            endian_converter,
-        }
-    }
-
-    /// 解析完整的 MHA 文件，包括头文件和嵌入式数据
+    /// Parses complete MHA file including header and embedded data
     #[cfg(not(target_arch = "wasm32"))]
     pub async fn parse_file(path: PathBuf) -> MedicalImagingResult<MedicalVolume>{
         let path = path.join("CT.mha");
@@ -44,7 +34,7 @@ impl MhaParser {
         Self::parse_bytes(&file)
     }
 
-    /// 从字节缓冲区解析 MHA，用于 WASM 兼容性
+    /// Parses MHA from byte buffer for WASM compatibility
     pub fn parse_bytes(data: &[u8]) -> MedicalImagingResult<MedicalVolume>{
         let metadata = Self::parse_metadata_only(data)?;
         let start_offset = metadata.data_offset.unwrap_or(0);
@@ -53,7 +43,7 @@ impl MhaParser {
         MedicalVolume::new(metadata, pixel_data, ImageFormat::MHA)
     }
     
-    /// 仅提取元数据而不加载像素数据
+    /// Extracts only metadata without loading pixel data
     pub fn parse_metadata_only(data: &[u8]) -> MedicalImagingResult<ImageMetadata>{
         let mut kv: HashMap<String, String> = HashMap::new();
         let mut data_offset: Option<usize> = None;
@@ -96,6 +86,7 @@ impl MhaParser {
         }
 
         // analyze header key-values
-        get_header(kv, data_offset)
+        ImageMetadata::get_header(kv, data_offset)
     }
+
 }
