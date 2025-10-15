@@ -1,24 +1,11 @@
+// Function-level comment: Patient position enumeration
+// Represents different positions of the patient in the imaging setup
+
 use crate::data::medical_imaging::{
-    validation::{ValidationResult, ValidationError},
     pixel_data::{PixelType, Endianness},
     formats::CompressionType,
 };
 use std::fmt;
-
-/// Patient position enumeration
-/// Represents different positions of the patient in the imaging setup
-#[derive(Debug, Clone)]
-pub enum  PatientPosition{
-    HFS,
-    HFP,
-    FFS,
-    FFP,
-    HFDR,
-    HFDL,
-    FFDR,
-    FFDL,
-    Unknown,
-}
 
 /// Comprehensive medical image metadata
 /// Preserves all spatial and acquisition information critical for medical application
@@ -47,48 +34,6 @@ pub struct ImageMetadata {
 }
 
 impl ImageMetadata {
-    /// Validates metadata consistency
-    pub fn validate(&self) -> ValidationResult {
-        let mut errors = Vec::new();
-
-        // Validate dimensions
-        for (i, &dim) in self.dimensions.iter().enumerate() {
-            if dim == 0 {
-                errors.push(ValidationError::InvalidDimension {
-                    message: "Dimension cannot be zero".to_string(),
-                    dimension: format!("dimensions[{}]", i),
-                });
-            }
-        }
-
-        // Validate spacing
-        for (i, &sp) in self.spacing.iter().enumerate() {
-            if sp <= 0.0 {
-                errors.push(ValidationError::InvalidSpacing {
-                    message: "Spacing cannot be zero or negative".to_string(),
-                    spacing: format!("spacing[{}]", i),
-                });
-            }
-        }
-
-        // Validate orientation matrix (must be orthonormal)
-        let det = self.orientation[0][0] * (self.orientation[1][1] * self.orientation[2][2] - self.orientation[1][2] * self.orientation[2][1])
-                - self.orientation[0][1] * (self.orientation[1][0] * self.orientation[2][2] - self.orientation[1][2] * self.orientation[2][0])
-                + self.orientation[0][2] * (self.orientation[1][0] * self.orientation[2][1] - self.orientation[1][1] * self.orientation[2][0]);
-        if det.abs() < 1e-6 {
-            errors.push(ValidationError::InvalidOrientation {
-                message: "Orientation matrix must be orthonormal".to_string(),
-                orientation: "orientation".to_string(),
-            });
-        }
-
-        if errors.is_empty() {
-            ValidationResult::success()
-        } else {
-            ValidationResult::failure(errors)
-        }
-    }
-    
     /// Calculates total number of pixels
     pub fn total_pixels(&self) -> usize {
         self.dimensions.iter().product()
@@ -130,6 +75,21 @@ impl ImageMetadata {
         
         world_pos
     }
+}
+
+/// Patient position enumeration
+/// Represents different positions of the patient in the imaging setup
+#[derive(Debug, Clone)]
+pub enum  PatientPosition{
+    HFS,
+    HFP,
+    FFS,
+    FFP,
+    HFDR,
+    HFDL,
+    FFDR,
+    FFDL,
+    Unknown,
 }
 
 pub fn create_patient_position(anatomical_orientation: &str)-> PatientPosition{
