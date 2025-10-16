@@ -3,6 +3,7 @@
 //! This test suite validates all critical paths, edge cases, and error handling scenarios
 //! for the medical imaging module, ensuring robust functionality across different platforms
 mod mha_mhd_tests{
+    use std::time::Instant;
     use std::fs;
     use kepler_wgpu::data::medical_imaging::{*};
 
@@ -30,6 +31,7 @@ mod mha_mhd_tests{
         dimensions: [usize; 3],
         pixel_type: PixelType,
         spacing: [f64; 3],
+        verbose: bool,
     ) -> Vec<u8> {
         let mut header = format!(
             "ObjectType = Image\n\
@@ -58,21 +60,24 @@ mod mha_mhd_tests{
         ).into_bytes();
 
         // Add data section
-        let data_size = dimensions[0] * dimensions[1] * dimensions[2];
-        let pixel_size = match pixel_type {
-            PixelType::UInt8 => 1,
-            PixelType::UInt16 => 2,
-            PixelType::Int16 => 2,
-            PixelType::Int32 => 4,
-            PixelType::Float32 => 4,
-            PixelType::Float64 => 8,
-        };
+        if verbose{
+            let data_size = dimensions[0] * dimensions[1] * dimensions[2];
+            let pixel_size = match pixel_type {
+                PixelType::UInt8 => 1,
+                PixelType::UInt16 => 2,
+                PixelType::Int16 => 2,
+                PixelType::Int32 => 4,
+                PixelType::Float32 => 4,
+                PixelType::Float64 => 8,
+            };
+            
+            let data: Vec<u8> = (0..data_size * pixel_size)
+                .map(|i| (i % 256) as u8)
+                .collect();
+            
+            header.extend_from_slice(&data);
+        }
         
-        let data: Vec<u8> = (0..data_size * pixel_size)
-            .map(|i| (i % 256) as u8)
-            .collect();
-        
-        header.extend_from_slice(&data);
         header
     }
 
@@ -143,6 +148,91 @@ mod mha_mhd_tests{
         println!("First 20 bytes of pixel data: {:?}", &pixel_data.as_bytes()[..20]);
     }
 
+    // ============================================================================
+    // Performance Tests
+    // ============================================================================
+
+    #[test]
+    fn test_large_volume_parsing_performance() {
+        // Create a reasonably large test volume
+        let dimensions = [256, 256, 64]; // ~4MB for UInt8
+        let mha_data = create_test_mha_data(dimensions, PixelType::UInt8, [1.0, 1.0, 1.0], true);
+        
+        let start = Instant::now();
+        let result = MhaParser::parse_bytes(&mha_data);
+        let parse_duration = start.elapsed();
+        
+        assert!(result.is_ok(), "Failed to parse large volume");
+        assert!(parse_duration.as_secs() < 5, "Parsing took too long: {:?}", parse_duration);
+        
+        println!("Large volume parsing took: {:?}", parse_duration);
+    }
+
+    #[test]
+    fn test_metadata_parsing_performance() {
+        let mha_data = create_test_mha();
+        let mhd_data = create_test_mhd().0;
+        
+        let start = Instant::now();
+        for _ in 0..100 {
+            let _ = MhaParser::parse_metadata_only(&mha_data);
+        }
+        let duration_mha = start.elapsed();
+
+        let start = Instant::now();
+        for _ in 0..100 {
+            let _ = MhdParser::parse_metadata_only(&mhd_data);
+        }
+        let duration_mhd = start.elapsed();
+        
+        assert!(duration_mha.as_millis() < 1000, "Metadata parsing too slow: {:?}", duration_mha);
+        println!("100 metadata parses took(mha): {:?}", duration_mha);
+        assert!(duration_mhd.as_millis() < 1000, "Metadata parsing too slow: {:?}", duration_mhd);
+        println!("100 metadata parses took(mhd): {:?}", duration_mhd);
+    }
+
+    #[test]
+    fn test_validation_performance() {
+        let mut validator = MedicalImageValidator::new();
+        validator.add_integrity_checker(Box::new(DataSizeChecker::new(1000, Some(100000))));
+        validator.add_integrity_checker(Box::new(MedicalHeaderChecker::new(
+            vec![0x4D, 0x48, 0x41], 256
+        )));
+
+        let test_data = create_test_mha();
+        
+        let start = Instant::now();
+        for _ in 0..50 {
+            let _ = validator.run_integrity_checks(&test_data);
+        }
+        let duration = start.elapsed();
+        
+        assert!(duration.as_millis() < 2000, "Validation too slow: {:?}", duration);
+        println!("50 validation runs took: {:?}", duration);
+    }
+
+    #[test]
+    fn test_memory_usage_large_volumes() {
+        // Test that we can handle multiple large volumes without excessive memory usage
+        let mut volumes = Vec::new();
+        
+        for i in 0..5 {
+            let dimensions = [64, 64, 64];
+            let mha_data = create_test_mha_data(dimensions, PixelType::UInt8, [1.0, 1.0, 1.0], true);
+            
+            let result = MhaParser::parse_bytes(&mha_data);
+            assert!(result.is_ok(), "Failed to parse volume {}", i);
+            
+            volumes.push(result.unwrap());
+        }
+        
+        // Verify all volumes are valid
+        for (i, volume) in volumes.iter().enumerate() {
+            assert_eq!(volume.metadata.dimensions, [64, 64, 64], "Volume {} has wrong dimensions", i);
+        }
+        
+        println!("Successfully created and stored {} volumes", volumes.len());
+    }
 }
 
 // /// Function-level comment: Creates malformed test data for error testing
@@ -686,89 +776,6 @@ mod mha_mhd_tests{
         
 //         // Should detect issues
 //         assert!(!result.is_valid || !result.errors.is_empty(), "Should detect validation failures");
-//     }
-// }
-
-// // ============================================================================
-// // Performance Tests
-// // ============================================================================
-
-// #[cfg(test)]
-// mod performance_tests {
-//     use super::*;
-//     use std::time::Instant;
-
-//     #[test]
-//     fn test_large_volume_parsing_performance() {
-//         // Create a reasonably large test volume
-//         let dimensions = [256, 256, 64]; // ~4MB for UInt8
-//         let mha_data = create_test_mha_data(dimensions, PixelType::UInt8, [1.0, 1.0, 1.0]);
-        
-//         let start = Instant::now();
-//         let result = MhaParser::parse_bytes(&mha_data);
-//         let parse_duration = start.elapsed();
-        
-//         assert!(result.is_ok(), "Failed to parse large volume");
-//         assert!(parse_duration.as_secs() < 5, "Parsing took too long: {:?}", parse_duration);
-        
-//         println!("Large volume parsing took: {:?}", parse_duration);
-//     }
-
-//     #[test]
-//     fn test_metadata_parsing_performance() {
-//         let mha_data = create_test_mha_data([512, 512, 100], PixelType::Float32, [0.5, 0.5, 1.0]);
-        
-//         let start = Instant::now();
-//         for _ in 0..100 {
-//             let _ = MhaParser::parse_metadata_only(&mha_data);
-//         }
-//         let duration = start.elapsed();
-        
-//         assert!(duration.as_millis() < 1000, "Metadata parsing too slow: {:?}", duration);
-//         println!("100 metadata parses took: {:?}", duration);
-//     }
-
-//     #[test]
-//     fn test_validation_performance() {
-//         let mut validator = MedicalImageValidator::new();
-//         validator.add_integrity_checker(Box::new(DataSizeChecker::new(1000, Some(100000))));
-//         validator.add_integrity_checker(Box::new(MedicalHeaderChecker::new(
-//             vec![0x4D, 0x48, 0x41], 256
-//         )));
-
-//         let test_data = create_test_mha_data([128, 128, 32], PixelType::UInt8, [1.0, 1.0, 1.0]);
-        
-//         let start = Instant::now();
-//         for _ in 0..50 {
-//             let _ = validator.run_integrity_checks(&test_data);
-//         }
-//         let duration = start.elapsed();
-        
-//         assert!(duration.as_millis() < 2000, "Validation too slow: {:?}", duration);
-//         println!("50 validation runs took: {:?}", duration);
-//     }
-
-//     #[test]
-//     fn test_memory_usage_large_volumes() {
-//         // Test that we can handle multiple large volumes without excessive memory usage
-//         let mut volumes = Vec::new();
-        
-//         for i in 0..5 {
-//             let dimensions = [64, 64, 64];
-//             let mha_data = create_test_mha_data(dimensions, PixelType::UInt8, [1.0, 1.0, 1.0]);
-            
-//             let result = MhaParser::parse_bytes(&mha_data);
-//             assert!(result.is_ok(), "Failed to parse volume {}", i);
-            
-//             volumes.push(result.unwrap());
-//         }
-        
-//         // Verify all volumes are valid
-//         for (i, volume) in volumes.iter().enumerate() {
-//             assert_eq!(volume.metadata.dimensions, [64, 64, 64], "Volume {} has wrong dimensions", i);
-//         }
-        
-//         println!("Successfully created and stored {} volumes", volumes.len());
 //     }
 // }
 
