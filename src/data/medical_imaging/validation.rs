@@ -12,7 +12,7 @@ use std::path::Path;
 use thiserror::Error;
 
 use crate::data::medical_imaging::{
-    metadata::{ImageMetadata,PixelData},
+    metadata::{ImageMetadata,PixelData, PixelType},
     formats::ImageFormat,
 };
 
@@ -433,7 +433,15 @@ impl MedicalImageValidator {
         
         // Calculate expected data size
         let expected_size = metadata.dimensions.iter().product::<usize>();
-        let actual_size = data.as_bytes().len();
+        let n = match metadata.pixel_type {
+            PixelType::UInt8 => 1,
+            PixelType::UInt16 => 2,
+            PixelType::Int16 => 2,
+            PixelType::Int32 => 4,
+            PixelType::Float32 => 4,
+            PixelType::Float64 => 8,
+        };
+        let actual_size = data.as_bytes().len()/n;
         
         if actual_size != expected_size {
             result.errors.push(ValidationError::InvalidLength {
