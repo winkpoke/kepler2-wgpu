@@ -118,7 +118,6 @@ impl MedicalVolume {
     
     // pub fn extract_slice(&self, axis: Axis, index: usize) -> MedicalImagingResult<MedicalSlice>;
     
-    
     // Resamples volume to new spacing
     // pub fn resample(&self, new_spacing: [f32; 3]) -> MedicalImagingResult<MedicalVolume>;
 }

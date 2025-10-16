@@ -422,7 +422,7 @@ pub async fn parse_common_files_wasm(files: Array, info: js_sys::Uint8Array) -> 
         match matched_pair {
             Some((header_file, data_file)) => {
                 let header_data = read_file_as_bytes(header_file).await?;
-                let metadata = MhdParser::parse_single_file(&header_data)
+                let metadata = MhdParser::parse_metadata_only(&header_data)
                     .map_err(|e| JsValue::from_str(&format!("MHD parse error: {}", e)))?;
                 let data_bytes = read_file_as_bytes(data_file).await?;
                 let pixel_data = PixelData::UInt8(data_bytes);

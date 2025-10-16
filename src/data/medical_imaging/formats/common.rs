@@ -70,7 +70,7 @@ pub trait MedicalImageParser {
                 MhaParser::parse_metadata_only(path)
             },
             ImageFormat::MHD => {
-                MhdParser::parse_single_file(path)
+                MhdParser::parse_metadata_only(path)
             },
             _ => Err(MedicalImagingError::UnsupportedFormat {
                 format: format!("file extension: {:?}", format)

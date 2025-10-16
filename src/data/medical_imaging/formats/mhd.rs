@@ -40,14 +40,14 @@ impl MhdParser {
         let mut mhd = MhdParser::new(MedicalImageValidator::new(), PathBuf::new(), path.clone());
         let mhd_path = mhd.data_loader.clone().join("CT.mhd");
         let bytes_mhd = tokio::fs::read(mhd_path).await?;
-        let metadata = Self::parse_single_file(&bytes_mhd)?;
+        let metadata = Self::parse_metadata_only(&bytes_mhd)?;
         let pixel_data = mhd.load_data_file(&metadata)?;
         MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
     }
         
     /// Parses MHD header file from raw bytes and loads pixel data
     pub fn parse_by_bytes(mhd:&[u8],data: &[u8]) -> MedicalImagingResult<MedicalVolume>{
-        let metadata = Self::parse_single_file(mhd)?;
+        let metadata = Self::parse_metadata_only(mhd)?;
         let pixel_data = PixelData::UInt8(data.to_vec());
         MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
     }
@@ -65,7 +65,7 @@ impl MhdParser {
     }
     
     /// Parses MHD header file from raw bytes
-    pub fn parse_single_file(mhd_data: &[u8]) -> MedicalImagingResult<ImageMetadata> {
+    pub fn parse_metadata_only(mhd_data: &[u8]) -> MedicalImagingResult<ImageMetadata> {
         let mut kv: HashMap<String, String> = HashMap::new();
         let data_offset: Option<usize> = None;
 
