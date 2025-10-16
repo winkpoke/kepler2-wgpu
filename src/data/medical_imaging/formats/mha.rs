@@ -6,7 +6,7 @@ use crate::data::medical_imaging::{
     metadata::{Endianness, ImageMetadata, MedicalVolume, PixelData}, 
     CompressionType,
     ImageFormat, 
-    validation::MedicalImageValidator,
+    validation::{MedicalImageValidator,DataSizeChecker, ChecksumChecker, ChecksumAlgorithm, MedicalHeaderChecker},
 };
 use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
@@ -26,6 +26,23 @@ pub struct MhaParser {
 }
 
 impl MhaParser {
+    /// Creates new MHA parser with default configuration
+    pub fn new(metadata: &ImageMetadata, pixel_data: &PixelData) -> Self {
+        let mut validator = MedicalImageValidator::new();
+        validator.add_format_validator(ImageFormat::MHA, metadata, pixel_data);
+        let size_checker = DataSizeChecker::new(1024, Some(1024 * 1024));
+        validator.add_integrity_checker(Box::new(size_checker));
+        let checksum_checker = ChecksumChecker::new(0x12345678, ChecksumAlgorithm::Crc32);
+        validator.add_integrity_checker(Box::new(checksum_checker));
+        let header_checker = MedicalHeaderChecker::new(vec![0x4D, 0x48, 0x41], 256); // MHA
+        validator.add_integrity_checker(Box::new(header_checker));
+        Self {
+            validator,
+            compression_handler: CompressionType::Raw,
+            endian_converter: Endianness::Little,
+        }
+    }
+
     /// Parses complete MHA file including header and embedded data
     #[cfg(not(target_arch = "wasm32"))]
     pub async fn parse_file(path: PathBuf) -> MedicalImagingResult<MedicalVolume>{

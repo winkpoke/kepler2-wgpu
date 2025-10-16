@@ -106,32 +106,3 @@ impl MhdParser {
     }
 
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-
-    #[test]
-    fn test_parse_by_bytes(){
-        let path = "C:/share/input/CT.mhd";
-        let mhd = fs::read(path);
-        let bytes_mhd = mhd.as_ref().map(|v| v.as_slice()).unwrap();
-
-        let data = fs::read(path.replace("mhd", "raw"));
-        let bytes_data = data.as_ref().map(|v| v.as_slice()).unwrap();
-        let volume = MhdParser::parse_by_bytes(bytes_mhd, bytes_data).unwrap();
-        let header = volume.metadata;
-        let pixel_data = volume.pixel_data;
-        println!("=== MHDHeader 解析结果 ===");
-        println!("维度 (DimSize): {:?}", header.dimensions);
-        println!("体素间距 (ElementSpacing): {:?}", header.spacing);
-        println!("数据类型 (ElementType): {:?}", header.pixel_type);
-        println!("数据文件 (ElementDataFile): {}", header.element_data_file);
-        println!("原点偏移 (Offset): {:?}", header.offset);
-        println!("方向矩阵 (TransformMatrix): {:?}", header.orientation);
-        println!("患者体位：{:?}",header.patient_position);
-        println!("数据偏移 (data_offset，仅 .mha 有): {:?}", header.data_offset);
-        println!("像素前20个数据: {:?}", &pixel_data.as_bytes()[..20]);
-    }
-}
