@@ -1,10 +1,9 @@
 use std::{fmt, ops::{Add, Div, Mul, Neg, Sub}};
 use num::Float;
-use serde::{Serialize, Deserialize};
 
 
 /// A generic 4x4 matrix struct, stored in **row-major** order.
-#[derive(Serialize, Deserialize, Copy, Clone)]
+#[derive( Copy, Clone)]
 pub struct Matrix4x4<T> {
     pub data: [[T; 4]; 4], // Each row is a [T; 4] array
 }
@@ -196,7 +195,7 @@ fn format_matrix<T: fmt::Debug>(matrix: &[[T; 4]; 4]) -> String {
         .join("\n ") // Join the rows with newlines
 }
 
-#[derive(Serialize, Deserialize,Clone)]
+#[derive(Clone)]
 pub struct Base<T>
 where
     T: Copy
