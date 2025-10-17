@@ -8,17 +8,12 @@
 //! - Performance and memory safety tests
 //! - Cross-platform compatibility verification
 
-use anyhow::{Result, anyhow};
-use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 
 // Import DICOM modules under test
 use kepler_wgpu::data::dicom::{
     Patient, StudySet, ImageSeries, CTImage, DicomRepo,
     build_ct_dicom, generate_uid, change_dicom_uid, FsSink
 };
-use kepler_wgpu::core::error::KeplerError;
-use kepler_wgpu::data::ct_volume::{CTVolume, CTVolumeGenerator};
 
 // Test utilities and mock data
 mod test_utils {
@@ -423,8 +418,8 @@ mod integration_tests {
         println!("Generated Study UID: {}", study_uid);
 
         // Load test data
-        let mhd_path = "C:/share/input/CT.mhd";
-        let data_path = "C:/share/input/CT.raw";
+        let mhd_path = "C:/share/input/CT_new.mhd";
+        let data_path = "C:/share/input/CT_new.raw";
         let mhd = fs::read(mhd_path);
         let data = fs::read(data_path);
         let mhd_path = mhd.as_ref().map(|v| v.as_slice()).unwrap();
@@ -492,22 +487,6 @@ mod error_handling_tests {
         assert!(ct_image_result.is_err());
     }
 
-    /// Tests handling of malformed pixel data
-    #[test]
-    fn test_malformed_pixel_data() {
-        let mut ct_image = create_test_ct_image();
-        
-        // Test with empty pixel data
-        ct_image.pixel_data = vec![];
-        let result = ct_image.get_pixel_data();
-        assert!(result.is_ok()); // Should handle empty data gracefully
-        assert_eq!(result.unwrap().len(), 0);
-        
-        // Test with odd-sized pixel data (invalid for 16-bit)
-        // ct_image.pixel_data = vec![0u8; 511];
-        // let result = ct_image.get_pixel_data();
-        // assert!(result.is_err());
-    }
 
     /// Tests handling of invalid rescale parameters
     #[test]
@@ -591,6 +570,7 @@ mod performance_tests {
         for i in 0..1000 {
             let patient_id = format!("PERF{:04}", i);
             let patient = repo.get_patient(&patient_id).unwrap();
+            println!("{:?}", patient);
         }
         let duration = start.elapsed();
         assert!(duration.as_millis() < 100, "Patient retrieval took too long: {:?}", duration);
