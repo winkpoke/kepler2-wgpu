@@ -43,7 +43,7 @@ pub fn generate_uid() -> String {
 }
 
 /// Change DICOM UID based on a root UID
-fn change_dicom_uid(root: &str,twice:bool) -> String {
+pub fn change_dicom_uid(root: &str,twice:bool) -> String {
     // Generate a new UUID and split the root into parts
     let uuid = Uuid::new_v4();
     let uuid_num = uuid.as_u128();
@@ -343,7 +343,7 @@ pub trait DicomSink {
 }
 
 pub struct FsSink {
-    pub(crate) out_dir: PathBuf,
+    pub out_dir: PathBuf,
 }
 
 impl DicomSink for FsSink {
@@ -368,119 +368,5 @@ impl DicomSink for MemSink {
     fn save_slice(&mut self, filename: String, data: Vec<u8>) -> Result<()> {
         self.files.push((filename, data));
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use std::path::Path;
-
-    #[test]
-    fn test_uuid() {
-        let uid1 = generate_uid();
-        let uid2 = change_dicom_uid(&uid1, true);
-        let uid3 = change_dicom_uid(&uid1, false);
-        assert_ne!(uid1, uid2);
-        assert_ne!(uid2, uid3);
-        println!("Generated UID: {}", uid1);
-        println!("Changed UID: {}", uid2);
-        println!("Final UID: {}", uid3);
-    }
-
-    #[test]
-    fn test_build_ct_dicom() {
-        // 测试路径
-        let path = "C:/share/input/CT.mha";
-        let data = fs::read(path);
-        let mha_path = data.as_ref().map(|v| v.as_slice()).unwrap();
-        let out_dir = Path::new("C:/share").join(Local::now().format("%Y-%m-%d").to_string());
-        std::fs::create_dir_all(&out_dir).unwrap();
-
-        // 生成一个 SOPInstanceUID
-        let study_uid = generate_uid();
-        println!("Generated Study UID: {}", study_uid);
-
-        // 构造虚拟的 patient / study
-        let patient = Patient {
-            patient_id: "P001".to_string(),
-            name: "zhangsan".to_string(),
-            birthdate: Some("19800101".to_string()),
-            sex: Some("M".to_string())
-        };
-
-        let study = StudySet {
-            uid: study_uid.to_string(),
-            study_id: "STUDY001".to_string(),
-            patient_id: "P001".to_string(),
-            date: "20250908".to_string(),
-            description: Some("zhutiCT".to_string())
-        };
-
-        // 调用函数
-        let mut sink = FsSink { out_dir };
-        let result = build_ct_dicom(
-            mha_path, 
-            None,
-            &patient, 
-            &study,
-            120.0,   // kV
-            70.0,    // mAs
-            1612.903, // slope
-            -1016.129,   // intercept
-            &mut sink);
-        assert!(result.is_ok());
-
-        println!("✅ build_ct_dicom 执行成功！");
-    }
-
-    #[test]
-    fn test_build_ct_dicom_raw() {
-        // 测试路径
-        let mhd_path = "C:/share/input/CT.mhd";
-        let data_path = "C:/share/input/CT.raw";
-        let mhd = fs::read(mhd_path);
-        let data = fs::read(data_path);
-        let mhd_path = mhd.as_ref().map(|v| v.as_slice()).unwrap();
-        let data_path = Some(data.as_ref().map(|v| v.as_slice()).unwrap());
-        let out_dir = Path::new("C:/share").join(Local::now().format("%Y-%m-%d").to_string());
-        std::fs::create_dir_all(&out_dir).unwrap();
-
-        // 生成一个 SOPInstanceUID
-        let study_uid = generate_uid();
-        println!("Generated Study UID: {}", study_uid);
-
-        // 构造虚拟的 patient / study
-        let patient = Patient {
-            patient_id: "P001".to_string(),
-            name: "zhangsan".to_string(),
-            birthdate: Some("19800101".to_string()),
-            sex: Some("M".to_string())
-        };
-
-        let study = StudySet {
-            uid: study_uid.to_string(),
-            study_id: "STUDY001".to_string(),
-            patient_id: "P001".to_string(),
-            date: "20250908".to_string(),
-            description: Some("zhutiCT".to_string())
-        };
-
-        // 调用函数
-        let mut sink = FsSink { out_dir };
-        let result = build_ct_dicom(
-            mhd_path, 
-            data_path,
-            &patient, 
-            &study,
-            120.0,   // kV
-            70.0,    // mAs
-            1612.903, // slope
-            -1016.129,   // intercept
-            &mut sink);
-        assert!(result.is_ok());
-
-        println!("✅ build_ct_dicom 执行成功！");
     }
 }
