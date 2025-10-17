@@ -250,88 +250,6 @@ pub async fn parse_dcm_files_wasm(files: Array) -> Result<DicomRepo, JsValue> {
     Ok(repo.clone())
 }
 
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-#[cfg(target_arch = "wasm32")]
-pub async fn process_single_mha_file(file: File,slope: f32, intercept: f32) -> Result<CTVolume, JsValue> {
-    use js_sys::{Promise, Uint8Array};
-    use wasm_bindgen::closure::Closure;
-
-    let file_reader = FileReader::new().map_err(|_| JsValue::from_str("Failed to create FileReader"))?;
-
-    // Create a promise for each file
-    let promise = Promise::new(&mut |resolve, reject| {
-        let reject_clone = reject.clone();
-        
-        let onload = Closure::<dyn FnMut(ProgressEvent)>::new(move |event: ProgressEvent| {
-            let result = || -> Result<CTVolume, JsValue> {
-                // Read file data
-                let target = event.target().ok_or("No target")?;
-                let file_reader = target.dyn_into::<FileReader>()?;
-                let array_buffer = file_reader.result()?;
-                let uint8_array = Uint8Array::new(&array_buffer);
-                let buffer = uint8_array.to_vec();
-                
-                // Parse MHA and generate CTVolume
-                let medical_volume = MhaParser::parse_bytes(&buffer)
-                    .map_err(|e| JsValue::from_str(&e.to_string()))?;
-                
-                // Convert MedicalVolume to CTVolume using the existing method
-                let ct_volume = match medical_volume.pixel_data {
-                    PixelData::UInt8(data) => {
-                        // Extract dimensions from metadata
-                        let dimensions = medical_volume.metadata.dimensions;
-                        let spacing = medical_volume.metadata.spacing;
-                        let offset = medical_volume.metadata.offset;
-                        let orientation = medical_volume.metadata.orientation;
-                        let transform: Vec<f32> = orientation.into_iter().flatten().collect();
-                        
-                        MedicalVolume::generate_ct_volume_mha(
-                            [dimensions[0], dimensions[1], dimensions[2]],
-                            data,
-                            medical_volume.metadata.pixel_type,
-                            spacing,
-                            offset,
-                            transform,
-                            slope,
-                            intercept
-                        ).map_err(|e| JsValue::from_str(&e))?
-                    },
-                    _ => return Err(JsValue::from_str("Unsupported pixel data type")),
-                };
-                
-                Ok(ct_volume)
-            }();
-            
-            // Resolve or reject the promise based on the result
-            match result {
-                Ok(volume) => {
-                        let js_value = serde_wasm_bindgen::to_value(&volume)
-                    .unwrap_or_else(|_| JsValue::from_str("Serialization failed"));
-                let _ = resolve.call1(&JsValue::NULL, &js_value);
-                },
-                Err(err) => {
-                    let _ = reject_clone.call1(&JsValue::NULL, &err);
-                },
-            }
-        });
-        
-        file_reader.set_onload(Some(onload.as_ref().unchecked_ref()));
-        onload.forget();
-                
-        // error
-        if let Err(e) = file_reader.read_as_array_buffer(&file) {
-            let _ = reject.call1(&JsValue::NULL, &JsValue::from(e));
-        }
-    });
-    
-    // return the first successful result 
-    let results_guard = JsFuture::from(promise).await?;
-    match serde_wasm_bindgen::from_value::<CTVolume>(results_guard) {
-        Ok(volume) => Ok(volume),
-        Err(e) => Err(JsValue::from_str(&format!("Deserialization error: {}", e))),
-    }
-}
-
 /// Function-level comment: Parses common medical imaging files (MHA, MHD, etc.) for WASM
 /// Uses the unified MedicalImageParser interface to support multiple formats
 /// For MHD files, expects both header (.mhd) and data (.raw/.zraw) files in the array
@@ -388,7 +306,9 @@ pub async fn parse_common_files_wasm(files: Array, info: js_sys::Uint8Array) -> 
         // Process MHA files (self-contained)
         log::info!("Processing {} MHA file(s)", mha_files.len());
         let first_mha = mha_files.into_iter().next().unwrap();
-        process_single_mha_file(first_mha, slope, intercept).await
+        let bytes = read_file_as_bytes(first_mha).await?;
+        let ct_volume = parse_mha_and_generate_ct(bytes, None, slope, intercept).await?;
+        Ok(ct_volume)
     } else if !mhd_files.is_empty() && !raw_files.is_empty() {
         // Process MHD files (require separate data files)
         log::info!("Processing MHD files: {} header(s), {} data file(s)", mhd_files.len(), raw_files.len());
@@ -422,35 +342,8 @@ pub async fn parse_common_files_wasm(files: Array, info: js_sys::Uint8Array) -> 
         match matched_pair {
             Some((header_file, data_file)) => {
                 let header_data = read_file_as_bytes(header_file).await?;
-                let metadata = MhdParser::parse_metadata_only(&header_data)
-                    .map_err(|e| JsValue::from_str(&format!("MHD parse error: {}", e)))?;
                 let data_bytes = read_file_as_bytes(data_file).await?;
-                let pixel_data = PixelData::UInt8(data_bytes);
-                let medical_volume = MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
-                    .map_err(|e| JsValue::from_str(&format!("Volume creation error: {}", e)))?;
-                let ct_volume = match medical_volume.pixel_data {
-                    PixelData::UInt8(data) => {
-                        // Extract dimensions from metadata
-                        let dimensions = medical_volume.metadata.dimensions;
-                        let spacing = medical_volume.metadata.spacing;
-                        let offset = medical_volume.metadata.offset;
-                        let orientation = medical_volume.metadata.orientation;
-                        let transform: Vec<f32> = orientation.into_iter().flatten().collect();
-                        
-                        MedicalVolume::generate_ct_volume_mha(
-                            [dimensions[0], dimensions[1], dimensions[2]],
-                            data,
-                            medical_volume.metadata.pixel_type,
-                            spacing,
-                            offset,
-                            transform,
-                            slope,
-                            intercept
-                        ).map_err(|e| JsValue::from_str(&e))?
-                    },
-                    _ => return Err(JsValue::from_str("Unsupported pixel data type")),
-                };
-                
+                let ct_volume = parse_mha_and_generate_ct(header_data, Some(data_bytes), slope, intercept).await?;
                 Ok(ct_volume)
             },
             None => {
@@ -478,9 +371,73 @@ pub async fn parse_common_files_wasm(files: Array, info: js_sys::Uint8Array) -> 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[cfg(target_arch = "wasm32")]
 pub async fn read_file_as_bytes(file: File) -> Result<Vec<u8>, JsValue> {
-    let array_buffer = JsFuture::from(file.array_buffer()).await?;
-    let uint8_array = Uint8Array::new(&array_buffer);
-    Ok(uint8_array.to_vec())
+    use std::sync::{Arc, Mutex};
+
+    let bytes = Arc::new(Mutex::new(Vec::new()));
+    let file_reader = FileReader::new().unwrap();
+
+    let promise = Promise::new(&mut |resolve, reject| {
+        let reject_clone = Arc::clone(&bytes);
+        let onload = Closure::once_into_js(move |e: ProgressEvent| {
+            let result: Result<(), String> = {
+                let buffer = e.target()
+                    .ok_or_else(|| JsValue::from("Failed to retrieve target"))?
+                    .dyn_into::<FileReader>()?
+                    .result()?;
+                let mut bytes = reject_clone.lock().unwrap();
+                let uint8_array = Uint8Array::new(&buffer).to_vec();
+                *bytes = uint8_array;
+                Ok(())
+            };
+            match result {
+                Ok(_) => resolve.call0(&JsValue::NULL),
+                Err(err) => reject.call0(&JsValue::from(err)),
+            }
+        });
+        file_reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+        file_reader.read_as_array_buffer(&file).unwrap();
+    });
+
+    JsFuture::from(promise).await?;
+    let bytes = bytes.lock().map_err(|e| JsValue::from_str(&format!("Mutex lock error: {}", e)))?;
+    Ok(bytes.clone())
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+#[cfg(target_arch = "wasm32")]
+pub async fn parse_mha_and_generate_ct(header_bytes: Vec<u8>, data_bytes: Option<Vec<u8>>, slope: f32, intercept: f32) -> Result<CTVolume, JsValue> {
+    let medical_volume = if data_bytes.is_none() {
+        MhaParser::parse_bytes(&header_bytes)
+            .map_err(|e| JsValue::from_str(&format!("MHA parse error: {}", e)))?
+    } else {
+        let pixel_data = PixelData::UInt8(data_bytes.unwrap());
+        let metadata = MhdParser::parse_metadata_only(&header_bytes)
+            .map_err(|e| JsValue::from_str(&format!("MHD parse error: {}", e)))?;
+        MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
+            .map_err(|e| JsValue::from_str(&format!("Volume creation error: {}", e)))?
+    };
+    
+    match medical_volume.pixel_data {
+        PixelData::UInt8(data) => {
+            let dimensions = medical_volume.metadata.dimensions;
+            let spacing = medical_volume.metadata.spacing;
+            let offset = medical_volume.metadata.offset;
+            let orientation = medical_volume.metadata.orientation;
+            let transform: Vec<f32> = orientation.into_iter().flatten().collect();
+            
+            MedicalVolume::generate_ct_volume_mha(
+                [dimensions[0], dimensions[1], dimensions[2]],
+                data,
+                medical_volume.metadata.pixel_type,
+                spacing,
+                offset,
+                transform,
+                slope,
+                intercept
+            ).map_err(|e| JsValue::from_str(&e))
+        },
+        _ => Err(JsValue::from_str("Unsupported pixel data type")),
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
