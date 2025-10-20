@@ -4,30 +4,14 @@
 //! for the medical imaging module, ensuring robust functionality across different platforms
 mod mha_mhd_tests{
     use std::time::Instant;
-    use std::fs;
     use kepler_wgpu::data::medical_imaging::{*};
 
     // ============================================================================
     // Test Data and Utilities
     // ============================================================================
 
-    fn create_test_mhd() -> (Vec<u8>, Vec<u8>) {
-        let path = "C:/share/input/CT.mhd";
-        let mhd = fs::read(path);
-        let bytes_mhd = mhd.as_ref().map(|v| v.as_slice()).unwrap();
-        let data = fs::read(path.replace("mhd", "raw"));
-        let bytes_data = data.as_ref().map(|v| v.as_slice()).unwrap();
-        (bytes_mhd.to_vec(), bytes_data.to_vec())
-    }
-
-    fn create_test_mha() -> Vec<u8> {
-        let path = "C:/share/input/CT.mha";
-        let mha = fs::read(path);
-        mha.as_ref().map(|v| v.as_slice()).unwrap().to_vec()
-    }
-
     /// Creates test MHA header with embedded data
-    fn create_test_mha_data(
+    pub fn create_test_mha_data(
         dimensions: [usize; 3],
         pixel_type: PixelType,
         spacing: [f64; 3],
@@ -232,38 +216,8 @@ mod mha_mhd_tests{
     // ============================================================================
 
     #[test]
-    fn test_mhd_parser_header_by_bytes() {
-        let (bytes_mhd, _) = create_test_mhd();
-        let result = MhdParser::parse_metadata_only(&bytes_mhd);
-        assert!(result.is_ok(), "Failed to parse valid MHD header: {:?}", result.err());
-
-        let metadata = result.unwrap();
-        assert_eq!(metadata.dimensions, [512, 512, 300]);
-        assert_eq!(metadata.pixel_type, PixelType::Float32);
-        assert_eq!(metadata.spacing, [0.2, 0.2, 0.5]);
-    }
-
-    #[test]
-    fn test_mhd_parse_by_bytes(){
-        let (bytes_mhd, bytes_data) = create_test_mhd();
-        let volume = MhdParser::parse_by_bytes(&bytes_mhd, &bytes_data).unwrap();
-        let header = volume.metadata;
-        let pixel_data = volume.pixel_data;
-        println!("=== MHDHeader ===");
-        println!("DimSize: {:?}", header.dimensions);
-        println!("ElementSpacing: {:?}", header.spacing);
-        println!("ElementType: {:?}", header.pixel_type);
-        println!("ElementDataFile: {}", header.element_data_file);
-        println!("Offset: {:?}", header.offset);
-        println!("TransformMatrix: {:?}", header.orientation);
-        println!("PatientPosition: {:?}",header.patient_position);
-        println!("data_offset: {:?}", header.data_offset);
-        println!("First 20 bytes of pixel data: {:?}", &pixel_data.as_bytes()[..20]);
-    }
-
-    #[test]
     fn test_mha_parser_header_by_bytes() {
-        let mha_data = create_test_mha();
+        let mha_data = create_test_mha_data([512,512,300], PixelType::Float32, [0.2, 0.2, 0.5], true);
         let result = MhaParser::parse_metadata_only(&mha_data);
         assert!(result.is_ok(), "Failed to parse MHA metadata");
 
@@ -275,7 +229,7 @@ mod mha_mhd_tests{
 
     #[test]
     fn test_mha_parse_by_bytes(){
-        let mha_data = create_test_mha();
+        let mha_data = create_test_mha_data([512,512,300], PixelType::UInt8, [1.0, 1.0, 1.0], true);
         let volume = MhaParser::parse_bytes(&mha_data).unwrap();
         let validation_status = volume.validation_status;
         assert_eq!(validation_status.is_valid, true);
@@ -315,29 +269,6 @@ mod mha_mhd_tests{
     }
 
     #[test]
-    fn test_metadata_parsing_performance() {
-        let mha_data = create_test_mha();
-        let mhd_data = create_test_mhd().0;
-        
-        let start = Instant::now();
-        for _ in 0..100 {
-            let _ = MhaParser::parse_metadata_only(&mha_data);
-        }
-        let duration_mha = start.elapsed();
-
-        let start = Instant::now();
-        for _ in 0..100 {
-            let _ = MhdParser::parse_metadata_only(&mhd_data);
-        }
-        let duration_mhd = start.elapsed();
-        
-        assert!(duration_mha.as_millis() < 1000, "Metadata parsing too slow: {:?}", duration_mha);
-        println!("100 metadata parses took(mha): {:?}", duration_mha);
-        assert!(duration_mhd.as_millis() < 1000, "Metadata parsing too slow: {:?}", duration_mhd);
-        println!("100 metadata parses took(mhd): {:?}", duration_mhd);
-    }
-
-    #[test]
     fn test_validation_performance() {
         let mut validator = MedicalImageValidator::new();
         validator.add_integrity_checker(Box::new(DataSizeChecker::new(1000, Some(100000))));
@@ -345,7 +276,7 @@ mod mha_mhd_tests{
             vec![0x4D, 0x48, 0x41], 256
         )));
 
-        let test_data = create_test_mha();
+        let test_data = create_test_mha_data([512,512,300], PixelType::UInt8, [1.0, 1.0, 1.0], true);
         
         let start = Instant::now();
         for _ in 0..50 {
