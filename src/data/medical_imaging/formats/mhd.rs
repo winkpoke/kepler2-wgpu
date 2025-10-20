@@ -6,7 +6,6 @@ use crate::data::medical_imaging::{
 };
 use std::{collections::HashMap, io::Read};
 use std::fs::File;
-use std::io::{BufRead,BufReader};
 use std::path::PathBuf;
 
 /// Function-level comment: Parses MHD (MetaIO) files with separate data files
@@ -37,6 +36,7 @@ impl MhdParser {
     /// Parses MHD header file and loads associated data file
     #[cfg(not(target_arch = "wasm32"))]
     pub async fn parse_file(path: PathBuf) -> MedicalImagingResult<MedicalVolume> {
+        use std::io::{BufRead,BufReader};
         let mut mhd = MhdParser::new(MedicalImageValidator::new(), PathBuf::new(), path.clone());
         let mhd_path = mhd.data_loader.clone().join("CT.mhd");
         let bytes_mhd = tokio::fs::read(mhd_path).await?;
