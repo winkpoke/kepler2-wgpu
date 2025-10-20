@@ -43,6 +43,22 @@ impl<
         result
     }
 
+    /// Multiplies a 3D point by the matrix.
+    pub fn multiply_point3(&self, point: [T; 3]) -> [T; 3] {
+        // Convert the 3D point to homogeneous coordinates
+        let homogenous_point = [point[0], point[1], point[2], T::one()];
+        let mut result = [T::zero(); 4];
+        for i in 0..4 {
+            for j in 0..4 {
+                result[i] = result[i] + (self.data[i][j] * homogenous_point[j]);
+            }
+        }
+        for i in 0..3 {
+            result[i] = result[i] / result[3]; // Convert back to Cartesian coordinates
+        }
+        result[0..3].try_into().unwrap()
+    }
+
     /// Computes the inverse of the matrix using Gaussian elimination.
     /// Returns `None` if the matrix is singular (non-invertible).
     pub fn inv(&self) -> Option<Matrix4x4<T>> {
@@ -229,6 +245,11 @@ where
         } else {
             unreachable!()
         }
+    }
+
+    /// Get matrix as a Matrix4x4<T>
+    pub fn get_matrix(&self) -> Matrix4x4<T> {
+        self.matrix
     }
 
     pub fn get_scale_factors(&self) -> [T; 3] {

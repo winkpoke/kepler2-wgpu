@@ -360,6 +360,13 @@ impl MprView {
     pub fn get_translate(&self) -> [f32; 3] {
         self.translate
     }
+
+    /// Convert view/model-space coordinate to millimeters using base matrix.
+    pub fn get_screen_coord_in_mm(&self, coord: [f32; 3]) -> [f32; 3] {
+        log::info!("get_screen_coord_in_mm: {:?}", coord);
+        let base_matrix = self.base_screen.get_matrix();
+        base_matrix.multiply_point3(coord)
+    }
 }
 
 impl StatefulView for MprView {

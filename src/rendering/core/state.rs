@@ -936,6 +936,18 @@ impl State {
         }
     }
 
+    /// Get screen coordinate in millimeters for the specified view
+    #[cfg(target_arch = "wasm32")]
+    pub fn get_screen_coord_in_mm(&self, index: usize, coord: [f32; 3]) -> [f32; 3] {
+        if let Some(view) = self.layout.views.get(index) {
+            if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
+                return mpr_view.get_screen_coord_in_mm(coord);
+            }
+        }
+        // Return the original coordinate if view not found or not an MprView
+        coord
+    }
+
     // Check if device supports R16Float with filtering and sampling as a texture binding
     fn device_supports_r16float(adapter: &wgpu::Adapter) -> bool {
         let features = adapter.get_texture_format_features(wgpu::TextureFormat::R16Float);
