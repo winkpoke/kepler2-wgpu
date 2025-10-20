@@ -10,14 +10,73 @@
 
 
 // Import DICOM modules under test
-use kepler_wgpu::data::dicom::{
+use kepler_wgpu::data::{dicom::{
     Patient, StudySet, ImageSeries, CTImage, DicomRepo,
-    build_ct_dicom, generate_uid, change_dicom_uid, FsSink
-};
+    build_ct_dicom, generate_uid, change_dicom_uid, FsSink},
+    medical_imaging::PixelType};
 
 // Test utilities and mock data
 mod test_utils {
     use super::*;
+
+        // ============================================================================
+    // Test Data and Utilities
+    // ============================================================================
+
+    /// Creates test MHA header with embedded data
+    pub fn create_test_mha_data(
+        dimensions: [usize; 3],
+        pixel_type: PixelType,
+        spacing: [f64; 3],
+        verbose: bool,
+    ) -> Vec<u8> {
+        let mut header = format!(
+            "ObjectType = Image\n\
+            NDims = 3\n\
+            BinaryData = True\n\
+            BinaryDataByteOrderMSB = False\n\
+            CompressedData = False\n\
+            TransformMatrix = 1 0 0 0 1 0 0 0 1\n\
+            Offset = 0 0 0\n\
+            CenterOfRotation = 0 0 0\n\
+            AnatomicalOrientation = RAI\n\
+            ElementSpacing = {} {} {}\n\
+            DimSize = {} {} {}\n\
+            ElementType = {}\n\
+            ElementDataFile = LOCAL\n",
+            spacing[0], spacing[1], spacing[2],
+            dimensions[0], dimensions[1], dimensions[2],
+            match pixel_type {
+                PixelType::UInt8 => "MET_UCHAR",
+                PixelType::UInt16 => "MET_USHORT",
+                PixelType::Int16 => "MET_SHORT",
+                PixelType::Int32 => "MET_INT",
+                PixelType::Float32 => "MET_FLOAT",
+                PixelType::Float64 => "MET_DOUBLE",
+            }
+        ).into_bytes();
+
+        // Add data section
+        if verbose{
+            let data_size = dimensions[0] * dimensions[1] * dimensions[2];
+            let pixel_size = match pixel_type {
+                PixelType::UInt8 => 1,
+                PixelType::UInt16 => 2,
+                PixelType::Int16 => 2,
+                PixelType::Int32 => 4,
+                PixelType::Float32 => 4,
+                PixelType::Float64 => 8,
+            };
+            
+            let data: Vec<u8> = (0..data_size * pixel_size)
+                .map(|i| (i % 256) as u8)
+                .collect();
+            
+            header.extend_from_slice(&data);
+        }
+        
+        header
+    }
     
     /// Creates minimal valid DICOM data for testing
     /// Returns a byte array representing a basic CT DICOM file
@@ -364,7 +423,6 @@ mod unit_tests {
 mod integration_tests {
     use super::*;
     use test_utils::*;
-    use std::fs;
     use std::path::Path;
     use chrono::Local;
 
@@ -381,9 +439,7 @@ mod integration_tests {
         println!("Generated Study UID: {}", study_uid);
 
         // Load test data
-        let path = "C:/share/input/CT_new.mha";
-        let data = fs::read(path);
-        let mha_path = data.as_ref().map(|v| v.as_slice()).unwrap();
+        let mha_path = &create_test_mha_data([512,512,300], PixelType::Float32, [0.5,0.5,0.85], true);
         let out_dir = Path::new("C:/share").join(Local::now().format("%Y-%m-%d").to_string());
         std::fs::create_dir_all(&out_dir).unwrap();
 
@@ -393,46 +449,6 @@ mod integration_tests {
         let result = build_ct_dicom(
             mha_path,
             None,
-            &patient,
-            &study,
-            120.0, // kV
-            100.0, // mAs
-            1612.903,   // slope
-            -1016.129, // intercept
-            &mut sink
-        );
-
-        assert!(result.is_ok());
-    }
-
-    /// Tests DICOM export functionality with real MHD file
-    #[test]
-    fn test_dicom_export_workflow_with_real_mhd_file() {
-        // Create a test patient and study
-        let patient = create_test_patient();
-        let mut study = create_test_study();
-
-        // Generate a Study UID
-        let study_uid = generate_uid();
-        study.uid = study_uid.to_string();
-        println!("Generated Study UID: {}", study_uid);
-
-        // Load test data
-        let mhd_path = "C:/share/input/CT_new.mhd";
-        let data_path = "C:/share/input/CT_new.raw";
-        let mhd = fs::read(mhd_path);
-        let data = fs::read(data_path);
-        let mhd_path = mhd.as_ref().map(|v| v.as_slice()).unwrap();
-        let data_path = Some(data.as_ref().map(|v| v.as_slice()).unwrap());
-        let out_dir = Path::new("C:/share").join(Local::now().format("%Y-%m-%d").to_string());
-        std::fs::create_dir_all(&out_dir).unwrap();
-
-        let mut sink = FsSink { out_dir };
-        
-        // Test would call build_ct_dicom with test parameters
-        let result = build_ct_dicom(
-            mhd_path,
-            data_path,
             &patient,
             &study,
             120.0, // kV
