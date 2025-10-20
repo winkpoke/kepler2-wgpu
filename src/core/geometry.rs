@@ -111,12 +111,17 @@ impl <'a> GeometryBuilder<'a> {
 
         let space = vol.voxel_spacing;
         let [ox, oy, oz, _] = vol.base.matrix.get_column(3);
-        let d = f32::max(nx * space.0, ny * space.1);
+        // let d = f32::max(nx * space.0, ny * space.1);
+        let (d_x, d_y, d_z) = (nx * space.0, ny * space.1, nz * space.2);
 
         let matrix_screen = Matrix4x4::<f32>::from_array([
-            d,    0.0,  0.0, ox,
-            0.0,  0.0,  d,   oy + ny * space.1 / 2.0,
-            0.0,  -d,   0.0, oz + nz * space.2 / 2.0 + d / 2.0,
+            // Screen X → world X (LR)
+            d_x,  0.0,  0.0, ox,
+            // Screen Z (slice) → world Y (AP)
+            0.0,  0.0,  d_y, oy + d_y / 2.0,
+            // Screen Y → world Z (SI), inverted for screen Y-down
+            0.0, -d_y,  0.0, oz + d_z / 2.0 + d_y / 2.0,
+            // Homogeneous row
             0.0,  0.0,  0.0, 1.0
         ]);
         let base_screen = Base::<f32> {
@@ -135,13 +140,21 @@ impl <'a> GeometryBuilder<'a> {
 
         let space = vol.voxel_spacing;
         let [ox, oy, oz, _] = vol.base.matrix.get_column(3);
-        let d = f32::max(nx * space.0, ny * space.1);
+        // Use per-axis physical extents (mm)
+        let (d_x, d_y, d_z) = (nx * space.0, ny * space.1, nz * space.2);
 
+        // Screen X → world Y (AP)
+        // Screen Y → world Z (SI), inverted for screen Y-down
+        // Screen Z (slice) → world X (LR)
         let matrix_screen = Matrix4x4::<f32>::from_array([
-            0.0, 0.0,  -d, ox + nx * space.0 / 2.0,
-              d, 0.0, 0.0, oy,
-            0.0,  -d, 0.0, oz + nz * space.2 / 2.0 + d / 2.0,
-            0.0, 0.0, 0.0, 1.0
+            // world X row
+            0.0,   0.0,  d_x, ox + d_x / 2.0,
+            // world Y row
+            d_y,   0.0,  0.0, oy + d_y / 2.0,
+            // world Z row
+            0.0, -d_z,  0.0, oz + d_z / 2.0,
+            // homogeneous row
+            0.0,   0.0,  0.0, 1.0
         ]);
         let base_screen = Base::<f32> {
             label: "CT Volume: screen".to_string(),
