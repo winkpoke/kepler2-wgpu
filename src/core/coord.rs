@@ -471,6 +471,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_coordinate_system() {
+    let base = Base::<f64> {
+        label: "test".to_string(),
+        matrix: Matrix4x4::<f64>::eye(),
+    };
+    assert!(base.label == "test");
+    let matrix = base.matrix;
+    assert_eq!(matrix.data[0][0], 1.0);
+    assert_eq!(matrix.data[1][1], 1.0);
+    assert_eq!(matrix.data[2][2], 1.0);
+    assert_eq!(matrix.data[3][3], 1.0); 
+    }
+
+    #[test]
     fn test_base_basic() {
         let m = [
             1., 0.5, 0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1.,
@@ -486,8 +500,8 @@ mod tests {
             label: "system coordinate".to_string(),
             matrix: matrix,
         };
-        let transorm_matrix = base0.to_base(&base1);
-        println!("{:?}", transorm_matrix);
+        let transform_matrix = base0.to_base(&base1);
+        println!("{:?}", transform_matrix);
     }
 
     #[test]
@@ -518,7 +532,7 @@ mod tests {
             label: "system coordinate".to_string(),
             matrix: matrix1,
         };
-        let transorm_matrix = base0.to_base(&base1);
-        println!("{:?}", transorm_matrix);
+        let transform_matrix = base0.to_base(&base1);
+        println!("{:?}", transform_matrix);
     }
 }
