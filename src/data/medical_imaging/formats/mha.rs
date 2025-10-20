@@ -9,10 +9,6 @@ use crate::data::medical_imaging::{
     validation::{MedicalImageValidator,DataSizeChecker, ChecksumChecker, ChecksumAlgorithm, MedicalHeaderChecker},
 };
 use std::collections::HashMap;
-#[cfg(not(target_arch = "wasm32"))]
-use std::path::PathBuf;
-#[cfg(not(target_arch = "wasm32"))]
-use std::fs::File;
 
 /// Function-level comment: MHA format parser
 /// Implements parsing for MHA files (MetaImage format with embedded data)
@@ -46,6 +42,8 @@ impl MhaParser {
     /// Parses complete MHA file including header and embedded data
     #[cfg(not(target_arch = "wasm32"))]
     pub async fn parse_file(path: PathBuf) -> MedicalImagingResult<MedicalVolume>{
+        use std::path::PathBuf;
+        use std::fs::File;
         let path = path.join("CT.mha");
         let file = tokio::fs::read(path).await?;
         Self::parse_bytes(&file)
