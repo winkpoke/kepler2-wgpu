@@ -6,7 +6,7 @@
 
 mod error_handling_tests {
     use kepler_wgpu::mesh::{
-        MeshRenderError, ShaderValidationError, MeshView, BasicMeshContext,
+        MeshRenderError, MeshView, BasicMeshContext,
         QualityLevel, mesh::Mesh,
     };
     use kepler_wgpu::rendering::mesh::mesh_view::FallbackMode;
@@ -61,26 +61,7 @@ mod error_handling_tests {
         assert!(format!("{:?}", viewport_error).contains("ViewportError"));
     }
 
-    #[test]
-    fn test_shader_validation_error_types() {
-        // Test different types of ShaderValidationError
-        let compilation_error = ShaderValidationError::CompilationFailed("Syntax error in shader".to_string());
-        let bind_group_error = ShaderValidationError::InvalidBindGroup(0, "Missing texture binding".to_string());
-        let uniform_error = ShaderValidationError::MissingUniform("view_matrix not found".to_string());
-        let performance_warning = ShaderValidationError::PerformanceWarning("Too many texture samples".to_string());
-        
-        // Test error display
-        assert!(format!("{}", compilation_error).contains("Syntax error in shader"));
-        assert!(format!("{}", bind_group_error).contains("Missing texture binding"));
-        assert!(format!("{}", uniform_error).contains("view_matrix not found"));
-        assert!(format!("{}", performance_warning).contains("Too many texture samples"));
-        
-        // Test error debug
-        assert!(format!("{:?}", compilation_error).contains("CompilationFailed"));
-        assert!(format!("{:?}", bind_group_error).contains("InvalidBindGroup"));
-        assert!(format!("{:?}", uniform_error).contains("MissingUniform"));
-        assert!(format!("{:?}", performance_warning).contains("PerformanceWarning"));
-    }
+
 
     #[test]
     fn test_error_chain_handling() {

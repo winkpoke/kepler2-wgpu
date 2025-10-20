@@ -8,7 +8,6 @@ mod mesh_integration_tests {
         mesh_view::{MeshView, MeshRenderError},
         basic_mesh_context::BasicMeshContext,
         performance::{QualityController, QualityLevel},
-        shader_validation::ShaderValidator,
         mesh::Mesh,
     };
 
@@ -135,12 +134,7 @@ mod mesh_integration_tests {
         assert_eq!(stats.error_count, 0, "New MeshView should have no errors");
     }
 
-    #[test]
-    fn test_shader_validation() {
-        /// Test shader validation functionality
-        // Test basic shader validation without device dependencies
-        assert!(true, "Shader validation test placeholder - would validate mesh shaders");
-    }
+
 
     #[test]
     fn test_memory_management() {

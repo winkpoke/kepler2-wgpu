@@ -30,6 +30,34 @@ impl Default for BasicLightingUniforms {
     }
 }
 
+/// Function-level comment: High-level lighting configuration for mesh rendering.
+/// Provides a simple interface for setting light direction and intensity.
+#[derive(Default, Debug, Clone)]
+pub struct Lighting {
+    pub direction: [f32; 3],
+    pub intensity: f32,
+}
+
+impl Lighting {
+    /// Function-level comment: Create a new lighting configuration with specified direction and intensity.
+    pub fn new(direction: [f32; 3], intensity: f32) -> Self {
+        Self { direction, intensity }
+    }
+
+    /// Function-level comment: Convert high-level Lighting to BasicLightingUniforms for GPU upload.
+    /// Maps the simple direction/intensity to the full uniform structure.
+    pub fn to_basic_uniforms(&self) -> BasicLightingUniforms {
+        BasicLightingUniforms {
+            light_direction: self.direction,
+            _padding1: 0.0,
+            light_color: [1.0, 1.0, 1.0],         // White light
+            light_intensity: self.intensity,
+            ambient_color: [0.2, 0.2, 0.2],       // Dim ambient light
+            ambient_intensity: 0.3,
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct MeshVertex {

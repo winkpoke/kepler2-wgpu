@@ -236,8 +236,6 @@ pub struct State {
     pub(crate) last_volume: Option<CTVolume>,
     pub(crate) enable_mesh: bool,
     pub(crate) texture_pool: MeshTexturePool,
-    /// Function-level comment: Snapshot of slot-2 MPR state to restore when mesh mode is disabled.
-    pub(crate) mpr_state_slot2: Option<MPRViewState>,
     /// Function-level comment: Cached BasicMeshContext wrapped in Arc for efficient reuse across toggles.
     pub(crate) mesh_ctx: Option<Arc<crate::rendering::mesh::basic_mesh_context::BasicMeshContext>>,
     /// Function-level comment: PassExecutor manages separate render passes for 3D mesh and 2D slice content.
@@ -337,7 +335,6 @@ impl State {
             last_volume: None,
             enable_mesh: false,
             texture_pool: texture_pool,
-            mpr_state_slot2: None,
             mesh_ctx: None,
             pass_executor: crate::rendering::core::PassExecutor::new(surface_format),
         })
@@ -719,32 +716,7 @@ impl State {
         self.layout.strategy.calculate_position_and_size(index as u32, total_views, parent_dim)
     }
 
-    /// Function-level comment: Enable mesh mode by creating depth texture, saving MPR state, and creating MeshView.
-    fn enable_mesh_mode(&mut self, 
-                       index: usize, pos: (i32, i32), size: (u32, u32)) {
-        if !self.ensure_depth_texture() {
-            return;
-        }
-    
-        self.save_mpr_state(index);
-        let mesh_view = self.create_mesh_view(pos, size);
-        self.layout.views[index] = Box::new(mesh_view);
-        log::info!("MeshView placed at slot {} with position {:?} and size {:?}.", index, pos, size);
-    }
 
-    /// Function-level comment: Disable mesh mode by creating GenericMPRView and restoring MPR state.
-    fn disable_mesh_mode(&mut self, index: usize, pos: (i32, i32), size: (u32, u32)) {
-        let mut view = self.create_mpr_view_for_slot(index);
-        self.restore_mpr_state(&mut view);
-        
-        view.move_to(pos);
-        view.resize(size);
-        self.layout.views[index] = Box::new(view);
-        log::info!("GenericMPRView placed at slot {} with position {:?} and size {:?}.", index, pos, size);
-        
-        // Clear mesh context cache when disabling mesh mode to prevent buffer reference issues
-        self.clear_mesh_context_cache();
-    }
 
     /// Function-level comment: Ensure depth texture exists for mesh rendering, creating it if necessary.
     fn ensure_depth_texture(&mut self) -> bool {
@@ -783,38 +755,7 @@ impl State {
         true
     }
 
-    /// Function-level comment: Save the current MPR state from the specified view slot.
-    fn save_mpr_state(&mut self, index: usize) {
-        if let Some(view) = self.layout.views.get_mut(index) {
-            if let Some(mpr) = view.as_any_mut().downcast_mut::<MprView>() {
-                let snap = MPRViewState {
-                    window_level: mpr.get_window_level(),
-                    window_width: mpr.get_window_width(),
-                    slice_mm: mpr.get_slice_mm(),
-                    scale: mpr.get_scale(),
-                    translate: mpr.get_translate(),
-                    translate_in_screen_coord: mpr.get_translate_in_screen_coord(),
-                };
-                self.mpr_state_slot2 = Some(snap);
-                log::info!("Saved MPR snapshot for slot {} prior to enabling mesh.", index);
-            } else {
-                self.mpr_state_slot2 = None;
-            }
-        }
-    }
 
-    /// Function-level comment: Restore MPR state to the specified view if a snapshot exists.
-    fn restore_mpr_state(&mut self, view: &mut crate::rendering::view::MprView) {
-        if let Some(snap) = &self.mpr_state_slot2 {
-            view.set_window_level(snap.window_level);
-            view.set_window_width(snap.window_width);
-            view.set_slice_mm(snap.slice_mm);
-            view.set_scale(snap.scale);
-            view.set_translate(snap.translate);
-            view.set_translate_in_screen_coord(snap.translate_in_screen_coord);
-            log::info!("Restored MPR snapshot for slot 2 after disabling mesh.");
-        }
-    }
 
     /// Function-level comment: Create a MeshView with cached or new BasicMeshContext.
     fn create_mesh_view(&mut self, 

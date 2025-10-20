@@ -566,7 +566,7 @@ impl MeshRenderContext {
 
     /// Function-level comment: Update lighting uniform buffer with light direction and intensity.
     /// Provides data for PBR lighting calculations in the fragment shader.
-    pub fn update_lighting_uniforms(&self, queue: &Queue, lighting: &super::lighting::Lighting) {
+    pub fn update_lighting_uniforms(&self, queue: &Queue, lighting: &super::mesh::Lighting) {
         // Create a light from the lighting data
         let light = Light {
             position: [lighting.direction[0], lighting.direction[1], lighting.direction[2], 0.0], // Use direction as light position for directional light
