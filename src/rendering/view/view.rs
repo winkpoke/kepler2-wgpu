@@ -36,7 +36,7 @@ use std::any::Any;
 use super::Renderable;
 use crate::core::coord::Base;
 use crate::core::geometry::GeometryBuilder;
-use crate::rendering::MprView;
+// use crate::rendering::MprView;
 use crate::CTVolume;
 
 /// State snapshot for preserving view configuration during mode switches.
