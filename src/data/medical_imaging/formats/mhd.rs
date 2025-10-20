@@ -38,10 +38,18 @@ impl MhdParser {
     pub async fn parse_file(path: PathBuf) -> MedicalImagingResult<MedicalVolume> {
         let mhd = MhdParser::new(MedicalImageValidator::new(), PathBuf::new(), path.clone());
         let mhd_path = mhd.data_loader.clone().join("CT.mhd");
-        let bytes_mhd = tokio::fs::read(mhd_path).await?;
+        let bytes_mhd = tokio::fs::read(mhd_path.clone()).await?;
         let metadata = Self::parse_metadata_only(&bytes_mhd)?;
         let pixel_data = mhd.load_data_file(&metadata)?;
-        MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
+        let mut mhd_clone = MhdParser::new(MedicalImageValidator::new(), PathBuf::new(), mhd_path);
+        let result = mhd_clone.validator.add_format_validator(ImageFormat::MHD, &metadata, &pixel_data);
+        if result.is_valid{
+            MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
+        }else{
+            Err(MedicalImagingError::InvalidPath { path: (
+                path.to_string_lossy().to_string()
+            ) })
+        }
     }
         
     /// Parses MHD header file from raw bytes and loads pixel data
