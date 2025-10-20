@@ -1,5 +1,4 @@
 use kepler_wgpu::rendering::mip::MipUniforms;
-use std::mem::offset_of;
 
 #[test]
 fn test_mip_uniforms_size() {
