@@ -57,7 +57,25 @@ impl MhaParser {
         let start_offset = metadata.data_offset.unwrap_or(0);
         let raw = &data[start_offset..];
         let pixel_data = PixelData::UInt8(raw.to_vec());
-        MedicalVolume::new(metadata, pixel_data, ImageFormat::MHA)
+        let validator = Self::new(&metadata, &pixel_data);
+        let result = validator.validator.format_validators.get(&ImageFormat::MHA).unwrap().clone();
+        if result.is_valid {
+                let pixel_data = match validator.endian_converter {
+                    Endianness::Little => {
+                        if validator.compression_handler == CompressionType::Raw {
+                            pixel_data
+                        } else {
+                            PixelData::from_le_bytes(raw, metadata.pixel_type)?
+                        }
+                    },
+                    Endianness::Big => PixelData::from_be_bytes(raw, metadata.pixel_type)?,
+                };
+            MedicalVolume::new(metadata, pixel_data, ImageFormat::MHA)
+        }else{
+            Err(MedicalImagingError::UnsupportedFormat {
+                format: format!("Invalid MHA format: {:?}", result.errors),
+            })
+        }
     }
     
     /// Extracts only metadata without loading pixel data

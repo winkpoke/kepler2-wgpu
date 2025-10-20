@@ -307,9 +307,9 @@ impl IntegrityChecker for MedicalHeaderChecker {
 /// Ensures data integrity and format compliance
 pub struct MedicalImageValidator {
     /// Format-specific validators
-    format_validators: HashMap<ImageFormat, ValidationResult>,
+    pub format_validators: HashMap<ImageFormat, ValidationResult>,
     /// Data integrity checkers
-    integrity_checkers: Vec<Box<dyn IntegrityChecker>>,
+    pub integrity_checkers: Vec<Box<dyn IntegrityChecker>>,
 }
 
 impl MedicalImageValidator {

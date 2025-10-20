@@ -86,11 +86,11 @@ mod mha_mhd_tests{
     // ============================================================================
     
     #[test]
-    fn test_pixel_data_from_bytes() {
+    fn test_pixel_data_from_le_bytes() {
         let bytes = vec![1u8, 2, 3, 4, 5, 6, 7, 8];
         
         // Test UInt8
-        let pixel_data = PixelData::from_bytes(&bytes, PixelType::UInt8);
+        let pixel_data = PixelData::from_le_bytes(&bytes, PixelType::UInt8);
         assert!(pixel_data.is_ok());
         
         match pixel_data.unwrap() {
