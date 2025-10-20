@@ -73,9 +73,9 @@ impl MedicalVolume {
 
         // translation matrix
         let translation_matrix = Matrix4x4::from_array([
-            1.0, 0.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 0.0,
-            0.0, 0.0, 1.0, 0.0,
+            1.0, 0.0, 0.0, offset[0],
+            0.0, 1.0, 0.0, offset[1],
+            0.0, 0.0, 1.0, offset[2],
             0.0, 0.0, 0.0, 1.0,
         ]);
 
