@@ -180,3 +180,118 @@ impl <'a> GeometryBuilder<'a> {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_uv_base() {
+        let base0 = Base::<f32> {
+            label: "world coordinate".to_string(),
+            matrix: Matrix4x4::<f32>::eye(),
+        };
+
+        let volume_1 = crate::ct_volume::CTVolume{
+            dimensions: (512, 512, 100),
+            voxel_spacing: (0.5, 0.5, 1.0),
+            voxel_data: vec![-1024; 512 * 512 * 100],
+            base: base0,
+        };
+
+        let result = GeometryBuilder::build_uv_base(&volume_1);
+        assert!(result.label == "CT Volume: UV");
+        assert_eq!(result.matrix.data[0][0], 511.0);
+        assert_eq!(result.matrix.data[1][1], 511.0);
+        assert_eq!(result.matrix.data[2][2], 99.0);
+    }
+
+    #[test]
+    fn test_transverse_base() {
+        let m = [0., 0., 0., -507.812, 
+                0., 0., 0.,  -507.8125, 
+                0., 0., 0.,  -923.5, 
+                0., 0., 0., 1.];
+        let base0 = Base::<f32> {
+            label: "world coordinate".to_string(),
+            matrix: Matrix4x4::<f32>::from_array(m),
+        };
+
+        let volume_1 = crate::ct_volume::CTVolume{
+            dimensions: (512, 512, 100),
+            voxel_spacing: (1.0, 1.0, 1.0),
+            voxel_data: vec![-1024; 512 * 512 * 100],
+            base: base0,
+        };
+
+        let result = GeometryBuilder::build_transverse_base(&volume_1);
+        assert!(result.label == "CT Volume: screen");
+        assert_eq!(result.matrix.data[0][0], 512.0);
+        assert_eq!(result.matrix.data[1][3], -507.8125);
+    }
+
+    #[test]
+    fn test_coronal_base() {
+        let m = [
+            0., 0., 0., 10., 0., 0., 0., 5., 0., 0., 0., 3., 0., 0., 0., 1.,
+        ];
+        let base0 = Base::<f32> {
+            label: "world coordinate".to_string(),
+            matrix: Matrix4x4::<f32>::from_array(m),
+        };
+
+        let volume_1 = crate::ct_volume::CTVolume{
+            dimensions: (512, 512, 100),
+            voxel_spacing: (0.5, 0.5, 1.0),
+            voxel_data: vec![-1024; 512 * 512 * 100],
+            base: base0,
+        };
+
+        let result = GeometryBuilder::build_coronal_base(&volume_1);
+        assert_eq!(result.matrix.data[2][1], -256.0);
+        assert_eq!(result.matrix.data[1][3], (5.0+512.0*0.5/2.0));
+    }
+
+    #[test]
+    fn test_sagittal_base() {
+        let m = [
+            0., 0., 0., 10., 0., 0., 0., 5., 0., 0., 0., 3., 0., 0., 0., 1.,
+        ];
+        let base0 = Base::<f32> {
+            label: "world coordinate".to_string(),
+            matrix: Matrix4x4::<f32>::from_array(m),
+        };
+
+        let volume_1 = crate::ct_volume::CTVolume{
+            dimensions: (512, 512, 100),
+            voxel_spacing: (0.5, 0.5, 1.0),
+            voxel_data: vec![-1024; 512 * 512 * 100],
+            base: base0,
+        };
+
+        let result = GeometryBuilder::build_sagittal_base(&volume_1);
+        assert!(result.label == "CT Volume: screen");
+        assert_eq!(result.matrix.data[1][0], 256.0);
+        assert_eq!(result.matrix.data[2][3], (3.0 + 100.0 * 1.0 / 2.0 + 512.0 * 0.5 / 2.0));
+    }
+
+    #[test]
+    fn test_oblique_base() {
+        let base0 = Base::<f32> {
+            label: "world coordinate".to_string(),
+            matrix: Matrix4x4::<f32>::eye(),
+        };
+
+        let volume_1 = crate::ct_volume::CTVolume{
+            dimensions: (512, 512, 100),
+            voxel_spacing: (0.5, 0.5, 1.0),
+            voxel_data: vec![-1024; 512 * 512 * 100],
+            base: base0,
+        };
+
+        let result = GeometryBuilder::build_oblique_base(&volume_1);
+        assert_eq!(result.matrix.data[2][0], -47.4368);
+        assert_eq!(result.matrix.data[2][1], -238.848);
+        assert_eq!(result.matrix.data[2][2], 39.488);
+        assert_eq!(result.matrix.data[2][3], 166.074);
+    }
+}
