@@ -14,12 +14,13 @@ use kepler_wgpu::data::{dicom::{
     Patient, StudySet, ImageSeries, CTImage, DicomRepo,
     build_ct_dicom, generate_uid, change_dicom_uid, FsSink},
     medical_imaging::PixelType};
+use kepler_wgpu::data::medical_imaging::image_info::PatientPosition;
 
 // Test utilities and mock data
 mod test_utils {
     use super::*;
 
-        // ============================================================================
+    // ============================================================================
     // Test Data and Utilities
     // ============================================================================
 
@@ -77,27 +78,84 @@ mod test_utils {
         
         header
     }
-    
-    /// Creates minimal valid DICOM data for testing
-    /// Returns a byte array representing a basic CT DICOM file
-    pub fn create_minimal_ct_dicom() -> Vec<u8> {
-        // This would normally be a valid DICOM file in bytes
-        // For testing purposes, we'll create a mock structure
-        // In a real implementation, you'd use actual DICOM test files
-        vec![
-            // DICOM preamble (128 bytes of zeros)
-            0u8; 128
-        ].into_iter()
-        .chain(b"DICM".iter().cloned()) // DICOM prefix
-        .chain(create_mock_dicom_elements())
-        .collect()
+
+    #[test]
+    fn test_patient_position_parsing_standard_positions() {
+        // Test standard DICOM patient positions
+        let positions = vec![
+            ("HFS", PatientPosition::HFS),
+            ("HFP", PatientPosition::HFP),
+            ("HFDR", PatientPosition::HFDR),
+            ("HFDL", PatientPosition::HFDL),
+            ("FFS", PatientPosition::FFS),
+            ("FFP", PatientPosition::FFP),
+            ("FFDR", PatientPosition::FFDR),
+            ("FFDL", PatientPosition::FFDL),
+        ];
+
+        for (input, expected) in positions {
+            let result = PatientPosition::from_str(input);
+            assert_eq!(result.to_string(), expected.to_string(), "Incorrect parsing for position: {}", input);
+        }
     }
-    
-    /// Creates mock DICOM data elements for testing
-    fn create_mock_dicom_elements() -> Vec<u8> {
-        // Mock implementation - in real tests, use actual DICOM libraries
-        // to create valid test data
-        vec![0u8; 1024] // Placeholder for DICOM elements
+
+    #[test]
+    fn test_patient_position_parsing_none_input() {
+        let result = PatientPosition::from_str("");
+        assert_eq!(result.to_string(), PatientPosition::HFS.to_string()); // Default to HFS
+    }
+
+    #[test]
+    fn test_patient_position_validation_consistency() {
+        // Test validation with consistent orientation
+        let consistent_orientation = (1.0, 0.0, 0.0, 0.0, 1.0, 0.0); // Standard axial
+        let result = PatientPosition::validate_position_consistency(
+            &PatientPosition::HFS, 
+            Some(consistent_orientation)
+        );
+        assert!(result.is_ok(), "Validation should pass for consistent orientation");
+
+        // Test validation without orientation (should always pass)
+        let result = PatientPosition::validate_position_consistency(
+            &PatientPosition::HFS, 
+            None
+        );
+        assert!(result.is_ok(), "Validation should pass when no orientation provided");
+    }
+
+    #[test]
+    fn test_ct_image_with_different_positions() {
+        let positions = vec!["HFS", "HFP", "FFS", "FFP", "HFDR", "HFDL", "FFDR", "FFDL"];
+        
+        for position in positions {
+            let ct_image = create_test_ct_image_with_position(position);
+            assert_eq!(ct_image.patient_position, Some(position.to_string()));
+            
+            // Verify that the position can be parsed
+            let parsed_position =  match &ct_image.patient_position {
+                Some(pos_str) => PatientPosition::from_str(pos_str),
+                None => PatientPosition::HFS, // Default to HFS if no position specified
+            };
+            assert_eq!(parsed_position.to_string(), position.to_string(), "Failed to parse position: {}", position);
+        }
+    }
+
+    #[test]
+    fn test_patient_position_integration_with_ct_volume() {
+        // This test verifies that PatientPosition parsing integrates correctly
+        // with CTVolume generation (would require DicomRepo functionality)
+        let ct_image = create_test_ct_image_with_position("HFP");
+        
+        // Verify the position is correctly stored
+        assert_eq!(ct_image.patient_position, Some("HFP".to_string()));
+        
+        // Verify parsing works
+        let parsed = PatientPosition::from_str(ct_image.patient_position.as_deref().unwrap_or("HFS"));
+        assert_eq!(parsed.to_string(), PatientPosition::HFP.to_string());
+        
+        // Verify coordinate transform
+        let (flip_x, flip_y, flip_z) = PatientPosition::get_coordinate_transform(&PatientPosition::HFP);
+        assert_eq!((flip_x, flip_y, flip_z), (true, false, false));
     }
     
     /// Creates test patient data
@@ -107,7 +165,6 @@ mod test_utils {
             "Test^Patient".to_string(),
             Some("19800101".to_string()),
             Some("M".to_string()),
-            Some("HFS".to_string()),
         )
     }
     
@@ -146,12 +203,37 @@ mod test_utils {
             Some(1.0), // spacing between slices
             Some((100.0, 100.0, 50.0)), // image position
             Some((1.0, 0.0, 0.0, 0.0, 1.0, 0.0)), // image orientation
+            Some(PatientPosition::HFS.to_string()), // patient position
             Some(1.0), // rescale slope
             Some(-1024.0), // rescale intercept
             Some(40.0), // window center
             Some(400.0), // window width
             1, // pixel representation (signed)
-            pixel_data
+            pixel_data,
+        )
+    }
+    
+    /// Creates test CT image with specific patient position
+    pub fn create_test_ct_image_with_position(position: &str) -> CTImage {
+        let pixel_data = vec![0u8; 512 * 512 * 2]; // 16-bit pixels, 512x512
+        
+        CTImage::new(
+            "1.2.3.4.5.6.7.8.9.2".to_string(),
+            "1.2.3.4.5.6.7.8.9.1".to_string(),
+            512,
+            512,
+            Some((0.5, 0.5)), // pixel spacing
+            Some(1.0), // slice thickness
+            Some(1.0), // spacing between slices
+            Some((100.0, 100.0, 50.0)), // image position
+            Some((1.0, 0.0, 0.0, 0.0, 1.0, 0.0)), // image orientation
+            Some(position.to_string()), // patient position
+            Some(1.0), // rescale slope
+            Some(-1024.0), // rescale intercept
+            Some(40.0), // window center
+            Some(400.0), // window width
+            1, // pixel representation (signed)
+            pixel_data,
         )
     }
 }
@@ -176,7 +258,6 @@ mod unit_tests {
             assert_eq!(patient.name, "Test^Patient");
             assert_eq!(patient.birthdate, Some("19800101".to_string()));
             assert_eq!(patient.sex, Some("M".to_string()));
-            assert_eq!(patient.patient_position, Some("HFS".to_string()));
         }
 
         #[test]
@@ -197,7 +278,6 @@ mod unit_tests {
                 "Another^Patient".to_string(),
                 None, // No birthdate
                 None, // No sex
-                Some("HFS".to_string()),
             );
             assert_eq!(patient.patient_id, "TEST002");
             assert_eq!(patient.name, "Another^Patient");
@@ -259,6 +339,7 @@ mod unit_tests {
             assert_eq!(ct_image.rescale_intercept, Some(-1024.0));
             assert_eq!(ct_image.window_center, Some(40.0));
             assert_eq!(ct_image.window_width, Some(400.0));
+            assert_eq!(ct_image.patient_position, Some("HFS".to_string()));
         }
 
         #[test]

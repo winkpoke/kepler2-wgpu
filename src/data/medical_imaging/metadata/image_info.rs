@@ -8,6 +8,7 @@ use crate::data::medical_imaging::{
 };
 use std::fmt;
 use anyhow::{anyhow, Result};
+use log::{warn, debug};
 use std::collections::HashMap;
 
 /// Comprehensive medical image metadata
@@ -166,7 +167,7 @@ impl ImageMetadata {
             .to_string();
 
         let anatomical_orientation = anatomical_orientation.as_str();
-        let patient_position = create_patient_position(anatomical_orientation);
+        let patient_position = PatientPosition::from_str(anatomical_orientation);
 
         let element_data_file = kv
             .get("ElementDataFile")
@@ -205,72 +206,158 @@ pub enum  PatientPosition{
     Unknown,
 }
 
-pub fn create_patient_position(anatomical_orientation: &str)-> PatientPosition{
-    match anatomical_orientation {
-        "HFS" => PatientPosition::HFS,  // Head First-Supine (头先进仰卧)
-        "HFP" => PatientPosition::HFP,  // Head First-Prone (头先进俯卧) 
-        "FFS" => PatientPosition::FFS,  // Feet First-Supine (脚先进仰卧)
-        "FFP" => PatientPosition::FFP,  // Feet First-Prone (脚先进俯卧)
-        "HFDR" => PatientPosition::HFDR, // Head First-Decubitus Right (头先进右侧卧)
-        "HFDL" => PatientPosition::HFDL, // Head First-Decubitus Left (头先进左侧卧)
-        "FFDR" => PatientPosition::FFDR, // Feet First-Decubitus Right (脚先进右侧卧)
-        "FFDL" => PatientPosition::FFDL, // Feet First-Decubitus Left (脚先进左侧卧)
-        // ========================
-        // 解剖方向到标准体位的映射
-        // ========================
-        // 仰卧位 (Supine) - 头先进
-        "RAI" => PatientPosition::HFS,  // 右前上 -> 头先进仰卧
-        "LPS" => PatientPosition::HFS,  // 左后上 -> 头先进仰卧
-        "LAI" => PatientPosition::HFS,  // 左前上 -> 头先进仰卧
-        "RPS" => PatientPosition::HFS,  // 右后上 -> 头先进仰卧
+impl PatientPosition{
+    pub fn to_string(&self) -> String{
+        match self {
+            PatientPosition::HFS => "HFS".to_string(),
+            PatientPosition::HFP => "HFP".to_string(),
+            PatientPosition::FFS => "FFS".to_string(),
+            PatientPosition::FFP => "FFP".to_string(),
+            PatientPosition::HFDR => "HFDR".to_string(),
+            PatientPosition::HFDL => "HFDL".to_string(),
+            PatientPosition::FFDR => "FFDR".to_string(),
+            PatientPosition::FFDL => "FFDL".to_string(),
+            PatientPosition::Unknown => "Unknown".to_string(),
+        }
+    }
 
-        // 俯卧位 (Prone) - 头先进  
-        "RPI" => PatientPosition::HFP,  // 右后上 -> 头先进俯卧
-        "LAS" => PatientPosition::HFP,  // 左前下 -> 头先进俯卧
-        "LPI" => PatientPosition::HFP,  // 左后上 -> 头先进俯卧
-        "RAS" => PatientPosition::HFP,  // 右前下 -> 头先进俯卧
+    pub fn from_str(anatomical_orientation: &str)-> Self{
+        match anatomical_orientation {
+            "HFS" => PatientPosition::HFS,  // Head First-Supine (头先进仰卧)
+            "HFP" => PatientPosition::HFP,  // Head First-Prone (头先进俯卧) 
+            "FFS" => PatientPosition::FFS,  // Feet First-Supine (脚先进仰卧)
+            "FFP" => PatientPosition::FFP,  // Feet First-Prone (脚先进俯卧)
+            "HFDR" => PatientPosition::HFDR, // Head First-Decubitus Right (头先进右侧卧)
+            "HFDL" => PatientPosition::HFDL, // Head First-Decubitus Left (头先进左侧卧)
+            "FFDR" => PatientPosition::FFDR, // Feet First-Decubitus Right (脚先进右侧卧)
+            "FFDL" => PatientPosition::FFDL, // Feet First-Decubitus Left (脚先进左侧卧)
+            // ========================
+            // 解剖方向到标准体位的映射
+            // ========================
+            // 仰卧位 (Supine) - 头先进
+            "RAI" => PatientPosition::HFS,  // 右前上 -> 头先进仰卧
+            "LPS" => PatientPosition::HFS,  // 左后上 -> 头先进仰卧
+            "LAI" => PatientPosition::HFS,  // 左前上 -> 头先进仰卧
+            "RPS" => PatientPosition::HFS,  // 右后上 -> 头先进仰卧
 
-        // 仰卧位 (Supine) - 脚先进
-        "RSA" => PatientPosition::FFS,  // 右上前 -> 脚先进仰卧
-        "LSP" => PatientPosition::FFS,  // 左上后 -> 脚先进仰卧
-        "LSA" => PatientPosition::FFS,  // 左上前 -> 脚先进仰卧
-        "RSP" => PatientPosition::FFS,  // 右上后 -> 脚先进仰卧
+            // 俯卧位 (Prone) - 头先进  
+            "RPI" => PatientPosition::HFP,  // 右后上 -> 头先进俯卧
+            "LAS" => PatientPosition::HFP,  // 左前下 -> 头先进俯卧
+            "LPI" => PatientPosition::HFP,  // 左后上 -> 头先进俯卧
+            "RAS" => PatientPosition::HFP,  // 右前下 -> 头先进俯卧
 
-        // 俯卧位 (Prone) - 脚先进
-        "RPA" => PatientPosition::FFP,  // 右后前 -> 脚先进俯卧
-        "LIA" => PatientPosition::FFP,  // 左下前 -> 脚先进俯卧
-        "LPA" => PatientPosition::FFP,  // 左后前 -> 脚先进俯卧
-        "RIA" => PatientPosition::FFP,  // 右下前 -> 脚先进俯卧
+            // 仰卧位 (Supine) - 脚先进
+            "RSA" => PatientPosition::FFS,  // 右上前 -> 脚先进仰卧
+            "LSP" => PatientPosition::FFS,  // 左上后 -> 脚先进仰卧
+            "LSA" => PatientPosition::FFS,  // 左上前 -> 脚先进仰卧
+            "RSP" => PatientPosition::FFS,  // 右上后 -> 脚先进仰卧
 
-        // ========================
-        // 侧卧位 (Decubitus)
-        // ========================
-        // 右侧卧位
-        "ARI" => PatientPosition::HFDR, // 前右上 -> 头先进右侧卧
-        "PRI" => PatientPosition::HFDR, // 后右上 -> 头先进右侧卧
-        "ARS" => PatientPosition::FFDR, // 前右下 -> 脚先进右侧卧
-        "PRS" => PatientPosition::FFDR, // 后右下 -> 脚先进右侧卧
+            // 俯卧位 (Prone) - 脚先进
+            "RPA" => PatientPosition::FFP,  // 右后前 -> 脚先进俯卧
+            "LIA" => PatientPosition::FFP,  // 左下前 -> 脚先进俯卧
+            "LPA" => PatientPosition::FFP,  // 左后前 -> 脚先进俯卧
+            "RIA" => PatientPosition::FFP,  // 右下前 -> 脚先进俯卧
 
-        // 左侧卧位
-        "ALI" => PatientPosition::HFDL, // 前左上 -> 头先进左侧卧
-        "PLI" => PatientPosition::HFDL, // 后左上 -> 头先进左侧卧
-        "ALS" => PatientPosition::FFDL, // 前左下 -> 脚先进左侧卧
-        "PLS" => PatientPosition::FFDL, // 后左下 -> 脚先进左侧卧
+            // ========================
+            // 侧卧位 (Decubitus)
+            // ========================
+            // 右侧卧位
+            "ARI" => PatientPosition::HFDR, // 前右上 -> 头先进右侧卧
+            "PRI" => PatientPosition::HFDR, // 后右上 -> 头先进右侧卧
+            "ARS" => PatientPosition::FFDR, // 前右下 -> 脚先进右侧卧
+            "PRS" => PatientPosition::FFDR, // 后右下 -> 脚先进右侧卧
 
-        // ========================
-        // 特殊情况
-        // ========================
-        "AIL" => PatientPosition::HFS,  // 前上左 -> 头先进仰卧
-        "PIL" => PatientPosition::HFS,  // 后上左 -> 头先进仰卧
-        "AIR" => PatientPosition::HFS,  // 前上右 -> 头先进仰卧
-        "PIR" => PatientPosition::HFS,  // 后上右 -> 头先进仰卧
+            // 左侧卧位
+            "ALI" => PatientPosition::HFDL, // 前左上 -> 头先进左侧卧
+            "PLI" => PatientPosition::HFDL, // 后左上 -> 头先进左侧卧
+            "ALS" => PatientPosition::FFDL, // 前左下 -> 脚先进左侧卧
+            "PLS" => PatientPosition::FFDL, // 后左下 -> 脚先进左侧卧
 
-        // ========================
-        // 默认情况
-        // ========================
-        _ => {
-            log::info!("Unknown anatomical orientation: {}, defaulting to HFS", anatomical_orientation);
-            PatientPosition::HFS
+            // ========================
+            // 特殊情况
+            // ========================
+            "AIL" => PatientPosition::HFS,  // 前上左 -> 头先进仰卧
+            "PIL" => PatientPosition::HFS,  // 后上左 -> 头先进仰卧
+            "AIR" => PatientPosition::HFS,  // 前上右 -> 头先进仰卧
+            "PIR" => PatientPosition::HFS,  // 后上右 -> 头先进仰卧
+
+            // ========================
+            // 默认情况
+            // ========================
+            _ => {
+                log::info!("Unknown anatomical orientation: {}, defaulting to HFS", anatomical_orientation);
+                PatientPosition::HFS
+            }
+        }
+    }
+
+    /// Validate patient position consistency with image orientation
+    pub fn validate_position_consistency(
+        position: &PatientPosition,
+        image_orientation: Option<(f32, f32, f32, f32, f32, f32)>
+    ) -> Result<()> {
+        if let Some(orientation) = image_orientation {
+            let (row_x, row_y, row_z, col_x, col_y, col_z) = orientation;
+            
+                        // Calculate slice direction (cross product of row and column directions)
+            let slice_x = row_y * col_z - row_z * col_y;
+            let slice_y = row_z * col_x - row_x * col_z;
+            let slice_z = row_x * col_y - row_y * col_x;
+            
+            debug!("Image orientation - Row: ({:.3}, {:.3}, {:.3}), Col: ({:.3}, {:.3}, {:.3}), Slice: ({:.3}, {:.3}, {:.3})",
+                row_x, row_y, row_z, col_x, col_y, col_z, slice_x, slice_y, slice_z);
+
+            // Validate consistency based on expected orientations for each position
+            match position {
+                PatientPosition::HFS => {
+                    // Head First Supine: expect slice direction pointing superior-inferior
+                    if slice_z.abs() < 0.5 {
+                        warn!("PatientPosition HFS but slice direction doesn't align with S-I axis");
+                    }
+                }
+                PatientPosition::HFP => {
+                    // Head First Prone: expect slice direction pointing superior-inferior
+                    if slice_z.abs() < 0.5 {
+                        warn!("PatientPosition HFP but slice direction doesn't align with S-I axis");
+                    }
+                }
+                PatientPosition::FFS | PatientPosition::FFP => {
+                    // Feet First: expect slice direction pointing inferior-superior
+                    if slice_z.abs() < 0.5 {
+                        warn!("PatientPosition feet-first but slice direction doesn't align with I-S axis");
+                    }
+                }
+                PatientPosition::HFDR | PatientPosition::HFDL | 
+                PatientPosition::FFDR | PatientPosition::FFDL => {
+                    // Decubitus positions: expect slice direction in lateral plane
+                    if slice_x.abs() < 0.5 && slice_y.abs() < 0.5 {
+                        warn!("PatientPosition decubitus but slice direction doesn't align with lateral axis");
+                    }
+                }
+                PatientPosition::Unknown => {
+                    warn!("Unknown patient position, cannot validate orientation consistency");
+                }
+            }
+        }
+        
+        Ok(())
+    }
+
+    /// Get expected coordinate system transformation for a given patient position
+    pub fn get_coordinate_transform(position: &PatientPosition) -> (bool, bool, bool) {
+        match position {
+            PatientPosition::HFS => (false, false, false), // Standard orientation
+            PatientPosition::HFP => (true, false, false),  // Flip X for prone
+            PatientPosition::FFS => (false, true, true),   // Flip Y and Z for feet first
+            PatientPosition::FFP => (true, true, true),    // Flip all for feet first prone
+            PatientPosition::HFDR => (false, true, false), // Flip Y for right decubitus
+            PatientPosition::HFDL => (false, false, false), // No flip for left decubitus
+            PatientPosition::FFDR => (false, true, true),  // Flip Y and Z for feet first right
+            PatientPosition::FFDL => (false, false, true), // Flip Z for feet first left
+            PatientPosition::Unknown => {
+                warn!("Unknown patient position, using default coordinate transform");
+                (false, false, false)
+            }
         }
     }
 }

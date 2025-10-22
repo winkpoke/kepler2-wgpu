@@ -6,9 +6,11 @@ use super::patient::Patient;
 use super::studyset::StudySet;
 use crate::core::coord::{Base, Matrix4x4};
 use crate::data::ct_volume::{CTVolume, CTVolumeGenerator};
+use crate::data::medical_imaging::image_info::PatientPosition;
 use anyhow::Result;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use log::{info, warn, debug};
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[derive(Debug, Clone)]
@@ -193,17 +195,37 @@ impl DicomRepo {
             .image_orientation_patient
             .ok_or_else(|| "ImageOrientationPatient is missing in the first CTImage".to_string())?;
 
+        let patient_position = match &ct_images[0].patient_position {
+            Some(pos_str) => PatientPosition::from_str(pos_str),
+            None => PatientPosition::HFS, // Default to HFS if no position specified
+        };
+        let (flip_x, flip_y, flip_z) = PatientPosition::get_coordinate_transform(&patient_position);
+
         // Row and column direction vectors
-        let row_direction = (
+        let mut row_direction = (
             image_orientation_patient.0,
             image_orientation_patient.1,
             image_orientation_patient.2,
         );
-        let column_direction = (
+        let mut column_direction = (
             image_orientation_patient.3,
             image_orientation_patient.4,
             image_orientation_patient.5,
         );
+
+        // Apply coordinate transformations based on patient position
+        if flip_x {
+            row_direction.0 = -row_direction.0;
+            column_direction.0 = -column_direction.0;
+        }
+        if flip_y {
+            row_direction.1 = -row_direction.1;
+            column_direction.1 = -column_direction.1;
+        }
+        if flip_z {
+            row_direction.2 = -row_direction.2;
+            column_direction.2 = -column_direction.2;
+        }
 
         // Slice direction (cross product of row and column directions)
         let slice_direction = (
