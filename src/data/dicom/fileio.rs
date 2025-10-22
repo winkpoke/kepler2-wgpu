@@ -464,7 +464,6 @@ pub async fn build_ct_dicom_wasm(
         name: patient["name"].as_str().unwrap_or("").to_string(),
         birthdate: patient["birthdate"].as_str().map(|s| s.to_string()),
         sex: patient["sex"].as_str().map(|s|s.to_string()),
-        patient_position: patient["patient_position"].as_str().map(|s|s.to_string()),
     };
 
     //study JSON
