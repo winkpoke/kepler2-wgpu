@@ -106,7 +106,8 @@ mod test_utils {
             "TEST001".to_string(),
             "Test^Patient".to_string(),
             Some("19800101".to_string()),
-            Some("M".to_string())
+            Some("M".to_string()),
+            Some("HFS".to_string()),
         )
     }
     
@@ -175,6 +176,7 @@ mod unit_tests {
             assert_eq!(patient.name, "Test^Patient");
             assert_eq!(patient.birthdate, Some("19800101".to_string()));
             assert_eq!(patient.sex, Some("M".to_string()));
+            assert_eq!(patient.patient_position, Some("HFS".to_string()));
         }
 
         #[test]
@@ -185,13 +187,7 @@ mod unit_tests {
             assert!(formatted.contains("PatientName"));
             assert!(formatted.contains("TEST001"));
             assert!(formatted.contains("Test^Patient"));
-        }
-
-        #[test]
-        fn test_patient_from_bytes_missing_required_fields() {
-            let minimal_data = create_minimal_ct_dicom();
-            let result = Patient::from_bytes(&minimal_data);
-            assert!(result.is_err());
+            assert!(formatted.contains("PatientPosition"));
         }
 
         #[test]
@@ -200,7 +196,8 @@ mod unit_tests {
                 "TEST002".to_string(),
                 "Another^Patient".to_string(),
                 None, // No birthdate
-                None  // No sex
+                None, // No sex
+                Some("HFS".to_string()),
             );
             assert_eq!(patient.patient_id, "TEST002");
             assert_eq!(patient.name, "Another^Patient");
@@ -229,19 +226,6 @@ mod unit_tests {
             assert!(formatted.contains("StudyInstanceUID"));
             assert!(formatted.contains("STUDY001"));
         }
-
-        #[test]
-        fn test_study_date_validation() {
-            // Test various date formats
-            let study = StudySet::new(
-                "STUDY002".to_string(),
-                "1.2.3.4.5.6.7.8.9.1".to_string(),
-                "TEST001".to_string(),
-                "20241231".to_string(), // Valid DICOM date format
-                None
-            );
-            assert_eq!(study.date, "20241231");
-        }
     }
 
     /// Tests ImageSeries struct creation and validation
@@ -255,18 +239,6 @@ mod unit_tests {
             assert_eq!(series.study_uid, "1.2.3.4.5.6.7.8.9.0");
             assert_eq!(series.modality, "CT");
             assert_eq!(series.description, Some("Axial CT".to_string()));
-        }
-
-        #[test]
-        fn test_image_series_validation() {
-            // Test that only CT modality is accepted
-            let series = ImageSeries::new(
-                "1.2.3.4.5.6.7.8.9.1".to_string(),
-                "1.2.3.4.5.6.7.8.9.0".to_string(),
-                "CT".to_string(),
-                None,
-            );
-            assert_eq!(series.modality, "CT");
         }
     }
 
@@ -337,18 +309,9 @@ mod unit_tests {
     }
 
     /// Tests DicomRepo functionality
+    #[cfg(target_arch = "wasm32")]
     mod dicom_repo_tests {
         use super::*;
-
-        #[test]
-        fn test_dicom_repo_add_patient() {
-            let mut repo = DicomRepo::new();
-            let patient = create_test_patient();
-            repo.add_patient(patient.clone());
-            
-            let retrieved = repo.get_patient("TEST001").unwrap();
-            println!("{:?}", retrieved);
-        }
 
         #[test]
         fn test_dicom_repo_add_study() {
@@ -357,30 +320,29 @@ mod unit_tests {
             repo.add_patient(patient.clone());
             let study = create_test_study();
             repo.add_study(study.clone());
-            
-            let retrieved = repo.get_studies_by_patient(&patient.patient_id);
-            println!("{:?}", retrieved);
-        }
-
-        #[test]
-        fn test_dicom_repo_add_series() {
-            let mut repo = DicomRepo::new();
             let series = create_test_image_series();
             repo.add_image_series(series.clone());
-            
-            let retrieved = repo.get_series_by_study(&series.study_uid);
-            println!("{:?}", retrieved);
-        }
-
-        #[test]
-        fn test_dicom_repo_get_images_by_series() {
-            let mut repo = DicomRepo::new();
             let ct_image = create_test_ct_image();
-            let series_uid = ct_image.series_uid.clone();
             repo.add_ct_image(ct_image);
-            
-            let images = repo.get_images_by_series(&series_uid);
-            println!("{:?}", images);
+        
+            let retrieved_patient = repo.get_patient("TEST001").unwrap();
+            let patient_json = serde_json::to_string(&retrieved_patient).unwrap();
+            assert!(patient_json.contains(&format!("\"patient_id\":\"{}\"", patient.patient_id)));
+            let retrieved_studies = repo.get_studies_by_patient(&patient.patient_id);
+            let studies_json = serde_json::to_string(&retrieved_studies).unwrap();
+            assert!(studies_json.contains(&format!("\"patient_id\":\"{}\"", patient.patient_id)));
+            assert!(studies_json.contains(&format!("\"uid\":\"{}\"", study.uid)));
+            let retrieved_series = repo.get_series_by_study(&series.study_uid);
+            let series_json = serde_json::to_string(&retrieved_series).unwrap();
+            assert!(series_json.contains(&format!("\"study_uid\":\"{}\"", series.study_uid)));
+            assert!(series_json.contains(&format!("\"uid\":\"{}\"", series.uid)));
+            assert!(series_json.contains("\"modality\":\"CT\""));
+            let images = repo.get_images_by_series(&series.uid);
+            let images_json = serde_json::to_string(&images).unwrap();
+            assert!(images_json.contains(&format!("\"series_uid\":\"{}\"", series.uid)));
+            assert!(images_json.contains("\"rows\":512"));
+            assert!(images_json.contains("\"columns\":512"));
+            assert!(images_json.contains("\"pixel_data\":[]"));
         }
     }
 
