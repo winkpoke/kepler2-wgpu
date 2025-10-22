@@ -33,6 +33,7 @@ pub enum UserEvent {
     SetEnableMesh(bool),
     #[cfg(target_arch = "wasm32")]
     GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
+    SetCenterAtPointInMM(usize, f32, f32, f32), // screen coords
     // ... add more events as needed
 }
 
@@ -174,4 +175,5 @@ impl_user_event_senders_for_glcanvas! {
     set_translate_in_screen_coord => SetTranslateInScreenCoord(x: f32, y: f32, z: f32),
     set_pan => SetPan(dx: f32, dy: f32),
     set_pan_mm => SetPanMM(dx_mm: f32, dy_mm: f32),
+    set_center_at_point_in_mm => SetCenterAtPointInMM(x_mm: f32, y_mm: f32, z_mm: f32),
 }

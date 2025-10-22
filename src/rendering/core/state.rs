@@ -936,6 +936,14 @@ impl State {
         }
     }
 
+    pub fn set_center_at_point_in_mm(&mut self, index: usize, x_mm: f32, y_mm: f32, z_mm: f32) {
+        let view = self.layout.views.get_mut(index).unwrap();
+        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+            log::info!("View {} set_center_at_point_in_mm: {:#?}", index, (x_mm, y_mm, z_mm));
+            mpr_view.set_center_at_point_in_mm([x_mm, y_mm, z_mm]);
+        }
+    }
+
     /// Get screen coordinate in millimeters for the specified view
     #[cfg(target_arch = "wasm32")]
     pub fn get_screen_coord_in_mm(&self, index: usize, coord: [f32; 3]) -> [f32; 3] {

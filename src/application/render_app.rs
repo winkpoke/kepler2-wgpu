@@ -189,6 +189,10 @@ impl RenderApp {
                     state.set_mesh_mode_enabled(enabled);
                     log::info!("EnableMesh toggled at runtime: {}", enabled);
                 }
+                Event::UserEvent(UserEvent::SetCenterAtPointInMM(index, x_mm, y_mm, z_mm)) => {
+                    state.set_center_at_point_in_mm(index, x_mm, y_mm, z_mm);
+                    log::info!("CenterAtPointInMM set to: x_mm={x_mm}, y_mm={y_mm}, z_mm={z_mm}");
+                }
                 #[cfg(target_arch = "wasm32")]
                 Event::UserEvent(UserEvent::GetScreenCoordInMM(index, coord, sender)) => {
                     // Function-level comment: Handle get_screen_coord_in_mm request and send result back via oneshot channel.
