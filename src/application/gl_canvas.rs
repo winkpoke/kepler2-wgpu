@@ -5,6 +5,9 @@ use wasm_bindgen::prelude::*;
 
 use crate::{data::ct_volume::CTVolume, rendering::core::state::Graphics};
 
+#[cfg(target_arch = "wasm32")]
+use futures::channel::oneshot;
+
 
 #[derive(Debug)]
 pub enum UserEvent {
@@ -28,6 +31,8 @@ pub enum UserEvent {
     /// Manually trigger pipeline cache invalidation without any other action.
     InvalidatePipelines,
     SetEnableMesh(bool),
+    #[cfg(target_arch = "wasm32")]
+    GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     // ... add more events as needed
 }
 
@@ -126,6 +131,30 @@ impl GLCanvas {
             log::error!("Failed to send SetEnableMesh event: {:?}", e);
         } else {
             log::info!("Sent SetEnableMesh event: enabled={}", enabled);
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn get_screen_coord_in_mm(&self, index: usize, x: f32, y: f32, z: f32) -> Result<Box<[f32]>, String> {
+        log::info!("get_screen_coord_in_mm: index={}, x={}, y={}, z={}", index, x, y, z);
+        let (tx, rx) = oneshot::channel();
+        
+        if let Err(e) = self.proxy.send_event(UserEvent::GetScreenCoordInMM(index, [x, y, z], tx)) {
+            log::error!("Failed to send GetScreenCoordInMM event for window {}: {:?}", index, e);
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+        
+        log::info!("Sent GetScreenCoordInMM event for window {}: {:?}", index, [x, y, z]);
+        
+        match rx.await {
+            Ok(result) => {
+                log::info!("Received GetScreenCoordInMM result for window {}: {:?}", index, result);
+                Ok(result.into())
+            }
+            Err(e) => {
+                log::error!("Failed to receive GetScreenCoordInMM result for window {}: {:?}", index, e);
+                Err(format!("Failed to receive result: {:?}", e))
+            }
         }
     }
 }

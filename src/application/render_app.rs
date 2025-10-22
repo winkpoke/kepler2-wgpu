@@ -189,6 +189,16 @@ impl RenderApp {
                     state.set_mesh_mode_enabled(enabled);
                     log::info!("EnableMesh toggled at runtime: {}", enabled);
                 }
+                #[cfg(target_arch = "wasm32")]
+                Event::UserEvent(UserEvent::GetScreenCoordInMM(index, coord, sender)) => {
+                    // Function-level comment: Handle get_screen_coord_in_mm request and send result back via oneshot channel.
+                    let result = state.get_screen_coord_in_mm(index, coord);
+                    if let Err(_) = sender.send(result) {
+                        log::error!("Failed to send GetScreenCoordInMM result for window {}", index);
+                    } else {
+                        log::info!("Sent GetScreenCoordInMM result for window {}: {:?}", index, result);
+                    }
+                }
                 Event::WindowEvent {
                     ref event,
                     window_id,

@@ -360,6 +360,47 @@ impl MprView {
     pub fn get_translate(&self) -> [f32; 3] {
         self.translate
     }
+
+    /// Convert logical screen coordinates [0,1] to millimeters using the complete transform chain.
+    ///
+    /// This function applies the same transformation sequence as `update_transform_matrix`
+    /// to ensure consistency between CPU coordinate conversion and GPU rendering.
+    ///
+    /// ## Transformation Order
+    ///
+    /// 1. **Center**: Move to coordinate system center
+    /// 2. **Scale**: Apply zoom transformation  
+    /// 3. **Uncenter**: Move back from center
+    /// 4. **Pan**: Apply screen-space translation
+    /// 5. **Project**: Transform to world millimeter coordinates
+    ///
+    /// ## Parameters
+    ///
+    /// * `coord` - Logical screen coordinates in [0,1] range
+    ///
+    /// ## Returns
+    ///
+    /// World coordinates in millimeters
+    pub fn get_screen_coord_in_mm(&self, coord: [f32; 3]) -> [f32; 3] {
+        log::debug!("Converting logical coord to mm: {:?}", coord);
+        
+        // Clone the base screen matrix to apply transformations
+        let mut base_screen_cloned = self.base_screen.clone();
+
+        // Apply the same transformation chain as update_transform_matrix
+        // Note: Transformations are applied in reverse order due to matrix multiplication
+        base_screen_cloned.translate([-self.pan[0], -self.pan[1], -self.pan[2]]);
+        base_screen_cloned.translate([0.5, 0.5, 0.0]); // Move back to origin
+        base_screen_cloned.scale([self.scale, self.scale, 1.0]); // Apply current zoom
+        base_screen_cloned.translate([-0.5, -0.5, 0.0]); // Center the transformation
+
+        // Convert to millimeters using the transformed matrix
+        let transform_matrix = base_screen_cloned.get_matrix();
+        let result = transform_matrix.multiply_point3(coord);
+        
+        log::debug!("Converted coord {:?} to mm: {:?}", coord, result);
+        result
+    }
 }
 
 impl StatefulView for MprView {

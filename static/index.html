@@ -108,7 +108,11 @@
                 return;
             }
             gl_canvas0.set_slice_mm(indexValue, sliceValue);
+            gl_canvas0.get_screen_coord_in_mm(indexValue, 0.5, 0.5, 0.0)
+                    .then((result) => {
+                        console.log('Screen Coord in MM:', result);
                     })
+        })
         document.getElementById('resize-submit').addEventListener('click', () => {
             const width = document.getElementById('width').value;
             const height = document.getElementById('height').value;
