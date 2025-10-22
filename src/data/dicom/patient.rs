@@ -10,7 +10,6 @@ define_dicom_struct!(Patient, {
     (name, String, "(0010,0010) PatientName", false),       // PatientName is required
     (birthdate, String, "(0010,0030) PatientBirthDate", true),  // PatientBirthDate is optional
     (sex, String, "(0010,0040) PatientSex", true),              // Sex is optional
-    (patient_position, String, "(0010,0050) PatientPosition", true) // PatientPosition is optional
 });
 
 // Native version for reading DICOM from a file directly (e.g., from the file system)
@@ -30,7 +29,6 @@ impl Patient {
         // Optional fields
         let birthdate = get_value::<String>(&dicom_obj, "PatientBirthDate");
         let sex = get_value::<String>(&dicom_obj, "PatientSex");
-        let patient_position = get_value::<String>(&dicom_obj, "PatientPosition");
 
         // Return the populated struct
         Ok(Patient {
@@ -38,7 +36,6 @@ impl Patient {
             name,
             birthdate,
             sex,
-            patient_position,
         })
     }
 }
