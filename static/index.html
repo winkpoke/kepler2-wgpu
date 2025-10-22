@@ -34,6 +34,13 @@
         <button id="slice-submit">Submit</button>
     </div>
     <div>
+        <label for="center-input">center:</label>
+        <label for="center-x">x:</label> <input type="number" id="center-x" step="0.1" value="0.0" placeholder="x">
+        <label for="center-y">y:</label> <input type="number" id="center-y" step="0.1" value="0.0" placeholder="y">
+        <label for="center-z">z:</label> <input type="number" id="center-z" step="0.1" value="0.0" placeholder="z">
+        <button id="set-center">Set Center</button>
+    </div>
+    <div>
         <label for="translate-input">translate:</label>
         <label for="trans-x">x:</label> <input type="number" id="trans-x" step="10.0" value="0.0" placeholder="x">
         <label for="trans-y">y:</label><input type="number" id="trans-y" step="10.0" value="0.0" placeholder="y">
@@ -45,7 +52,7 @@
         <label for="level">level:</label><input type="number" id="level" step="10.0" value="0.0">
         <button id="winlev-submit">Submit</button>
     </div>
-        <div>
+    <div>
         <label for="resize-input">resize:</label>
         <label for="width">width:</label><input type="number" id="width" step="10.0" value="0.0" placeholder="800">
         <label for="height">height:</label><input type="number" id="height" step="10.0" value="0.0" placeholder="800">
@@ -107,12 +114,22 @@
                 alert('Please select a series first!');
                 return;
             }
-            gl_canvas0.set_slice_mm(indexValue, sliceValue);
-            // gl_canvas0.get_screen_coord_in_mm(indexValue, 0.2, 0.3, 0.0)
-            //         .then((result) => {
-            //             console.log('Screen Coord in MM:', result);
-            //             gl_canvas0.set_center_at_point_in_mm(indexValue, result[0], result[1], result[2]);
-            //         })
+        })
+        document.getElementById('set-center').addEventListener('click', () => {
+            const input_index = document.getElementById('index-input');
+            const indexValue = parseInt(input_index.value);
+            if (!gl_canvas0) {
+                alert('Please select a series first!');
+                return;
+            }
+            const center_x = document.getElementById('center-x').value;
+            const center_y = document.getElementById('center-y').value;
+            const center_z = document.getElementById('center-z').value;
+            gl_canvas0.get_screen_coord_in_mm(indexValue, center_x, center_y, center_z)
+                .then((result) => {
+                    console.log('Screen Coord in MM:', result);
+                    gl_canvas0.set_center_at_point_in_mm(indexValue, result[0], result[1], result[2]);
+                })
         })
         document.getElementById('resize-submit').addEventListener('click', () => {
             const width = document.getElementById('width').value;
@@ -126,7 +143,7 @@
                 alert('Please select a series first!');
                 return;
             }
-            gl_canvas0.resize( width, height);
+            gl_canvas0.resize(width, height);
         })
 
         document.getElementById('scale-submit').addEventListener('click', () => {
@@ -186,13 +203,13 @@
         document.getElementById('mesh-mode').addEventListener('change', (event) => {
             const isEnabled = event.target.checked;
             const statusSpan = document.getElementById('mesh-status');
-            
+
             if (!gl_canvas0) {
                 alert('Please select a series first!');
                 event.target.checked = !isEnabled; // Revert checkbox state
                 return;
             }
-            
+
             // Call WASM function to toggle mesh mode
             gl_canvas0.enable_mesh(isEnabled);
             statusSpan.textContent = isEnabled ? 'Enabled' : 'Disabled';
@@ -211,10 +228,10 @@
             const slotInput = document.getElementById('mesh-view-slot');
             const statusSpan = document.getElementById('mesh-view-status');
             const slot = slotInput.value;
-            
+
             // TODO: Call WASM function to switch mesh view
             // gl_canvas0.switch_mesh_view(parseInt(slot));
-            
+
             statusSpan.textContent = `Active: Slot ${slot}`;
             console.log('Mesh view switched to slot:', slot);
         });
