@@ -408,6 +408,13 @@ impl MprView {
         result
     }
 
+    pub fn world_coord_to_screen(&self, world_coord: [f32; 3]) -> [f32; 3] {
+        let current_base = self.get_base();
+        let transform_matrix = current_base.get_matrix().inv().unwrap();
+        let result = transform_matrix.multiply_point3(world_coord);
+        result
+    }
+
     /// set Center of the view at point [x, y, z]
     pub fn set_center_at_point_in_mm(&mut self, p_mm: [f32;3]) {
         // log pan before

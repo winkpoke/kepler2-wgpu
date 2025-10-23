@@ -203,6 +203,17 @@ impl RenderApp {
                         log::info!("Sent GetScreenCoordInMM result for window {}: {:?}", index, result);
                     }
                 }
+                #[cfg(target_arch = "wasm32")]
+                Event::UserEvent(UserEvent::WorldCoordToScreen(index, coord, sender)) => {
+                    // Function-level comment: Handle world_coord_to_screen request and send result back via oneshot channel.
+                    let result = state.world_coord_to_screen(index, coord);
+                    if let Err(_) = sender.send(result) {
+                        log::error!("Failed to send WorldCoordToScreen result for window {}", index);
+                    } else {
+                        log::info!("Sent WorldCoordToScreen result for window {}: {:?}", index, result);
+                    }
+                }
+                #[cfg(target_arch = "wasm32")]
                 Event::WindowEvent {
                     ref event,
                     window_id,

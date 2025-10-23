@@ -126,7 +126,7 @@
             const center_x = document.getElementById('center-x').value;
             const center_y = document.getElementById('center-y').value;
             const center_z = document.getElementById('center-z').value;
-            gl_canvas0.get_screen_coord_in_mm(0, center_x, center_y, center_z)
+            gl_canvas0.get_screen_coord_in_mm(indexValue0, center_x, center_y, center_z)
                 .then((result) => {
                     console.log('Screen Coord in MM:', result);
                     gl_canvas0.set_center_at_point_in_mm(indexValue, result[0], result[1], result[2]);

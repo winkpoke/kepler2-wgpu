@@ -945,7 +945,6 @@ impl State {
     }
 
     /// Get screen coordinate in millimeters for the specified view
-    #[cfg(target_arch = "wasm32")]
     pub fn get_screen_coord_in_mm(&self, index: usize, coord: [f32; 3]) -> [f32; 3] {
         if let Some(view) = self.layout.views.get(index) {
             if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
@@ -954,6 +953,16 @@ impl State {
         }
         // Return the original coordinate if view not found or not an MprView
         coord
+    }
+
+    pub fn world_coord_to_screen(&self, index: usize, world_coord: [f32; 3]) -> [f32; 3] {
+        if let Some(view) = self.layout.views.get(index) {
+            if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
+                return mpr_view.world_coord_to_screen(world_coord);
+            }
+        }
+        // Return the original coordinate if view not found or not an MprView
+        world_coord
     }
 
     // Check if device supports R16Float with filtering and sampling as a texture binding
