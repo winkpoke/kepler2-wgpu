@@ -404,15 +404,17 @@ impl MprView {
 
     /// set Center of the view at point [x, y, z]
     pub fn set_center_at_point_in_mm(&mut self, p_mm: [f32;3]) {
+        // log pan before
+        log::info!("set_center_at_point_in_mm: pan={:?}", self.pan);
         let z = -self.pan[2];
         log::info!("set_center_at_point_in_mm: z={:?}", z);
         let center = [0.5, 0.5, z];
         let center_mm = self.get_screen_coord_in_mm(center);
         log::info!("set_center_at_point_in_mm: center_mm={:?}", center_mm);
         let shift = [
-            p_mm[0] - center_mm[0],
-            p_mm[1] - center_mm[1],
-            p_mm[2] - center_mm[2],
+            center_mm[0] - p_mm[0],
+            center_mm[1] - p_mm[1],
+            center_mm[2] - p_mm[2],
         ];
         log::info!("set_center_at_point_in_mm: shift={:?}", shift);
         let [scale_x, scale_y, scale_z] = self.base_screen.get_scale_factors();

@@ -114,6 +114,7 @@
                 alert('Please select a series first!');
                 return;
             }
+            gl_canvas0.set_slice_mm(indexValue, sliceValue);
         })
         document.getElementById('set-center').addEventListener('click', () => {
             const input_index = document.getElementById('index-input');
