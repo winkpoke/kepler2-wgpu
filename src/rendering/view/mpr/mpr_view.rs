@@ -99,7 +99,7 @@ impl MprView {
         let base_uv = GeometryBuilder::build_uv_base(vol);
 
         // Initialize view state
-        let pan = [0.0, 0.0, 0.0]; // No initial panning
+        let pan = translate;
         let slice = 0.0; // Start at center slice
 
         // Create screen-space transformation matrix
@@ -361,6 +361,20 @@ impl MprView {
         self.translate
     }
 
+    pub fn get_base(&self) -> Base<f32> {
+                // Clone the base screen matrix to apply transformations
+        let mut base_screen_cloned = self.base_screen.clone();
+
+        // Apply the same transformation chain as update_transform_matrix
+        // Note: Transformations are applied in reverse order due to matrix multiplication
+        base_screen_cloned.translate([-self.pan[0], -self.pan[1], -self.pan[2]]);
+        base_screen_cloned.translate([0.5, 0.5, 0.0]); // Move back to origin
+        base_screen_cloned.scale([self.scale, self.scale, 1.0]); // Apply current zoom
+        base_screen_cloned.translate([-0.5, -0.5, 0.0]); // Center the transformation
+        
+        base_screen_cloned
+    }
+
     /// Convert logical screen coordinates [0,1] to millimeters using the complete transform chain.
     ///
     /// This function applies the same transformation sequence as `update_transform_matrix`
@@ -384,18 +398,10 @@ impl MprView {
     pub fn get_screen_coord_in_mm(&self, coord: [f32; 3]) -> [f32; 3] {
         log::debug!("Converting logical coord to mm: {:?}", coord);
         
-        // Clone the base screen matrix to apply transformations
-        let mut base_screen_cloned = self.base_screen.clone();
-
-        // Apply the same transformation chain as update_transform_matrix
-        // Note: Transformations are applied in reverse order due to matrix multiplication
-        base_screen_cloned.translate([-self.pan[0], -self.pan[1], -self.pan[2]]);
-        base_screen_cloned.translate([0.5, 0.5, 0.0]); // Move back to origin
-        base_screen_cloned.scale([self.scale, self.scale, 1.0]); // Apply current zoom
-        base_screen_cloned.translate([-0.5, -0.5, 0.0]); // Center the transformation
+        let current_base = self.get_base();
 
         // Convert to millimeters using the transformed matrix
-        let transform_matrix = base_screen_cloned.get_matrix();
+        let transform_matrix = current_base.get_matrix();
         let result = transform_matrix.multiply_point3(coord);
         
         log::debug!("Converted coord {:?} to mm: {:?}", coord, result);
@@ -411,7 +417,7 @@ impl MprView {
         let center = [0.5, 0.5, z];
         let center_mm = self.get_screen_coord_in_mm(center);
         log::info!("set_center_at_point_in_mm: center_mm={:?}", center_mm);
-        let shift = [
+        let mut shift = [
             center_mm[0] - p_mm[0],
             center_mm[1] - p_mm[1],
             center_mm[2] - p_mm[2],
@@ -420,9 +426,29 @@ impl MprView {
         let [scale_x, scale_y, scale_z] = self.base_screen.get_scale_factors();
         log::info!("set_center_at_point_in_mm: scale={:?}", [scale_x, scale_y, scale_z]);
         // Apply the shift by adding it to the current pan
-        self.pan[0] += shift[0] / scale_x;
-        self.pan[1] += shift[1] / scale_y; 
-        self.pan[2] += shift[2] / scale_z;
+        // shift[0] /= scale_x;
+        // shift[1] /= scale_y;
+        // shift[2] /= scale_z;
+
+        let current_base = self.get_base();
+
+        // Convert to millimeters using the transformed matrix
+
+        let mut transform_matrix = current_base.get_matrix();
+        // set the translate part of the transform_matrix to [0, 0, 0]
+        for i in 0..3 {
+            transform_matrix.data[i][3] = 0.0;
+        }
+        transform_matrix = transform_matrix.inv().unwrap();
+
+        
+        let result = transform_matrix.multiply_point3(shift);
+        log::info!("set_center_at_point_in_mm: result={:?}", result);
+
+        self.pan[0] += result[0];
+        self.pan[1] += result[1];
+        self.pan[2] += result[2];
+        log::info!("set_center_at_point_in_mm: pan={:?}", self.pan);
     }
 }
 

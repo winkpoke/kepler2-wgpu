@@ -97,7 +97,7 @@ impl <'a> GeometryBuilder<'a> {
             // Screen Y → world Y (AP) - no inversion needed for transverse
             0.0,    d,  0.0, oy + d_y / 2.0 - d / 2.0,
             // Screen Z (slice) → world Z (SI)
-            0.0,  0.0,    d, oz,
+            0.0,  0.0,    d, oz + d_z / 2.0,
             // Homogeneous row
             0.0,  0.0,  0.0, 1.0
         ]);

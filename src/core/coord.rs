@@ -542,4 +542,116 @@ mod tests {
         let transorm_matrix = base0.to_base(&base1);
         println!("{:?}", transorm_matrix);
     }
+
+    #[test]
+    fn test_matrix_inv() {
+        // Test 1: Identity matrix inverse should be itself
+        let identity = Matrix4x4::<f64>::eye();
+        let identity_inv = identity.inv().expect("Identity matrix should be invertible");
+        
+        // Check if A * A^-1 = I
+        let result = identity.multiply(&identity_inv);
+        for i in 0..4 {
+            for j in 0..4 {
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert!((result.data[i][j] - expected).abs() < 1e-10, 
+                    "Identity matrix inverse failed at [{}, {}]: expected {}, got {}", 
+                    i, j, expected, result.data[i][j]);
+            }
+        }
+
+        // Test 2: General invertible matrix
+        let matrix = Matrix4x4::<f64>::from_array([
+            2.0, 1.0, 0.0, 1.0,
+            1.0, 2.0, 1.0, 0.0,
+            0.0, 1.0, 2.0, 1.0,
+            0.0, 0.0, 0.0, 1.0,
+        ]);
+        
+        let matrix_inv = matrix.inv().expect("Matrix should be invertible");
+        
+        // Check if A * A^-1 = I
+        let result = matrix.multiply(&matrix_inv);
+        for i in 0..4 {
+            for j in 0..4 {
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert!((result.data[i][j] - expected).abs() < 1e-10, 
+                    "Matrix inverse failed at [{}, {}]: expected {}, got {}", 
+                    i, j, expected, result.data[i][j]);
+            }
+        }
+
+        // Check if A^-1 * A = I
+        let result2 = matrix_inv.multiply(&matrix);
+        for i in 0..4 {
+            for j in 0..4 {
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert!((result2.data[i][j] - expected).abs() < 1e-10, 
+                    "Matrix inverse failed (reverse multiplication) at [{}, {}]: expected {}, got {}", 
+                    i, j, expected, result2.data[i][j]);
+            }
+        }
+
+        // Test 3: Singular matrix (should return None)
+        let singular_matrix = Matrix4x4::<f64>::from_array([
+            1.0, 2.0, 3.0, 4.0,
+            2.0, 4.0, 6.0, 8.0,  // This row is 2x the first row
+            5.0, 6.0, 7.0, 8.0,
+            9.0, 10.0, 11.0, 12.0,
+        ]);
+        
+        assert!(singular_matrix.inv().is_none(), "Singular matrix should not be invertible");
+
+        // Test 4: Translation matrix
+        let translation = Matrix4x4::<f64>::from_array([
+            1.0, 0.0, 0.0, 5.0,
+            0.0, 1.0, 0.0, 3.0,
+            0.0, 0.0, 1.0, 2.0,
+            0.0, 0.0, 0.0, 1.0,
+        ]);
+        
+        let translation_inv = translation.inv().expect("Translation matrix should be invertible");
+        
+        // The inverse of a translation matrix should have negated translation components
+        let expected_inv = Matrix4x4::<f64>::from_array([
+            1.0, 0.0, 0.0, -5.0,
+            0.0, 1.0, 0.0, -3.0,
+            0.0, 0.0, 1.0, -2.0,
+            0.0, 0.0, 0.0, 1.0,
+        ]);
+        
+        for i in 0..4 {
+            for j in 0..4 {
+                assert!((translation_inv.data[i][j] - expected_inv.data[i][j]).abs() < 1e-10,
+                    "Translation matrix inverse failed at [{}, {}]: expected {}, got {}",
+                    i, j, expected_inv.data[i][j], translation_inv.data[i][j]);
+            }
+        }
+
+        // Test 5: Scale matrix
+        let scale = Matrix4x4::<f64>::from_array([
+            2.0, 0.0, 0.0, 0.0,
+            0.0, 3.0, 0.0, 0.0,
+            0.0, 0.0, 4.0, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        ]);
+        
+        let scale_inv = scale.inv().expect("Scale matrix should be invertible");
+        
+        // The inverse of a scale matrix should have reciprocal scale factors
+        let expected_scale_inv = Matrix4x4::<f64>::from_array([
+            0.5, 0.0, 0.0, 0.0,
+            0.0, 1.0/3.0, 0.0, 0.0,
+            0.0, 0.0, 0.25, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        ]);
+        
+        for i in 0..4 {
+            for j in 0..4 {
+                assert!((scale_inv.data[i][j] - expected_scale_inv.data[i][j]).abs() < 1e-10,
+                    "Scale matrix inverse failed at [{}, {}]: expected {}, got {}",
+                    i, j, expected_scale_inv.data[i][j], scale_inv.data[i][j]);
+            }
+        }
+    }
 }
