@@ -904,14 +904,6 @@ impl State {
         }
     }
 
-    pub fn set_translate(&mut self, index: usize, translate: [f32; 3]) {
-        let view = self.layout.views.get_mut(index).unwrap();
-        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-            log::info!("View {} translate: {:#?}", index, translate);
-            mpr_view.set_translate(translate);
-        }
-    }
-
     pub fn set_translate_in_screen_coord(&mut self, index: usize, translate: [f32; 3]) {
         let view = self.layout.views.get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
@@ -948,7 +940,7 @@ impl State {
     pub fn get_screen_coord_in_mm(&self, index: usize, coord: [f32; 3]) -> [f32; 3] {
         if let Some(view) = self.layout.views.get(index) {
             if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
-                return mpr_view.get_screen_coord_in_mm(coord);
+                return mpr_view.screen_coord_to_world(coord);
             }
         }
         // Return the original coordinate if view not found or not an MprView

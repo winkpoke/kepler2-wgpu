@@ -98,11 +98,6 @@ impl RenderApp {
                     state.set_scale(index, scale);
                     log::info!("Scale set to: {}", scale);
                 }
-                Event::UserEvent(UserEvent::SetTranslate(index, dx, dy, dz)) => {
-                    let translate = [dx, dy, dz];
-                    log::info!("Translate set to: {:#?}", translate);
-                    state.set_translate(index, translate);
-                }
                 Event::UserEvent(UserEvent::SetTranslateInScreenCoord(index, dx, dy, dz)) => {
                     let translate = [dx, dy, dz];
                     log::info!("Move to: {:#?}", translate);

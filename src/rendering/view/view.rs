@@ -64,8 +64,6 @@ pub struct ViewState {
     pub slice_mm: f32,
     /// Current zoom scale factor (1.0 = original size)
     pub scale: f32,
-    /// Translation in view/model coordinate space [x, y, z]
-    pub translate: [f32; 3],
     /// Translation in screen coordinate space [x, y, z] - used for panning
     pub translate_in_screen_coord: [f32; 3],
     /// View position on screen (top-left corner) in pixels
@@ -86,7 +84,6 @@ impl ViewState {
             window_width: 400.0,   // Standard CT soft tissue window width (HU)
             slice_mm: 0.0,         // Start at center slice
             scale: 1.0,            // No zoom initially
-            translate: [0.0, 0.0, 0.0],  // No model-space translation
             translate_in_screen_coord: [0.0, 0.0, 0.0],  // No screen-space panning
             position: (0, 0),      // Top-left corner
             dimensions: (512, 512), // Standard medical imaging size

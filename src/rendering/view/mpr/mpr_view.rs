@@ -34,7 +34,7 @@ pub struct MprView {
     /// Shared render context containing pipeline and shared GPU resources
     render_context: Arc<MprRenderContext>,
     /// WGPU implementation containing per-view GPU resources
-    wgpu_impl: Arc<MprViewWgpuImpl>,
+    wgpu_impl: MprViewWgpuImpl,
     /// Render content containing texture and bind groups
     content: Arc<RenderContent>,
     /// Current slice position (internal units)
@@ -45,8 +45,6 @@ pub struct MprView {
     base_uv: Base<f32>,
     /// Current zoom scale factor
     scale: f32,
-    /// Translation in view/model coordinates
-    translate: [f32; 3],
     /// Pan translation in screen coordinates
     pan: [f32; 3],
     /// View position on screen (top-left corner)
@@ -91,9 +89,6 @@ impl MprView {
         pos: (i32, i32),
         dim: (u32, u32),
     ) -> Self {
-        // Get default slice navigation speed for this orientation
-        let _s_speed = orientation.default_slice_speed();
-
         // Build coordinate system bases for this orientation
         let base_screen = orientation.build_base(vol);
         let base_uv = GeometryBuilder::build_uv_base(vol);
@@ -114,12 +109,12 @@ impl MprView {
         let transform_matrix = base_screen_cloned.to_base(&base_uv).transpose();
 
         // Create WGPU implementation with shared context
-        let wgpu_impl = Arc::new(MprViewWgpuImpl::new(
+        let wgpu_impl = MprViewWgpuImpl::new(
             render_context.clone(),
             device,
             texture.clone(),
             transform_matrix,
-        ));
+        );
 
         log::info!("Created GenericMPRView with orientation: {:?}, scale: {:?}, translate: {:?}, pos: {:?}, dim: {:?}",
             orientation, scale, translate, pos, dim);
@@ -132,7 +127,6 @@ impl MprView {
             base_screen,
             base_uv,
             scale,
-            translate,
             pan,
             pos,
             dim,
@@ -153,21 +147,20 @@ impl MprView {
     /// 4. **Pan**: Apply screen-space translation
     /// 5. **Project**: Transform to UV texture coordinates
     fn update_transform_matrix(&mut self, queue: &wgpu::Queue) {
-        let mut base_screen_cloned = self.base_screen.clone();
+        // let mut base_screen_cloned = self.base_screen.clone();
 
-        // Apply transformations in reverse order due to matrix multiplication
-        base_screen_cloned.translate([-self.pan[0], -self.pan[1], -self.pan[2]]);
-        base_screen_cloned.translate([0.5, 0.5, 0.0]); // Move back to origin
-        base_screen_cloned.scale([self.scale, self.scale, 1.0]); // Apply current zoom
-        base_screen_cloned.translate([-0.5, -0.5, 0.0]); // Center the transformation
+        // // Apply transformations in reverse order due to matrix multiplication
+        // base_screen_cloned.translate([-self.pan[0], -self.pan[1], -self.pan[2]]);
+        // base_screen_cloned.translate([0.5, 0.5, 0.0]); // Move back to origin
+        // base_screen_cloned.scale([self.scale, self.scale, 1.0]); // Apply current zoom
+        // base_screen_cloned.translate([-0.5, -0.5, 0.0]); // Center the transformation
 
+        let base_screen = self.get_base();
         // Create final transformation matrix and update GPU uniforms
-        let transform_matrix = base_screen_cloned.to_base(&self.base_uv).transpose();
+        let transform_matrix = base_screen.to_base(&self.base_uv).transpose();
         
         // Update the transformation matrix using the new architecture
-        if let Some(wgpu_impl) = Arc::get_mut(&mut self.wgpu_impl) {
-            wgpu_impl.update_matrix(queue, *array_to_slice(&transform_matrix.data));
-        }
+        self.wgpu_impl.update_matrix(queue, *array_to_slice(&transform_matrix.data));
     }
 }
 
@@ -189,9 +182,7 @@ impl Renderable for MprView {
     /// matrix, slice position, and other rendering parameters.
     fn update(&mut self, queue: &wgpu::Queue) {
         // Update slice position for volume sampling
-        if let Some(wgpu_impl) = Arc::get_mut(&mut self.wgpu_impl) {
-            wgpu_impl.update_slice(queue, self.slice);
-        }
+        self.wgpu_impl.update_slice(queue, self.slice);
 
         // Recalculate transformation matrix if view parameters changed
         self.update_transform_matrix(queue);
@@ -277,17 +268,13 @@ impl MprView {
     /// Set the window level (brightness) for CT image display.
     pub fn set_window_level(&mut self, window_level: f32) {
         // Update the internal state - will be synced to GPU in next update() call
-        if let Some(wgpu_impl) = Arc::get_mut(&mut self.wgpu_impl) {
-            wgpu_impl.uniforms.frag.window_level = window_level;
-        }
+        self.wgpu_impl.uniforms.frag.window_level = window_level;
     }
 
     /// Set the window width (contrast) for CT image display.
     pub fn set_window_width(&mut self, window_width: f32) {
         // Update the internal state - will be synced to GPU in next update() call
-        if let Some(wgpu_impl) = Arc::get_mut(&mut self.wgpu_impl) {
-            wgpu_impl.uniforms.frag.window_width = window_width;
-        }
+        self.wgpu_impl.uniforms.frag.window_width = window_width;
     }
 
     /// Set the current slice position in millimeters.
@@ -304,14 +291,9 @@ impl MprView {
         self.scale = scale;
     }
 
-    /// Set translation in view/model coordinate space.
-    pub fn set_translate(&mut self, translate: [f32; 3]) {
-        self.translate = translate;
-    }
-
     /// Set translation in screen coordinate space (for panning).
-    pub fn set_translate_in_screen_coord(&mut self, translate: [f32; 3]) {
-        self.pan = translate;
+    pub fn set_translate_in_screen_coord(&mut self, pan: [f32; 3]) {
+        self.pan = pan;
     }
 
     /// Pan the view in screen space.
@@ -356,11 +338,6 @@ impl MprView {
         self.pan
     }
 
-    /// Return current view/model-space translation vector.
-    pub fn get_translate(&self) -> [f32; 3] {
-        self.translate
-    }
-
     pub fn get_base(&self) -> Base<f32> {
                 // Clone the base screen matrix to apply transformations
         let mut base_screen_cloned = self.base_screen.clone();
@@ -395,7 +372,7 @@ impl MprView {
     /// ## Returns
     ///
     /// World coordinates in millimeters
-    pub fn get_screen_coord_in_mm(&self, coord: [f32; 3]) -> [f32; 3] {
+    pub fn screen_coord_to_world(&self, coord: [f32; 3]) -> [f32; 3] {
         log::debug!("Converting logical coord to mm: {:?}", coord);
         
         let current_base = self.get_base();
@@ -422,7 +399,7 @@ impl MprView {
         let z = -self.pan[2];
         log::info!("set_center_at_point_in_mm: z={:?}", z);
         let center = [0.5, 0.5, z];
-        let center_mm = self.get_screen_coord_in_mm(center);
+        let center_mm = self.screen_coord_to_world(center);
         log::info!("set_center_at_point_in_mm: center_mm={:?}", center_mm);
         let mut shift = [
             center_mm[0] - p_mm[0],
@@ -432,15 +409,10 @@ impl MprView {
         log::info!("set_center_at_point_in_mm: shift={:?}", shift);
         let [scale_x, scale_y, scale_z] = self.base_screen.get_scale_factors();
         log::info!("set_center_at_point_in_mm: scale={:?}", [scale_x, scale_y, scale_z]);
-        // Apply the shift by adding it to the current pan
-        // shift[0] /= scale_x;
-        // shift[1] /= scale_y;
-        // shift[2] /= scale_z;
 
         let current_base = self.get_base();
 
         // Convert to millimeters using the transformed matrix
-
         let mut transform_matrix = current_base.get_matrix();
         // set the translate part of the transform_matrix to [0, 0, 0]
         for i in 0..3 {
@@ -471,7 +443,6 @@ impl StatefulView for MprView {
             window_width: self.get_window_width(),
             slice_mm: self.get_slice_mm(),
             scale: self.get_scale(),
-            translate: self.get_translate(),
             translate_in_screen_coord: self.get_translate_in_screen_coord(),
             position: self.position(),
             dimensions: self.dimensions(),
@@ -508,7 +479,6 @@ impl StatefulView for MprView {
         self.set_window_width(state.window_width);
         self.set_slice_mm(state.slice_mm);
         self.set_scale(state.scale);
-        self.set_translate(state.translate);
         self.set_translate_in_screen_coord(state.translate_in_screen_coord);
         self.move_to(state.position);
         self.resize(state.dimensions);
