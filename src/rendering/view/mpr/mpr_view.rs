@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    core::{array_to_slice, Base, GeometryBuilder},
+    core::{array_to_slice, Base, GeometryBuilder, error::{KeplerResult, MprError}},
     data::CTVolume,
     rendering::{Orientation, RenderContent, StatefulView, ViewState},
     Renderable, View,
@@ -31,12 +31,8 @@ use super::{MprRenderContext, MprViewWgpuImpl};
 /// 4. **Window/Level Processing**: Applies CT display windowing
 /// 5. **Final Rendering**: Outputs the processed image to the view
 pub struct MprView {
-    /// Shared render context containing pipeline and shared GPU resources
-    render_context: Arc<MprRenderContext>,
     /// WGPU implementation containing per-view GPU resources
     wgpu_impl: MprViewWgpuImpl,
-    /// Render content containing texture and bind groups
-    content: Arc<RenderContent>,
     /// Current slice position (internal units)
     slice: f32,
     /// Screen-space coordinate system base
@@ -51,33 +47,88 @@ pub struct MprView {
     pos: (i32, i32),
     /// View dimensions (width, height)
     dim: (u32, u32),
+    /// Window width for CT display (contrast range)
+    window_width: f32,
+    /// Window level for CT display (brightness center)
+    window_level: f32,
 }
 
 impl MprView {
-    /// Create a new GenericMPRView with the specified parameters.
-    ///
-    /// Initializes all GPU resources, coordinate systems, and rendering state
-    /// needed for MPR visualization. The view is immediately ready for rendering
-    /// after creation.
-    ///
-    /// ## Parameters
-    ///
-    /// - `manager`: Pipeline manager for GPU resource allocation
-    /// - `device`: WGPU device for buffer and texture creation
-    /// - `texture`: 3D volume texture containing the medical imaging data
-    /// - `vol`: CT volume metadata for coordinate system setup
-    /// - `orientation`: Anatomical orientation for this view
-    /// - `scale`: Initial zoom level (1.0 = original size)
-    /// - `translate`: Initial translation in view coordinates
-    /// - `pos`: Initial position on screen
-    /// - `dim`: Initial view dimensions
-    ///
-    /// ## Coordinate System Setup
-    ///
-    /// The constructor sets up multiple coordinate systems:
-    /// 1. Screen-space base for user interaction
-    /// 2. UV-space base for texture sampling
-    /// 3. Transform matrix linking screen to texture coordinates
+    /// Medical imaging parameter bounds for validation
+    const MIN_SCALE: f32 = 0.01;        // 1% zoom minimum
+    const MAX_SCALE: f32 = 100.0;       // 100x zoom maximum
+    const MIN_WINDOW_WIDTH: f32 = 1.0;  // Minimum contrast range
+    const MAX_WINDOW_WIDTH: f32 = 4096.0; // Maximum contrast range for CT
+    const MIN_WINDOW_LEVEL: f32 = -2048.0; // Minimum brightness for CT
+    const MAX_WINDOW_LEVEL: f32 = 2048.0;  // Maximum brightness for CT
+    const MAX_PAN_DISTANCE: f32 = 10000.0; // Maximum pan distance in mm
+    
+    /// Validate and clamp medical imaging parameters for safety and correctness
+    fn validate_and_clamp_params(
+        scale: f32,
+        translate: [f32; 3],
+        pos: (i32, i32),
+        dim: (u32, u32),
+    ) -> ((f32, [f32; 3]), (i32, i32), (u32, u32)) {
+        // Validate and clamp scale
+        let validated_scale = if !scale.is_finite() || scale <= 0.0 {
+            log::warn!("Invalid scale {} replaced with default 1.0", scale);
+            1.0
+        } else {
+            let clamped = scale.clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+            if (clamped - scale).abs() > f32::EPSILON {
+                log::warn!("Scale {} clamped to {}", scale, clamped);
+            }
+            clamped
+        };
+        
+        // Validate and clamp translation
+         let mut validated_translate = translate;
+         for (i, &val) in translate.iter().enumerate() {
+             if !val.is_finite() {
+                 log::warn!("Invalid translate coordinate {} at index {} replaced with 0.0", val, i);
+                 validated_translate[i] = 0.0;
+             } else {
+                 validated_translate[i] = val.clamp(-Self::MAX_PAN_DISTANCE, Self::MAX_PAN_DISTANCE);
+             }
+         }
+        
+        // Validate position bounds
+        const MAX_POSITION: i32 = 100_000;
+        const MIN_POSITION: i32 = -100_000;
+        let validated_pos = (
+            pos.0.clamp(MIN_POSITION, MAX_POSITION),
+            pos.1.clamp(MIN_POSITION, MAX_POSITION)
+        );
+        
+        // Validate dimensions
+        const MAX_DIMENSION: u32 = 16384;
+        const MIN_DIMENSION: u32 = 1;
+        let validated_dim = (
+            dim.0.clamp(MIN_DIMENSION, MAX_DIMENSION),
+            dim.1.clamp(MIN_DIMENSION, MAX_DIMENSION)
+        );
+        
+        ((validated_scale, validated_translate), validated_pos, validated_dim)
+    }
+
+    /// Create a new MPR view with the specified parameters.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `render_context` - Shared GPU rendering context
+    /// * `device` - WGPU device for creating GPU resources
+    /// * `texture` - Shared texture content for rendering
+    /// * `vol` - CT volume data for coordinate system setup
+    /// * `orientation` - Anatomical orientation (Transverse, Coronal, Sagittal, Oblique)
+    /// * `scale` - Initial zoom scale factor (must be positive and finite)
+    /// * `translate` - Initial translation in view coordinates (must be finite)
+    /// * `pos` - Initial position on screen (top-left corner in pixels)
+    /// * `dim` - Initial dimensions (width, height in pixels, must be non-zero)
+    /// 
+    /// # Returns
+    /// 
+    /// A new MprView with validated and clamped parameters
     pub fn new(
         render_context: Arc<MprRenderContext>,
         device: &wgpu::Device,
@@ -89,12 +140,15 @@ impl MprView {
         pos: (i32, i32),
         dim: (u32, u32),
     ) -> Self {
+        // Validate and clamp all input parameters
+        let ((validated_scale, validated_translate), validated_pos, validated_dim) = 
+            Self::validate_and_clamp_params(scale, translate, pos, dim);
         // Build coordinate system bases for this orientation
         let base_screen = orientation.build_base(vol);
         let base_uv = GeometryBuilder::build_uv_base(vol);
 
-        // Initialize view state
-        let pan = translate;
+        // Initialize view state with validated parameters
+        let pan = validated_translate;
         let slice = 0.0; // Start at center slice
 
         // Create screen-space transformation matrix
@@ -102,7 +156,7 @@ impl MprView {
         // Apply transformations in reverse order (matrix multiplication)
         base_screen_cloned.translate([-pan[0], -pan[1], -pan[2]]);
         base_screen_cloned.translate([0.5, 0.5, 0.0]); // Move back to origin
-        base_screen_cloned.scale([scale, scale, 1.0]); // Apply zoom
+        base_screen_cloned.scale([validated_scale, validated_scale, 1.0]); // Apply zoom
         base_screen_cloned.translate([-0.5, -0.5, 0.0]); // Center the transformation
 
         // Create final transformation matrix from screen to UV coordinates
@@ -110,26 +164,26 @@ impl MprView {
 
         // Create WGPU implementation with shared context
         let wgpu_impl = MprViewWgpuImpl::new(
-            render_context.clone(),
+            render_context,
             device,
-            texture.clone(),
+            texture,
             transform_matrix,
         );
 
-        log::info!("Created GenericMPRView with orientation: {:?}, scale: {:?}, translate: {:?}, pos: {:?}, dim: {:?}",
-            orientation, scale, translate, pos, dim);
+        log::info!("Created MprView with orientation: {:?}, scale: {:?}, translate: {:?}, pos: {:?}, dim: {:?}",
+            orientation, validated_scale, validated_translate, validated_pos, validated_dim);
 
         Self {
-            render_context,
             wgpu_impl,
-            content: texture,
             slice,
             base_screen,
             base_uv,
-            scale,
+            scale: validated_scale,
             pan,
-            pos,
-            dim,
+            pos: validated_pos,
+            dim: validated_dim,
+            window_width: 400.0,  // Default CT soft tissue window width
+            window_level: 40.0,   // Default CT soft tissue window level
         }
     }
 
@@ -146,7 +200,7 @@ impl MprView {
     /// 3. **Uncenter**: Move back from center
     /// 4. **Pan**: Apply screen-space translation
     /// 5. **Project**: Transform to UV texture coordinates
-    fn update_transform_matrix(&mut self, queue: &wgpu::Queue) {
+    fn update_transform_matrix(&mut self) {
         // let mut base_screen_cloned = self.base_screen.clone();
 
         // // Apply transformations in reverse order due to matrix multiplication
@@ -159,8 +213,8 @@ impl MprView {
         // Create final transformation matrix and update GPU uniforms
         let transform_matrix = base_screen.to_base(&self.base_uv).transpose();
         
-        // Update the transformation matrix using the new architecture
-        self.wgpu_impl.update_matrix(queue, *array_to_slice(&transform_matrix.data));
+        // Set the transformation matrix using the new architecture
+        self.wgpu_impl.set_matrix(*array_to_slice(&transform_matrix.data));
     }
 }
 
@@ -181,11 +235,18 @@ impl Renderable for MprView {
     /// Updates both vertex and fragment shader uniforms with current transformation
     /// matrix, slice position, and other rendering parameters.
     fn update(&mut self, queue: &wgpu::Queue) {
-        // Update slice position for volume sampling
-        self.wgpu_impl.update_slice(queue, self.slice);
+        // Synchronize window/level settings with WGPU implementation
+        self.wgpu_impl.set_window_level(self.window_level);
+        self.wgpu_impl.set_window_width(self.window_width);
+        
+        // Set slice position for volume sampling
+        self.wgpu_impl.set_slice(self.slice);
 
         // Recalculate transformation matrix if view parameters changed
-        self.update_transform_matrix(queue);
+        self.update_transform_matrix();
+        
+        // Update GPU buffers with all current uniform values
+        self.wgpu_impl.update_uniforms_buffers(queue);
     }
 
     /// Render the MPR view to the current render pass.
@@ -202,8 +263,8 @@ impl Renderable for MprView {
     /// 4. **Geometry**: Bind vertex and index buffers
     /// 5. **Draw**: Issue indexed draw call for the quad
     fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
-        // Set the rendering pipeline for MPR visualization (from shared context)
-        render_pass.set_pipeline(&self.render_context.render_pipeline);
+        // Set the rendering pipeline for MPR visualization (from per-view implementation)
+        render_pass.set_pipeline(&self.wgpu_impl.render_context.render_pipeline);
 
         // Configure viewport to this view's screen region
         let (x, y) = (self.pos.0 as f32, self.pos.1 as f32);
@@ -219,11 +280,11 @@ impl Renderable for MprView {
         render_pass.set_bind_group(2, &self.wgpu_impl.uniform_frag_bind_group, &[]); // Fragment uniforms
 
         // Bind geometry buffers (from shared context)
-        render_pass.set_vertex_buffer(0, self.render_context.vertex_buffer.slice(..));
-        render_pass.set_index_buffer(self.render_context.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        render_pass.set_vertex_buffer(0, self.wgpu_impl.render_context.vertex_buffer.slice(..));
+        render_pass.set_index_buffer(self.wgpu_impl.render_context.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
 
         // Draw the screen-aligned quad
-        render_pass.draw_indexed(0..self.render_context.num_indices, 0, 0..1);
+        render_pass.draw_indexed(0..self.wgpu_impl.render_context.num_indices, 0, 0..1);
         Ok(())
     }
 }
@@ -244,13 +305,40 @@ impl View for MprView {
     /// Move this view to a new position on screen.
     fn move_to(&mut self, pos: (i32, i32)) {
         log::trace!("View move_to: {:#?}", pos);
-        self.pos = pos;
+        
+        // Validate position bounds (allow negative positions for off-screen views)
+        const MAX_POSITION: i32 = 100_000;
+        const MIN_POSITION: i32 = -100_000;
+        
+        if pos.0 < MIN_POSITION || pos.0 > MAX_POSITION || 
+           pos.1 < MIN_POSITION || pos.1 > MAX_POSITION {
+            log::warn!("Invalid position {:?}, clamping to bounds", pos);
+            self.pos = (
+                pos.0.clamp(MIN_POSITION, MAX_POSITION),
+                pos.1.clamp(MIN_POSITION, MAX_POSITION)
+            );
+        } else {
+            self.pos = pos;
+        }
     }
 
     /// Resize this view to new dimensions.
     fn resize(&mut self, dim: (u32, u32)) {
         log::trace!("View resize: {:#?}", dim);
-        self.dim = dim;
+        
+        // Validate dimensions (must be positive and reasonable)
+        const MAX_DIMENSION: u32 = 16384; // 16K resolution limit
+        const MIN_DIMENSION: u32 = 1;     // Minimum 1 pixel
+        
+        if dim.0 == 0 || dim.1 == 0 || dim.0 > MAX_DIMENSION || dim.1 > MAX_DIMENSION {
+            log::warn!("Invalid dimensions {:?}, clamping to bounds", dim);
+            self.dim = (
+                dim.0.clamp(MIN_DIMENSION, MAX_DIMENSION),
+                dim.1.clamp(MIN_DIMENSION, MAX_DIMENSION)
+            );
+        } else {
+            self.dim = dim;
+        }
     }
 
     /// Get a reference to this view as Any for type introspection.
@@ -266,60 +354,258 @@ impl View for MprView {
 
 impl MprView {
     /// Set the window level (brightness) for CT image display.
-    pub fn set_window_level(&mut self, window_level: f32) {
-        // Update the internal state - will be synced to GPU in next update() call
-        self.wgpu_impl.uniforms.frag.window_level = window_level;
+    /// 
+    /// # Arguments
+    /// 
+    /// * `window_level` - The window level value (must be finite)
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(())` - If the value is valid
+    /// * `Err(MprError::InvalidWindowLevel)` - If the value is NaN or infinite
+    pub fn set_window_level(&mut self, window_level: f32) -> KeplerResult<()> {
+        if !window_level.is_finite() {
+            log::error!("Invalid window level: {} (must be finite)", window_level);
+            return Err(MprError::InvalidWindowLevel(window_level).into());
+        }
+        
+        let clamped_level = window_level.clamp(Self::MIN_WINDOW_LEVEL, Self::MAX_WINDOW_LEVEL);
+        if (clamped_level - window_level).abs() > f32::EPSILON {
+            log::warn!("Window level {} clamped to {}", window_level, clamped_level);
+        }
+        
+        log::debug!("Setting window level to: {}", clamped_level);
+        self.window_level = clamped_level;
+        self.wgpu_impl.set_window_level(clamped_level);
+        Ok(())
     }
 
     /// Set the window width (contrast) for CT image display.
-    pub fn set_window_width(&mut self, window_width: f32) {
-        // Update the internal state - will be synced to GPU in next update() call
-        self.wgpu_impl.uniforms.frag.window_width = window_width;
+    /// 
+    /// # Arguments
+    /// 
+    /// * `window_width` - The window width value (must be positive and finite)
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(())` - If the value is valid
+    /// * `Err(MprError::InvalidWindowWidth)` - If the value is not positive or is NaN/infinite
+    pub fn set_window_width(&mut self, window_width: f32) -> KeplerResult<()> {
+        if !window_width.is_finite() || window_width <= 0.0 {
+            log::error!("Invalid window width: {} (must be positive and finite)", window_width);
+            return Err(MprError::InvalidWindowWidth(window_width).into());
+        }
+        
+        let clamped_width = window_width.clamp(Self::MIN_WINDOW_WIDTH, Self::MAX_WINDOW_WIDTH);
+        if (clamped_width - window_width).abs() > f32::EPSILON {
+            log::warn!("Window width {} clamped to {}", window_width, clamped_width);
+        }
+        
+        log::debug!("Setting window width to: {}", clamped_width);
+        self.window_width = clamped_width;
+        self.wgpu_impl.set_window_width(clamped_width);
+        Ok(())
     }
 
     /// Set the current slice position in millimeters.
     ///
     /// Converts millimeter units to internal coordinate system units
     /// using the volume's scale factors for accurate positioning.
-    pub fn set_slice_mm(&mut self, z: f32) {
+    /// 
+    /// # Arguments
+    /// 
+    /// * `z` - Slice position in millimeters (must be finite)
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(())` - If the position is valid
+    /// * `Err(MprError::InvalidSlicePosition)` - If the position is NaN or infinite
+    pub fn set_slice_mm(&mut self, z: f32) -> KeplerResult<()> {
+        if !z.is_finite() {
+            log::error!("Invalid slice position: {} (must be finite)", z);
+            return Err(MprError::InvalidSlicePosition(z).into());
+        }
+        
         let [_, _, scale_z] = self.base_screen.get_scale_factors();
-        self.pan[2] = z / scale_z;
+        
+        // Validate scale factor
+        if !scale_z.is_finite() || scale_z == 0.0 {
+            log::error!("Invalid scale factor for Z axis: {}", scale_z);
+            return Err(MprError::InvalidTransformation.into());
+        }
+        
+        let new_pan_z = z / scale_z;
+        
+        // Validate the result
+        if !new_pan_z.is_finite() {
+            log::error!("Invalid pan calculation result: {}", new_pan_z);
+            return Err(MprError::InvalidSlicePosition(z).into());
+        }
+        
+        log::debug!("Setting slice position to: {} mm (pan_z: {})", z, new_pan_z);
+        self.pan[2] = new_pan_z;
+        Ok(())
     }
 
     /// Set the zoom scale factor.
-    pub fn set_scale(&mut self, scale: f32) {
-        self.scale = scale;
+    /// 
+    /// # Arguments
+    /// 
+    /// * `scale` - Scale factor (must be positive and finite)
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(())` - If the scale is valid
+    /// * `Err(MprError::InvalidScale)` - If the scale is not positive or is NaN/infinite
+    pub fn set_scale(&mut self, scale: f32) -> KeplerResult<()> {
+        if !scale.is_finite() || scale <= 0.0 {
+            log::error!("Invalid scale: {} (must be positive and finite)", scale);
+            return Err(MprError::InvalidScale(scale).into());
+        }
+        
+        let clamped_scale = scale.clamp(Self::MIN_SCALE, Self::MAX_SCALE);
+        if (clamped_scale - scale).abs() > f32::EPSILON {
+            log::warn!("Scale {} clamped to {}", scale, clamped_scale);
+        }
+        
+        log::debug!("Setting scale to: {}", clamped_scale);
+        self.scale = clamped_scale;
+        Ok(())
     }
 
     /// Set translation in screen coordinate space (for panning).
-    pub fn set_translate_in_screen_coord(&mut self, pan: [f32; 3]) {
-        self.pan = pan;
+    /// 
+    /// # Arguments
+    /// 
+    /// * `pan` - Pan coordinates [x, y, z] (all values must be finite)
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(())` - If all coordinates are valid
+    /// * `Err(MprError::InvalidPanCoordinates)` - If any coordinate is NaN or infinite
+    pub fn set_translate_in_screen_coord(&mut self, pan: [f32; 3]) -> KeplerResult<()> {
+        // Validate all pan coordinates
+        for (i, &coord) in pan.iter().enumerate() {
+            if !coord.is_finite() {
+                log::error!("Invalid pan coordinate at index {}: {} (must be finite)", i, coord);
+                return Err(MprError::InvalidPanCoordinates(pan).into());
+            }
+        }
+        
+        let mut clamped_pan = pan;
+        for (i, &coord) in pan.iter().enumerate() {
+            let clamped_coord = coord.clamp(-Self::MAX_PAN_DISTANCE, Self::MAX_PAN_DISTANCE);
+            if (clamped_coord - coord).abs() > f32::EPSILON {
+                log::warn!("Pan coordinate {} at index {} clamped to {}", coord, i, clamped_coord);
+            }
+            clamped_pan[i] = clamped_coord;
+        }
+        
+        log::debug!("Setting pan coordinates to: {:?}", clamped_pan);
+        self.pan = clamped_pan;
+        Ok(())
     }
 
     /// Pan the view in screen space.
-    pub fn set_pan(&mut self, x: f32, y: f32) {
-        self.pan[0] = x;
-        self.pan[1] = y;
+    /// 
+    /// # Arguments
+    /// 
+    /// * `x` - X coordinate (must be finite)
+    /// * `y` - Y coordinate (must be finite)
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(())` - If coordinates are valid
+    /// * `Err(MprError::InvalidPanCoordinates)` - If any coordinate is NaN or infinite
+    pub fn set_pan(&mut self, x: f32, y: f32) -> KeplerResult<()> {
+        if !x.is_finite() {
+            log::error!("Invalid pan X coordinate: {} (must be finite)", x);
+            return Err(MprError::InvalidPanCoordinates([x, y, self.pan[2]]).into());
+        }
+        
+        if !y.is_finite() {
+            log::error!("Invalid pan Y coordinate: {} (must be finite)", y);
+            return Err(MprError::InvalidPanCoordinates([x, y, self.pan[2]]).into());
+        }
+        
+        let clamped_x = x.clamp(-Self::MAX_PAN_DISTANCE, Self::MAX_PAN_DISTANCE);
+        let clamped_y = y.clamp(-Self::MAX_PAN_DISTANCE, Self::MAX_PAN_DISTANCE);
+        
+        if (clamped_x - x).abs() > f32::EPSILON {
+            log::warn!("Pan X coordinate {} clamped to {}", x, clamped_x);
+        }
+        if (clamped_y - y).abs() > f32::EPSILON {
+            log::warn!("Pan Y coordinate {} clamped to {}", y, clamped_y);
+        }
+        
+        log::debug!("Setting pan to: ({}, {})", clamped_x, clamped_y);
+        self.pan[0] = clamped_x;
+        self.pan[1] = clamped_y;
+        Ok(())
     }
 
     /// Pan the view by millimeter amounts.
     ///
     /// Converts millimeter units to screen coordinate units using
     /// the volume's scale factors for accurate positioning.
-    pub fn set_pan_mm(&mut self, x_mm: f32, y_mm: f32) {
+    /// 
+    /// # Arguments
+    /// 
+    /// * `x_mm` - X coordinate in millimeters (must be finite)
+    /// * `y_mm` - Y coordinate in millimeters (must be finite)
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(())` - If coordinates are valid
+    /// * `Err(MprError::InvalidPanCoordinates)` - If any coordinate is NaN or infinite
+    /// * `Err(MprError::InvalidTransformation)` - If scale factors are invalid
+    pub fn set_pan_mm(&mut self, x_mm: f32, y_mm: f32) -> KeplerResult<()> {
+        if !x_mm.is_finite() {
+            log::error!("Invalid pan X coordinate (mm): {} (must be finite)", x_mm);
+            return Err(MprError::InvalidPanCoordinates([x_mm, y_mm, 0.0]).into());
+        }
+        
+        if !y_mm.is_finite() {
+            log::error!("Invalid pan Y coordinate (mm): {} (must be finite)", y_mm);
+            return Err(MprError::InvalidPanCoordinates([x_mm, y_mm, 0.0]).into());
+        }
+        
         let [scale_x, scale_y, _] = self.base_screen.get_scale_factors();
-        self.pan[0] = x_mm / scale_x;
-        self.pan[1] = y_mm / scale_y;
+        
+        // Validate scale factors
+        if !scale_x.is_finite() || scale_x == 0.0 {
+            log::error!("Invalid scale factor for X axis: {}", scale_x);
+            return Err(MprError::InvalidTransformation.into());
+        }
+        
+        if !scale_y.is_finite() || scale_y == 0.0 {
+            log::error!("Invalid scale factor for Y axis: {}", scale_y);
+            return Err(MprError::InvalidTransformation.into());
+        }
+        
+        let new_pan_x = x_mm / scale_x;
+        let new_pan_y = y_mm / scale_y;
+        
+        // Validate results
+        if !new_pan_x.is_finite() || !new_pan_y.is_finite() {
+            log::error!("Invalid pan calculation results: ({}, {})", new_pan_x, new_pan_y);
+            return Err(MprError::InvalidPanCoordinates([new_pan_x, new_pan_y, self.pan[2]]).into());
+        }
+        
+        log::debug!("Setting pan to: ({} mm, {} mm) -> ({}, {})", x_mm, y_mm, new_pan_x, new_pan_y);
+        self.pan[0] = new_pan_x;
+        self.pan[1] = new_pan_y;
+        Ok(())
     }
 
-    /// Retrieve current window level from fragment uniforms for state snapshotting.
+    /// Retrieve current window level for state snapshotting.
     pub fn get_window_level(&self) -> f32 {
-        self.wgpu_impl.uniforms.frag.window_level
+        self.window_level
     }
 
-    /// Retrieve current window width from fragment uniforms for state snapshotting.
+    /// Retrieve current window width for state snapshotting.
     pub fn get_window_width(&self) -> f32 {
-        self.wgpu_impl.uniforms.frag.window_width
+        self.window_width
     }
 
     /// Convert internal pan.z (in screen units) back to millimeters using base scale factors.
@@ -393,41 +679,109 @@ impl MprView {
     }
 
     /// set Center of the view at point [x, y, z]
-    pub fn set_center_at_point_in_mm(&mut self, p_mm: [f32;3]) {
-        // log pan before
-        log::info!("set_center_at_point_in_mm: pan={:?}", self.pan);
+    /// Centers the view at the specified point in millimeter coordinates.
+    /// 
+    /// This method performs coordinate transformation from world space (mm) to screen space
+    /// and updates the pan values accordingly. It includes comprehensive input validation
+    /// and safe matrix operations.
+    /// 
+    /// # Arguments
+    /// 
+    /// * `p_mm` - Point in millimeter coordinates to center the view on
+    /// 
+    /// # Returns
+    /// 
+    /// * `Ok(())` - If the operation succeeds
+    /// * `Err(MprError)` - If input validation fails or matrix operations are invalid
+    /// 
+    /// # Safety
+    /// 
+    /// This method validates all inputs and handles matrix inversion failures gracefully.
+    /// It will not panic on invalid coordinates or singular matrices.
+    pub fn set_center_at_point_in_mm(&mut self, p_mm: [f32; 3]) -> KeplerResult<()> {
+        // Input validation: check for NaN and infinite values
+        for (i, &coord) in p_mm.iter().enumerate() {
+            if !coord.is_finite() {
+                log::error!("Invalid coordinate at index {}: {} (must be finite)", i, coord);
+                return Err(MprError::CoordinateOutOfBounds(p_mm).into());
+            }
+        }
+
+        log::debug!("set_center_at_point_in_mm: target point={:?}", p_mm);
+        log::debug!("set_center_at_point_in_mm: current pan={:?}", self.pan);
+        
         let z = -self.pan[2];
-        log::info!("set_center_at_point_in_mm: z={:?}", z);
         let center = [0.5, 0.5, z];
         let center_mm = self.screen_coord_to_world(center);
-        log::info!("set_center_at_point_in_mm: center_mm={:?}", center_mm);
-        let mut shift = [
+        
+        log::debug!("set_center_at_point_in_mm: center_mm={:?}", center_mm);
+        
+        // Calculate shift vector with validation
+        let shift = [
             center_mm[0] - p_mm[0],
             center_mm[1] - p_mm[1],
             center_mm[2] - p_mm[2],
         ];
-        log::info!("set_center_at_point_in_mm: shift={:?}", shift);
-        let [scale_x, scale_y, scale_z] = self.base_screen.get_scale_factors();
-        log::info!("set_center_at_point_in_mm: scale={:?}", [scale_x, scale_y, scale_z]);
-
+        
+        // Validate shift vector
+        for (i, &s) in shift.iter().enumerate() {
+            if !s.is_finite() {
+                log::error!("Invalid shift calculation at index {}: {}", i, s);
+                return Err(MprError::InvalidTransformation.into());
+            }
+        }
+        
+        log::debug!("set_center_at_point_in_mm: shift={:?}", shift);
+        
         let current_base = self.get_base();
-
-        // Convert to millimeters using the transformed matrix
+        
+        // Safe matrix operations with proper error handling
         let mut transform_matrix = current_base.get_matrix();
-        // set the translate part of the transform_matrix to [0, 0, 0]
+        
+        // Clear translation components (set to zero)
         for i in 0..3 {
             transform_matrix.data[i][3] = 0.0;
         }
-        transform_matrix = transform_matrix.inv().unwrap();
-
         
-        let result = transform_matrix.multiply_point3(shift);
-        log::info!("set_center_at_point_in_mm: result={:?}", result);
-
-        self.pan[0] += result[0];
-        self.pan[1] += result[1];
-        self.pan[2] += result[2];
-        log::info!("set_center_at_point_in_mm: pan={:?}", self.pan);
+        // Attempt matrix inversion with proper error handling
+        let inverse_matrix = transform_matrix.inv()
+            .ok_or_else(|| {
+                log::error!("Failed to invert transformation matrix - matrix is singular");
+                MprError::InvalidTransformation
+            })?;
+        
+        // Apply transformation
+        let result = inverse_matrix.multiply_point3(shift);
+        
+        // Validate transformation result
+        for (i, &r) in result.iter().enumerate() {
+            if !r.is_finite() {
+                log::error!("Invalid transformation result at index {}: {}", i, r);
+                return Err(MprError::InvalidTransformation.into());
+            }
+        }
+        
+        log::debug!("set_center_at_point_in_mm: transformation result={:?}", result);
+        
+        // Update pan values with bounds checking
+        let new_pan = [
+            self.pan[0] + result[0],
+            self.pan[1] + result[1],
+            self.pan[2] + result[2],
+        ];
+        
+        // Validate new pan values
+        for (i, &p) in new_pan.iter().enumerate() {
+            if !p.is_finite() {
+                log::error!("Invalid pan value at index {}: {}", i, p);
+                return Err(MprError::InvalidPanCoordinates(new_pan).into());
+            }
+        }
+        
+        self.pan = new_pan;
+        log::debug!("set_center_at_point_in_mm: updated pan={:?}", self.pan);
+        
+        Ok(())
     }
 }
 
@@ -475,11 +829,11 @@ impl StatefulView for MprView {
         }
 
         // Restore all view parameters
-        self.set_window_level(state.window_level);
-        self.set_window_width(state.window_width);
-        self.set_slice_mm(state.slice_mm);
-        self.set_scale(state.scale);
-        self.set_translate_in_screen_coord(state.translate_in_screen_coord);
+        let _ = self.set_window_level(state.window_level);
+        let _ = self.set_window_width(state.window_width);
+        let _ = self.set_slice_mm(state.slice_mm);
+        let _ = self.set_scale(state.scale);
+        let _ = self.set_translate_in_screen_coord(state.translate_in_screen_coord);
         self.move_to(state.position);
         self.resize(state.dimensions);
 

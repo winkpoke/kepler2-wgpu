@@ -9,7 +9,6 @@ use wgpu::util::DeviceExt;
 pub struct MprRenderContext {
     /// Shared render pipeline for all MPR views
     pub render_pipeline: Arc<wgpu::RenderPipeline>,
-    
     /// Bind group layout for 3D texture and sampler
     pub texture_bind_group_layout: wgpu::BindGroupLayout,
     
