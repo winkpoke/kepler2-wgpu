@@ -33,6 +33,8 @@ pub enum MprError {
     InvalidWindowLevel(f32),
     /// Invalid window width value (must be positive)
     InvalidWindowWidth(f32),
+    /// Invalid bias value for window level adjustment
+    InvalidBias(f32),
     /// Invalid pan coordinates
     InvalidPanCoordinates([f32; 3]),
     /// Matrix transformation failed (singular matrix)
@@ -68,6 +70,7 @@ impl fmt::Display for MprError {
             MprError::InvalidSlicePosition(pos) => write!(f, "Invalid slice position: {pos} (out of volume bounds)"),
             MprError::InvalidWindowLevel(level) => write!(f, "Invalid window level: {level}"),
             MprError::InvalidWindowWidth(width) => write!(f, "Invalid window width: {width} (must be positive)"),
+            MprError::InvalidBias(bias) => write!(f, "Invalid bias value: {bias} (must be finite)"),
             MprError::InvalidPanCoordinates(coords) => write!(f, "Invalid pan coordinates: [{}, {}, {}]", coords[0], coords[1], coords[2]),
             MprError::InvalidTransformation => write!(f, "Matrix transformation failed (singular matrix)"),
             MprError::CoordinateOutOfBounds(coords) => write!(f, "Coordinate out of bounds: [{}, {}, {}]", coords[0], coords[1], coords[2]),

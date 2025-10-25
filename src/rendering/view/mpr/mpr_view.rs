@@ -447,6 +447,15 @@ impl MprView {
         Ok(())
     }
 
+    pub fn set_slice(&mut self, z: f32) -> KeplerResult<()> {
+        if !z.is_finite() {
+            log::error!("Invalid slice position: {} (must be finite)", z);
+            return Err(MprError::InvalidSlicePosition(z).into());
+        }
+        self.pan[2] = z;
+        Ok(())
+    }
+
     /// Set the zoom scale factor.
     /// 
     /// # Arguments
