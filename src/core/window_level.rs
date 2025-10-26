@@ -13,7 +13,7 @@ use crate::core::error::{KeplerError, KeplerResult, MprError};
 /// - Bias: Additional offset applied to the effective window level
 /// 
 /// The effective window level is calculated as: `window_level + bias`
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Copy, Debug, Clone, PartialEq)]
 pub struct WindowLevel {
     /// Window width for contrast control (must be positive)
     window_width: f32,

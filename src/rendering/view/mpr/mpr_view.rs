@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    core::{array_to_slice, Base, GeometryBuilder, error::{KeplerResult, MprError}},
+    core::{array_to_slice, error::{KeplerResult, MprError}, window_level, Base, GeometryBuilder, WindowLevel},
     data::CTVolume,
     rendering::{Orientation, RenderContent, StatefulView, ViewState},
     Renderable, View,
@@ -47,20 +47,14 @@ pub struct MprView {
     pos: (i32, i32),
     /// View dimensions (width, height)
     dim: (u32, u32),
-    /// Window width for CT display (contrast range)
-    window_width: f32,
-    /// Window level for CT display (brightness center)
-    window_level: f32,
+    /// Window/level parameters for CT display
+    window_level: WindowLevel,
 }
 
 impl MprView {
     /// Medical imaging parameter bounds for validation
     const MIN_SCALE: f32 = 0.01;        // 1% zoom minimum
     const MAX_SCALE: f32 = 100.0;       // 100x zoom maximum
-    const MIN_WINDOW_WIDTH: f32 = 1.0;  // Minimum contrast range
-    const MAX_WINDOW_WIDTH: f32 = 4096.0; // Maximum contrast range for CT
-    const MIN_WINDOW_LEVEL: f32 = -2048.0; // Minimum brightness for CT
-    const MAX_WINDOW_LEVEL: f32 = 2048.0;  // Maximum brightness for CT
     const MAX_PAN_DISTANCE: f32 = 10000.0; // Maximum pan distance in mm
     
     /// Validate and clamp medical imaging parameters for safety and correctness
@@ -121,6 +115,7 @@ impl MprView {
     /// * `texture` - Shared texture content for rendering
     /// * `vol` - CT volume data for coordinate system setup
     /// * `orientation` - Anatomical orientation (Transverse, Coronal, Sagittal, Oblique)
+    /// * `window_level` - Window/level configuration with bias settings
     /// * `scale` - Initial zoom scale factor (must be positive and finite)
     /// * `translate` - Initial translation in view coordinates (must be finite)
     /// * `pos` - Initial position on screen (top-left corner in pixels)
@@ -135,6 +130,7 @@ impl MprView {
         texture: Arc<RenderContent>,
         vol: &CTVolume,
         orientation: Orientation,
+        window_level: WindowLevel,
         scale: f32,
         translate: [f32; 3],
         pos: (i32, i32),
@@ -182,8 +178,7 @@ impl MprView {
             pan,
             pos: validated_pos,
             dim: validated_dim,
-            window_width: 400.0,  // Default CT soft tissue window width
-            window_level: 40.0,   // Default CT soft tissue window level
+            window_level,  // Use provided WindowLevel with configured bias
         }
     }
 
@@ -235,9 +230,15 @@ impl Renderable for MprView {
     /// Updates both vertex and fragment shader uniforms with current transformation
     /// matrix, slice position, and other rendering parameters.
     fn update(&mut self, queue: &wgpu::Queue) {
-        // Synchronize window/level settings with WGPU implementation
-        self.wgpu_impl.set_window_level(self.window_level);
-        self.wgpu_impl.set_window_width(self.window_width);
+        // Synchronize window/level settings with WGPU implementation only if dirty
+        if self.window_level.is_dirty() {
+            // let (window_width, effective_level) = self.window_level.shader_uniforms();
+            let window_width = self.window_level.window_width();
+            let window_level = self.window_level.effective_level();
+            self.wgpu_impl.set_window_level(window_level);
+            self.wgpu_impl.set_window_width(window_width);
+            self.window_level.mark_clean();
+        }
         
         // Set slice position for volume sampling
         self.wgpu_impl.set_slice(self.slice);
@@ -364,20 +365,7 @@ impl MprView {
     /// * `Ok(())` - If the value is valid
     /// * `Err(MprError::InvalidWindowLevel)` - If the value is NaN or infinite
     pub fn set_window_level(&mut self, window_level: f32) -> KeplerResult<()> {
-        if !window_level.is_finite() {
-            log::error!("Invalid window level: {} (must be finite)", window_level);
-            return Err(MprError::InvalidWindowLevel(window_level).into());
-        }
-        
-        let clamped_level = window_level.clamp(Self::MIN_WINDOW_LEVEL, Self::MAX_WINDOW_LEVEL);
-        if (clamped_level - window_level).abs() > f32::EPSILON {
-            log::warn!("Window level {} clamped to {}", window_level, clamped_level);
-        }
-        
-        log::debug!("Setting window level to: {}", clamped_level);
-        self.window_level = clamped_level;
-        self.wgpu_impl.set_window_level(clamped_level);
-        Ok(())
+        self.window_level.set_window_level(window_level)
     }
 
     /// Set the window width (contrast) for CT image display.
@@ -391,20 +379,7 @@ impl MprView {
     /// * `Ok(())` - If the value is valid
     /// * `Err(MprError::InvalidWindowWidth)` - If the value is not positive or is NaN/infinite
     pub fn set_window_width(&mut self, window_width: f32) -> KeplerResult<()> {
-        if !window_width.is_finite() || window_width <= 0.0 {
-            log::error!("Invalid window width: {} (must be positive and finite)", window_width);
-            return Err(MprError::InvalidWindowWidth(window_width).into());
-        }
-        
-        let clamped_width = window_width.clamp(Self::MIN_WINDOW_WIDTH, Self::MAX_WINDOW_WIDTH);
-        if (clamped_width - window_width).abs() > f32::EPSILON {
-            log::warn!("Window width {} clamped to {}", window_width, clamped_width);
-        }
-        
-        log::debug!("Setting window width to: {}", clamped_width);
-        self.window_width = clamped_width;
-        self.wgpu_impl.set_window_width(clamped_width);
-        Ok(())
+        self.window_level.set_window_width(window_width)
     }
 
     /// Set the current slice position in millimeters.
@@ -609,12 +584,12 @@ impl MprView {
 
     /// Retrieve current window level for state snapshotting.
     pub fn get_window_level(&self) -> f32 {
-        self.window_level
+        self.window_level.window_level()
     }
 
     /// Retrieve current window width for state snapshotting.
     pub fn get_window_width(&self) -> f32 {
-        self.window_width
+        self.window_level.window_width()
     }
 
     /// Convert internal pan.z (in screen units) back to millimeters using base scale factors.
@@ -804,6 +779,7 @@ impl StatefulView for MprView {
         let state = ViewState {
             window_level: self.get_window_level(),
             window_width: self.get_window_width(),
+            bias: self.window_level.bias(),
             slice_mm: self.get_slice_mm(),
             scale: self.get_scale(),
             translate_in_screen_coord: self.get_translate_in_screen_coord(),
@@ -840,6 +816,7 @@ impl StatefulView for MprView {
         // Restore all view parameters
         let _ = self.set_window_level(state.window_level);
         let _ = self.set_window_width(state.window_width);
+        let _ = self.window_level.set_bias(state.bias);
         let _ = self.set_slice_mm(state.slice_mm);
         let _ = self.set_scale(state.scale);
         let _ = self.set_translate_in_screen_coord(state.translate_in_screen_coord);

@@ -36,6 +36,7 @@ use std::any::Any;
 use super::Renderable;
 use crate::core::coord::Base;
 use crate::core::geometry::GeometryBuilder;
+use crate::core::{WindowLevel, error::KeplerResult};
 use crate::rendering::MprView;
 use crate::CTVolume;
 
@@ -60,6 +61,8 @@ pub struct ViewState {
     pub window_level: f32,
     /// Window width for CT image display - controls contrast
     pub window_width: f32,
+    /// Bias offset applied to window level for fine-tuning
+    pub bias: f32,
     /// Current slice position in millimeters along the view normal
     pub slice_mm: f32,
     /// Current zoom scale factor (1.0 = original size)
@@ -82,12 +85,29 @@ impl ViewState {
         Self {
             window_level: 40.0,    // Standard CT soft tissue window level (HU)
             window_width: 400.0,   // Standard CT soft tissue window width (HU)
+            bias: 0.0,             // No bias offset initially
             slice_mm: 0.0,         // Start at center slice
             scale: 1.0,            // No zoom initially
             translate_in_screen_coord: [0.0, 0.0, 0.0],  // No screen-space panning
             position: (0, 0),      // Top-left corner
             dimensions: (512, 512), // Standard medical imaging size
         }
+    }
+
+    /// Create a WindowLevel instance from the state's window/level parameters.
+    /// 
+    /// This method creates a properly configured WindowLevel struct using the
+    /// window_width, window_level, and bias values from the state. The resulting
+    /// WindowLevel will be marked as dirty to ensure GPU updates occur.
+    /// 
+    /// # Returns
+    /// * `KeplerResult<WindowLevel>` - Success with configured WindowLevel or validation error
+    pub fn create_window_level(&self) -> KeplerResult<WindowLevel> {
+        let mut window_level = WindowLevel::new();
+        window_level.set_window_width(self.window_width)?;
+        window_level.set_window_level(self.window_level)?;
+        window_level.set_bias(self.bias)?;
+        Ok(window_level)
     }
 
     /// Validate that the view state contains reasonable values.

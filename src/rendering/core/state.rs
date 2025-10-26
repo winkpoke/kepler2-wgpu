@@ -20,7 +20,7 @@ use crate::data::ct_volume::*;
 use crate::data::dicom::*;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::*;
-use crate::core::error::KeplerError;
+use crate::core::{error::KeplerError, WindowLevel};
 use crate::rendering::mesh::mesh_texture_pool::MeshTexturePool;
 
 fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
@@ -565,7 +565,10 @@ impl State {
 
     pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume) {
         self.last_volume = Some(vol.clone());
+        let mut winlev;
         let texture = if self.enable_float_volume_texture {
+            winlev = WindowLevel::new();
+            winlev.apply_bone_preset();
             info!("Using R16Float volume texture path");
             // Convert voxel i16 values to half-float bytes
             let bytes: Vec<u8> = {
@@ -586,6 +589,9 @@ impl State {
                 vol.dimensions.2 as u32,
             ).unwrap())
         } else {
+            winlev = WindowLevel::new();
+            winlev.set_bias(HU_OFFSET);
+            winlev.apply_bone_preset();
             info!("Using Rg8Unorm volume texture path");
             let voxel_data: Vec<u16> = vol
                 .voxel_data
@@ -618,6 +624,7 @@ impl State {
                     texture.clone(),
                     &vol,
                     *orientation,
+                    WindowLevel::new(),  // Default window/level with no bias
                     1.0,
                     [0.0, 0.0, 0.0],
                     (0, 0),
@@ -650,6 +657,7 @@ impl State {
                     texture.clone(),
                     &vol,
                     *orientation,
+                    winlev,
                     1.0,
                     [0.0, 0.0, 0.0],
                     (0, 0),
@@ -806,8 +814,9 @@ impl State {
             render_context,
             &self.graphics.device,
             texture,
-            vol,
+            &vol,
             orientation,
+            WindowLevel::new(),  // Default window/level with no bias
             1.0,
             [0.0, 0.0, 0.0],
             (0, 0),
