@@ -76,7 +76,7 @@ where
         self.matrix = self.matrix.multiply(&t);
     }
 
-    pub fn translate_in_screen_coord(&mut self, translate: [T; 3]) {
+    fn _translate_in_screen_coord(&mut self, translate: [T; 3]) {
         let mut trans = [T::one(); 4];
         for i in 0..3 {
             trans[i] = -translate[i];

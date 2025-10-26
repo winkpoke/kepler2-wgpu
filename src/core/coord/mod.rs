@@ -2,10 +2,153 @@ mod base;
 pub use base::*;
 
 
-use std::{fmt, ops::{Add, Div, Mul, Neg, Sub}};
+use std::{fmt, ops::{Add, Div, Index, Mul, Neg, Sub}};
 use num::Float;
 
-use crate::{core::GeometryBuilder, data::CTVolume};
+
+// Vector3 type for convenience
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct Vector3<T> { 
+    data: [T; 3],
+}
+
+impl<T> Vector3<T> {
+    pub fn new(data: [T; 3]) -> Self {
+        Self { data }
+    }
+
+    /// Function-level comment: Get the x component of the vector
+    pub fn x(&self) -> T where T: Copy {
+        self.data[0]
+    }
+
+    /// Function-level comment: Get the y component of the vector
+    pub fn y(&self) -> T where T: Copy {
+        self.data[1]
+    }
+
+    /// Function-level comment: Get the z component of the vector
+    pub fn z(&self) -> T where T: Copy {
+        self.data[2]
+    }
+
+    /// Function-level comment: Get the raw data array
+    pub fn as_array(&self) -> &[T; 3] {
+        &self.data
+    }
+}
+
+// Vector3 Operations =======================================================
+impl<T> Add for Vector3<T>
+where
+    T: Add<Output = T> + Copy,
+{
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self {
+        Self::new([self.data[0] + rhs.data[0],
+            self.data[1] + rhs.data[1],
+            self.data[2] + rhs.data[2],])
+    }
+}
+
+impl<T> Sub for Vector3<T>
+where
+    T: Sub<Output = T> + Copy,
+{
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self {
+        Self::new([self.data[0] - rhs.data[0],
+            self.data[1] - rhs.data[1],
+            self.data[2] - rhs.data[2],])
+    }
+}
+
+impl<T> Mul<T> for Vector3<T>
+where
+    T: Mul<Output = T> + Copy,
+{
+    type Output = Self;
+    fn mul(self, scalar: T) -> Self {
+        Self {
+            data: [
+                self.data[0] * scalar,
+                self.data[1] * scalar,
+                self.data[2] * scalar,
+            ],
+        }
+    }
+}
+
+impl<T> Div<T> for Vector3<T>
+where
+    T: Div<Output = T> + Copy,
+{
+    type Output = Self;
+    fn div(self, scalar: T) -> Self {
+        Self {
+            data: [
+                self.data[0] / scalar,
+                self.data[1] / scalar,
+                self.data[2] / scalar,
+            ],
+        }
+    }
+}
+
+impl<T> Neg for Vector3<T>
+where
+    T: Neg<Output = T> + Copy,
+{
+    type Output = Self;
+    fn neg(self) -> Self {
+        Self {
+            data: [
+                -self.data[0],
+                -self.data[1],
+                -self.data[2],
+            ],
+        }
+    }
+}
+
+impl<T> Vector3<T>
+where
+    T: Add<Output = T> + Mul<Output = T> + Sub<Output = T> + Copy,
+{
+    pub fn dot(self, rhs: Self) -> T {
+        self.data[0] * rhs.data[0] + self.data[1] * rhs.data[1] + self.data[2] * rhs.data[2]
+    }
+
+    pub fn cross(self, rhs: Self) -> Self {
+        Self {
+            data: [self.data[1] * rhs.data[2] - self.data[2] * rhs.data[1],
+                   self.data[2] * rhs.data[0] - self.data[0] * rhs.data[2],
+                   self.data[0] * rhs.data[1] - self.data[1] * rhs.data[0],]
+        }
+    }
+
+    pub fn magnitude_squared(self) -> T {
+        self.dot(self)
+    }
+}
+
+impl<T> Vector3<T>
+where
+    T: Float,
+{
+    pub fn magnitude(self) -> T {
+        self.magnitude_squared().sqrt()
+    }
+
+    pub fn normalize(self) -> Self {
+        let mag = self.magnitude();
+        if mag < T::epsilon() {
+            Self::new([T::zero(), T::zero(), T::zero()])
+        } else {
+            self * (T::one() / mag)
+        }
+    }
+}
 
 /// A generic 4x4 matrix struct, stored in **row-major** order.
 #[derive( Copy, Clone)]
@@ -225,151 +368,6 @@ pub fn slice_to_array<T>(slice: &[T; 16]) -> &[[T; 4]; 4] {
     // Safe to cast for the same reason
     unsafe { &*(slice as *const [T; 16] as *const [[T; 4]; 4]) }
 }
-
-// Vector3 type for convenience
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub struct Vector3<T> { 
-    data: [T; 3],
-}
-
-impl<T> Vector3<T> {
-    pub fn new(data: [T; 3]) -> Self {
-        Self { data }
-    }
-
-    /// Function-level comment: Get the x component of the vector
-    pub fn x(&self) -> T where T: Copy {
-        self.data[0]
-    }
-
-    /// Function-level comment: Get the y component of the vector
-    pub fn y(&self) -> T where T: Copy {
-        self.data[1]
-    }
-
-    /// Function-level comment: Get the z component of the vector
-    pub fn z(&self) -> T where T: Copy {
-        self.data[2]
-    }
-
-    /// Function-level comment: Get the raw data array
-    pub fn as_array(&self) -> &[T; 3] {
-        &self.data
-    }
-}
-
-// Vector3 Operations =======================================================
-impl<T> Add for Vector3<T>
-where
-    T: Add<Output = T> + Copy,
-{
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self {
-        Self::new([self.data[0] + rhs.data[0],
-            self.data[1] + rhs.data[1],
-            self.data[2] + rhs.data[2],])
-    }
-}
-
-impl<T> Sub for Vector3<T>
-where
-    T: Sub<Output = T> + Copy,
-{
-    type Output = Self;
-    fn sub(self, rhs: Self) -> Self {
-        Self::new([self.data[0] - rhs.data[0],
-            self.data[1] - rhs.data[1],
-            self.data[2] - rhs.data[2],])
-    }
-}
-
-impl<T> Mul<T> for Vector3<T>
-where
-    T: Mul<Output = T> + Copy,
-{
-    type Output = Self;
-    fn mul(self, scalar: T) -> Self {
-        Self {
-            data: [
-                self.data[0] * scalar,
-                self.data[1] * scalar,
-                self.data[2] * scalar,
-            ],
-        }
-    }
-}
-
-impl<T> Div<T> for Vector3<T>
-where
-    T: Div<Output = T> + Copy,
-{
-    type Output = Self;
-    fn div(self, scalar: T) -> Self {
-        Self {
-            data: [
-                self.data[0] / scalar,
-                self.data[1] / scalar,
-                self.data[2] / scalar,
-            ],
-        }
-    }
-}
-
-impl<T> Neg for Vector3<T>
-where
-    T: Neg<Output = T> + Copy,
-{
-    type Output = Self;
-    fn neg(self) -> Self {
-        Self {
-            data: [
-                -self.data[0],
-                -self.data[1],
-                -self.data[2],
-            ],
-        }
-    }
-}
-
-impl<T> Vector3<T>
-where
-    T: Add<Output = T> + Mul<Output = T> + Sub<Output = T> + Copy,
-{
-    pub fn dot(self, rhs: Self) -> T {
-        self.data[0] * rhs.data[0] + self.data[1] * rhs.data[1] + self.data[2] * rhs.data[2]
-    }
-
-    pub fn cross(self, rhs: Self) -> Self {
-        Self {
-            data: [self.data[1] * rhs.data[2] - self.data[2] * rhs.data[1],
-                   self.data[2] * rhs.data[0] - self.data[0] * rhs.data[2],
-                   self.data[0] * rhs.data[1] - self.data[1] * rhs.data[0],]
-        }
-    }
-
-    pub fn magnitude_squared(self) -> T {
-        self.dot(self)
-    }
-}
-
-impl<T> Vector3<T>
-where
-    T: Float,
-{
-    pub fn magnitude(self) -> T {
-        self.magnitude_squared().sqrt()
-    }
-
-    pub fn normalize(self) -> Self {
-        let mag = self.magnitude();
-        if mag < T::epsilon() {
-            Self::new([T::zero(), T::zero(), T::zero()])
-        } else {
-            self * (T::one() / mag)
-        }
-    }
-}
-
 
 #[cfg(test)]
 mod tests {
