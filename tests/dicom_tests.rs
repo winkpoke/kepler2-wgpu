@@ -68,10 +68,56 @@ mod test_utils {
                 PixelType::Float32 => 4,
                 PixelType::Float64 => 8,
             };
+
+            // let data: Vec<u8> = (0..data_size * pixel_size)
+            //     .map(|i| (i % 256) as u8)
+            //     .collect();
             
-            let data: Vec<u8> = (0..data_size * pixel_size)
-                .map(|i| (i % 256) as u8)
-                .collect();
+            // Create checkerboard pattern data
+            let width = dimensions[0] as usize;
+            let height = dimensions[1] as usize;
+            let depth = dimensions[2] as usize;
+            let checkerboard_size = 128; // Size of each checkerboard square
+            
+            let mut data: Vec<u8> = Vec::with_capacity(data_size * pixel_size);
+            
+            for z in 0..depth {
+                for y in 0..height {
+                    for x in 0..width {
+                        // Calculate checkerboard pattern
+                        let checker_x = (x / checkerboard_size) % 2;
+                        let checker_y = (y / checkerboard_size) % 2;
+                        let checker_z = (z / checkerboard_size) % 2;
+                        
+                        // Create 3D checkerboard pattern
+                        let is_white = (checker_x + checker_y + checker_z) % 2 == 0;
+                        let pixel_value = if is_white { 255u8 } else { 0u8 };
+                        
+                        // Add pixel data based on pixel type
+                        match pixel_type {
+                            PixelType::UInt8 => {
+                                data.push(pixel_value);
+                            },
+                            PixelType::UInt16 | PixelType::Int16 => {
+                                let value = if is_white { 65535u16 } else { 0u16 };
+                                data.extend_from_slice(&value.to_le_bytes());
+                            },
+                            PixelType::Int32 => {
+                                let value = if is_white { 2147483647i32 } else { 0i32 };
+                                data.extend_from_slice(&value.to_le_bytes());
+                            },
+                            PixelType::Float32 => {
+                                let value = if is_white { 1.0f32 } else { 0.0f32 };
+                                data.extend_from_slice(&value.to_le_bytes());
+                            },
+                            PixelType::Float64 => {
+                                let value = if is_white { 1.0f64 } else { 0.0f64 };
+                                data.extend_from_slice(&value.to_le_bytes());
+                            },
+                        }
+                    }
+                }
+            }
             
             header.extend_from_slice(&data);
         }
@@ -482,7 +528,7 @@ mod integration_tests {
         println!("Generated Study UID: {}", study_uid);
 
         // Load test data
-        let mha_path = &create_test_mha_data([512,512,300], PixelType::Float32, [0.5,0.5,0.85], true);
+        let mha_path = &create_test_mha_data([512,512,300], PixelType::Float32, [0.5,0.5,0.5], true);
         let out_dir = Path::new("C:/share").join(Local::now().format("%Y-%m-%d").to_string());
         std::fs::create_dir_all(&out_dir).unwrap();
 
