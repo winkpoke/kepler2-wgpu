@@ -321,7 +321,21 @@ impl State {
     /// Function-level comment: Check if the layout contains any MIP views for MIP pass execution.
     fn has_mip_content(&self) -> bool {
         self.layout.views.iter().any(|view| {
-            view.as_any().downcast_ref::<MipView>().is_some()
+            view.as_any().downcast_ref::<view::MipView>().is_some()
+        })
+    }
+
+    /// Function-level comment: Check if the layout contains any mesh views.
+    fn has_mesh_view(&self) -> bool {
+        self.layout.views.iter().any(|view| {
+            view.as_any().downcast_ref::<view::MeshView>().is_some()
+        })
+    }
+
+    /// Function-level comment: Check if the layout contains any MPR views.
+    fn has_mpr_view(&self) -> bool {
+        self.layout.views.iter().any(|view| {
+            view.as_any().downcast_ref::<view::MprView>().is_some()
         })
     }
 
@@ -338,34 +352,19 @@ impl State {
             label: Some("Render Encoder"),
         });
 
-        // Determine mesh settings
-        let mesh_enabled = self.enable_mesh;
-
-        // Function-level comment: Check if MIP content is available in the layout
-        let mip_enabled = true; // MIP re-enabled after fixing LoadOp::Clear issue
-        let has_mip_content = self.has_mip_content();
-
-        // Function-level comment: Check if mesh content is available and reset error state if needed
-        let has_mesh_content = self.layout.views.len() > 2 && 
-            self.layout.views[2].as_any().downcast_ref::<crate::rendering::view::MeshView>().is_some();
+        // Function-level comment: Determine which rendering passes to enable based on view types present in layout
+        let has_mesh_view = self.has_mesh_view();
+        let has_mip_view = self.has_mip_content(); // Keep existing method name for MIP
+        let has_mpr_view = self.has_mpr_view();
         
         // Debug logging for pass execution conditions
-        trace!("Pass conditions - mesh_enabled: {}, has_mesh_content: {}, mip_enabled: {}, has_mip_content: {}, views_len: {}", 
-               mesh_enabled, has_mesh_content, mip_enabled, has_mip_content, self.layout.views.len());
+        trace!("View-driven pass conditions - has_mesh_view: {}, has_mip_view: {}, has_mpr_view: {}, views_len: {}", 
+               has_mesh_view, has_mip_view, has_mpr_view, self.layout.views.len());
         
-        if self.layout.views.len() > 2 {
-            let view_type = if self.layout.views[2].as_any().downcast_ref::<view::MeshView>().is_some() {
-                "MeshView"
-            } else {
-                "Other"
-            };
-            trace!("View at index 2 type: {}", view_type);
-        }
-        
-        // Reset mesh pass error state if mesh is enabled and content is available
+        // Reset mesh pass error state if mesh view is present and pass executor is unhealthy
         // Do this before borrowing texture_pool to avoid borrowing conflicts
-        if mesh_enabled && has_mesh_content && !self.pass_executor_is_healthy() {
-            log::info!("Resetting mesh pass error state - mesh content available");
+        if has_mesh_view && !self.pass_executor_is_healthy() {
+            log::info!("Resetting mesh pass error state - mesh view present in layout");
             self.pass_executor_reset_error_state();
         }
         
@@ -386,21 +385,19 @@ impl State {
             device,
             surface_width,
             surface_height,
-            mesh_enabled,
-            has_mesh_content, // has_mesh_content - enable mesh pass when mesh content is available
-            mip_enabled,
-            has_mip_content, // has_mip_content - enable MIP pass when MIP views are present
+            has_mesh_view,    // Enable mesh rendering if mesh view is present
+            has_mesh_view,    // Mesh content availability matches mesh view presence
+            has_mip_view,     // Enable MIP rendering if MIP view is present
+            has_mip_view,     // MIP content availability matches MIP view presence
             |pass_context| {
                 match pass_context.pass_id {
                     crate::rendering::core::PassId::MeshPass => {
-                        // Function-level comment: Render 3D mesh content by accessing MeshView from layout slot 2
-                        if mesh_enabled && layout.views.len() > 2 {
-                            // Access MeshView from slot 2 and attempt to downcast to mutable reference
-                            let mesh_view = layout.views.get_mut(2)
-                                .and_then(|view| view.as_any_mut().downcast_mut::<MeshView>());
-                            if let Some(mesh_view) = mesh_view {
+                        // Function-level comment: Render 3D mesh content by finding MeshView in the layout
+                        for view in layout.views.iter_mut() {
+                            if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
                                 // Call the MeshView render method with the pass context
                                 mesh_view.render(pass_context.pass).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+                                break; // Only render the first mesh view found
                             }
                         }
                         Ok(())
