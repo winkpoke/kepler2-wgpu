@@ -397,7 +397,7 @@ impl State {
                         if mesh_enabled && layout.views.len() > 2 {
                             // Access MeshView from slot 2 and attempt to downcast to mutable reference
                             let mesh_view = layout.views.get_mut(2)
-                                .and_then(|view| view.as_any_mut().downcast_mut::<crate::rendering::view::MeshView>());
+                                .and_then(|view| view.as_any_mut().downcast_mut::<MeshView>());
                             if let Some(mesh_view) = mesh_view {
                                 // Call the MeshView render method with the pass context
                                 mesh_view.render(pass_context.pass).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
@@ -409,7 +409,7 @@ impl State {
                         // Function-level comment: Render MIP content by finding and rendering MIP views in the layout
                         for view in layout.views.iter_mut() {
                             // Check if this view is a MipView and render it
-                            if let Some(mip_view) = view.as_any_mut().downcast_mut::<crate::rendering::mip::MipView>() {
+                            if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
                                 mip_view.render(pass_context.pass).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
                             }
                         }
@@ -420,7 +420,7 @@ impl State {
                         // Iterate through views and only render MPR views, not MeshView
                         for (_, view) in layout.views.iter_mut().enumerate() {
                             // Check if this is a MeshView and skip it during slice pass
-                            if view.as_any().downcast_ref::<crate::rendering::view::MeshView>().is_some() {
+                            if view.as_any().downcast_ref::<MeshView>().is_some() {
                                 continue;
                             }
                             // Render MPR views only
@@ -585,17 +585,6 @@ impl State {
         }
     }
 
-    /// Function-level comment: Validate that the specified view slot exists in the layout.
-    fn validate_view_slot(&self, index: usize) -> bool {
-        if self.layout.views.len() <= index {
-            log::warn!("Expected at least {} views for slot {}; found {}. Toggle will not modify layout.", 
-                      index + 1, index, self.layout.views.len());
-            false
-        } else {
-            true
-        }
-    }
-
     /// Function-level comment: Calculate position and size for a view at the specified index.
     fn calculate_view_position_and_size(&self, index: usize) -> ((i32, i32), (u32, u32)) {
         let total_views = self.layout.views.len() as u32;
@@ -636,82 +625,6 @@ impl State {
         mesh_view.resize(size);
         mesh_view
     }
-
-    /// Function-level comment: Create a GenericMPRView for the specified slot with appropriate orientation.
-    fn create_mpr_view_for_slot(&self, index: usize) -> crate::rendering::view::MprView {
-        use crate::rendering::view::{MprView, ALL_ORIENTATIONS};
-    
-        let vol = self.last_volume.as_ref().unwrap();
-        let texture = self.create_volume_texture(vol);
-        let orientation = ALL_ORIENTATIONS[index]; // Use index to determine orientation
-        
-        let render_context = Arc::new(crate::rendering::view::mpr::mpr_render_context::MprRenderContext::new(
-            self.device(),
-        ));
-        MprView::new(
-            render_context,
-            self.device(),
-            texture,
-            &vol,
-            orientation,
-            WindowLevel::new(),  // Default window/level with no bias
-            1.0,
-            [0.0, 0.0, 0.0],
-            (0, 0),
-            (0, 0),
-        )
-    }
-
-    /// Function-level comment: Create volume texture based on current texture format settings.
-    fn create_volume_texture(&self, vol: &crate::data::ct_volume::CTVolume) -> std::sync::Arc<crate::rendering::view::render_content::RenderContent> {
-        use std::sync::Arc;
-        use crate::rendering::view::render_content::RenderContent;
-    
-        if self.enable_float_volume_texture {
-            log::info!("Using R16Float volume texture path (toggle)");
-            let bytes: Vec<u8> = {
-                let voxels_f16_bits: Vec<u16> = vol
-                    .voxel_data
-                    .iter()
-                    .map(|&x| half::f16::from_f32(x as f32).to_bits())
-                    .collect();
-                bytemuck::cast_slice(&voxels_f16_bits).to_vec()
-            };
-            Arc::new(RenderContent::from_bytes_r16f(
-                self.device(),
-                self.queue(),
-                &bytes,
-                "CT Volume",
-                vol.dimensions.0 as u32,
-                vol.dimensions.1 as u32,
-                vol.dimensions.2 as u32,
-            ).unwrap())
-        } else {
-            log::info!("Using Rg8Unorm volume texture path (toggle)");
-            let voxel_data: Vec<u16> = vol
-                .voxel_data
-                .iter()
-                .map(|x| (*x + Self::HU_OFFSET as i16) as u16)
-                .collect();
-            let voxel_data: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
-            Arc::new(RenderContent::from_bytes(
-                self.device(),
-                self.queue(),
-                &voxel_data,
-                "CT Volume",
-                vol.dimensions.0 as u32,
-                vol.dimensions.1 as u32,
-                vol.dimensions.2 as u32,
-            ).unwrap())
-        }
-    }
-
-    // pub fn set_slice_speed(&mut self, index: usize, speed: f32) {
-    //     let view = self.layout.views.get_mut(index).unwrap();
-    //     if let Some(transverse_view) = view.as_any_mut().downcast_mut::<TransverseView>() {
-    //         transverse_view.set_slice_speed(speed);
-    //     }
-    // }
 
     pub fn set_window_level(&mut self, index: usize, window_level: f32) {
         let view = self.layout.views.get_mut(index).unwrap();
