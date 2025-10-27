@@ -385,10 +385,9 @@ impl State {
             device,
             surface_width,
             surface_height,
-            has_mesh_view,    // Enable mesh rendering if mesh view is present
-            has_mesh_view,    // Mesh content availability matches mesh view presence
-            has_mip_view,     // Enable MIP rendering if MIP view is present
-            has_mip_view,     // MIP content availability matches MIP view presence
+            has_mesh_view,    // Whether there is a mesh view present in the layout
+            has_mip_view,     // Whether there is a MIP view present in the layout
+            has_mpr_view,     // Whether there is an MPR view present in the layout
             |pass_context| {
                 match pass_context.pass_id {
                     crate::rendering::core::PassId::MeshPass => {
