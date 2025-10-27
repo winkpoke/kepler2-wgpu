@@ -3,7 +3,7 @@ use winit::event_loop::EventLoopProxy;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use crate::{data::ct_volume::CTVolume, rendering::core::state::Graphics};
+use crate::{data::ct_volume::CTVolume, rendering::core::Graphics};
 
 #[cfg(target_arch = "wasm32")]
 use futures::channel::oneshot;

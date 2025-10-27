@@ -11,7 +11,8 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::rendering::core::state::{Graphics, State};
+use crate::rendering::core::state::State;
+use crate::rendering::core::Graphics;
 use crate::application::gl_canvas::{GLCanvas, UserEvent};
 use winit::event_loop::EventLoopProxy;
 
