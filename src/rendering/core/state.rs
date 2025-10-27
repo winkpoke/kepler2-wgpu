@@ -81,26 +81,9 @@ pub struct State {
     pub(crate) mesh_ctx: Option<Arc<crate::rendering::mesh::basic_mesh_context::BasicMeshContext>>,
 }
 
-const HU_OFFSET: f32 = 1100.0;
-
-/// Captures key MPR view parameters for restoring after mesh toggles.
-#[derive(Clone, Debug)]
-pub struct MPRViewState {
-    /// Function-level comment: Current window level used by the fragment shader (uniform value).
-    pub window_level: f32,
-    /// Function-level comment: Current window width used by the fragment shader (uniform value).
-    pub window_width: f32,
-    /// Function-level comment: Current slice position in millimeters along the view normal.
-    pub slice_mm: f32,
-    /// Function-level comment: Current screen-space scale factor.
-    pub scale: f32,
-    /// Function-level comment: Current view/model-space translation vector.
-    pub translate: [f32; 3],
-    /// Function-level comment: Current screen-space translation (pan) vector.
-    pub translate_in_screen_coord: [f32; 3],
-}
-
 impl State {
+    const HU_OFFSET: f32 = 1100.0;
+    
     pub async fn new(window: Arc<Window>) -> Result<State, KeplerError> {
         State::initialize(window).await
     }
@@ -486,13 +469,13 @@ impl State {
             ).unwrap())
         } else {
             winlev = WindowLevel::new();
-            winlev.set_bias(HU_OFFSET);
+            winlev.set_bias(Self::HU_OFFSET);
             winlev.apply_bone_preset();
             info!("Using Rg8Unorm volume texture path");
             let voxel_data: Vec<u16> = vol
                 .voxel_data
                 .iter()
-                .map(|x| (*x + HU_OFFSET as i16) as u16)
+                .map(|x| (*x + Self::HU_OFFSET as i16) as u16)
                 .collect();
             let voxel_data: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
             Arc::new(RenderContent::from_bytes(
@@ -749,7 +732,7 @@ impl State {
             let voxel_data: Vec<u16> = vol
                 .voxel_data
                 .iter()
-                .map(|x| (*x + HU_OFFSET as i16) as u16)
+                .map(|x| (*x + Self::HU_OFFSET as i16) as u16)
                 .collect();
             let voxel_data: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
             Arc::new(RenderContent::from_bytes(
@@ -779,7 +762,7 @@ impl State {
                 mpr_view.set_window_level(window_level);
             } else {
                 // Packed RG8 path uses offset
-                mpr_view.set_window_level(window_level + HU_OFFSET);
+                mpr_view.set_window_level(window_level + Self::HU_OFFSET);
             }
             log::info!("View {} set_window_level: {}", index, window_level);
         }
