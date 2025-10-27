@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Architecture Documentation**: Created comprehensive state structure refactoring plan (`doc/redering/state-structure-refactoring-plan.md`) outlining separation of concerns improvements for the monolithic State struct
+
 ### Removed
 - **Unused Mesh State Management Code**: Removed unused mesh mode state management functionality from `src/rendering/core/state.rs`
   - **Field Removal**: Eliminated `mpr_state_slot2` field from State struct that was only used for storing MPR state snapshots

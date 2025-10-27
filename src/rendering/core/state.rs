@@ -60,6 +60,68 @@ pub struct Graphics {
     pub(crate) queue: wgpu::Queue,
 }
 
+/// Graphics context that encapsulates both hardware abstraction and rendering pipeline orchestration
+pub struct GraphicsContext {
+    /// Core graphics hardware abstraction
+    pub(crate) graphics: Graphics,
+    /// Rendering pipeline orchestrator
+    pub(crate) pass_executor: crate::rendering::core::PassExecutor,
+}
+
+impl GraphicsContext {
+    /// Function-level comment: Create a new GraphicsContext with initialized Graphics and PassExecutor.
+    pub async fn new(window: Arc<Window>) -> Result<GraphicsContext, KeplerError> {
+        let graphics = Graphics::initialize(window).await?;
+        let pass_executor = crate::rendering::core::PassExecutor::new(graphics.surface_config.format);
+        
+        Ok(GraphicsContext {
+            graphics,
+            pass_executor,
+        })
+    }
+
+    /// Function-level comment: Create a new GraphicsContext from an existing Graphics instance.
+    pub fn from_graphics(graphics: Graphics) -> GraphicsContext {
+        let pass_executor = crate::rendering::core::PassExecutor::new(graphics.surface_config.format);
+        
+        GraphicsContext {
+            graphics,
+            pass_executor,
+        }
+    }
+    
+    /// Function-level comment: Get a reference to the underlying Graphics struct.
+    pub fn graphics(&self) -> &Graphics {
+        &self.graphics
+    }
+    
+    /// Function-level comment: Get a mutable reference to the underlying Graphics struct.
+    pub fn graphics_mut(&mut self) -> &mut Graphics {
+        &mut self.graphics
+    }
+    
+    /// Function-level comment: Get a reference to the PassExecutor.
+    pub fn pass_executor(&self) -> &crate::rendering::core::PassExecutor {
+        &self.pass_executor
+    }
+    
+    /// Function-level comment: Get a mutable reference to the PassExecutor.
+    pub fn pass_executor_mut(&mut self) -> &mut crate::rendering::core::PassExecutor {
+        &mut self.pass_executor
+    }
+    
+    /// Function-level comment: Get mutable reference to surface configuration.
+    pub fn surface_config_mut(&mut self) -> &mut wgpu::SurfaceConfiguration {
+        &mut self.graphics.surface_config
+    }
+    
+    /// Function-level comment: Update surface configuration and notify PassExecutor of format changes.
+    pub fn update_surface_config(&mut self, config: wgpu::SurfaceConfiguration) {
+        self.pass_executor_mut().update_surface_format(config.format);
+        *self.surface_config_mut() = config;
+    }
+}
+
 impl Graphics {
     // Function-level comment: Initialize Graphics with environment-driven backend selection and optional validation.
     // Behavior:
@@ -228,7 +290,8 @@ pub struct App {
 
 // #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct State {
-    pub(crate) graphics: Graphics,
+    /// Graphics context that encapsulates both hardware abstraction and rendering pipeline orchestration
+    pub(crate) graphics_context: GraphicsContext,
     // pub(crate) layout: Layout<OneCellLayout>,
     pub(crate) layout: Layout<GridLayout>,
     pub(crate) enable_float_volume_texture: bool,
@@ -238,8 +301,6 @@ pub struct State {
     pub(crate) texture_pool: MeshTexturePool,
     /// Function-level comment: Cached BasicMeshContext wrapped in Arc for efficient reuse across toggles.
     pub(crate) mesh_ctx: Option<Arc<crate::rendering::mesh::basic_mesh_context::BasicMeshContext>>,
-    /// Function-level comment: PassExecutor manages separate render passes for 3D mesh and 2D slice content.
-    pub(crate) pass_executor: crate::rendering::core::PassExecutor,
 }
 
 const HU_OFFSET: f32 = 1100.0;
@@ -326,9 +387,11 @@ impl State {
             }
         }
 
-        let surface_format = graphics.surface_config.format;
+        // Create GraphicsContext which encapsulates both graphics and pass_executor
+        let graphics_context = GraphicsContext::from_graphics(graphics);
+        
         Ok(Self {
-            graphics,
+            graphics_context,
             layout,
             enable_float_volume_texture: default_float,
             toggle_enabled: true,
@@ -336,21 +399,19 @@ impl State {
             enable_mesh: false,
             texture_pool: texture_pool,
             mesh_ctx: None,
-            pass_executor: crate::rendering::core::PassExecutor::new(surface_format),
         })
     }
 
     pub fn swap_graphics(&mut self, new_graphics: Graphics) {
-        self.graphics = new_graphics;
-        crate::rendering::core::pipeline::set_swapchain_format(self.graphics.surface_config.format);
+        crate::rendering::core::pipeline::set_swapchain_format(self.surface_config().format);
         
         // Function-level comment: Clear mesh resources bound to old device to prevent stale references.
         self.clear_mesh_context_cache();
         self.texture_pool.clear_depth_view();
         
         // self.resize(winit::dpi::PhysicalSize {
-        //     width: self.graphics.surface_config.width,
-        //     height: self.graphics.surface_config.height,
+        //     width: self.surface_config().width,
+        //     height: self.surface_config().height,
         // });
     }
 
@@ -386,34 +447,89 @@ impl State {
         );
     }
 
+    /// Get a reference to the window
     pub fn window(&self) -> &Window {
-        &self.graphics.window
+        &self.graphics_context.graphics().window
+    }
+
+    // Delegation methods for accessing Graphics through GraphicsContext
+    // Function-level comment: These methods provide access to graphics resources through the GraphicsContext
+    
+    /// Get a reference to the graphics device
+    pub fn device(&self) -> &wgpu::Device {
+        &self.graphics_context.graphics().device
+    }
+
+    /// Get a reference to the graphics queue
+    pub fn queue(&self) -> &wgpu::Queue {
+        &self.graphics_context.graphics().queue
+    }
+
+    /// Get a reference to the surface
+    pub fn surface(&self) -> &wgpu::Surface<'static> {
+        &self.graphics_context.graphics().surface
+    }
+
+    /// Get a reference to the surface configuration
+    pub fn surface_config(&self) -> &wgpu::SurfaceConfiguration {
+        &self.graphics_context.graphics().surface_config
+    }
+
+    /// Get a mutable reference to the surface configuration
+    pub fn surface_config_mut(&mut self) -> &mut wgpu::SurfaceConfiguration {
+        &mut self.graphics_context.graphics_mut().surface_config
+    }
+
+    /// Get a reference to the adapter
+    pub fn adapter(&self) -> &wgpu::Adapter {
+        &self.graphics_context.graphics().adapter
+    }
+
+    /// Get a mutable reference to the PassExecutor
+    pub fn pass_executor_mut(&mut self) -> &mut crate::rendering::core::PassExecutor {
+        self.graphics_context.pass_executor_mut()
+    }
+
+    /// Function-level comment: Check if PassExecutor is healthy.
+    pub fn pass_executor_is_healthy(&self) -> bool {
+        self.graphics_context.pass_executor.is_healthy()
+    }
+
+    /// Function-level comment: Reset PassExecutor error state.
+    pub fn pass_executor_reset_error_state(&mut self) {
+        self.graphics_context.pass_executor.reset_error_state();
+    }
+
+    /// Function-level comment: Update PassExecutor surface format.
+    pub fn pass_executor_update_surface_format(&mut self, format: wgpu::TextureFormat) {
+        self.graphics_context.pass_executor.update_surface_format(format);
     }
 
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         println!("Resizing to: {}, {}", new_size.width, new_size.height);
         if new_size.width > 0 && new_size.height > 0 {
             // self.size = new_size;
-            self.graphics.surface_config.width = new_size.width;
-            self.graphics.surface_config.height = new_size.height;
+            self.surface_config_mut().width = new_size.width;
+            self.surface_config_mut().height = new_size.height;
 
             self.layout.resize((new_size.width, new_size.height));
 
             #[cfg(target_arch = "wasm32")]
             {
                 // sets the style width and height of the window canvas
-                let _ = self.graphics.window.request_inner_size(new_size); 
+                let _ = self.window().request_inner_size(new_size); 
             }
-            self.graphics.surface.configure(&self.graphics.device, &self.graphics.surface_config);
+            self.surface().configure(self.device(), self.surface_config());
             
             // Update PassExecutor with new surface format
-            self.pass_executor.update_surface_format(self.graphics.surface_config.format);
+            let surface_format = self.surface_config().format;
+            self.pass_executor_update_surface_format(surface_format);
 
             // Recreate depth texture to match new surface size
             let depth_format = crate::rendering::core::pipeline::get_mesh_depth_format();
             let size = wgpu::Extent3d {
-                width: self.graphics.surface_config.width,
-                height: self.graphics.surface_config.height,
+                width: self.surface_config().width,
+                height: self.surface_config().height,
                 depth_or_array_layers: 1,
             };
             let desc = wgpu::TextureDescriptor {
@@ -426,7 +542,7 @@ impl State {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 view_formats: &[],
             };
-            let depth_tex = self.graphics.device.create_texture(&desc);
+            let depth_tex = self.device().create_texture(&desc);
             let depth_view = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
             self.texture_pool.set_depth(depth_tex, depth_view);
         }
@@ -438,7 +554,7 @@ impl State {
     }
 
     pub fn update(&mut self) {
-        self.layout.update(&self.graphics.queue);
+        self.layout.update(&self.graphics_context.graphics.queue);
     }
 
     /// Function-level comment: Check if the layout contains any MIP views for MIP pass execution.
@@ -451,13 +567,13 @@ impl State {
     /// Function-level comment: Renders the frame using separate render passes for 3D mesh and 2D slice content.
     /// This architecture provides better performance and cleaner separation of concerns.
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let frame = self.graphics.surface.get_current_texture()?;
+        let frame = self.surface().get_current_texture()?;
         let frame_view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         // Create command encoder for render passes
-        let mut encoder = self.graphics.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        let mut encoder = self.device().create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Render Encoder"),
         });
 
@@ -467,9 +583,6 @@ impl State {
         // Function-level comment: Check if MIP content is available in the layout
         let mip_enabled = true; // MIP re-enabled after fixing LoadOp::Clear issue
         let has_mip_content = self.has_mip_content();
-
-        // Create texture pool for this frame
-        let texture_pool = &mut self.texture_pool;
 
         // Function-level comment: Check if mesh content is available and reset error state if needed
         let has_mesh_content = self.layout.views.len() > 2 && 
@@ -489,24 +602,29 @@ impl State {
         }
         
         // Reset mesh pass error state if mesh is enabled and content is available
-        if mesh_enabled && has_mesh_content && !self.pass_executor.is_healthy() {
+        // Do this before borrowing texture_pool to avoid borrowing conflicts
+        if mesh_enabled && has_mesh_content && !self.pass_executor_is_healthy() {
             log::info!("Resetting mesh pass error state - mesh content available");
-            self.pass_executor.reset_error_state();
+            self.pass_executor_reset_error_state();
         }
-
+        
         // Execute frame using PassExecutor with separate render passes
-        // We need to split the borrowing to avoid conflicts
-        let device = &self.graphics.device;
+        // Extract all needed values and mutable references in one go to avoid borrowing conflicts
+        let texture_pool = &mut self.texture_pool;
         let layout = &mut self.layout;
-        let pass_executor = &mut self.pass_executor;
+        
+        let surface_width = self.graphics_context.graphics.surface_config.width;
+        let surface_height = self.graphics_context.graphics.surface_config.height;
+        let device = &self.graphics_context.graphics.device;
+        let pass_executor = &mut self.graphics_context.pass_executor;
         
         pass_executor.execute_frame(
             &mut encoder,
             &frame_view,
             texture_pool,
             device,
-            self.graphics.surface_config.width,
-            self.graphics.surface_config.height,
+            surface_width,
+            surface_height,
             mesh_enabled,
             has_mesh_content, // has_mesh_content - enable mesh pass when mesh content is available
             mip_enabled,
@@ -557,7 +675,7 @@ impl State {
         })?;
 
         // Submit the command buffer
-        self.graphics.queue.submit(std::iter::once(encoder.finish()));
+        self.queue().submit(std::iter::once(encoder.finish()));
 
         frame.present();
         Ok(())
@@ -580,8 +698,8 @@ impl State {
                 bytemuck::cast_slice(&voxels_f16_bits).to_vec()
             };
             Arc::new(RenderContent::from_bytes_r16f(
-                &self.graphics.device,
-                &self.graphics.queue,
+                self.device(),
+                self.queue(),
                 &bytes,
                 "CT Volume",
                 vol.dimensions.0 as u32,
@@ -600,8 +718,8 @@ impl State {
                 .collect();
             let voxel_data: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
             Arc::new(RenderContent::from_bytes(
-                &self.graphics.device,
-                &self.graphics.queue,
+                self.device(),
+                self.queue(),
                 &voxel_data,
                 "CT Volume",
                 vol.dimensions.0 as u32,
@@ -616,11 +734,11 @@ impl State {
             // Add MPR views to slots 0 and 1 (Transverse and Coronal)
             for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1]].iter() {
                 let render_context = Arc::new(crate::rendering::view::mpr::mpr_render_context::MprRenderContext::new(
-                    &self.graphics.device,
+                    self.device(),
                 ));
                 let view = MprView::new(
                     render_context,
-                    &self.graphics.device,
+                    self.device(),
                     texture.clone(),
                     &vol,
                     *orientation,
@@ -640,8 +758,8 @@ impl State {
             // Add MIP view to slot 3 (fourth position - replacing Oblique)
             let mip_wgpu_impl = crate::rendering::MipViewWgpuImpl::new(
                 texture.clone(),
-                &self.graphics.device,
-                self.graphics.surface_config.format,
+                self.device(),
+                self.surface_config().format,
             );
             let mip_view = crate::rendering::mip::MipView::new(Arc::new(mip_wgpu_impl));
             self.layout.add_view(Box::new(mip_view));
@@ -649,11 +767,11 @@ impl State {
             // Mesh disabled: add all four MPR views (including oblique)
             for orientation in ALL_ORIENTATIONS.iter() {
                 let render_context = Arc::new(crate::rendering::view::mpr::mpr_render_context::MprRenderContext::new(
-                    &self.graphics.device,
+                    self.device(),
                 ));
                 let view = MprView::new(
                     render_context,
-                    &self.graphics.device,
+                    self.device(),
                     texture.clone(),
                     &vol,
                     *orientation,
@@ -720,7 +838,7 @@ impl State {
     /// Function-level comment: Calculate position and size for a view at the specified index.
     fn calculate_view_position_and_size(&self, index: usize) -> ((i32, i32), (u32, u32)) {
         let total_views = self.layout.views.len() as u32;
-        let parent_dim = (self.graphics.surface_config.width, self.graphics.surface_config.height);
+        let parent_dim = (self.surface_config().width, self.surface_config().height);
         self.layout.strategy.calculate_position_and_size(index as u32, total_views, parent_dim)
     }
 
@@ -733,8 +851,8 @@ impl State {
         }
 
         let depth_format = crate::rendering::core::pipeline::get_mesh_depth_format();
-        let width = self.graphics.surface_config.width;
-        let height = self.graphics.surface_config.height;
+        let width = self.surface_config().width;
+        let height = self.surface_config().height;
         
         if width == 0 || height == 0 {
             log::warn!("Cannot create depth texture: surface size is {}x{} (expected >0).", width, height);
@@ -756,7 +874,7 @@ impl State {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         };
-        let depth_tex = self.graphics.device.create_texture(&desc);
+        let depth_tex = self.device().create_texture(&desc);
         let depth_view = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
         self.texture_pool.set_depth(depth_tex, depth_view);
         log::info!("Created depth texture for mesh mode: {}x{} format {:?}", width, height, depth_format);
@@ -783,8 +901,8 @@ impl State {
         } else {
             let mesh = Mesh::uniform_color_cube();
             let ctx = BasicMeshContext::new(
-                &self.graphics.device,
-                &self.graphics.queue,
+                self.device(),
+                self.queue(),
                 &mesh,
                 true, // Enable depth testing for proper 3D rendering
             );
@@ -808,11 +926,11 @@ impl State {
         let orientation = ALL_ORIENTATIONS[index]; // Use index to determine orientation
         
         let render_context = Arc::new(crate::rendering::view::mpr::mpr_render_context::MprRenderContext::new(
-            &self.graphics.device,
+            self.device(),
         ));
         MprView::new(
             render_context,
-            &self.graphics.device,
+            self.device(),
             texture,
             &vol,
             orientation,
@@ -840,8 +958,8 @@ impl State {
                 bytemuck::cast_slice(&voxels_f16_bits).to_vec()
             };
             Arc::new(RenderContent::from_bytes_r16f(
-                &self.graphics.device,
-                &self.graphics.queue,
+                self.device(),
+                self.queue(),
                 &bytes,
                 "CT Volume",
                 vol.dimensions.0 as u32,
@@ -857,8 +975,8 @@ impl State {
                 .collect();
             let voxel_data: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
             Arc::new(RenderContent::from_bytes(
-                &self.graphics.device,
-                &self.graphics.queue,
+                self.device(),
+                self.queue(),
                 &voxel_data,
                 "CT Volume",
                 vol.dimensions.0 as u32,
@@ -1067,7 +1185,7 @@ impl State {
         }
         // If enabling float path, ensure hardware support
         if !self.enable_float_volume_texture {
-            if !Self::device_supports_r16float(&self.graphics.adapter) {
+            if !Self::device_supports_r16float(self.adapter()) {
                 log::warn!(
                     "Hardware doesn't support R16Float filtered sampling; staying on RG8."
                 );

@@ -208,7 +208,6 @@ impl RenderApp {
                         log::info!("Sent WorldCoordToScreen result for window {}: {:?}", index, result);
                     }
                 }
-                #[cfg(target_arch = "wasm32")]
                 Event::WindowEvent {
                     ref event,
                     window_id,
@@ -288,8 +287,8 @@ impl RenderApp {
                                     Err(
                                         wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
                                     ) => {
-                                        let width = state.graphics.surface_config.width;
-                                        let height = state.graphics.surface_config.height;
+                                        let width = state.graphics_context.graphics.surface_config.width;
+                                        let height = state.graphics_context.graphics.surface_config.height;
                                         let size = PhysicalSize::<u32> {width, height};
                                         // Function-level comment: Surface reconfiguration handled by individual render contexts.
                                         log::info!("Surface error {:?} - render contexts will rebuild pipelines as needed", "Lost/Outdated");
