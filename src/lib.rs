@@ -101,7 +101,7 @@ pub fn init_logger() -> Result<(), log::SetLoggerError> {
 #[cfg(target_arch = "wasm32")]
 pub fn init_logger() -> Result<(), log::SetLoggerError> {
     log::set_logger(&WASM_LOGGER)?;
-    log::set_max_level(LevelFilter::Info);
+    log::set_max_level(LevelFilter::Debug);
     Ok(())
 }
 

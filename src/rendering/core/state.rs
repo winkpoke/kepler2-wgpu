@@ -77,8 +77,6 @@ pub struct State {
     pub(crate) last_volume: Option<CTVolume>,
     pub(crate) enable_mesh: bool,
     pub(crate) texture_pool: MeshTexturePool,
-    /// Function-level comment: Cached BasicMeshContext wrapped in Arc for efficient reuse across toggles.
-    pub(crate) mesh_ctx: Option<Arc<crate::rendering::mesh::basic_mesh_context::BasicMeshContext>>,
 }
 
 impl State {
@@ -159,7 +157,6 @@ impl State {
             last_volume: None,
             enable_mesh: false,
             texture_pool: texture_pool,
-            mesh_ctx: None,
         })
     }
 
@@ -167,7 +164,6 @@ impl State {
         crate::rendering::core::pipeline::set_swapchain_format(self.surface_config().format);
         
         // Function-level comment: Clear mesh resources bound to old device to prevent stale references.
-        self.clear_mesh_context_cache();
         self.texture_pool.clear_depth_view();
         
         // self.resize(winit::dpi::PhysicalSize {
@@ -554,13 +550,7 @@ impl State {
     }
 
     /// Function-level comment: Clear cached mesh context to force recreation and prevent buffer reference issues.
-    /// This is useful when switching graphics contexts or when buffer errors occur.
-    pub fn clear_mesh_context_cache(&mut self) {
-        if self.mesh_ctx.is_some() {
-            log::debug!("Clearing cached mesh context to prevent buffer reference issues");
-            self.mesh_ctx = None;
-        }
-    }
+
 
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
     pub fn set_mesh_mode_enabled(&mut self, enabled: bool) {
@@ -588,7 +578,7 @@ impl State {
         self.layout.strategy.calculate_position_and_size(index as u32, total_views, parent_dim)
     }
 
-    /// Function-level comment: Create a MeshView with cached or new BasicMeshContext.
+    /// Function-level comment: Create a MeshView with fresh BasicMeshContext.
     fn create_mesh_view(&mut self, 
                        pos: (i32, i32), size: (u32, u32)) -> crate::rendering::view::MeshView {
         use std::sync::Arc;
@@ -599,22 +589,15 @@ impl State {
         mesh_view.set_rotation_enabled(true);
         log::info!("Mesh rotation enabled");
         
-        // Create or reuse cached Arc<BasicMeshContext> for efficient toggling
-        let ctx_arc = if let Some(cached_ctx) = &self.mesh_ctx {
-            // Reuse cached context
-            cached_ctx.clone()
-        } else {
-            let mesh = Mesh::uniform_color_cube();
-            let ctx = BasicMeshContext::new(
-                self.device(),
-                self.queue(),
-                &mesh,
-                true, // Enable depth testing for proper 3D rendering
-            );
-            let ctx_arc = Arc::new(ctx);
-            self.mesh_ctx = Some(ctx_arc.clone());
-            ctx_arc
-        };
+        // Create fresh BasicMeshContext for each mesh view
+        let mesh = Mesh::uniform_color_cube();
+        let ctx = BasicMeshContext::new(
+            self.device(),
+            self.queue(),
+            &mesh,
+            true, // Enable depth testing for proper 3D rendering
+        );
+        let ctx_arc = Arc::new(ctx);
         
         mesh_view.attach_context(ctx_arc);
         mesh_view.move_to(pos);
