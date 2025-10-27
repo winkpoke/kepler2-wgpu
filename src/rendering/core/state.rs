@@ -603,47 +603,6 @@ impl State {
         self.layout.strategy.calculate_position_and_size(index as u32, total_views, parent_dim)
     }
 
-
-
-    /// Function-level comment: Ensure depth texture exists for mesh rendering, creating it if necessary.
-    fn ensure_depth_texture(&mut self) -> bool {
-        if self.texture_pool.depth_view().is_some() {
-            return true;
-        }
-
-        let depth_format = crate::rendering::core::pipeline::get_mesh_depth_format();
-        let width = self.surface_config().width;
-        let height = self.surface_config().height;
-        
-        if width == 0 || height == 0 {
-            log::warn!("Cannot create depth texture: surface size is {}x{} (expected >0).", width, height);
-            return false;
-        }
-
-        let size = wgpu::Extent3d {
-            width,
-            height,
-            depth_or_array_layers: 1,
-        };
-        let desc = wgpu::TextureDescriptor {
-            label: Some("Mesh Depth Texture"),
-            size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: depth_format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        };
-        let depth_tex = self.device().create_texture(&desc);
-        let depth_view = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
-        self.texture_pool.set_depth(depth_tex, depth_view);
-        log::info!("Created depth texture for mesh mode: {}x{} format {:?}", width, height, depth_format);
-        true
-    }
-
-
-
     /// Function-level comment: Create a MeshView with cached or new BasicMeshContext.
     fn create_mesh_view(&mut self, 
                        pos: (i32, i32), size: (u32, u32)) -> crate::rendering::view::MeshView {
