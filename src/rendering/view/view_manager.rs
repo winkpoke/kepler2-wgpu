@@ -57,8 +57,8 @@ impl ViewManager {
             if let Some(state) = mpr_view.save_state() {
                 if state.is_valid() {
                     log::info!("Saving view state for position: {}", position);
-                    log::debug!("Saved state: window_level={}, window_width={}, slice_mm={}, scale={}, translate={:?}", 
-                        state.window_level, state.window_width, state.slice_mm, state.scale, state.translate);
+                    log::debug!("Saved state: window_level={}, window_width={}, slice_mm={}, scale={}", 
+                        state.window_level, state.window_width, state.slice_mm, state.scale);
                     
                     self.saved_states.insert(position.to_string(), state);
                     Ok(())
@@ -95,8 +95,8 @@ impl ViewManager {
             // Try to downcast to StatefulView using the concrete type
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<super::MprView>() {
                 log::info!("Restoring view state for position: {}", position);
-                log::debug!("Restoring state: window_level={}, window_width={}, slice_mm={}, scale={}, translate={:?}", 
-                    saved_state.window_level, saved_state.window_width, saved_state.slice_mm, saved_state.scale, saved_state.translate);
+                log::debug!("Restoring state: window_level={}, window_width={}, slice_mm={}, scale={}", 
+                    saved_state.window_level, saved_state.window_width, saved_state.slice_mm, saved_state.scale);
                 
                 if mpr_view.restore_state(saved_state) {
                     Ok(())

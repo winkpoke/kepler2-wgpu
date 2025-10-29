@@ -141,33 +141,34 @@ impl PassRegistry {
         Self { surface_format }
     }
 
-    /// Build a pass plan based on current rendering requirements
+    /// Build a pass plan based on view presence in the layout
     /// 
     /// # Arguments
-    /// * `mesh_enabled` - Whether 3D mesh rendering is enabled
-    /// * `has_mesh_content` - Whether there is actual mesh content to render
-    /// * `mip_enabled` - Whether MIP (Maximum Intensity Projection) rendering is enabled
-    /// * `has_mip_content` - Whether there is actual MIP content to render
+    /// * `has_mesh_view` - Whether there is a mesh view present in the layout
+    /// * `has_mip_view` - Whether there is a MIP view present in the layout
+    /// * `has_mpr_view` - Whether there is an MPR view present in the layout
     /// 
     /// Render order follows the architecture design:
     /// 1. MeshPass (3D) renders first with Clear operation to establish base scene
     /// 2. MipPass (volume projection) renders second for 3D volume visualization
     /// 3. SlicePass (2D) renders third with Load operation to overlay on existing content
-    pub fn build_pass_plan(&self, mesh_enabled: bool, has_mesh_content: bool, mip_enabled: bool, has_mip_content: bool) -> PassPlan {
+    pub fn build_pass_plan(&self, has_mesh_view: bool, has_mip_view: bool, has_mpr_view: bool) -> PassPlan {
         let mut plan = PassPlan::new();
 
         // Add mesh pass first for 3D rendering (base layer with Clear)
-        if mesh_enabled && has_mesh_content {
+        if has_mesh_view {
             plan.add_pass(PassId::MeshPass, PassDescriptor::mesh_pass(self.surface_format, true));
         }
 
         // Add MIP pass second for volume projection rendering
-        if mip_enabled && has_mip_content {
+        if has_mip_view {
             plan.add_pass(PassId::MipPass, PassDescriptor::mip_pass(self.surface_format));
         }
 
-        // Add slice pass third for 2D rendering (overlay with Load)
-        plan.add_pass(PassId::SlicePass, PassDescriptor::slice_pass(self.surface_format));
+        // Add slice pass third for 2D rendering (overlay with Load) - always present for MPR views
+        if has_mpr_view {
+            plan.add_pass(PassId::SlicePass, PassDescriptor::slice_pass(self.surface_format));
+        }
 
         plan
     }
@@ -351,10 +352,9 @@ impl PassExecutor {
     /// * `device` - GPU device for resource creation
     /// * `surface_width` - Width of the surface for offscreen texture sizing
     /// * `surface_height` - Height of the surface for offscreen texture sizing
-    /// * `mesh_enabled` - Whether mesh rendering is enabled
-    /// * `has_mesh_content` - Whether there is mesh content to render
-    /// * `mip_enabled` - Whether MIP rendering is enabled
-    /// * `has_mip_content` - Whether there is MIP content to render
+    /// * `has_mesh_view` - Whether there is a mesh view present in the layout
+    /// * `has_mip_view` - Whether there is a MIP view present in the layout
+    /// * `has_mpr_view` - Whether there is an MPR view present in the layout
     /// * `render_fn` - Function to execute rendering for each pass
     pub fn execute_frame<F>(
         &mut self,
@@ -364,26 +364,25 @@ impl PassExecutor {
         device: &wgpu::Device,
         surface_width: u32,
         surface_height: u32,
-        mesh_enabled: bool,
-        has_mesh_content: bool,
-        mip_enabled: bool,
-        has_mip_content: bool,
+        has_mesh_view: bool,
+        has_mip_view: bool,
+        has_mpr_view: bool,
         mut render_fn: F,
     ) -> Result<(), Box<dyn std::error::Error>>
     where
         F: FnMut(PassContext) -> Result<(), Box<dyn std::error::Error>>,
     {
         let frame_start_time = Instant::now();
-        log::trace!("[FRAME_EXEC] Starting frame execution - Surface: {}x{}, Mesh enabled: {}, Has mesh content: {}, MIP enabled: {}, Has MIP content: {}", 
-                    surface_width, surface_height, mesh_enabled, has_mesh_content, mip_enabled, has_mip_content);
+        log::trace!("[FRAME_EXEC] Starting frame execution - Surface: {}x{}, Has mesh view: {}, Has MIP view: {}, Has MPR view: {}", 
+                    surface_width, surface_height, has_mesh_view, has_mip_view, has_mpr_view);
         
         // Build the pass plan for this frame
-        let effective_mesh_enabled = mesh_enabled && !self.mesh_pass_disabled;
-        let plan = self.registry.build_pass_plan(effective_mesh_enabled, has_mesh_content, mip_enabled, has_mip_content);
+        let effective_has_mesh_view = has_mesh_view && !self.mesh_pass_disabled;
+        let plan = self.registry.build_pass_plan(effective_has_mesh_view, has_mip_view, has_mpr_view);
         let mut frame_success = true;
         
-        log::trace!("[FRAME_EXEC] Pass plan: {} passes scheduled, Effective mesh enabled: {}", 
-                    plan.passes.len(), effective_mesh_enabled);
+        log::trace!("[FRAME_EXEC] Pass plan: {} passes scheduled, Effective mesh view enabled: {}", 
+                    plan.passes.len(), effective_has_mesh_view);
         if self.mesh_pass_disabled {
             log::warn!("[FRAME_EXEC] Mesh pass is currently DISABLED due to previous errors");
         }

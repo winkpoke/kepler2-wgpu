@@ -3,7 +3,7 @@ use winit::event_loop::EventLoopProxy;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use crate::{data::ct_volume::CTVolume, rendering::core::state::Graphics};
+use crate::{data::ct_volume::CTVolume, rendering::core::Graphics};
 
 #[cfg(target_arch = "wasm32")]
 use futures::channel::oneshot;
@@ -19,7 +19,6 @@ pub enum UserEvent {
     SetTranslateInScreenCoord(usize, f32, f32, f32),
     SetPan(usize, f32, f32), // pan in screen space
     SetPanMM(usize, f32, f32), // pan in mm
-    SetTranslate(usize, f32, f32, f32),  // translate in 3D space
     LoadDataFromCTVolume(CTVolume), 
     Resize(u32, u32), // width, height
     Quit,
@@ -33,6 +32,9 @@ pub enum UserEvent {
     SetEnableMesh(bool),
     #[cfg(target_arch = "wasm32")]
     GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
+    #[cfg(target_arch = "wasm32")]
+    WorldCoordToScreen(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
+    SetCenterAtPointInMM(usize, f32, f32, f32), // screen coords
     // ... add more events as needed
 }
 
@@ -157,6 +159,30 @@ impl GLCanvas {
             }
         }
     }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn world_coord_to_screen(&self, index: usize, x: f32, y: f32, z: f32) -> Result<Box<[f32]>, String> {
+        log::info!("world_coord_to_screen: index={}, x={}, y={}, z={}", index, x, y, z);
+        let (tx, rx) = oneshot::channel();
+        
+        if let Err(e) = self.proxy.send_event(UserEvent::WorldCoordToScreen(index, [x, y, z], tx)) {
+            log::error!("Failed to send WorldCoordToScreen event for window {}: {:?}", index, e);
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+        
+        log::info!("Sent WorldCoordToScreen event for window {}: {:?}", index, [x, y, z]);
+        
+        match rx.await {
+            Ok(result) => {
+                log::info!("Received WorldCoordToScreen result for window {}: {:?}", index, result);
+                Ok(result.into())
+            }
+            Err(e) => {
+                log::error!("Failed to receive WorldCoordToScreen result for window {}: {:?}", index, e);
+                Err(format!("Failed to receive result: {:?}", e))
+            }
+        }
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -170,8 +196,8 @@ impl_user_event_senders_for_glcanvas! {
     set_window_width => SetWindowWidth(window_width: f32),
     set_slice_mm => SetSliceMM(slice: f32),
     set_scale => SetScale(scale: f32),
-    set_translate => SetTranslate(dx: f32, dy: f32, dz: f32),
     set_translate_in_screen_coord => SetTranslateInScreenCoord(x: f32, y: f32, z: f32),
     set_pan => SetPan(dx: f32, dy: f32),
     set_pan_mm => SetPanMM(dx_mm: f32, dy_mm: f32),
+    set_center_at_point_in_mm => SetCenterAtPointInMM(x_mm: f32, y_mm: f32, z_mm: f32),
 }

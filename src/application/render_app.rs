@@ -11,7 +11,8 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::rendering::core::state::{Graphics, State};
+use crate::rendering::core::state::State;
+use crate::rendering::core::Graphics;
 use crate::application::gl_canvas::{GLCanvas, UserEvent};
 use winit::event_loop::EventLoopProxy;
 
@@ -97,11 +98,6 @@ impl RenderApp {
                 Event::UserEvent(UserEvent::SetScale(index, scale)) => {
                     state.set_scale(index, scale);
                     log::info!("Scale set to: {}", scale);
-                }
-                Event::UserEvent(UserEvent::SetTranslate(index, dx, dy, dz)) => {
-                    let translate = [dx, dy, dz];
-                    log::info!("Translate set to: {:#?}", translate);
-                    state.set_translate(index, translate);
                 }
                 Event::UserEvent(UserEvent::SetTranslateInScreenCoord(index, dx, dy, dz)) => {
                     let translate = [dx, dy, dz];
@@ -189,6 +185,10 @@ impl RenderApp {
                     state.set_mesh_mode_enabled(enabled);
                     log::info!("EnableMesh toggled at runtime: {}", enabled);
                 }
+                Event::UserEvent(UserEvent::SetCenterAtPointInMM(index, x_mm, y_mm, z_mm)) => {
+                    state.set_center_at_point_in_mm(index, x_mm, y_mm, z_mm);
+                    log::info!("CenterAtPointInMM set to: x_mm={x_mm}, y_mm={y_mm}, z_mm={z_mm}");
+                }
                 #[cfg(target_arch = "wasm32")]
                 Event::UserEvent(UserEvent::GetScreenCoordInMM(index, coord, sender)) => {
                     // Function-level comment: Handle get_screen_coord_in_mm request and send result back via oneshot channel.
@@ -197,6 +197,16 @@ impl RenderApp {
                         log::error!("Failed to send GetScreenCoordInMM result for window {}", index);
                     } else {
                         log::info!("Sent GetScreenCoordInMM result for window {}: {:?}", index, result);
+                    }
+                }
+                #[cfg(target_arch = "wasm32")]
+                Event::UserEvent(UserEvent::WorldCoordToScreen(index, coord, sender)) => {
+                    // Function-level comment: Handle world_coord_to_screen request and send result back via oneshot channel.
+                    let result = state.world_coord_to_screen(index, coord);
+                    if let Err(_) = sender.send(result) {
+                        log::error!("Failed to send WorldCoordToScreen result for window {}", index);
+                    } else {
+                        log::info!("Sent WorldCoordToScreen result for window {}: {:?}", index, result);
                     }
                 }
                 Event::WindowEvent {
@@ -278,8 +288,8 @@ impl RenderApp {
                                     Err(
                                         wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
                                     ) => {
-                                        let width = state.graphics.surface_config.width;
-                                        let height = state.graphics.surface_config.height;
+                                        let width = state.graphics_context.graphics.surface_config.width;
+                                        let height = state.graphics_context.graphics.surface_config.height;
                                         let size = PhysicalSize::<u32> {width, height};
                                         // Function-level comment: Surface reconfiguration handled by individual render contexts.
                                         log::info!("Surface error {:?} - render contexts will rebuild pipelines as needed", "Lost/Outdated");

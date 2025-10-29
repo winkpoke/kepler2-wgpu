@@ -1,6 +1,154 @@
-use std::{fmt, ops::{Add, Div, Mul, Neg, Sub}};
+mod base;
+pub use base::*;
+
+
+use std::{fmt, ops::{Add, Div, Index, Mul, Neg, Sub}};
 use num::Float;
 
+
+// Vector3 type for convenience
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct Vector3<T> { 
+    data: [T; 3],
+}
+
+impl<T> Vector3<T> {
+    pub fn new(data: [T; 3]) -> Self {
+        Self { data }
+    }
+
+    /// Function-level comment: Get the x component of the vector
+    pub fn x(&self) -> T where T: Copy {
+        self.data[0]
+    }
+
+    /// Function-level comment: Get the y component of the vector
+    pub fn y(&self) -> T where T: Copy {
+        self.data[1]
+    }
+
+    /// Function-level comment: Get the z component of the vector
+    pub fn z(&self) -> T where T: Copy {
+        self.data[2]
+    }
+
+    /// Function-level comment: Get the raw data array
+    pub fn as_array(&self) -> &[T; 3] {
+        &self.data
+    }
+}
+
+// Vector3 Operations =======================================================
+impl<T> Add for Vector3<T>
+where
+    T: Add<Output = T> + Copy,
+{
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self {
+        Self::new([self.data[0] + rhs.data[0],
+            self.data[1] + rhs.data[1],
+            self.data[2] + rhs.data[2],])
+    }
+}
+
+impl<T> Sub for Vector3<T>
+where
+    T: Sub<Output = T> + Copy,
+{
+    type Output = Self;
+    fn sub(self, rhs: Self) -> Self {
+        Self::new([self.data[0] - rhs.data[0],
+            self.data[1] - rhs.data[1],
+            self.data[2] - rhs.data[2],])
+    }
+}
+
+impl<T> Mul<T> for Vector3<T>
+where
+    T: Mul<Output = T> + Copy,
+{
+    type Output = Self;
+    fn mul(self, scalar: T) -> Self {
+        Self {
+            data: [
+                self.data[0] * scalar,
+                self.data[1] * scalar,
+                self.data[2] * scalar,
+            ],
+        }
+    }
+}
+
+impl<T> Div<T> for Vector3<T>
+where
+    T: Div<Output = T> + Copy,
+{
+    type Output = Self;
+    fn div(self, scalar: T) -> Self {
+        Self {
+            data: [
+                self.data[0] / scalar,
+                self.data[1] / scalar,
+                self.data[2] / scalar,
+            ],
+        }
+    }
+}
+
+impl<T> Neg for Vector3<T>
+where
+    T: Neg<Output = T> + Copy,
+{
+    type Output = Self;
+    fn neg(self) -> Self {
+        Self {
+            data: [
+                -self.data[0],
+                -self.data[1],
+                -self.data[2],
+            ],
+        }
+    }
+}
+
+impl<T> Vector3<T>
+where
+    T: Add<Output = T> + Mul<Output = T> + Sub<Output = T> + Copy,
+{
+    pub fn dot(self, rhs: Self) -> T {
+        self.data[0] * rhs.data[0] + self.data[1] * rhs.data[1] + self.data[2] * rhs.data[2]
+    }
+
+    pub fn cross(self, rhs: Self) -> Self {
+        Self {
+            data: [self.data[1] * rhs.data[2] - self.data[2] * rhs.data[1],
+                   self.data[2] * rhs.data[0] - self.data[0] * rhs.data[2],
+                   self.data[0] * rhs.data[1] - self.data[1] * rhs.data[0],]
+        }
+    }
+
+    pub fn magnitude_squared(self) -> T {
+        self.dot(self)
+    }
+}
+
+impl<T> Vector3<T>
+where
+    T: Float,
+{
+    pub fn magnitude(self) -> T {
+        self.magnitude_squared().sqrt()
+    }
+
+    pub fn normalize(self) -> Self {
+        let mag = self.magnitude();
+        if mag < T::epsilon() {
+            Self::new([T::zero(), T::zero(), T::zero()])
+        } else {
+            self * (T::one() / mag)
+        }
+    }
+}
 
 /// A generic 4x4 matrix struct, stored in **row-major** order.
 #[derive( Copy, Clone)]
@@ -211,128 +359,6 @@ fn format_matrix<T: fmt::Debug>(matrix: &[[T; 4]; 4]) -> String {
         .join("\n ") // Join the rows with newlines
 }
 
-#[derive(Clone)]
-pub struct Base<T>
-where
-    T: Copy
-        + num::Zero
-        + num::One
-        + num::Signed
-        + PartialOrd
-        + std::ops::DivAssign
-        + std::ops::SubAssign,
-{
-    pub label: String,
-    pub matrix: Matrix4x4<T>,
-}
-impl<T> Base<T>
-where
-    T: Copy
-        + num::Zero
-        + num::One
-        + num::Signed
-        + num::Float
-        + PartialOrd
-        + std::ops::DivAssign
-        + std::ops::SubAssign
-        + std::ops::AddAssign
-        + num_traits::NumCast
-        + std::fmt::Debug,
-{
-    pub fn to_base(&self, base: &Base<T>) -> Matrix4x4<T> {
-        if let Some(m) = base.matrix.inv() {
-            m.multiply(&self.matrix)
-        } else {
-            unreachable!()
-        }
-    }
-
-    /// Get matrix as a Matrix4x4<T>
-    pub fn get_matrix(&self) -> Matrix4x4<T> {
-        self.matrix
-    }
-
-    pub fn get_scale_factors(&self) -> [T; 3] {
-        let col0 = self.matrix.get_column(0);
-        let col1 = self.matrix.get_column(1);
-        let col2 = self.matrix.get_column(2);
-
-        let sx = (col0[0] * col0[0] + col0[1] * col0[1] + col0[2] * col0[2]).sqrt();
-        let sy = (col1[0] * col1[0] + col1[1] * col1[1] + col1[2] * col1[2]).sqrt();
-        let sz = (col2[0] * col2[0] + col2[1] * col2[1] + col2[2] * col2[2]).sqrt();
-
-        [sx, sy, sz]
-    }
-
-    pub fn scale(&mut self, scale: [T; 3]) {
-        let one = T::one();
-        let zero = T::zero();
-
-        let s = Matrix4x4::from_array([one / scale[0], zero, zero, zero,
-                                       zero, one / scale[1], zero, zero,
-                                       zero, zero, one / scale[2], zero,
-                                       zero, zero, zero, one]);
-        self.matrix = self.matrix.multiply(&s);
-    }
-
-    pub fn translate(&mut self, translate: [T; 3]) {
-        let one = T::one();
-        let zero = T::zero();
-        let t = Matrix4x4::from_array([one, zero, zero, translate[0],
-                                       zero, one, zero, translate[1],
-                                       zero, zero, one, translate[2],
-                                       zero, zero, zero, one]);
-        self.matrix = self.matrix.multiply(&t);
-    }
-
-    pub fn translate_in_screen_coord(&mut self, translate: [T; 3]) {
-        let mut trans = [T::one(); 4];
-        for i in 0..3 {
-            trans[i] = -translate[i];
-        }
-        let transformed = self.matrix.apply(&trans);
-        for i in 0..3 {    
-            self.matrix.data[i][3] = transformed[i];
-        }
-    }
-}
-
-impl<T> Default for Base<T>
-where
-    T: Copy
-        + num::Zero
-        + num::One
-        + num::Signed
-        + PartialOrd
-        + std::ops::DivAssign
-        + std::ops::SubAssign,
-{
-    fn default() -> Self {
-        Self {
-            label: String::from("Default"),
-            matrix: Matrix4x4::eye(),
-        }
-    }
-}
-
-impl<T: fmt::Debug> fmt::Debug for Base<T> 
-where
-    T: Copy
-        + num::Zero
-        + num::One
-        + num::Signed
-        + PartialOrd
-        + std::ops::DivAssign
-        + std::ops::SubAssign,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Base")
-            .field("label", &self.label)
-            .field("matrix", &self.matrix)
-            .finish()
-    }
-}
-
 pub fn array_to_slice<T>(matrix: &[[T; 4]; 4]) -> &[T; 16] {
     // Safe to cast because we know the underlying representation is the same
     unsafe { &*(matrix as *const [[T; 4]; 4] as *const [T; 16]) }
@@ -341,150 +367,6 @@ pub fn array_to_slice<T>(matrix: &[[T; 4]; 4]) -> &[T; 16] {
 pub fn slice_to_array<T>(slice: &[T; 16]) -> &[[T; 4]; 4] {
     // Safe to cast for the same reason
     unsafe { &*(slice as *const [T; 16] as *const [[T; 4]; 4]) }
-}
-
-// Vector3 type for convenience
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub struct Vector3<T> { 
-    data: [T; 3],
-}
-
-impl<T> Vector3<T> {
-    pub fn new(data: [T; 3]) -> Self {
-        Self { data }
-    }
-
-    /// Function-level comment: Get the x component of the vector
-    pub fn x(&self) -> T where T: Copy {
-        self.data[0]
-    }
-
-    /// Function-level comment: Get the y component of the vector
-    pub fn y(&self) -> T where T: Copy {
-        self.data[1]
-    }
-
-    /// Function-level comment: Get the z component of the vector
-    pub fn z(&self) -> T where T: Copy {
-        self.data[2]
-    }
-
-    /// Function-level comment: Get the raw data array
-    pub fn as_array(&self) -> &[T; 3] {
-        &self.data
-    }
-}
-
-// Vector3 Operations =======================================================
-impl<T> Add for Vector3<T>
-where
-    T: Add<Output = T> + Copy,
-{
-    type Output = Self;
-    fn add(self, rhs: Self) -> Self {
-        Self::new([self.data[0] + rhs.data[0],
-            self.data[1] + rhs.data[1],
-            self.data[2] + rhs.data[2],])
-    }
-}
-
-impl<T> Sub for Vector3<T>
-where
-    T: Sub<Output = T> + Copy,
-{
-    type Output = Self;
-    fn sub(self, rhs: Self) -> Self {
-        Self::new([self.data[0] - rhs.data[0],
-            self.data[1] - rhs.data[1],
-            self.data[2] - rhs.data[2],])
-    }
-}
-
-impl<T> Mul<T> for Vector3<T>
-where
-    T: Mul<Output = T> + Copy,
-{
-    type Output = Self;
-    fn mul(self, scalar: T) -> Self {
-        Self {
-            data: [
-                self.data[0] * scalar,
-                self.data[1] * scalar,
-                self.data[2] * scalar,
-            ],
-        }
-    }
-}
-
-impl<T> Div<T> for Vector3<T>
-where
-    T: Div<Output = T> + Copy,
-{
-    type Output = Self;
-    fn div(self, scalar: T) -> Self {
-        Self {
-            data: [
-                self.data[0] / scalar,
-                self.data[1] / scalar,
-                self.data[2] / scalar,
-            ],
-        }
-    }
-}
-
-impl<T> Neg for Vector3<T>
-where
-    T: Neg<Output = T> + Copy,
-{
-    type Output = Self;
-    fn neg(self) -> Self {
-        Self {
-            data: [
-                -self.data[0],
-                -self.data[1],
-                -self.data[2],
-            ],
-        }
-    }
-}
-
-impl<T> Vector3<T>
-where
-    T: Add<Output = T> + Mul<Output = T> + Sub<Output = T> + Copy,
-{
-    pub fn dot(self, rhs: Self) -> T {
-        self.data[0] * rhs.data[0] + self.data[1] * rhs.data[1] + self.data[2] * rhs.data[2]
-    }
-
-    pub fn cross(self, rhs: Self) -> Self {
-        Self {
-            data: [self.data[1] * rhs.data[2] - self.data[2] * rhs.data[1],
-                   self.data[2] * rhs.data[0] - self.data[0] * rhs.data[2],
-                   self.data[0] * rhs.data[1] - self.data[1] * rhs.data[0],]
-        }
-    }
-
-    pub fn magnitude_squared(self) -> T {
-        self.dot(self)
-    }
-}
-
-impl<T> Vector3<T>
-where
-    T: Float,
-{
-    pub fn magnitude(self) -> T {
-        self.magnitude_squared().sqrt()
-    }
-
-    pub fn normalize(self) -> Self {
-        let mag = self.magnitude();
-        if mag < T::epsilon() {
-            Self::new([T::zero(), T::zero(), T::zero()])
-        } else {
-            self * (T::one() / mag)
-        }
-    }
 }
 
 #[cfg(test)]
@@ -555,5 +437,117 @@ mod tests {
         };
         let transform_matrix = base0.to_base(&base1);
         println!("{:?}", transform_matrix);
+    }
+
+    #[test]
+    fn test_matrix_inv() {
+        // Test 1: Identity matrix inverse should be itself
+        let identity = Matrix4x4::<f64>::eye();
+        let identity_inv = identity.inv().expect("Identity matrix should be invertible");
+        
+        // Check if A * A^-1 = I
+        let result = identity.multiply(&identity_inv);
+        for i in 0..4 {
+            for j in 0..4 {
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert!((result.data[i][j] - expected).abs() < 1e-10, 
+                    "Identity matrix inverse failed at [{}, {}]: expected {}, got {}", 
+                    i, j, expected, result.data[i][j]);
+            }
+        }
+
+        // Test 2: General invertible matrix
+        let matrix = Matrix4x4::<f64>::from_array([
+            2.0, 1.0, 0.0, 1.0,
+            1.0, 2.0, 1.0, 0.0,
+            0.0, 1.0, 2.0, 1.0,
+            0.0, 0.0, 0.0, 1.0,
+        ]);
+        
+        let matrix_inv = matrix.inv().expect("Matrix should be invertible");
+        
+        // Check if A * A^-1 = I
+        let result = matrix.multiply(&matrix_inv);
+        for i in 0..4 {
+            for j in 0..4 {
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert!((result.data[i][j] - expected).abs() < 1e-10, 
+                    "Matrix inverse failed at [{}, {}]: expected {}, got {}", 
+                    i, j, expected, result.data[i][j]);
+            }
+        }
+
+        // Check if A^-1 * A = I
+        let result2 = matrix_inv.multiply(&matrix);
+        for i in 0..4 {
+            for j in 0..4 {
+                let expected = if i == j { 1.0 } else { 0.0 };
+                assert!((result2.data[i][j] - expected).abs() < 1e-10, 
+                    "Matrix inverse failed (reverse multiplication) at [{}, {}]: expected {}, got {}", 
+                    i, j, expected, result2.data[i][j]);
+            }
+        }
+
+        // Test 3: Singular matrix (should return None)
+        let singular_matrix = Matrix4x4::<f64>::from_array([
+            1.0, 2.0, 3.0, 4.0,
+            2.0, 4.0, 6.0, 8.0,  // This row is 2x the first row
+            5.0, 6.0, 7.0, 8.0,
+            9.0, 10.0, 11.0, 12.0,
+        ]);
+        
+        assert!(singular_matrix.inv().is_none(), "Singular matrix should not be invertible");
+
+        // Test 4: Translation matrix
+        let translation = Matrix4x4::<f64>::from_array([
+            1.0, 0.0, 0.0, 5.0,
+            0.0, 1.0, 0.0, 3.0,
+            0.0, 0.0, 1.0, 2.0,
+            0.0, 0.0, 0.0, 1.0,
+        ]);
+        
+        let translation_inv = translation.inv().expect("Translation matrix should be invertible");
+        
+        // The inverse of a translation matrix should have negated translation components
+        let expected_inv = Matrix4x4::<f64>::from_array([
+            1.0, 0.0, 0.0, -5.0,
+            0.0, 1.0, 0.0, -3.0,
+            0.0, 0.0, 1.0, -2.0,
+            0.0, 0.0, 0.0, 1.0,
+        ]);
+        
+        for i in 0..4 {
+            for j in 0..4 {
+                assert!((translation_inv.data[i][j] - expected_inv.data[i][j]).abs() < 1e-10,
+                    "Translation matrix inverse failed at [{}, {}]: expected {}, got {}",
+                    i, j, expected_inv.data[i][j], translation_inv.data[i][j]);
+            }
+        }
+
+        // Test 5: Scale matrix
+        let scale = Matrix4x4::<f64>::from_array([
+            2.0, 0.0, 0.0, 0.0,
+            0.0, 3.0, 0.0, 0.0,
+            0.0, 0.0, 4.0, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        ]);
+        
+        let scale_inv = scale.inv().expect("Scale matrix should be invertible");
+        
+        // The inverse of a scale matrix should have reciprocal scale factors
+        let expected_scale_inv = Matrix4x4::<f64>::from_array([
+            0.5, 0.0, 0.0, 0.0,
+            0.0, 1.0/3.0, 0.0, 0.0,
+            0.0, 0.0, 0.25, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        ]);
+        
+        for i in 0..4 {
+            for j in 0..4 {
+                assert!((scale_inv.data[i][j] - expected_scale_inv.data[i][j]).abs() < 1e-10,
+                    "Scale matrix inverse failed at [{}, {}]: expected {}, got {}",
+                    i, j, expected_scale_inv.data[i][j], scale_inv.data[i][j]);
+            }
+        }
     }
 }

@@ -140,77 +140,109 @@ impl MprViewWgpuImpl {
         }
     }
 
-    /// Update the uniform values for this view
+    /// Set the uniform values for this view
+    /// 
+    /// # Arguments
+    /// * `new_uniforms` - New uniform values to set
+    pub fn set_uniforms(&mut self, new_uniforms: Uniforms) {
+        // Use the separate set methods for better modularity and consistency
+        self.set_vertex_uniforms(new_uniforms.vert);
+        self.set_fragment_uniforms(new_uniforms.frag);
+        
+        log::debug!("Set both vertex and fragment uniform values");
+    }
+
+    /// Set transformation matrix
+    /// 
+    /// # Arguments
+    /// * `matrix` - New transformation matrix
+    pub fn set_matrix(&mut self, matrix: [f32; 16]) {
+        self.uniforms.frag.mat = matrix;
+    }
+
+    /// Set slice position
+    /// 
+    /// # Arguments
+    /// * `slice` - New slice position
+    pub fn set_slice(&mut self, slice: f32) {
+        self.uniforms.frag.slice = slice;
+    }
+
+    /// Set window level only
+    /// 
+    /// # Arguments
+    /// * `window_level` - New window level value
+    pub fn set_window_level(&mut self, window_level: f32) {
+        self.uniforms.frag.window_level = window_level;
+    }
+
+    /// Set window width only
+    /// 
+    /// # Arguments
+    /// * `window_width` - New window width value
+    pub fn set_window_width(&mut self, window_width: f32) {
+        self.uniforms.frag.window_width = window_width;
+    }
+
+    /// Set only the vertex uniform values
+    /// 
+    /// # Arguments
+    /// * `vertex_uniforms` - New vertex uniform values to set
+    pub fn set_vertex_uniforms(&mut self, vertex_uniforms: UniformsVert) {
+        self.uniforms.vert = vertex_uniforms;
+        
+        log::debug!("Set vertex uniform values");
+    }
+
+    /// Set only the fragment uniform values
+    /// 
+    /// # Arguments
+    /// * `fragment_uniforms` - New fragment uniform values to set
+    pub fn set_fragment_uniforms(&mut self, fragment_uniforms: UniformsFrag) {
+        self.uniforms.frag = fragment_uniforms;
+        
+        log::debug!("Set fragment uniform values with window_width: {:.1}, window_level: {:.1}, slice: {:.1}", 
+                   fragment_uniforms.window_width, fragment_uniforms.window_level, fragment_uniforms.slice);
+    }
+
+    /// Update vertex uniform buffer with current uniform values
     /// 
     /// # Arguments
     /// * `queue` - WGPU queue for buffer updates
-    /// * `new_uniforms` - New uniform values to upload
-    pub fn update_uniforms(&mut self, queue: &wgpu::Queue, new_uniforms: Uniforms) {
-        self.uniforms = new_uniforms;
-        
-        // Update vertex uniform buffer
+    pub fn update_vertex_uniforms_buffer(&self, queue: &wgpu::Queue) {
         queue.write_buffer(
             &self.uniform_vert_buffer,
             0,
             bytemuck::cast_slice(&[self.uniforms.vert]),
         );
         
-        // Update fragment uniform buffer
-        queue.write_buffer(
-            &self.uniform_frag_buffer,
-            0,
-            bytemuck::cast_slice(&[self.uniforms.frag]),
-        );
+        log::debug!("Updated vertex uniform buffer");
     }
 
-    /// Update only the transformation matrix in fragment uniforms
+    /// Update fragment uniform buffer with current uniform values
     /// 
     /// # Arguments
     /// * `queue` - WGPU queue for buffer updates
-    /// * `matrix` - New transformation matrix
-    pub fn update_matrix(&mut self, queue: &wgpu::Queue, matrix: [f32; 16]) {
-        self.uniforms.frag.mat = matrix;
-        
-        // Update fragment uniform buffer
+    pub fn update_fragment_uniforms_buffer(&self, queue: &wgpu::Queue) {
         queue.write_buffer(
             &self.uniform_frag_buffer,
             0,
             bytemuck::cast_slice(&[self.uniforms.frag]),
         );
+        
+        log::debug!("Updated fragment uniform buffer with window_width: {:.1}, window_level: {:.1}, slice: {:.1}", 
+                   self.uniforms.frag.window_width, self.uniforms.frag.window_level, self.uniforms.frag.slice);
     }
 
-    /// Update window/level settings
+    /// Update both uniform buffers with current uniform values
     /// 
     /// # Arguments
     /// * `queue` - WGPU queue for buffer updates
-    /// * `window_width` - New window width value
-    /// * `window_level` - New window level value
-    pub fn update_window_level(&mut self, queue: &wgpu::Queue, window_width: f32, window_level: f32) {
-        self.uniforms.frag.window_width = window_width;
-        self.uniforms.frag.window_level = window_level;
+    pub fn update_uniforms_buffers(&self, queue: &wgpu::Queue) {
+        self.update_vertex_uniforms_buffer(queue);
+        self.update_fragment_uniforms_buffer(queue);
         
-        // Update fragment uniform buffer
-        queue.write_buffer(
-            &self.uniform_frag_buffer,
-            0,
-            bytemuck::cast_slice(&[self.uniforms.frag]),
-        );
-    }
-
-    /// Update slice position
-    /// 
-    /// # Arguments
-    /// * `queue` - WGPU queue for buffer updates
-    /// * `slice` - New slice position
-    pub fn update_slice(&mut self, queue: &wgpu::Queue, slice: f32) {
-        self.uniforms.frag.slice = slice;
-        
-        // Update fragment uniform buffer
-        queue.write_buffer(
-            &self.uniform_frag_buffer,
-            0,
-            bytemuck::cast_slice(&[self.uniforms.frag]),
-        );
+        log::debug!("Updated both vertex and fragment uniform buffers");
     }
 
     /// Helper function to create vertex uniform buffer and bind group
