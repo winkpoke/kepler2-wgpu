@@ -10,17 +10,365 @@
         canvas {
             background-color: black;
         }
+
+        ul li {
+            list-style: none;
+        }
     </style>
 </head>
 
 <body>
     <div id="wasm-example"></div>
+    <input type="file" id="file" multiple>
+    <div id="tree-container"></div>
+    <label for="index-input">viewIndex:</label>
+    <input type="number" id="index-input" step="1.0" value="0.0">
+    <div>
+        <label for="scale-input">Scale:</label>
+        <input type="number" id="scale-input" step="10.0" value="1.0">
+        <button id="scale-submit">Submit</button>
+    </div>
+    <div>
+        <label for="slice-input">slice:</label>
+        <input type="number" id="slice-input" step="0.01" value="0.0">
+        <button id="slice-submit">Submit</button>
+    </div>
+    <div>
+        <label for="center-input">center:</label>
+        <label for="center-x">x:</label> <input type="number" id="center-x" step="0.1" value="0.0" placeholder="x">
+        <label for="center-y">y:</label> <input type="number" id="center-y" step="0.1" value="0.0" placeholder="y">
+        <label for="center-z">z:</label> <input type="number" id="center-z" step="0.1" value="0.0" placeholder="z">
+        <button id="set-center">Set Center</button>
+    </div>
+    <div>
+        <label for="translate-input">translate:</label>
+        <label for="trans-x">x:</label> <input type="number" id="trans-x" step="10.0" value="0.0" placeholder="x">
+        <label for="trans-y">y:</label><input type="number" id="trans-y" step="10.0" value="0.0" placeholder="y">
+        <label for="trans-z">z:</label><input type="number" id="trans-z" step="10.0" value="0.0" placeholder="z">
+        <button id="trans-submit">Submit</button>
+    </div>
+    <div>
+        <label for="window">window:</label><input type="number" id="window" step="10.0" value="0.0">
+        <label for="level">level:</label><input type="number" id="level" step="10.0" value="0.0">
+        <button id="winlev-submit">Submit</button>
+    </div>
+    <div>
+        <label for="resize-input">resize:</label>
+        <label for="width">width:</label><input type="number" id="width" step="10.0" value="0.0" placeholder="800">
+        <label for="height">height:</label><input type="number" id="height" step="10.0" value="0.0" placeholder="800">
+        <button id="resize-submit">Submit</button>
+    </div>
+    <div>
+        <label for="mesh-mode">Mesh Mode:</label>
+        <input type="checkbox" id="mesh-mode" />
+        <span id="mesh-status">Disabled</span>
+    </div>
+    <div>
+        <label for="mesh-view-slot">Mesh View Slot:</label>
+        <input type="number" id="mesh-view-slot" step="1" value="0" min="0" max="3">
+        <button id="mesh-view-switch">Switch View</button>
+        <span id="mesh-view-status">Active: Slot 0</span>
+    </div>
+    <button id="rerender">render</button>
+    <div id="render_app"></div>
     <script type="module">
-        import init, {run} from "../pkg/kepler_wgpu.js";
-        init().then(() => {
-            run();
-            console.log("WASM Loaded");
+        import init, { parse_dcm_files_wasm, get_render_app } from '../pkg/kepler_wgpu.js';
+        var repo;
+        let state = {
+            render_app: null,
+            gl_canvas: null,
+        };
+
+
+        let render_app = null;
+        let gl_canvas0 = null;
+        let gl_canvas1 = null;
+
+        await init();
+
+        let series_id;
+        let fileLists = [];
+        let flag = true;
+        let scaleValue = 0.1;
+        let volume;
+        // function reRender() {
+        //    gl_canvas.load_data_from_ct_volume(0, volume);
+        // }
+        document.getElementById('rerender').addEventListener('click', () => {
+            if (gl_canvas0 && volume) {
+                gl_canvas0.load_data_from_ct_volume(volume);
+                // gl_canvas0.clear_layout();
+            } else {
+                alert('Please select a series first!');
+            }
+        })
+        document.getElementById('slice-submit').addEventListener('click', () => {
+            const sliceValue = document.getElementById('slice-input').value;
+            const input_index = document.getElementById('index-input');
+            const indexValue = parseInt(input_index.value);
+            if (isNaN(sliceValue)) {
+                alert('Please enter a valid number');
+                return;
+            }
+            if (!gl_canvas0) {
+                alert('Please select a series first!');
+                return;
+            }
+            gl_canvas0.set_slice_mm(indexValue, sliceValue);
+        })
+        document.getElementById('set-center').addEventListener('click', () => {
+            const input_index = document.getElementById('index-input');
+            const indexValue = parseInt(input_index.value);
+            if (!gl_canvas0) {
+                alert('Please select a series first!');
+                return;
+            }
+            const center_x = document.getElementById('center-x').value;
+            const center_y = document.getElementById('center-y').value;
+            const center_z = document.getElementById('center-z').value;
+            gl_canvas0.get_screen_coord_in_mm(indexValue, center_x, center_y, center_z)
+                .then((result) => {
+                    console.log('Screen Coord in MM:', result);
+                    gl_canvas0.set_center_at_point_in_mm(indexValue, result[0], result[1], result[2]);
+                })
+        })
+        document.getElementById('resize-submit').addEventListener('click', () => {
+            const width = document.getElementById('width').value;
+            const height = document.getElementById('height').value;
+            const input_index = document.getElementById('index-input');
+            if (isNaN(width) || isNaN(height)) {
+                alert('Please enter a valid number');
+                return;
+            }
+            if (!gl_canvas0) {
+                alert('Please select a series first!');
+                return;
+            }
+            gl_canvas0.resize(width, height);
+        })
+
+        document.getElementById('scale-submit').addEventListener('click', () => {
+            const input = document.getElementById('scale-input');
+            scaleValue = parseFloat(input.value);
+            const input_index = document.getElementById('index-input');
+            const indexValue = parseInt(input_index.value);
+            if (isNaN(scaleValue)) {
+                alert('Please enter a valid number');
+                return;
+            }
+            if (!gl_canvas0) {
+                alert('Please select a series first!');
+                return;
+            }
+            gl_canvas0.set_scale(indexValue, scaleValue);
+            console.log('Submitted scale:', scaleValue);
+            // Here you can call a WASM function or update AppState, e.g.:
+            // appState.scale = scaleValue;
+            // update_scale(appState);
         });
+
+        document.getElementById('trans-submit').addEventListener('click', () => {
+            let x = document.querySelector('#trans-x').value;
+            let y = document.querySelector('#trans-y').value;
+            let z = document.querySelector('#trans-z').value;
+            const input_index = document.getElementById('index-input');
+            const indexValue = parseInt(input_index.value);
+            console.log('translate:', x, y, z);
+            if (isNaN(x) && isNaN(y) && isNaN(z)) {
+                alert('Please enter a valid number');
+                return;
+            }
+            if (!gl_canvas0) {
+                alert('Please select a series first!');
+                return;
+            }
+            gl_canvas0.set_pan(indexValue, x, y, z);
+        });
+
+        document.getElementById('winlev-submit').addEventListener('click', () => {
+            const win = document.getElementById('window').value;
+            let lev = document.getElementById('level').value;
+            const input_index = document.getElementById('index-input');
+            const indexValue = parseInt(input_index.value);
+
+            if (!gl_canvas1) {
+                alert('Please select a series first!');
+                return;
+            }
+            win && gl_canvas1.set_window_width(indexValue, win);
+            lev && gl_canvas1.set_window_level(indexValue, lev);
+            // render_app.drop_state();
+        });
+
+        // Function-level comment: Mesh mode checkbox event listener for runtime mesh toggling via WASM.
+        document.getElementById('mesh-mode').addEventListener('change', (event) => {
+            const isEnabled = event.target.checked;
+            const statusSpan = document.getElementById('mesh-status');
+
+            if (!gl_canvas0) {
+                alert('Please select a series first!');
+                event.target.checked = !isEnabled; // Revert checkbox state
+                return;
+            }
+
+            // Call WASM function to toggle mesh mode
+            gl_canvas0.enable_mesh(isEnabled);
+            statusSpan.textContent = isEnabled ? 'Enabled' : 'Disabled';
+            console.log('Mesh mode toggled:', isEnabled);
+        });
+
+        // Function-level comment: Mesh view slot input change listener to update status display.
+        document.getElementById('mesh-view-slot').addEventListener('input', (event) => {
+            const slot = event.target.value;
+            const statusSpan = document.getElementById('mesh-view-status');
+            statusSpan.textContent = `Target: Slot ${slot}`;
+        });
+
+        // Function-level comment: Mesh view switch button event listener for changing active mesh view.
+        document.getElementById('mesh-view-switch').addEventListener('click', () => {
+            const slotInput = document.getElementById('mesh-view-slot');
+            const statusSpan = document.getElementById('mesh-view-status');
+            const slot = slotInput.value;
+
+            // TODO: Call WASM function to switch mesh view
+            // gl_canvas0.switch_mesh_view(parseInt(slot));
+
+            statusSpan.textContent = `Active: Slot ${slot}`;
+            console.log('Mesh view switched to slot:', slot);
+        });
+
+        document.querySelector('#file').addEventListener('change', async () => {
+
+            if (state.render_app) {
+                delete state.render_app;
+                delete state.gl_canvas;
+            }
+
+
+            const files = document.querySelector('input[type="file"]').files;
+            fileLists = files;
+            const fileArray = Array.from(files);
+            let patient_list = await get_tree(fileArray);
+            let ul = createTree(patient_list);
+            const treeContainer = document.getElementById('tree-container');
+            treeContainer.appendChild(createTree(patient_list));
+
+        })
+
+        function get_tree(fileArray) {
+            return new Promise(async (resolve, reject) => {
+                try {
+                    repo = await parse_dcm_files_wasm(fileArray);
+                    // 获取所有患者信息
+                    let patients = JSON.parse(repo.get_all_patients());
+                    let patient_list = [];
+                    for (const patient of patients) {
+                        let patient_data = {
+                            label: patient.name,
+                            children: []
+                        };
+                        // 获取患者的研究（study）
+                        let studies = JSON.parse(repo.get_studies_by_patient(patient.patient_id));
+
+                        for (const study of studies) {
+                            let study_data = {
+                                label: study.uid,
+                                children: []
+                            };
+                            // 获取研究的序列（series）
+                            let series = JSON.parse(repo.get_series_by_study(study.uid));
+                            for (const serie of series) {
+                                let serie_data = {
+                                    label: serie.uid,
+                                    images: []
+                                };
+                                // 获取序列的图像（images）
+                                let images_id = JSON.parse(repo.get_images_by_series(serie.uid));
+                                serie_data.images = images_id; // 添加图像数据
+                                study_data.children.push(serie_data); // 添加序列数据
+                            }
+                            patient_data.children.push(study_data); // 添加研究数据
+                        }
+                        patient_list.push(patient_data); // 添加患者数据
+                    }
+                    resolve(patient_list)
+                    // console.log(patient_list); // 格式化输出 JSON 数据
+                } catch (error) {
+                    reject(error);
+                    console.error("Error parsing DICOM files:", error);
+                }
+            })
+
+        }
+
+        function createTree(data, isRoot = true) {
+            const ul = document.createElement('ul');
+            data.forEach(item => {
+                const li = document.createElement('li');
+                const toggle = document.createElement('span');
+                toggle.textContent = item.label;
+                toggle.classList.add('toggle');
+
+                const expandIcon = document.createElement('span');
+                if (item.children) {
+                    expandIcon.classList.add('expand-icon');
+                    expandIcon.innerHTML = '▶'; // 默认使用右箭头
+                    li.appendChild(expandIcon);
+                }
+                li.appendChild(toggle);
+                isRoot && li.classList.add('series'); // 给最外层 li 添加 class
+                // 如果有子节点，则递归创建树
+                if (item.children) {
+                    const childUl = createTree(item.children, false);
+                    childUl.style.display = 'none'; // 初始隐藏子节点
+                    li.appendChild(childUl);
+                    // 添加点击事件来切换显示
+                    toggle.addEventListener('click', () => {
+                        const isHidden = childUl.style.display === 'none';
+                        childUl.style.display = isHidden ? 'block' : 'none';
+                        expandIcon.innerHTML = isHidden ? '▼' : '▶'; // 更新图标
+                        if (isHidden) {
+                            expandIcon.classList.remove('collapsed');
+                        } else {
+                            expandIcon.classList.add('collapsed');
+                        }
+                    });
+                } else {
+                    toggle.addEventListener('click', async () => {
+                        series_id = toggle.innerHTML;
+                        let vol = repo.generate_ct_volume(series_id);
+                        volume = vol;
+                        if (true) {
+                            if (render_app == null) {
+                                render_app = await get_render_app();
+                                gl_canvas0 = render_app.get_glcanvas();
+                                gl_canvas0.load_data_from_ct_volume(volume);
+                                gl_canvas1 = render_app.get_glcanvas();
+                                render_app.run();
+                            } else {
+                                // gl_canvas0.quit();
+                                console.log('render_app:', render_app);
+                                // get_render_app_by_div_id(render_app, 'render_app'); // 绑定到 div
+                                // gl_canvas0.load_data_from_ct_volume(volume);
+                                // let graphics = create_graphics_by_div_id('render_app').await;
+                                // console.log('graphics:', graphics);
+                                gl_canvas0.set_window_by_div_id('render_app', volume);
+                                console.log(vol);
+                                // gl_canvas0.load_data_from_ct_volume(volume);
+                            }
+                            flag = false;
+                        } else {
+                            gl_canvas0.load_data_from_ct_volume(volume);
+                        }
+
+                    })
+                }
+
+                ul.appendChild(li);
+            });
+            return ul;
+        }
+
     </script>
 </body>
 

@@ -126,10 +126,13 @@
             const center_x = document.getElementById('center-x').value;
             const center_y = document.getElementById('center-y').value;
             const center_z = document.getElementById('center-z').value;
-            gl_canvas0.get_screen_coord_in_mm(indexValue0, center_x, center_y, center_z)
+            gl_canvas0.get_screen_coord_in_mm(indexValue, center_x, center_y, center_z)
                 .then((result) => {
-                    console.log('Screen Coord in MM:', result);
-                    gl_canvas0.set_center_at_point_in_mm(indexValue, result[0], result[1], result[2]);
+                    console.log('Screen Coord in MM:=============', result);
+                    // gl_canvas0.set_center_at_point_in_mm(indexValue, result[0], result[1], result[2]);
+                    gl_canvas0.set_center_at_point_in_mm(1, result[0], result[1], result[2]);
+                    gl_canvas0.set_center_at_point_in_mm(2, result[0], result[1], result[2]);
+                    gl_canvas0.set_center_at_point_in_mm(3, result[0], result[1], result[2]);
                 })
         })
         document.getElementById('resize-submit').addEventListener('click', () => {
@@ -197,7 +200,7 @@
             }
             win && gl_canvas1.set_window_width(indexValue, win);
             lev && gl_canvas1.set_window_level(indexValue, lev);
-            // render_app.drop_state();
+            render_app.drop_state();
         });
 
         // Function-level comment: Mesh mode checkbox event listener for runtime mesh toggling via WASM.
@@ -337,6 +340,13 @@
                     toggle.addEventListener('click', async () => {
                         series_id = toggle.innerHTML;
                         let vol = repo.generate_ct_volume(series_id);
+                        let images = JSON.parse(repo.get_images_by_series(series_id));
+                        let sort_imgs = images.sort((a, b) => {
+                            let a_pos_z = a.image_position_patient[2];
+                            let b_pos_z = b.image_position_patient[2];
+                            return a_pos_z - b_pos_z;
+                        })
+                        console.log(sort_imgs,'11111111111111')
                         volume = vol;
                         if (true) {
                             if (render_app == null) {
