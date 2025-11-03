@@ -290,6 +290,8 @@
       wasmModule: null,
       len: null,
       render_app: null,
+      spacing: [],
+      dim:[]
     };
 
     let gl_canvas = null;
@@ -414,7 +416,16 @@
           alert('Please select a series first!');
           return;
       }
-      gl_canvas.set_slice_mm(indexValue, sliceValue);
+      if (indexValue == 0) {
+        const slice_mm = (sliceValue - state.dim[2] / 2) * state.spacing[2];
+        gl_canvas.set_slice_mm(indexValue, slice_mm);
+      } else if (indexValue == 1) {
+        const slice_mm = (sliceValue - state.dim[0] / 2) * state.spacing[0];
+        gl_canvas.set_slice_mm(indexValue, slice_mm);
+      } else if (indexValue == 2) {
+        const slice_mm = (sliceValue - state.dim[1] / 2) * state.spacing[1];
+        gl_canvas.set_slice_mm(indexValue, slice_mm);
+      }
     })
 
     byId('set-center').addEventListener('click', () => {
@@ -513,13 +524,13 @@
             header.element_type = value;
             break;
           case 'DimSize':
-            const dims = value.split(' ').map(Number);
-            [header.dim_x, header.dim_y, header.dim_z] = dims;
+            state.dims = value.split(' ').map(Number);
+            [header.dim_x, header.dim_y, header.dim_z] = state.dims;
             state.len = header.dim_x * header.dim_y * header.dim_z;
             break;
           case 'ElementSpacing':
-            const spacing = value.split(' ').map(Number);
-            [header.spacing_x, header.spacing_y, header.spacing_z] = spacing;
+            state.spacing = value.split(' ').map(Number);
+            [header.spacing_x, header.spacing_y, header.spacing_z] = state.spacing;
             break;
           case 'ElementDataFile':
             header.data_file = value;
