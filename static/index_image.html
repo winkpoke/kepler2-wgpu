@@ -196,6 +196,13 @@
         <button id="slice-submit">Submit</button>
       </div>
       <div>
+        <label for="center-input">center:</label>
+        <label for="center-x">x:</label> <input type="number" id="center-x" step="0.1" value="0.0" placeholder="x">
+        <label for="center-y">y:</label> <input type="number" id="center-y" step="0.1" value="0.0" placeholder="y">
+        <label for="center-z">z:</label> <input type="number" id="center-z" step="0.1" value="0.0" placeholder="z">
+        <button id="set-center">Set Center</button>
+      </div>
+      <div>
         <label for="scale-input">Scale:</label>
         <input type="number" id="scale-input" step="10.0" value="1.0">
         <button id="scale-submit">Submit</button>
@@ -410,11 +417,13 @@
       gl_canvas.set_slice_mm(indexValue, sliceValue);
     })
 
-    byId('resize-submit').addEventListener('click', () => {
-      const width = byId('width').value;
-      const height = byId('height').value;
+    byId('set-center').addEventListener('click', () => {
+      const x = byId('center-x').value;
+      const y = byId('center-y').value;
+      const z = byId('center-z').value;
       const input_index = byId('index-input');
-      if (isNaN(width) || isNaN(height)) {
+      const indexValue = parseInt(input_index.value);
+      if (isNaN(x) || isNaN(y) || isNaN(z)) {
         alert('Please enter a valid number');
         return;
       }
@@ -422,7 +431,13 @@
         alert('Please select a series first!');
         return;
       }
-      gl_canvas.resize( width, height);
+      gl_canvas.get_screen_coord_in_mm(indexValue, x, y, z)
+        .then((result) => {
+          console.log('Screen Coord in MM:=============', result);
+          gl_canvas.set_center_at_point_in_mm(1, result[0], result[1], result[2]);
+          gl_canvas.set_center_at_point_in_mm(2, result[0], result[1], result[2]);
+          gl_canvas.set_center_at_point_in_mm(3, result[0], result[1], result[2]);
+        })
     })
 
     byId('scale-submit').addEventListener('click', () => {
