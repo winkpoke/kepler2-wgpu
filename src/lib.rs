@@ -60,7 +60,7 @@ impl log::Log for WasmLogger {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
         let t = metadata.target();
         let is_wgpu = t.starts_with("wgpu") || t.starts_with("naga");
-        if is_wgpu { metadata.level() >= log::Level::Warn } else { metadata.level() <= log::Level::Info }
+        if is_wgpu { metadata.level() >= log::Level::Warn } else {true} 
     }
     fn log(&self, record: &log::Record) {
         if !self.enabled(record.metadata()) { return; }
@@ -69,7 +69,7 @@ impl log::Log for WasmLogger {
             log::Level::Error => web_sys::console::error_1(&JsValue::from_str(&msg)),
             log::Level::Warn => web_sys::console::warn_1(&JsValue::from_str(&msg)),
             log::Level::Info => web_sys::console::log_1(&JsValue::from_str(&msg)),
-            log::Level::Debug => web_sys::console::debug_1(&JsValue::from_str(&msg)),
+            log::Level::Debug => web_sys::console::log_1(&JsValue::from_str(&msg)),
             log::Level::Trace => web_sys::console::log_1(&JsValue::from_str(&msg)),
         }
     }
