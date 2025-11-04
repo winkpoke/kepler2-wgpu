@@ -149,7 +149,7 @@ impl MprViewWgpuImpl {
         self.set_vertex_uniforms(new_uniforms.vert);
         self.set_fragment_uniforms(new_uniforms.frag);
         
-        log::debug!("Set both vertex and fragment uniform values");
+        log::trace!("Set both vertex and fragment uniform values");
     }
 
     /// Set transformation matrix
@@ -191,7 +191,7 @@ impl MprViewWgpuImpl {
     pub fn set_vertex_uniforms(&mut self, vertex_uniforms: UniformsVert) {
         self.uniforms.vert = vertex_uniforms;
         
-        log::debug!("Set vertex uniform values");
+        log::trace!("Set vertex uniform values");
     }
 
     /// Set only the fragment uniform values
@@ -201,7 +201,7 @@ impl MprViewWgpuImpl {
     pub fn set_fragment_uniforms(&mut self, fragment_uniforms: UniformsFrag) {
         self.uniforms.frag = fragment_uniforms;
         
-        log::debug!("Set fragment uniform values with window_width: {:.1}, window_level: {:.1}, slice: {:.1}", 
+        log::trace!("Set fragment uniform values with window_width: {:.1}, window_level: {:.1}, slice: {:.1}", 
                    fragment_uniforms.window_width, fragment_uniforms.window_level, fragment_uniforms.slice);
     }
 
@@ -216,7 +216,7 @@ impl MprViewWgpuImpl {
             bytemuck::cast_slice(&[self.uniforms.vert]),
         );
         
-        log::debug!("Updated vertex uniform buffer");
+        log::trace!("Updated vertex uniform buffer");
     }
 
     /// Update fragment uniform buffer with current uniform values
@@ -230,7 +230,7 @@ impl MprViewWgpuImpl {
             bytemuck::cast_slice(&[self.uniforms.frag]),
         );
         
-        log::debug!("Updated fragment uniform buffer with window_width: {:.1}, window_level: {:.1}, slice: {:.1}", 
+        log::trace!("Updated fragment uniform buffer with window_width: {:.1}, window_level: {:.1}, slice: {:.1}", 
                    self.uniforms.frag.window_width, self.uniforms.frag.window_level, self.uniforms.frag.slice);
     }
 
@@ -242,7 +242,7 @@ impl MprViewWgpuImpl {
         self.update_vertex_uniforms_buffer(queue);
         self.update_fragment_uniforms_buffer(queue);
         
-        log::debug!("Updated both vertex and fragment uniform buffers");
+        log::trace!("Updated both vertex and fragment uniform buffers");
     }
 
     /// Helper function to create vertex uniform buffer and bind group
