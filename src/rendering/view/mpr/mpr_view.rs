@@ -694,8 +694,10 @@ impl MprView {
         log::debug!("set_center_at_point_in_mm: target point={:?}", p_mm);
         log::debug!("set_center_at_point_in_mm: current pan={:?}", self.pan);
         
-        let z = -self.pan[2];
-        let center = [0.5, 0.5, z];
+        self.pan = [0.0, 0.0, 0.0];
+        // let z = -self.pan[2];
+        // let center = [0.5, 0.5, z];
+        let center = [0.5, 0.5, 0.0];
         let center_mm = self.screen_coord_to_world(center);
         
         log::debug!("set_center_at_point_in_mm: center_mm={:?}", center_mm);
@@ -748,10 +750,16 @@ impl MprView {
         log::debug!("set_center_at_point_in_mm: transformation result={:?}", result);
         
         // Update pan values with bounds checking
+        // let new_pan = [
+        //     self.pan[0] + result[0],
+        //     self.pan[1] + result[1],
+        //     self.pan[2] + result[2],
+        // ];
+
         let new_pan = [
-            self.pan[0] + result[0],
-            self.pan[1] + result[1],
-            self.pan[2] + result[2],
+            result[0] / self.scale,
+            result[1] / self.scale,
+            result[2],
         ];
         
         // Validate new pan values
