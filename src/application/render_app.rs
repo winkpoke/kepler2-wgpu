@@ -189,6 +189,10 @@ impl RenderApp {
                     state.set_center_at_point_in_mm(index, x_mm, y_mm, z_mm);
                     log::info!("CenterAtPointInMM set to: x_mm={x_mm}, y_mm={y_mm}, z_mm={z_mm}");
                 }
+                Event::UserEvent(UserEvent::ViewClick(view_index, screen_x, screen_y, screen_z)) => {
+                    state.handle_view_click(view_index, screen_x, screen_y, screen_z);
+                    log::info!("ViewClick processed for view {}: screen_x={screen_x}, screen_y={screen_y}, screen_z={screen_z}", view_index);
+                }
                 #[cfg(target_arch = "wasm32")]
                 Event::UserEvent(UserEvent::GetScreenCoordInMM(index, coord, sender)) => {
                     // Function-level comment: Handle get_screen_coord_in_mm request and send result back via oneshot channel.

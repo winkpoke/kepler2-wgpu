@@ -416,16 +416,16 @@
           alert('Please select a series first!');
           return;
       }
-      if (indexValue == 0) {
-        const slice_mm = (sliceValue - state.dim[2] / 2) * state.spacing[2];
-        gl_canvas.set_slice_mm(indexValue, slice_mm);
-      } else if (indexValue == 1) {
-        const slice_mm = (sliceValue - state.dim[0] / 2) * state.spacing[0];
-        gl_canvas.set_slice_mm(indexValue, slice_mm);
-      } else if (indexValue == 2) {
-        const slice_mm = (sliceValue - state.dim[1] / 2) * state.spacing[1];
-        gl_canvas.set_slice_mm(indexValue, slice_mm);
-      }
+      // if (indexValue == 0) {
+      //   const slice_mm = (sliceValue - state.dim[2] / 2) * state.spacing[2];
+      //   gl_canvas.set_slice_mm(indexValue, slice_mm);
+      // } else if (indexValue == 1) {
+      //   const slice_mm = (sliceValue - state.dim[0] / 2) * state.spacing[0];
+      //   gl_canvas.set_slice_mm(indexValue, slice_mm);
+      // } else if (indexValue == 2) {
+      //   const slice_mm = (sliceValue - state.dim[1] / 2) * state.spacing[1];
+        gl_canvas.set_slice_mm(indexValue, sliceValue);
+      // }
     })
 
     byId('set-center').addEventListener('click', () => {
@@ -442,13 +442,14 @@
         alert('Please select a series first!');
         return;
       }
-      gl_canvas.get_screen_coord_in_mm(indexValue, x, y, z)
-        .then((result) => {
-          console.log('Screen Coord in MM:=============', result);
-          gl_canvas.set_center_at_point_in_mm(1, result[0], result[1], result[2]);
-          gl_canvas.set_center_at_point_in_mm(2, result[0], result[1], result[2]);
-          gl_canvas.set_center_at_point_in_mm(3, result[0], result[1], result[2]);
-        })
+      // gl_canvas.get_screen_coord_in_mm(indexValue, x, y, z)
+      //   .then((result) => {
+      //     console.log('Screen Coord in MM:=============', result);
+      //     gl_canvas.set_center_at_point_in_mm(1, result[0], result[1], result[2]);
+      //     gl_canvas.set_center_at_point_in_mm(2, result[0], result[1], result[2]);
+      //     gl_canvas.set_center_at_point_in_mm(3, result[0], result[1], result[2]);
+      //   })
+      gl_canvas.handle_view_click(indexValue, x, y, z);
     })
 
     byId('scale-submit').addEventListener('click', () => {

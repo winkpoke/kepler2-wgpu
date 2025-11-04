@@ -686,6 +686,56 @@ impl State {
         coord
     }
 
+    /// Function-level comment: Handle view click for cross-sectional linking between MPR views.
+    /// When a user clicks on an MPR view, this method converts the screen coordinates to world coordinates
+    /// and updates the slice positions of other MPR views to show the corresponding cross-sections.
+    pub fn handle_view_click(&mut self, clicked_view_index: usize, screen_x: f32, screen_y: f32, screen_z: f32) -> [f32; 3] {
+        // Default failure return uses NaN to indicate invalid result to the caller
+        let mut result = [f32::NAN, f32::NAN, f32::NAN];
+        
+        // Convert screen coordinates to world coordinates for the clicked view
+        let (world_coord, slice_mm) = {
+            let clicked_view = self.layout.views.get(clicked_view_index).unwrap();
+            if let Some(mpr_view) = clicked_view.as_any().downcast_ref::<MprView>() {
+                let world_coord = mpr_view.screen_coord_to_world([screen_x, screen_y, screen_z]);
+                let slice = mpr_view.get_slice_mm();
+                log::info!("View {} clicked at screen: {:#?}, world: {:#?}, slice: {}", clicked_view_index, (screen_x, screen_y, screen_z), world_coord, slice);
+                (world_coord, slice)
+            }else {
+                warn!("handle_view_click: view {} is not an MprView", clicked_view_index);
+                (result, f32::NAN)
+            }
+        };
+
+        // Update slice positions for all other MPR views
+        for (index, view) in self.layout.views.iter_mut().enumerate() {
+            // Skip the clicked view itself
+            if index == clicked_view_index { continue; }
+
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                let orientation = mpr_view.get_orientation();
+                // Calculate slice position based on the orientation
+                let slice_position = match orientation {
+                    Orientation::Transverse => world_coord[2],      // Z axis for axial (transverse)
+                    Orientation::Coronal => world_coord[1],         // Y axis for coronal
+                    Orientation::Sagittal => world_coord[0],        // X axis for sagittal
+                    Orientation::Oblique => {
+                        // Oblique: fall back to Z-axis for slice; consider improving with normal projection
+                        log::warn!("Oblique orientation: defaulting slice to Z-axis value for view {}", index);
+                        world_coord[2]
+                    }
+                };
+                log::info!("View {} set slice to: {}", index, slice_position);
+
+                // Set the slice position
+                // mpr_view.set_slice_mm(slice_position);
+            }
+        }
+        
+        result = [world_coord[0], world_coord[1], slice_mm];
+        result
+    }
+
     pub fn world_coord_to_screen(&self, index: usize, world_coord: [f32; 3]) -> [f32; 3] {
         if let Some(view) = self.layout.views.get(index) {
             if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {

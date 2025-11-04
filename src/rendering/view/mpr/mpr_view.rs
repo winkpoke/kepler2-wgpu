@@ -49,6 +49,8 @@ pub struct MprView {
     dim: (u32, u32),
     /// Window/level parameters for CT display
     window_level: WindowLevel,
+    /// Anatomical orientation for this view (Axial, Coronal, Sagittal)
+    orientation: Orientation,
 }
 
 impl MprView {
@@ -179,6 +181,7 @@ impl MprView {
             pos: validated_pos,
             dim: validated_dim,
             window_level,  // Use provided WindowLevel with configured bias
+            orientation,   // Store orientation for cross-sectional linking
         }
     }
 
@@ -606,6 +609,15 @@ impl MprView {
     /// Return current screen-space translation vector.
     pub fn get_translate_in_screen_coord(&self) -> [f32; 3] {
         self.pan
+    }
+
+    /// Get the anatomical orientation of this MPR view.
+    /// 
+    /// Returns the orientation (Axial, Coronal, Sagittal) that determines
+    /// which anatomical plane this view displays. This is essential for
+    /// cross-sectional view linking functionality.
+    pub fn get_orientation(&self) -> &Orientation {
+        &self.orientation
     }
 
     pub fn get_base(&self) -> Base<f32> {
