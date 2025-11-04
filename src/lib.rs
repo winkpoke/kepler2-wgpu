@@ -60,7 +60,7 @@ impl log::Log for WasmLogger {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
         let t = metadata.target();
         let is_wgpu = t.starts_with("wgpu") || t.starts_with("naga");
-        if is_wgpu { metadata.level() >= log::Level::Warn } else { metadata.level() <= log::Level::Info }
+        if is_wgpu { metadata.level() >= log::Level::Warn } else { true }
     }
     fn log(&self, record: &log::Record) {
         if !self.enabled(record.metadata()) { return; }
