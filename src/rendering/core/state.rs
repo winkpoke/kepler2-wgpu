@@ -161,7 +161,9 @@ impl State {
     }
 
     pub fn swap_graphics(&mut self, new_graphics: Graphics) {
+        let new_gc = GraphicsContext::from_graphics(new_graphics);
         crate::rendering::core::pipeline::set_swapchain_format(self.surface_config().format);
+        self.graphics_context = new_gc;
         
         // Function-level comment: Clear mesh resources bound to old device to prevent stale references.
         self.texture_pool.clear_depth_view();
