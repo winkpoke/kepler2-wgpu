@@ -35,8 +35,10 @@ pub enum UserEvent {
     #[cfg(target_arch = "wasm32")]
     WorldCoordToScreen(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     SetCenterAtPointInMM(usize, f32, f32, f32), // screen coords
-    /// View click event for cross-sectional linking between MPR views
     ViewClick(usize, f32, f32, f32), // view_index, screen_x, screen_y, screen_z
+    #[cfg(target_arch = "wasm32")]
+    /// View click with reply; returns [x_mm, y_mm, slice_mm, reserved]
+    ViewClickGet(usize, f32, f32, f32, oneshot::Sender<[f32; 4]>),
     // ... add more events as needed
 }
 
@@ -159,6 +161,21 @@ impl GLCanvas {
                 log::error!("Failed to receive GetScreenCoordInMM result for window {}: {:?}", index, e);
                 Err(format!("Failed to receive result: {:?}", e))
             }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    /// Dispatch a view click and asynchronously return computed world/slice data.
+    pub async fn handle_view_click_get(&self, index: usize, x: f32, y: f32, z: f32) -> Result<Box<[f32]>, String> {
+        let (tx, rx) = oneshot::channel();
+
+        if let Err(e) = self.proxy.send_event(UserEvent::ViewClickGet(index, x, y, z, tx)) {
+            log::error!("Failed to send ViewClickGet event for window {}: {:?}", index, e);
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+        match rx.await {
+            Ok(result) => Ok(result.into()),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
         }
     }
 

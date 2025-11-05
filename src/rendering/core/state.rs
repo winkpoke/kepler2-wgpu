@@ -161,15 +161,20 @@ impl State {
     }
 
     pub fn swap_graphics(&mut self, new_graphics: Graphics) {
-        crate::rendering::core::pipeline::set_swapchain_format(self.surface_config().format);
-        
-        // Function-level comment: Clear mesh resources bound to old device to prevent stale references.
+        // Function-level comment: Swap the underlying Graphics (window/surface/device/queue) safely.
+        // This replaces the graphics inside GraphicsContext and updates dependent state:
+        // - PassExecutor is recreated with the new surface format to keep pipelines targeting the correct format.
+        // - Global swapchain format is updated for modules that query it.
+        // - Mesh depth view is cleared to avoid stale references across device changes.
+
+        // Recreate GraphicsContext from new Graphics to ensure PassExecutor targets the new surface format
+        let new_gc = crate::rendering::core::graphics::GraphicsContext::from_graphics(new_graphics);
+        // Update global swapchain format for pipeline helpers
+        crate::rendering::core::pipeline::set_swapchain_format(new_gc.graphics.surface_config.format);
+        // Replace the graphics_context
+        self.graphics_context = new_gc;
+        // Clear cached mesh depth texture views bound to the old device
         self.texture_pool.clear_depth_view();
-        
-        // self.resize(winit::dpi::PhysicalSize {
-        //     width: self.surface_config().width,
-        //     height: self.surface_config().height,
-        // });
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -689,9 +694,9 @@ impl State {
     /// Function-level comment: Handle view click for cross-sectional linking between MPR views.
     /// When a user clicks on an MPR view, this method converts the screen coordinates to world coordinates
     /// and updates the slice positions of other MPR views to show the corresponding cross-sections.
-    pub fn handle_view_click(&mut self, clicked_view_index: usize, screen_x: f32, screen_y: f32, screen_z: f32) -> [f32; 3] {
+    pub fn handle_view_click(&mut self, clicked_view_index: usize, screen_x: f32, screen_y: f32, screen_z: f32) -> [f32; 4] {
         // Default failure return uses NaN to indicate invalid result to the caller
-        let mut result = [f32::NAN, f32::NAN, f32::NAN];
+        let mut result = [f32::NAN, f32::NAN, f32::NAN, f32::NAN];
         
         // Convert screen coordinates to world coordinates for the clicked view
         let (world_coord, slice_mm) = {
@@ -703,36 +708,38 @@ impl State {
                 (world_coord, slice)
             }else {
                 warn!("handle_view_click: view {} is not an MprView", clicked_view_index);
-                (result, f32::NAN)
+                ([f32::NAN, f32::NAN, f32::NAN], f32::NAN)
             }
         };
 
         // Update slice positions for all other MPR views
         for (index, view) in self.layout.views.iter_mut().enumerate() {
             // Skip the clicked view itself
-            if index == clicked_view_index { continue; }
+            if index == clicked_view_index {
+                result[index] = slice_mm;
+                continue; 
+            }
 
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                let shift = mpr_view.set_center_at_point_in_mm(world_coord).unwrap();
+
                 let orientation = mpr_view.get_orientation();
                 // Calculate slice position based on the orientation
                 let slice_position = match orientation {
-                    Orientation::Transverse => world_coord[2],      // Z axis for axial (transverse)
-                    Orientation::Coronal => world_coord[1],         // Y axis for coronal
-                    Orientation::Sagittal => world_coord[0],        // X axis for sagittal
+                    Orientation::Transverse => shift[2],      // Z axis for axial (transverse)
+                    Orientation::Coronal => shift[1],         // Y axis for coronal
+                    Orientation::Sagittal => shift[0],        // X axis for sagittal
                     Orientation::Oblique => {
                         // Oblique: fall back to Z-axis for slice; consider improving with normal projection
                         log::warn!("Oblique orientation: defaulting slice to Z-axis value for view {}", index);
-                        world_coord[2]
+                        shift[2]
                     }
                 };
-                log::info!("View {} set slice to: {}", index, slice_position);
-
-                // Set the slice position
-                // mpr_view.set_slice_mm(slice_position);
+                result[index] = slice_position;
             }
         }
         
-        result = [world_coord[0], world_coord[1], slice_mm];
+        log::info!("handle_view_click: result={:?}", result);
         result
     }
 

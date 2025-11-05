@@ -428,13 +428,13 @@
       // }
     })
 
-    byId('set-center').addEventListener('click', () => {
-      const x = byId('center-x').value;
-      const y = byId('center-y').value;
-      const z = byId('center-z').value;
+    byId('set-center').addEventListener('click', async () => {
+      const x = parseFloat(byId('center-x').value);
+      const y = parseFloat(byId('center-y').value);
+      const z = parseFloat(byId('center-z').value);
       const input_index = byId('index-input');
       const indexValue = parseInt(input_index.value);
-      if (isNaN(x) || isNaN(y) || isNaN(z)) {
+      if ([x, y, z].some(v => Number.isNaN(v))) {
         alert('Please enter a valid number');
         return;
       }
@@ -442,15 +442,14 @@
         alert('Please select a series first!');
         return;
       }
-      // gl_canvas.get_screen_coord_in_mm(indexValue, x, y, z)
-      //   .then((result) => {
-      //     console.log('Screen Coord in MM:=============', result);
-      //     gl_canvas.set_center_at_point_in_mm(1, result[0], result[1], result[2]);
-      //     gl_canvas.set_center_at_point_in_mm(2, result[0], result[1], result[2]);
-      //     gl_canvas.set_center_at_point_in_mm(3, result[0], result[1], result[2]);
-      //   })
-      gl_canvas.handle_view_click(indexValue, x, y, z);
-    })
+      // Function-level comment: Request Rust to compute world/slice data and await the result Promise.
+      try {
+        const result = await gl_canvas.handle_view_click_get(indexValue, x, y, z);
+        console.log('handle_view_click:', result);
+      } catch (e) {
+        console.error('handle_view_click error:', e);
+      }
+    });
 
     byId('scale-submit').addEventListener('click', () => {
         const input = byId('scale-input');

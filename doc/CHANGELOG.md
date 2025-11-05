@@ -188,6 +188,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [WASM] - 2025-11-05T13-58-43
+
+### Fixed
+- **Blank Canvas on Second Series Click in index.html**: Implemented proper graphics swapping in `State::swap_graphics()`.
+  - Root cause: `swap_graphics()` did not replace the underlying `Graphics` (window/surface/device/queue), so after `SetWindowByDivId` → `GraphicsReady` the app continued rendering to the old canvas, leaving the new canvas blank.
+  - Fix: Recreate `GraphicsContext` from the new `Graphics`, update global swapchain format, and clear stale mesh depth views.
+  - Behavior: After clicking a second series, `RenderApp` appends a new canvas to the target div, swaps graphics, resizes, and reloads the CT volume — the images now render correctly.
+  - Builds: Verified to compile for native (`cargo build`, `cargo test`) and WASM (`wasm-pack build -t web`).
+
+
 ## Template for Future Releases
 
 ### [Version] - YYYY-MM-DD
@@ -209,3 +219,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Security
 - Vulnerability fixes
+## 2025-11-05T13-58-43
+- Implement DICOM-accurate Window/Level mapping in WGSL shaders:
+  - `src/rendering/shaders/shader_tex.wgsl` (MPR): replace linear mapping with DICOM formula using `-0.5` offset and `(W-1)` denominator; clamp via [low, high] thresholds.
+  - `src/rendering/shaders/mip.wgsl` (MIP): adopt same DICOM formula and remove non-standard gamma (0.9) to ensure clinical consistency.
+- Documentation: add `doc/window-level/2025-11-05T13-58-43-dicom-window-level-analysis.md` with detailed comparison to professional DICOM viewers, improvement suggestions, and no_run code examples.
+- Rationale: Align grayscale rendering with DICOM PS3.3 C.11.2.1 to match expected display behavior and reduce discrepancies across viewers.

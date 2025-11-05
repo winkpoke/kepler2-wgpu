@@ -694,7 +694,7 @@ impl MprView {
     /// 
     /// This method validates all inputs and handles matrix inversion failures gracefully.
     /// It will not panic on invalid coordinates or singular matrices.
-    pub fn set_center_at_point_in_mm(&mut self, p_mm: [f32; 3]) -> KeplerResult<()> {
+    pub fn set_center_at_point_in_mm(&mut self, p_mm: [f32; 3]) -> KeplerResult<[f32; 3]> {
         // Input validation: check for NaN and infinite values
         for (i, &coord) in p_mm.iter().enumerate() {
             if !coord.is_finite() {
@@ -785,7 +785,7 @@ impl MprView {
         self.pan = new_pan;
         log::debug!("set_center_at_point_in_mm: updated pan={:?}", self.pan);
         
-        Ok(())
+        Ok((shift))
     }
 }
 

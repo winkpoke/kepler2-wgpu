@@ -194,6 +194,16 @@ impl RenderApp {
                     log::info!("ViewClick processed for view {}: screen_x={screen_x}, screen_y={screen_y}, screen_z={screen_z}", view_index);
                 }
                 #[cfg(target_arch = "wasm32")]
+                Event::UserEvent(UserEvent::ViewClickGet(view_index, screen_x, screen_y, screen_z, sender)) => {
+                    // Function-level comment: Compute view click result and send it back to JS via oneshot channel.
+                    let result = state.handle_view_click(view_index, screen_x, screen_y, screen_z);
+                    if let Err(_) = sender.send(result) {
+                        log::error!("Failed to send ViewClickGet result for view {}", view_index);
+                    } else {
+                        log::info!("Sent ViewClickGet result for view {}: {:?}", view_index, result);
+                    }
+                }
+                #[cfg(target_arch = "wasm32")]
                 Event::UserEvent(UserEvent::GetScreenCoordInMM(index, coord, sender)) => {
                     // Function-level comment: Handle get_screen_coord_in_mm request and send result back via oneshot channel.
                     let result = state.get_screen_coord_in_mm(index, coord);
