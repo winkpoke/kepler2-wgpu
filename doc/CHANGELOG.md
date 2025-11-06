@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Spine Vertebra Mesh**: Added anatomically-inspired spine vertebra mesh generation for medical imaging visualization
+  - **Anatomical Structure**: Simplified thoracic vertebra representation with body, arch, and processes
+  - **Medical Accuracy**: Bone-colored mesh (light beige/cream) for realistic anatomical reference
+  - **Component-Based**: Vertebra body, vertebral arch, spinous process, transverse processes, and articular processes
+  - **Lighting Ready**: Proper vertex normals for accurate lighting calculations in medical contexts
+  - **Scalable Design**: Modular box-based construction allows for future anatomical refinements
+  - **Cross-Platform**: Compatible with both native and WebAssembly builds
+  - **Integration Ready**: Accessible via `Mesh::spine_vertebra()` method for immediate use in mesh views
 - **Architecture Documentation**: Created comprehensive state structure refactoring plan (`doc/redering/state-structure-refactoring-plan.md`) outlining separation of concerns improvements for the monolithic State struct
 
 ### Removed

@@ -595,7 +595,8 @@ impl State {
         log::info!("Mesh rotation enabled");
         
         // Create fresh BasicMeshContext for each mesh view
-        let mesh = Mesh::uniform_color_cube();
+        // let mesh = Mesh::uniform_color_cube();
+        let mesh = Mesh::spine_vertebra();
         let ctx = BasicMeshContext::new(
             self.device(),
             self.queue(),

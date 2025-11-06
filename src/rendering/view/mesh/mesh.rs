@@ -223,6 +223,206 @@ impl Mesh {
 
         Self { vertices, indices }
     }
+
+    /// Function-level comment: Creates a simplified spine vertebra mesh for medical imaging visualization
+    /// Represents a thoracic vertebra with body, arch, and processes for anatomical reference
+    pub fn spine_vertebra() -> Self {
+        // Vertebra bone color (light beige/cream)
+        let bone_color = [0.9, 0.85, 0.75];
+        
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+        let mut vertex_index = 0u16;
+        
+        // Helper function to add a box with proper normals
+        let mut add_box = |center: [f32; 3], size: [f32; 3], color: [f32; 3]| {
+            let half_size = [size[0] * 0.5, size[1] * 0.5, size[2] * 0.5];
+            
+            // Define face normals
+            let front_normal = [0.0, 0.0, 1.0];
+            let back_normal = [0.0, 0.0, -1.0];
+            let bottom_normal = [0.0, -1.0, 0.0];
+            let top_normal = [0.0, 1.0, 0.0];
+            let left_normal = [-1.0, 0.0, 0.0];
+            let right_normal = [1.0, 0.0, 0.0];
+            
+            // Define vertices relative to center
+            let base_index = vertex_index;
+            
+            // Front face vertices
+            vertices.push(MeshVertex {
+                position: [center[0] - half_size[0], center[1] - half_size[1], center[2] + half_size[2]],
+                normal: front_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] + half_size[0], center[1] - half_size[1], center[2] + half_size[2]],
+                normal: front_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] + half_size[0], center[1] + half_size[1], center[2] + half_size[2]],
+                normal: front_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] - half_size[0], center[1] + half_size[1], center[2] + half_size[2]],
+                normal: front_normal,
+                color,
+            });
+            
+            // Back face vertices
+            vertices.push(MeshVertex {
+                position: [center[0] + half_size[0], center[1] - half_size[1], center[2] - half_size[2]],
+                normal: back_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] - half_size[0], center[1] - half_size[1], center[2] - half_size[2]],
+                normal: back_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] - half_size[0], center[1] + half_size[1], center[2] - half_size[2]],
+                normal: back_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] + half_size[0], center[1] + half_size[1], center[2] - half_size[2]],
+                normal: back_normal,
+                color,
+            });
+            
+            // Bottom face vertices
+            vertices.push(MeshVertex {
+                position: [center[0] - half_size[0], center[1] - half_size[1], center[2] - half_size[2]],
+                normal: bottom_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] + half_size[0], center[1] - half_size[1], center[2] - half_size[2]],
+                normal: bottom_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] + half_size[0], center[1] - half_size[1], center[2] + half_size[2]],
+                normal: bottom_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] - half_size[0], center[1] - half_size[1], center[2] + half_size[2]],
+                normal: bottom_normal,
+                color,
+            });
+            
+            // Top face vertices
+            vertices.push(MeshVertex {
+                position: [center[0] - half_size[0], center[1] + half_size[1], center[2] + half_size[2]],
+                normal: top_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] + half_size[0], center[1] + half_size[1], center[2] + half_size[2]],
+                normal: top_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] + half_size[0], center[1] + half_size[1], center[2] - half_size[2]],
+                normal: top_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] - half_size[0], center[1] + half_size[1], center[2] - half_size[2]],
+                normal: top_normal,
+                color,
+            });
+            
+            // Left face vertices
+            vertices.push(MeshVertex {
+                position: [center[0] - half_size[0], center[1] - half_size[1], center[2] - half_size[2]],
+                normal: left_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] - half_size[0], center[1] - half_size[1], center[2] + half_size[2]],
+                normal: left_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] - half_size[0], center[1] + half_size[1], center[2] + half_size[2]],
+                normal: left_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] - half_size[0], center[1] + half_size[1], center[2] - half_size[2]],
+                normal: left_normal,
+                color,
+            });
+            
+            // Right face vertices
+            vertices.push(MeshVertex {
+                position: [center[0] + half_size[0], center[1] - half_size[1], center[2] + half_size[2]],
+                normal: right_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] + half_size[0], center[1] - half_size[1], center[2] - half_size[2]],
+                normal: right_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] + half_size[0], center[1] + half_size[1], center[2] - half_size[2]],
+                normal: right_normal,
+                color,
+            });
+            vertices.push(MeshVertex {
+                position: [center[0] + half_size[0], center[1] + half_size[1], center[2] + half_size[2]],
+                normal: right_normal,
+                color,
+            });
+            
+            // Add indices for each face
+            indices.extend_from_slice(&[
+                // Front face
+                base_index + 0, base_index + 1, base_index + 2,  base_index + 2, base_index + 3, base_index + 0,
+                // Back face
+                base_index + 4, base_index + 5, base_index + 6,  base_index + 6, base_index + 7, base_index + 4,
+                // Bottom face
+                base_index + 8, base_index + 9, base_index + 10,  base_index + 10, base_index + 11, base_index + 8,
+                // Top face
+                base_index + 12, base_index + 13, base_index + 14,  base_index + 14, base_index + 15, base_index + 12,
+                // Left face
+                base_index + 16, base_index + 17, base_index + 18,  base_index + 18, base_index + 19, base_index + 16,
+                // Right face
+                base_index + 20, base_index + 21, base_index + 22,  base_index + 22, base_index + 23, base_index + 20,
+            ]);
+            
+            vertex_index += 24;
+        };
+        
+        // Vertebra body (main cylindrical part)
+        add_box([0.0, 0.0, 0.0], [1.2, 0.8, 1.0], bone_color);
+        
+        // Vertebral arch (posterior ring structure)
+        add_box([0.0, 0.0, -0.8], [1.0, 0.6, 0.4], bone_color);
+        
+        // Spinous process (posterior projection)
+        add_box([0.0, 0.0, -1.4], [0.4, 1.2, 0.3], bone_color);
+        
+        // Transverse processes (lateral projections)
+        add_box([-0.9, 0.0, -0.4], [0.3, 0.4, 0.8], bone_color);
+        add_box([0.9, 0.0, -0.4], [0.3, 0.4, 0.8], bone_color);
+        
+        // Superior articular processes
+        add_box([-0.5, 0.5, 0.2], [0.2, 0.3, 0.4], bone_color);
+        add_box([0.5, 0.5, 0.2], [0.2, 0.3, 0.4], bone_color);
+        
+        // Inferior articular processes
+        add_box([-0.5, -0.5, -0.8], [0.2, 0.3, 0.4], bone_color);
+        add_box([0.5, -0.5, -0.8], [0.2, 0.3, 0.4], bone_color);
+        
+        Self { vertices, indices }
+    }
 }
 
 impl MeshVertex {
