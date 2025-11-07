@@ -107,7 +107,19 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // Compute the final value with clamping based on window and level
-    let v: f32 = clamp((value - (u_uniform_frag.level - u_uniform_frag.window / 2.0)) / u_uniform_frag.window, 0.0, 1.0);
+    // let v: f32 = clamp((value - (u_uniform_frag.level - u_uniform_frag.window / 2.0)) / u_uniform_frag.window, 0.0, 1.0);
+    // DICOM PS3.3 C.11.2 Window/Level mapping
+    let center = u_uniform_frag.level;
+    let width = u_uniform_frag.window;
+    var v: f32;
+    if (value <= (center - 0.5 - (width - 1.0) / 2.0)) {
+        v = 0.0;    
+    } else if (value > (center - 0.5 + (width - 1.0) / 2.0)) {
+        v = 1.0;
+    } else {
+        v = ((value - (center - 0.5)) / (width - 1.0)) + 0.5;
+    }
+    v = clamp(v, 0.0, 1.0);
 
     // Return the final computed color
     return vec4<f32>(vec3<f32>(v), 1.0);
