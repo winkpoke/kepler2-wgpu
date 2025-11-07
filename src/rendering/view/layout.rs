@@ -47,6 +47,9 @@ pub trait LayoutContainer: Renderable {
     fn is_view_type<V: View + 'static>(&self, index: usize) -> bool;
     fn view_count(&self) -> usize;
     fn resize(&mut self, dim: (u32, u32));
+    fn views(&self) -> &Vec<Box<dyn View>>;
+    fn views_mut(&mut self) -> &mut Vec<Box<dyn View>>;
+    fn strategy(&self) -> &dyn LayoutStrategy;
 }
 
 /// Grid layout strategy.
@@ -243,6 +246,18 @@ impl<T: LayoutStrategy> LayoutContainer for StaticLayout<T> {
             view.resize(size);
         }
     }
+
+    fn views(&self) -> &Vec<Box<dyn View>> {
+        &self.views
+    }
+
+    fn views_mut(&mut self) -> &mut Vec<Box<dyn View>> {
+        &mut self.views
+    }
+
+    fn strategy(&self) -> &dyn LayoutStrategy {
+        &self.strategy
+    }
 }
 
 impl<T: LayoutStrategy> Renderable for StaticLayout<T> {
@@ -391,6 +406,18 @@ impl LayoutContainer for DynamicLayout {
             view.move_to(pos);
             view.resize(size);
         }
+    }
+
+    fn views(&self) -> &Vec<Box<dyn View>> {
+        &self.views
+    }
+
+    fn views_mut(&mut self) -> &mut Vec<Box<dyn View>> {
+        &mut self.views
+    }
+
+    fn strategy(&self) -> &dyn LayoutStrategy {
+        self.strategy.as_ref()
     }
 }
 
