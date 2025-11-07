@@ -22,7 +22,7 @@ pub mod application;
 pub use core::{coord, error::KeplerError, timing};
 pub use data::{ct_volume, dicom};
 pub use rendering::{
-    view::{View, Renderable, Layout},
+    view::{View, Renderable, StaticLayout},
     core::state::State,
 };
 pub use application::{render_app::RenderApp, gl_canvas::GLCanvas};

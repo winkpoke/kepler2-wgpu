@@ -57,7 +57,7 @@ pub struct AppModel {
 
 pub struct AppView {
     pub(crate) graphics: Graphics,
-    pub(crate) layout: Layout<GridLayout>,
+    pub(crate) layout: StaticLayout<GridLayout>,
     pub(crate) app: Arc<App>,
 }
 
@@ -71,7 +71,7 @@ pub struct State {
     /// Graphics context that encapsulates both hardware abstraction and rendering pipeline orchestration
     pub(crate) graphics_context: GraphicsContext,
     // pub(crate) layout: Layout<OneCellLayout>,
-    pub(crate) layout: Layout<GridLayout>,
+    pub(crate) layout: StaticLayout<GridLayout>,
     pub(crate) enable_float_volume_texture: bool,
     pub(crate) toggle_enabled: bool,
     pub(crate) last_volume: Option<CTVolume>,
@@ -91,7 +91,7 @@ impl State {
         // println!("supported texture formats: {:?}", surface_caps.formats);
         // println!("format: {:?}", config.format);
 
-        let layout = Layout::new(
+        let layout = StaticLayout::new(
             (graphics.surface_config.width, graphics.surface_config.height),
             GridLayout {
                 rows: 2,

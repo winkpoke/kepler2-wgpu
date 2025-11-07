@@ -124,7 +124,7 @@ impl LayoutStrategy for OneCellLayout {
 ///
 /// Manages a collection of `View` instances and delegates placement to `strategy` on view addition
 /// and when the parent dimensions change. Also forwards update and render calls to each child view.
-pub struct Layout <T: LayoutStrategy> {
+pub struct StaticLayout <T: LayoutStrategy> {
     /// Parent dimensions `(width, height)` in pixels.
     dim: (u32, u32),
     /// The layout strategy used to compute positions and sizes.
@@ -133,7 +133,7 @@ pub struct Layout <T: LayoutStrategy> {
     pub(crate) views: Vec<Box<dyn View>>, // A collection of views
 }
 
-impl<T: LayoutStrategy> Layout<T> {
+impl<T: LayoutStrategy> StaticLayout<T> {
     /// Create a new layout with the given parent dimensions and strategy.
     pub fn new(dim: (u32, u32), strategy: T) -> Self {
         Self {
@@ -144,7 +144,7 @@ impl<T: LayoutStrategy> Layout<T> {
     }
 }
 
-impl<T: LayoutStrategy> LayoutContainer for Layout<T> {
+impl<T: LayoutStrategy> LayoutContainer for StaticLayout<T> {
     /// Add a view to the container and immediately place and size it via the strategy.
     ///
     /// Notes:
@@ -245,7 +245,7 @@ impl<T: LayoutStrategy> LayoutContainer for Layout<T> {
     }
 }
 
-impl<T: LayoutStrategy> Renderable for Layout<T> {
+impl<T: LayoutStrategy> Renderable for StaticLayout<T> {
     /// Update all child views. Typically called per-frame before rendering.
     fn update(&mut self, queue: &wgpu::Queue) {
         for v in &mut self.views {
