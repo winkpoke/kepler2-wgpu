@@ -76,6 +76,7 @@ pub struct State {
     pub(crate) last_volume: Option<CTVolume>,
     pub(crate) enable_mesh: bool,
     pub(crate) texture_pool: MeshTexturePool,
+    pub(crate) view_factory: DefaultViewFactory,
 }
 
 impl State {
@@ -147,6 +148,14 @@ impl State {
 
         // Create GraphicsContext which encapsulates both graphics and pass_executor
         let graphics_context = GraphicsContext::from_graphics(graphics);
+
+        // Initialize DefaultViewFactory with current GPU resources and configuration
+        let factory = crate::rendering::view::DefaultViewFactory::new(
+            Arc::clone(&graphics_context.graphics.device),
+            Arc::clone(&graphics_context.graphics.queue),
+            graphics_context.graphics.surface_config.format,
+            default_float,
+        );
         
         Ok(Self {
             graphics_context,
@@ -156,6 +165,7 @@ impl State {
             last_volume: None,
             enable_mesh: false,
             texture_pool: texture_pool,
+            view_factory: factory,
         })
     }
 
@@ -485,57 +495,45 @@ impl State {
         self.layout.remove_all();
     
         if self.enable_mesh {
-            // Add MPR views to slots 0 and 1 (Transverse and Coronal)
+            // Add MPR views to slots 0 and 1 (Transverse and Coronal) using factory
             for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1]].iter() {
-                let render_context = Arc::new(crate::rendering::view::mpr::mpr_render_context::MprRenderContext::new(
-                    self.device(),
-                ));
-                let view = MprView::new(
-                    render_context,
-                    self.device(),
-                    texture.clone(),
-                    &vol,
-                    *orientation,
-                    WindowLevel::new(),  // Default window/level with no bias
-                    1.0,
-                    [0.0, 0.0, 0.0],
-                    (0, 0),
-                    (0, 0),
-                );
-                self.layout.add_view(Box::new(view));
+                let view = self.view_factory
+                    .create_mpr_view_with_content(
+                        texture.clone(),
+                        &vol,
+                        *orientation,
+                        (0, 0),
+                        (0, 0),
+                    )
+                    .unwrap();
+                self.layout.add_view(view);
             }
-            
-            // Add Mesh view to slot 2 (third position - replacing Sagittal)
-            let mesh_view = self.create_mesh_view((0, 0), (0, 0));
-            self.layout.add_view(Box::new(mesh_view));
-            
-            // Add MIP view to slot 3 (fourth position - replacing Oblique)
-            let mip_wgpu_impl = crate::rendering::MipViewWgpuImpl::new(
-                texture.clone(),
-                self.device(),
-                self.surface_config().format,
-            );
-            let mip_view = crate::rendering::mip::MipView::new(Arc::new(mip_wgpu_impl));
-            self.layout.add_view(Box::new(mip_view));
+
+            // Add Mesh view to slot 2 (third position - replacing Sagittal) using factory
+            let mesh = crate::rendering::mesh::mesh::Mesh::spine_vertebra();
+            let mesh_view = self.view_factory
+                .create_mesh_view(&mesh, (0, 0), (0, 0))
+                .unwrap();
+            self.layout.add_view(mesh_view);
+
+            // Add MIP view to slot 3 (fourth position - replacing Oblique) using factory
+            let mip_view = self.view_factory
+                .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))
+                .unwrap();
+            self.layout.add_view(mip_view);
         } else {
-            // Mesh disabled: add all four MPR views (including oblique)
+            // Mesh disabled: add all four MPR views (including oblique) using factory
             for orientation in ALL_ORIENTATIONS.iter() {
-                let render_context = Arc::new(MprRenderContext::new(
-                    self.device(),
-                ));
-                let view = MprView::new(
-                    render_context,
-                    self.device(),
-                    texture.clone(),
-                    &vol,
-                    *orientation,
-                    winlev,
-                    1.0,
-                    [0.0, 0.0, 0.0],
-                    (0, 0),
-                    (0, 0),
-                );
-                self.layout.add_view(Box::new(view));
+                let view = self.view_factory
+                    .create_mpr_view_with_content(
+                        texture.clone(),
+                        &vol,
+                        *orientation,
+                        (0, 0),
+                        (0, 0),
+                    )
+                    .unwrap();
+                self.layout.add_view(view);
             }
         }
     }
@@ -577,34 +575,6 @@ impl State {
         let total_views = self.layout.views().len() as u32;
         let parent_dim = (self.surface_config().width, self.surface_config().height);
         self.layout.strategy().calculate_position_and_size(index as u32, total_views, parent_dim)
-    }
-
-    /// Function-level comment: Create a MeshView with fresh BasicMeshContext.
-    fn create_mesh_view(&mut self, 
-                       pos: (i32, i32), size: (u32, u32)) -> crate::rendering::view::MeshView {
-        use std::sync::Arc;
-        use crate::rendering::mesh::{mesh::Mesh, basic_mesh_context::BasicMeshContext};
-        use crate::rendering::view::{MeshView, View as _};
-    
-        let mut mesh_view = MeshView::new();
-        mesh_view.set_rotation_enabled(true);
-        log::info!("Mesh rotation enabled");
-        
-        // Create fresh BasicMeshContext for each mesh view
-        // let mesh = Mesh::uniform_color_cube();
-        let mesh = Mesh::spine_vertebra();
-        let ctx = BasicMeshContext::new(
-            self.device(),
-            self.queue(),
-            &mesh,
-            true, // Enable depth testing for proper 3D rendering
-        );
-        let ctx_arc = Arc::new(ctx);
-        
-        mesh_view.attach_context(ctx_arc);
-        mesh_view.move_to(pos);
-        mesh_view.resize(size);
-        mesh_view
     }
 
     pub fn set_window_level(&mut self, index: usize, window_level: f32) {

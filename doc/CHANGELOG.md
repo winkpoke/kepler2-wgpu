@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- 2025-11-08T22-27-07: Resolved build failure by switching `Graphics` to store `Arc<wgpu::Device>` and `Arc<wgpu::Queue>` and updating `State::new()` to initialize `DefaultViewFactory` via `Arc::clone`.
+  - Eliminates invalid `clone()` calls on `wgpu` handles.
+  - Preserves existing behavior; public API unchanged (fields are `pub(crate)`).
+  - All existing call sites continue to work via auto-deref to `&Device`/`&Queue`.
+  - Verified native build succeeds; tests mostly pass (2 integration tests fail due to missing external files).
+  - Documentation: `doc/views/2025-11-08T22-27-07-default-view-factory-init-and-arc-device-queue.md`.
+
+### Added
+- 2025-11-08T22-28-40: Declared `trace-logging` feature in `Cargo.toml` to gate heavy TRACE logs as required.
+  - Usage: `cargo run --features trace-logging` (native) or `wasm-pack build -t web -- --features trace-logging` (wasm).
+  - Documentation: `doc/views/2025-11-08T22-28-40-trace-logging-feature-declaration.md`.
+
 ### Changed
 - 2025-11-08T22-15-41: Modified `ViewFactory::create_mesh_view` to accept a mesh parameter `(&Mesh)` for caller-provided geometry.
   - New trait signature: `fn create_mesh_view(&self, mesh: &Mesh, pos: (i32, i32), size: (u32, u32)) -> Result<Box<dyn View>, Box<dyn std::error::Error>>`.
