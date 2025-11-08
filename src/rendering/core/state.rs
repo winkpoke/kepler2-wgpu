@@ -176,6 +176,15 @@ impl State {
         
         // Function-level comment: Clear mesh resources bound to old device to prevent stale references.
         self.texture_pool.clear_depth_view();
+        // Function-level comment: Reinitialize the DefaultViewFactory with the new device/queue to avoid cross-device resource mismatches on WASM.
+        // This fixes a panic where a TextureView created on the new device was used to create a bind group on the old device.
+        self.view_factory = crate::rendering::view::DefaultViewFactory::new(
+            std::sync::Arc::clone(&self.graphics_context.graphics.device),
+            std::sync::Arc::clone(&self.graphics_context.graphics.queue),
+            self.graphics_context.graphics.surface_config.format,
+            self.enable_float_volume_texture,
+        );
+        log::info!("ViewFactory reinitialized after graphics swap.");
         
         // self.resize(winit::dpi::PhysicalSize {
         //     width: self.surface_config().width,

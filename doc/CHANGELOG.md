@@ -268,3 +268,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Security
 - Vulnerability fixes
+## 2025-11-08T22-43-25
+Fix WASM panic caused by cross-device TextureView usage after Graphics swap. Reinitialize DefaultViewFactory inside State::swap_graphics with the new device/queue to ensure bind groups are created with resources from the same device. This prevents `wgpu-core` panic: `TextureView[...] does not exist` when creating bind groups on web. See doc/views/2025-11-08T22-43-25-wasm-textureview-panic-fix.md.
