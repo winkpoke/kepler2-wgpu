@@ -56,7 +56,6 @@ pub struct AppModel {
 }
 
 pub struct AppView {
-    pub(crate) graphics: Graphics,
     pub(crate) layout: DynamicLayout,
     pub(crate) app: Arc<App>,
 }
@@ -521,7 +520,7 @@ impl State {
         } else {
             // Mesh disabled: add all four MPR views (including oblique)
             for orientation in ALL_ORIENTATIONS.iter() {
-                let render_context = Arc::new(crate::rendering::view::mpr::mpr_render_context::MprRenderContext::new(
+                let render_context = Arc::new(MprRenderContext::new(
                     self.device(),
                 ));
                 let view = MprView::new(

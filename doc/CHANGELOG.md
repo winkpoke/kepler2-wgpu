@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- 2025-11-08T22-15-41: Modified `ViewFactory::create_mesh_view` to accept a mesh parameter `(&Mesh)` for caller-provided geometry.
+  - New trait signature: `fn create_mesh_view(&self, mesh: &Mesh, pos: (i32, i32), size: (u32, u32)) -> Result<Box<dyn View>, Box<dyn std::error::Error>>`.
+  - `DefaultViewFactory::create_mesh_view` now builds `BasicMeshContext` from the provided mesh and enables depth testing by default. Rotation remains enabled.
+  - `ViewManager::create_mesh_view` preserves its existing API by constructing a default `Mesh::spine_vertebra()` internally and forwarding to the factory.
+  - Test `MockViewFactory` implementations updated accordingly; targeted tests (`cargo test --test view_transition_integration_tests`) pass.
+  - Rationale: aligns mesh creation with the additive design adopted for volume views (MPR/MIP), improves flexibility and performance by avoiding redundant mesh construction.
+
+### Changed
+- 2025-11-08T21-26-05: Extracted ViewFactory trait from `src/rendering/view/view.rs` into `src/rendering/view/view_factory.rs` to improve module organization and decouple factory responsibilities from core view types.
+  - Public re-export added in `src/rendering/view/mod.rs` (`pub use view_factory::ViewFactory`) so existing imports continue to work.
+  - Verified native build (`cargo build`), targeted view transition tests (`cargo test --test view_transition_integration_tests`), and WASM build (`wasm-pack build -t web`) succeed.
+  - No functional changes to trait signatures; this is a structural refactor to support future platform-specific factories and cleaner testing.
+  - Documentation added in `doc/views/2025-11-08T21-26-05-view-factory-extraction.md`.
+
+### Added
+- 2025-11-08T21-32-39: Added `create_mip_view` to `ViewFactory` and `ViewManager` to support MIP (Maximum Intensity Projection) view creation.
+  - Trait method signature: `fn create_mip_view(&self, volume: &CTVolume, viewport_pos: (i32, i32), viewport_size: (u32, u32)) -> Result<Box<dyn View>, Box<dyn std::error::Error>>`.
+  - Forwarding implementation in `ViewManager` with INFO/DEBUG logging and error propagation.
+  - Updated test mocks to implement the new method; all `view_transition_integration_tests` pass.
+  - Verified native build (`cargo build`) and WASM build (`wasm-pack build -t web`) succeed.
+  - Documentation added in `doc/views/2025-11-08T21-32-39-mip-view-factory.md`.
+
+### Changed
+- 2025-11-08T21-58-55: Moved `DefaultViewFactory` into `src/rendering/view/view_factory.rs` and removed separate `default_factory` module.
+  - Import path remains accessible via re-exports: `kepler_wgpu::rendering::DefaultViewFactory` (through `rendering::view::mod.rs` → `pub use view_factory::*`).
+  - Simplified module structure; tests and existing imports remain functional.
+  - No API changes; purely organizational refactor.
+
+### Added
+- 2025-11-08T22-09-22: Added `with_content` variants to `ViewFactory` for MPR and MIP views to enable GPU texture reuse.
+  - New trait methods:
+    - `create_mpr_view_with_content(&self, render_content: Arc<RenderContent>, vol: &CTVolume, orientation: Orientation, pos: (i32, i32), size: (u32, u32))`
+    - `create_mip_view_with_content(&self, render_content: Arc<RenderContent>, pos: (i32, i32), size: (u32, u32))`
+  - Implemented in `DefaultViewFactory` and `MockViewFactory`.
+  - Benefits: Avoids repeated volume uploads and conversions; allows sharing one 3D texture across views.
+  - Verified native build (`cargo build`) and targeted tests (`cargo test --test view_transition_integration_tests`).
+
 ### Added
 - **Spine Vertebra Mesh**: Added anatomically-inspired spine vertebra mesh generation for medical imaging visualization
   - **Anatomical Structure**: Simplified thoracic vertebra representation with body, arch, and processes

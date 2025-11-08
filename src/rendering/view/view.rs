@@ -212,50 +212,8 @@ pub trait StatefulView: View {
     fn view_type(&self) -> &'static str;
 }
 
-/// Factory trait for creating different types of views.
-/// 
-/// Centralizes view creation logic and provides a consistent interface for
-/// creating views with proper initialization parameters. This pattern ensures
-/// that all views are created with the correct dependencies and configuration.
-/// 
-/// ## Benefits
-/// 
-/// - Consistent view initialization across the application
-/// - Centralized dependency injection for view creation
-/// - Easy testing through mock factory implementations
-/// - Type-safe view creation with proper error handling
-pub trait ViewFactory {
-    /// Create a new mesh view with specified position and dimensions.
-    /// 
-    /// Returns a boxed View trait object ready for rendering 3D mesh data.
-    /// The view will be configured for 3D visualization with appropriate
-    /// camera settings and rendering pipeline.
-    fn create_mesh_view(
-        &self, 
-        pos: (i32, i32), 
-        size: (u32, u32)
-    ) -> Result<Box<dyn View>, Box<dyn std::error::Error>>;
-    
-    /// Create a new MPR view with volume data and orientation.
-    /// 
-    /// Returns a boxed View trait object configured for medical imaging display.
-    /// The view will be set up with appropriate shaders, uniforms, and geometry
-    /// for the specified anatomical orientation.
-    /// 
-    /// ## Parameters
-    /// 
-    /// - `vol`: CT volume data containing the medical imaging dataset
-    /// - `orientation`: Anatomical orientation (Transverse, Coronal, Sagittal, Oblique)
-    /// - `pos`: Initial position on screen
-    /// - `size`: Initial dimensions of the view
-    fn create_mpr_view(
-        &self, 
-        vol: &CTVolume, 
-        orientation: Orientation, 
-        pos: (i32, i32), 
-        size: (u32, u32)
-    ) -> Result<Box<dyn View>, Box<dyn std::error::Error>>;
-}
+// ViewFactory trait moved to view_factory.rs to decouple factory responsibilities
+// from core view types and improve module organization.
 
 /// Specialized trait for Multi-Planar Reconstruction (MPR) views in medical imaging.
 /// 

@@ -1,6 +1,9 @@
 mod view;
 pub use view::*;
 
+mod view_factory;
+pub use view_factory::*;
+
 pub use crate::rendering::mesh::mesh_view::MeshView;
 
 mod renderable;
