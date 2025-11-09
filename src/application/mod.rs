@@ -6,7 +6,9 @@
 // Application modules
 pub mod render_app;
 pub mod gl_canvas;
+pub mod app_model;
 
 // Re-exports for convenience
 pub use render_app::*;
 pub use gl_canvas::*;
+pub use app_model::*;

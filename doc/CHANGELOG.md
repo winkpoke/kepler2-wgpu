@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- 2025-11-09T10-54-40: Moved `AppModel` from `src/data/mod.rs` to `src/application/app_model.rs`.
+  - Reduces coupling between data and application/rendering layers.
+  - Kept a transitional re-export in `data::mod` to preserve existing imports.
+  - No functional changes; native (`cargo build`, `cargo test`) and WASM (`wasm-pack build -t web`) builds expected to succeed.
+  - Documentation: `doc/views/2025-11-09T10-54-40-appmodel-move.md`.
+
 ### Fixed
 - 2025-11-08T22-27-07: Resolved build failure by switching `Graphics` to store `Arc<wgpu::Device>` and `Arc<wgpu::Queue>` and updating `State::new()` to initialize `DefaultViewFactory` via `Arc::clone`.
   - Eliminates invalid `clone()` calls on `wgpu` handles.

@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+﻿#![allow(dead_code)]
 
 use log::{trace, info, warn};
 use std::path::PathBuf;
@@ -49,11 +49,7 @@ fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-
-pub struct AppModel {
-    pub(crate) vol: Option<CTVolume>,
-    pub(crate) app: Arc<App>,
-}
+use crate::application::app_model::AppModel;
 
 pub struct AppView {
     pub(crate) layout: DynamicLayout,
