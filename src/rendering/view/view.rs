@@ -212,69 +212,6 @@ pub trait StatefulView: View {
     fn view_type(&self) -> &'static str;
 }
 
-// ViewFactory trait moved to view_factory.rs to decouple factory responsibilities
-// from core view types and improve module organization.
-
-/// Specialized trait for Multi-Planar Reconstruction (MPR) views in medical imaging.
-/// 
-/// Provides medical imaging-specific functionality including window/level controls,
-/// slice navigation, and spatial transformations. This trait extends the base View
-/// trait with operations specific to medical image visualization.
-/// 
-/// ## Medical Imaging Concepts
-/// 
-/// - **Window/Level**: Controls image brightness and contrast for optimal tissue visualization
-/// - **Slice Navigation**: Moves through the volume in millimeter units along the view normal
-/// - **Scale/Pan**: Provides zoom and pan functionality for detailed examination
-/// - **Coordinate Systems**: Handles both screen-space and medical-space coordinates
-// pub trait MPRView: View {
-//     // === Setters for view parameters ===
-    
-//     /// Set the window level (brightness control) for CT image display
-//     fn set_window_level(&mut self, window_level: f32);
-    
-//     /// Set the window width (contrast control) for CT image display
-//     fn set_window_width(&mut self, window_width: f32);
-    
-//     /// Set the current slice position in millimeters along the view normal
-//     fn set_slice_mm(&mut self, z: f32);
-    
-//     /// Set the zoom scale factor (1.0 = original size)
-//     fn set_scale(&mut self, scale: f32);
-    
-//     /// Set translation in view/model coordinate space
-//     fn set_translate(&mut self, translate: [f32; 3]);
-    
-//     /// Set translation in screen coordinate space (for panning)
-//     fn set_translate_in_screen_coord(&mut self, translate: [f32; 3]);
-    
-//     /// Pan the view in screen space by the specified amounts
-//     fn set_pan(&mut self, x: f32, y: f32);
-    
-//     /// Pan the view by the specified amounts in millimeters
-//     fn set_pan_mm(&mut self, x_mm: f32, y_mm: f32);
-    
-//     // === Getters for view parameters ===
-    
-//     /// Returns current window level used by the fragment shader
-//     fn get_window_level(&self) -> f32;
-    
-//     /// Returns current window width used by the fragment shader
-//     fn get_window_width(&self) -> f32;
-    
-//     /// Returns current slice position in millimeters along view normal
-//     fn get_slice_mm(&self) -> f32;
-    
-//     /// Returns current scale factor applied in screen space
-//     fn get_scale(&self) -> f32;
-    
-//     /// Returns current pan/translation in screen coordinates [x, y, z]
-//     fn get_translate_in_screen_coord(&self) -> [f32; 3];
-    
-//     /// Returns current translation in view/model coordinates [x, y, z]
-//     fn get_translate(&self) -> [f32; 3];
-// }
-
 /// Anatomical orientation for MPR views.
 /// 
 /// Defines the standard anatomical orientations used in medical imaging.
@@ -318,18 +255,6 @@ impl Orientation {
             Orientation::Sagittal => GeometryBuilder::build_sagittal_base(vol),
             Orientation::Coronal => GeometryBuilder::build_coronal_base(vol),
             Orientation::Transverse => GeometryBuilder::build_transverse_base(vol),
-        }
-    }
-
-    /// Get the default slice navigation speed for this orientation.
-    /// 
-    /// Different orientations may have different optimal navigation speeds
-    /// based on typical slice thickness and user interaction patterns.
-    /// Transverse views typically have thicker slices and can use faster navigation.
-    pub fn default_slice_speed(&self) -> f32 {
-        match self {
-            Orientation::Transverse => 0.006,  // Faster for thicker axial slices
-            _ => 0.0005,  // Slower for thinner coronal/sagittal slices
         }
     }
 }

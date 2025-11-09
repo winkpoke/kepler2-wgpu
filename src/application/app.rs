@@ -4,6 +4,7 @@ use log::{trace, info, warn};
 use std::path::PathBuf;
 use std::{fs, io};
 use std::sync::Arc;
+use crate::mesh::mesh::Mesh;
 use crate::rendering::{view, Graphics, GraphicsContext};
 
 // use wgpu::util::DeviceExt;
@@ -38,7 +39,6 @@ use crate::application::appview::AppView;
 pub struct App {
     /// Graphics context that encapsulates both hardware abstraction and rendering pipeline orchestration
     pub(crate) graphics_context: GraphicsContext,
-    // pub(crate) layout: Layout<OneCellLayout>,
     pub(crate) app_view: AppView,
     pub(crate) enable_float_volume_texture: bool,
     pub(crate) toggle_enabled: bool,
@@ -462,7 +462,7 @@ impl App {
             }
 
             // Add Mesh view to slot 2 (third position - replacing Sagittal) using factory
-            let mesh = crate::rendering::mesh::mesh::Mesh::spine_vertebra();
+            let mesh = Mesh::spine_vertebra();
             let mesh_view = self.app_view.view_factory
                 .create_mesh_view(&mesh, (0, 0), (0, 0))
                 .unwrap();

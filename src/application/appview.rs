@@ -4,7 +4,7 @@
 //! State will hold AppView and forward calls, keeping existing render loop intact.
 
 use std::sync::Arc;
-use crate::rendering::LayoutContainer;
+use crate::rendering::{GridLayout, LayoutContainer, OneCellLayout};
 use crate::rendering::view::{DynamicLayout, DefaultViewFactory, View, Orientation};
 use crate::rendering::view::ViewFactory;
 use crate::rendering::view::render_content::RenderContent;
@@ -87,14 +87,14 @@ impl AppView {
     ///
     /// Function-level comment: Centralizes strategy changes through AppView for active-view workflows.
     pub fn set_one_cell_layout(&mut self) {
-        self.layout.set_strategy(Box::new(crate::rendering::view::OneCellLayout { rows: 1, cols: 1, spacing: 0 }));
+        self.layout.set_strategy(Box::new(OneCellLayout { rows: 1, cols: 1, spacing: 0 }));
     }
 
     /// Switch layout strategy to a grid layout.
     ///
     /// Function-level comment: Exposes grid layout configuration via AppView.
     pub fn set_grid_layout(&mut self, rows: u32, cols: u32, spacing: u32) {
-        self.layout.set_strategy(Box::new(crate::rendering::view::GridLayout { rows, cols, spacing }));
+        self.layout.set_strategy(Box::new(GridLayout { rows, cols, spacing }));
     }
 
     /// Returns true if the current layout strategy is OneCellLayout.
