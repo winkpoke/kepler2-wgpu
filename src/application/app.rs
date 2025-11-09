@@ -443,11 +443,11 @@ impl App {
         };
     
         self.app_view.layout.remove_all();
-    
+        let view_factory = &self.app_view.view_factory;
         if self.enable_mesh {
             // Add MPR views to slots 0 and 1 (Transverse and Coronal) using factory
             for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1]].iter() {
-                let view = self.app_view.view_factory
+                let view = view_factory
                     .create_mpr_view_with_content(
                         texture.clone(),
                         &vol,
@@ -461,20 +461,20 @@ impl App {
 
             // Add Mesh view to slot 2 (third position - replacing Sagittal) using factory
             let mesh = Mesh::spine_vertebra();
-            let mesh_view = self.app_view.view_factory
+            let mesh_view = view_factory
                 .create_mesh_view(&mesh, (0, 0), (0, 0))
                 .unwrap();
             self.app_view.layout.add_view(mesh_view);
 
             // Add MIP view to slot 3 (fourth position - replacing Oblique) using factory
-            let mip_view = self.app_view.view_factory
+            let mip_view = view_factory
                 .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))
                 .unwrap();
             self.app_view.layout.add_view(mip_view);
         } else {
             // Mesh disabled: add all four MPR views (including oblique) using factory
             for orientation in ALL_ORIENTATIONS.iter() {
-                let view = self.app_view.view_factory
+                let view = view_factory
                     .create_mpr_view_with_content(
                         texture.clone(),
                         &vol,
