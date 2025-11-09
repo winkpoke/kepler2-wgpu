@@ -126,8 +126,13 @@ impl RenderApp {
                     state.app_view.layout.remove_all();
                     target.exit();
                 }
-                Event::UserEvent(UserEvent::SetWindowByDivId(div_id, _volume)) => {
+                Event::UserEvent(UserEvent::SetWindowByDivId(div_id, volume)) => {
                     log::info!("SetWindowByDivId event received for div_id: {div_id}");
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        // Silence unused variable in native builds; volume is used on web.
+                        let _ = &volume;
+                    }
                     #[cfg(target_arch = "wasm32")]
                     {
                         let window = Arc::new(WindowBuilder::new().build(target).unwrap());

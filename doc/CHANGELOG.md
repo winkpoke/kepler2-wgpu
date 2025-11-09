@@ -298,3 +298,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Vulnerability fixes
 ## 2025-11-08T22-43-25
 Fix WASM panic caused by cross-device TextureView usage after Graphics swap. Reinitialize DefaultViewFactory inside State::swap_graphics with the new device/queue to ensure bind groups are created with resources from the same device. This prevents `wgpu-core` panic: `TextureView[...] does not exist` when creating bind groups on web. See doc/views/2025-11-08T22-43-25-wasm-textureview-panic-fix.md.
+## 2025-11-09T14-14-57
+
+- Fix wasm build failure (error E0425: cannot find value `volume`) in `src/application/render_app.rs`.
+  - Restored the event binding to `volume` for the `SetWindowByDivId` user event so the wasm path can use it.
+  - Added a non-wasm guard to silence the variable in native builds: `#[cfg(not(target_arch = "wasm32"))] let _ = &volume;`.
+  - No functional changes; this resolves the web build regression introduced by prior warning-suppression edits.
+  - Native and wasm builds both succeed; remaining warnings will be reduced incrementally in subsequent cleanups.
