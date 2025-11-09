@@ -126,12 +126,11 @@ impl RenderApp {
                     state.app_view.layout.remove_all();
                     target.exit();
                 }
-                Event::UserEvent(UserEvent::SetWindowByDivId(div_id, volume)) => {
+                Event::UserEvent(UserEvent::SetWindowByDivId(div_id, _volume)) => {
                     log::info!("SetWindowByDivId event received for div_id: {div_id}");
-
-                    let window = Arc::new(WindowBuilder::new().build(target).unwrap());
                     #[cfg(target_arch = "wasm32")]
                     {
+                        let window = Arc::new(WindowBuilder::new().build(target).unwrap());
                         // Winit prevents sizing with CSS, so we have to set
                         // the size manually when on web.
                         use winit::dpi::PhysicalSize;

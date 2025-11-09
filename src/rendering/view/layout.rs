@@ -74,7 +74,7 @@ impl LayoutStrategy for GridLayout {
     fn calculate_position_and_size(
         &self,
         index: u32,
-        total_views: u32,
+        _total_views: u32,
         parent_dim: (u32, u32),
     ) -> ((i32, i32), (u32, u32)) {
         // TODO: Use `saturating_sub` and guard zero divisions to prevent underflow/overflow.

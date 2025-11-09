@@ -9,12 +9,14 @@ use wasm_bindgen::prelude::*;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub struct DicomObject {
+    #[allow(dead_code)]
     pub dcm: FileDicomObject<InMemDicomObject>,
 }
 
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen]
 pub struct DicomObject {
+    #[allow(dead_code)]
     dcm: FileDicomObject<InMemDicomObject>,
 }
 
@@ -46,7 +48,7 @@ pub fn read_dicom() -> Result<()> {
     let modality = dcm.element_by_name("Modality")?.to_str()?;
     let loc = dcm.element_by_name("SliceLocation")?.to_str()?;
     let pixel_data_bytes = dcm.element(Tag(0x7FE0, 0x0010))?.to_bytes()?;
-    let pixels: &[i16] = cast_slice(&pixel_data_bytes);
+    let _pixels: &[i16] = cast_slice(&pixel_data_bytes);
     warn!("{:?}", patient_name);
     warn!("{:?}", modality);
     warn!("slice location: {}", loc);

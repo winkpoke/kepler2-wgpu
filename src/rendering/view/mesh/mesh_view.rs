@@ -2,7 +2,7 @@
 
 
 use super::{mesh::{Mesh, Lighting}, material::Material, camera::Camera, performance::{QualityController, QualityLevel, PerformanceStats}, basic_mesh_context::BasicMeshContext};
-use crate::{core::coord::Matrix4x4, rendering::view::{Renderable, View}, core::timing::{Instant, DurationExt}};
+use crate::{core::coord::Matrix4x4, rendering::view::{Renderable, View}, core::timing::Instant};
 
 /// Function-level comment: Error types specific to mesh rendering operations
 #[derive(Debug)]

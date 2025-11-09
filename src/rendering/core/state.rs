@@ -184,7 +184,7 @@ impl State {
             // Start the timer
             let start_time = Instant::now();
     
-            let file_names = list_files_in_directory("C:\\share\\imrt").unwrap();
+            let _file_names = list_files_in_directory("C:\\share\\imrt").unwrap();
             let repo =
                 fileio::parse_dcm_directories(vec!["C:\\share\\imrt", "C:\\share\\head_mold"]) 
                     .await
@@ -443,7 +443,9 @@ impl State {
         let mut winlev;
         let texture = if self.enable_float_volume_texture {
             winlev = WindowLevel::new();
-            winlev.apply_bone_preset();
+            if let Err(e) = winlev.apply_bone_preset() {
+                log::warn!("apply_bone_preset (float path) failed: {}", e);
+            }
             info!("Using R16Float volume texture path");
             // Convert voxel i16 values to half-float bytes
             let bytes: Vec<u8> = {
@@ -465,8 +467,12 @@ impl State {
             ).unwrap())
         } else {
             winlev = WindowLevel::new();
-            winlev.set_bias(Self::HU_OFFSET);
-            winlev.apply_bone_preset();
+            if let Err(e) = winlev.set_bias(Self::HU_OFFSET) {
+                log::warn!("set_bias (packed RG8 path) failed: {}", e);
+            }
+            if let Err(e) = winlev.apply_bone_preset() {
+                log::warn!("apply_bone_preset (packed RG8 path) failed: {}", e);
+            }
             info!("Using Rg8Unorm volume texture path");
             let voxel_data: Vec<u16> = vol
                 .voxel_data
@@ -575,10 +581,14 @@ impl State {
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             if self.enable_float_volume_texture {
                 // Float path uses native HU values
-                mpr_view.set_window_level(window_level);
+                if let Err(e) = mpr_view.set_window_level(window_level) {
+                    log::warn!("set_window_level (float) failed on view {}: {}", index, e);
+                }
             } else {
                 // Packed RG8 path uses offset
-                mpr_view.set_window_level(window_level + Self::HU_OFFSET);
+                if let Err(e) = mpr_view.set_window_level(window_level + Self::HU_OFFSET) {
+                    log::warn!("set_window_level (packed RG8) failed on view {}: {}", index, e);
+                }
             }
             log::info!("View {} set_window_level: {}", index, window_level);
         }
@@ -587,7 +597,9 @@ impl State {
     pub fn set_window_width(&mut self, index: usize, window_width: f32) {
         let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-            mpr_view.set_window_width(window_width);
+            if let Err(e) = mpr_view.set_window_width(window_width) {
+                log::warn!("set_window_width failed on view {}: {}", index, e);
+            }
             log::info!("View {} set_window_width: {}", index, window_width);
         }
     }
@@ -595,7 +607,9 @@ impl State {
     pub fn set_slice_mm(&mut self, index: usize, z: f32) {
         let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-            mpr_view.set_slice_mm(z);
+            if let Err(e) = mpr_view.set_slice_mm(z) {
+                log::warn!("set_slice_mm failed on view {}: {}", index, e);
+            }
             log::info!("View {} set_slice: {}", index, z);
         }
     }
@@ -603,7 +617,9 @@ impl State {
     pub fn set_scale(&mut self, index: usize, scale: f32) {
         let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-            mpr_view.set_scale(scale);
+            if let Err(e) = mpr_view.set_scale(scale) {
+                log::warn!("set_scale failed on view {}: {}", index, e);
+            }
             log::info!("View {} set_scale: {}", index, scale);
         }
     }
@@ -612,7 +628,10 @@ impl State {
         let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             log::info!("View {} move to: {:#?}", index, translate);
-            mpr_view.set_translate_in_screen_coord(translate);
+            // Handle potential error from translate operation to avoid unused Result warnings.
+            if let Err(e) = mpr_view.set_translate_in_screen_coord(translate) {
+                log::warn!("set_translate_in_screen_coord failed on view {}: {}", index, e);
+            }
         }
     }
 
@@ -620,7 +639,9 @@ impl State {
         let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             log::info!("View {} move to: {:#?}", index, (x, y));
-            mpr_view.set_pan(x, y);
+            if let Err(e) = mpr_view.set_pan(x, y) {
+                log::warn!("set_pan failed on view {}: {}", index, e);
+            }
         }
     }
 
@@ -628,7 +649,9 @@ impl State {
         let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             log::info!("View {} move to mm: {:#?}", index, (x_mm, y_mm));
-            mpr_view.set_pan_mm(x_mm, y_mm);
+            if let Err(e) = mpr_view.set_pan_mm(x_mm, y_mm) {
+                log::warn!("set_pan_mm failed on view {}: {}", index, e);
+            }
         }
     }
 
@@ -636,7 +659,9 @@ impl State {
         let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             log::info!("View {} set_center_at_point_in_mm: {:#?}", index, (x_mm, y_mm, z_mm));
-            mpr_view.set_center_at_point_in_mm([x_mm, y_mm, z_mm]);
+            if let Err(e) = mpr_view.set_center_at_point_in_mm([x_mm, y_mm, z_mm]) {
+                log::warn!("set_center_at_point_in_mm failed on view {}: {}", index, e);
+            }
         }
     }
 

@@ -6,17 +6,19 @@ use crate::data::medical_imaging::{
 };
 use std::{collections::HashMap, io::Read};
 use std::fs::File;
-use std::io::{BufRead,BufReader};
+// Removed unused imports to minimize warnings
 use std::path::PathBuf;
 
 /// Function-level comment: Parses MHD (MetaIO) files with separate data files
 /// Handles header files that reference external raw or compressed data
 pub struct MhdParser {
     /// Validates MHD header format
+    #[allow(dead_code)]
     validator: MedicalImageValidator,
     /// Resolves data file paths relative to header
     path_resolver: PathBuf,
     /// Handles various data file formats
+    #[allow(dead_code)]
     data_loader: PathBuf,
 }
 

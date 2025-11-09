@@ -46,7 +46,7 @@ impl MedicalVolume {
         pixel_type: PixelType,
         spacing: Vec<f32>,
         offset: Vec<f32>,
-        transform: Vec<f32>,
+        _transform: Vec<f32>,
         slope:f32, 
         intercept:f32
     ) -> Result<CTVolume, String> {
