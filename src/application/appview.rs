@@ -106,13 +106,6 @@ impl AppView {
         type_name.contains("OneCellLayout")
     }
 
-    /// If in OneCellLayout, returns the active view index (always 0). Otherwise, None.
-    ///
-    /// Function-level comment: Provides a unified way to query active view in single-view mode.
-    pub fn active_index(&self) -> Option<usize> {
-        if self.is_one_cell_layout() { Some(0) } else { None }
-    }
-
     /// Create and add an MPR view for a given volume and orientation.
     ///
     /// Function-level comment: Uses DefaultViewFactory and routes addition through AppView.

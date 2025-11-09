@@ -1,5 +1,12 @@
 # Changelog
 
+## 2025-11-09T14-14-57
+- Fix wasm build failure (error E0425: cannot find value `volume`) in `src/application/render_app.rs`.
+  - Restored the event binding to `volume` for the `SetWindowByDivId` user event so the wasm path can use it.
+  - Added a non-wasm guard to silence the variable in native builds: `#[cfg(not(target_arch = "wasm32"))] let _ = &volume;`.
+  - No functional changes; this resolves the web build regression introduced by prior warning-suppression edits.
+  - Native and wasm builds both succeed; remaining warnings will be reduced incrementally in subsequent cleanups.
+
 ## 2025-11-09T12-26-50
 - AppView active view management wrappers added:
   - replace_view_at(index, new_view): lifecycle wrapper over LayoutContainer::replace_view_at.

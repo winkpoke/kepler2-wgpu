@@ -42,7 +42,6 @@ pub struct App {
     pub(crate) app_view: AppView,
     pub(crate) enable_float_volume_texture: bool,
     pub(crate) toggle_enabled: bool,
-    pub(crate) last_volume: Option<CTVolume>,
     pub(crate) enable_mesh: bool,
     pub(crate) texture_pool: MeshTexturePool,
     pub(crate) app_model: AppModel,
@@ -130,7 +129,6 @@ impl App {
             graphics_context,
             enable_float_volume_texture: default_float,
             toggle_enabled: true,
-            last_volume: None,
             enable_mesh: false,
             texture_pool: texture_pool,
             app_view: AppView::new(layout, factory),
@@ -306,7 +304,7 @@ impl App {
         });
 
         // Function-level comment: Determine which rendering passes to enable based on view types present in layout
-        let has_mesh_view = self.has_mesh_view();
+        let has_mesh_view = self.enable_mesh;
         let has_mip_view = self.has_mip_content(); // Keep existing method name for MIP
         let has_mpr_view = self.has_mpr_view();
         
@@ -392,7 +390,7 @@ impl App {
     }
 
     pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume) {
-        self.last_volume = Some(vol.clone());
+        self.app_model.load_volume(vol.clone());
         let mut winlev;
         let texture = if self.enable_float_volume_texture {
             winlev = WindowLevel::new();
@@ -510,15 +508,12 @@ impl App {
         }
         self.enable_mesh = enabled;
     
-        if self.last_volume.is_none() {
-            log::info!("Mesh mode set to {} without loaded volume; will apply on next data load.", enabled);
-            return;
-        }
-    
-        // Rebuild the entire layout to ensure proper view configuration
-        if let Some(vol) = &self.last_volume.clone() {
-            self.load_data_from_ct_volume(vol);
+        // Rebuild layout immediately if a volume is already loaded
+        if let Ok(vol) = self.app_model.volume() {
+            self.load_data_from_ct_volume(&vol.clone());
             log::info!("Layout rebuilt for mesh mode: {}", enabled);
+        } else {
+            log::info!("Mesh mode set to {} without loaded volume; will apply on next data load.", enabled);
         }
     }
 
@@ -532,16 +527,10 @@ impl App {
     pub fn set_window_level(&mut self, index: usize, window_level: f32) {
         let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-            if self.enable_float_volume_texture {
-                // Float path uses native HU values
-                if let Err(e) = mpr_view.set_window_level(window_level) {
-                    log::warn!("set_window_level (float) failed on view {}: {}", index, e);
-                }
-            } else {
-                // Packed RG8 path uses offset
-                if let Err(e) = mpr_view.set_window_level(window_level + Self::HU_OFFSET) {
-                    log::warn!("set_window_level (packed RG8) failed on view {}: {}", index, e);
-                }
+            if let Err(e) = mpr_view.set_window_level(window_level) {
+                log::warn!("set_window_level {} failed on view {}: {}", 
+                        if self.enable_float_volume_texture {"(float)"} else {"(packed RG8)"}, 
+                        index, e);
             }
             log::info!("View {} set_window_level: {}", index, window_level);
         }
@@ -752,12 +741,19 @@ impl App {
             "Toggled enable_float_volume_texture to {}",
             self.enable_float_volume_texture
         );
-        if let Some(vol) = self.last_volume.clone() {
-            // Clone to avoid borrowing self immutably while mutably reloading
-            self.load_data_from_ct_volume(&vol);
-        } else {
-            log::warn!("No cached CTVolume to reload after toggle.");
-        }
+        let vol = {
+            let vol = match self.app_model.volume() {
+                Ok(v) => v,
+                Err(e) => {
+                    log::warn!("Failed to get volume: {}", e);
+                    return;
+                }   
+            };
+            vol.clone()
+        };
+
+        self.load_data_from_ct_volume(&vol);
+        log::warn!("No cached CTVolume to reload after toggle.");
     }
 
     pub fn disable_volume_format_toggle(&mut self) {
