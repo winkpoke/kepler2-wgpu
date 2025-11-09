@@ -2,9 +2,8 @@
 
 use log::{trace, info, warn};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::{fs, io};
-use crate::core::timing::Instant;
+use std::sync::Arc;
 use crate::rendering::{view, Graphics, GraphicsContext};
 
 // use wgpu::util::DeviceExt;
@@ -16,29 +15,13 @@ use winit::{
     window::Window,
 };
 
-use crate::data::ct_volume::*;
+use crate::data::{AppModel, ct_volume::*};
 use crate::data::dicom::*;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::*;
 use crate::core::{error::KeplerError, WindowLevel};
 use crate::rendering::mesh::mesh_texture_pool::MeshTexturePool;
 
-fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
-    let mut file_paths = Vec::new();
-
-    // Open the directory and iterate over its contents
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?; // unwrap the result of read_dir
-        let path = entry.path();
-
-        // Check if the entry is a file (not a directory)
-        if path.is_file() {
-            file_paths.push(path); // Add the full path to the list
-        }
-    }
-
-    Ok(file_paths)
-}
 
 // static STATE: Lazy<Arc<Mutex<Option<State>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 
@@ -52,7 +35,7 @@ use wasm_bindgen::prelude::*;
 use crate::application::appview::AppView;
 
 // #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-pub struct State {
+pub struct App {
     /// Graphics context that encapsulates both hardware abstraction and rendering pipeline orchestration
     pub(crate) graphics_context: GraphicsContext,
     // pub(crate) layout: Layout<OneCellLayout>,
@@ -62,16 +45,17 @@ pub struct State {
     pub(crate) last_volume: Option<CTVolume>,
     pub(crate) enable_mesh: bool,
     pub(crate) texture_pool: MeshTexturePool,
+    pub(crate) app_model: AppModel,
 }
 
-impl State {
+impl App {
     const HU_OFFSET: f32 = 1100.0;
     
-    pub async fn new(window: Arc<Window>) -> Result<State, KeplerError> {
-        State::initialize(window).await
+    pub async fn new(window: Arc<Window>) -> Result<App, KeplerError> {
+        App::initialize(window).await
     }
 
-    pub async fn initialize(window: Arc<Window>) -> Result<State, KeplerError> {
+    pub async fn initialize(window: Arc<Window>) -> Result<App, KeplerError> {
         let graphics = Graphics::new(window.clone()).await?;
         // println!("supported texture formats: {:?}", surface_caps.formats);
         // println!("format: {:?}", config.format);
@@ -150,6 +134,7 @@ impl State {
             enable_mesh: false,
             texture_pool: texture_pool,
             app_view: AppView::new(layout, factory),
+            app_model: AppModel::new(),
         })
     }
 
@@ -174,38 +159,6 @@ impl State {
         //     width: self.surface_config().width,
         //     height: self.surface_config().height,
         // });
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    /// Loads local DICOM data for pipeline creation.
-    /// Native-only helper used during development/testing.
-    pub async fn load_data(&mut self) {
-        let repo = {
-            // Start the timer
-            let start_time = Instant::now();
-    
-            let _file_names = list_files_in_directory("C:\\share\\imrt").unwrap();
-            let repo =
-                fileio::parse_dcm_directories(vec!["C:\\share\\imrt", "C:\\share\\head_mold"]) 
-                    .await
-                    .unwrap();
-            println!("DicomRepo:\n{}", repo.to_string());
-            println!("Patients:\n{:?}", repo.get_all_patients());
-            // Stop the timer
-            let elapsed_time = start_time.elapsed();
-    
-            // Print the repository and performance details
-            // println!("Parsed repository: {:?}", repo);
-            println!(
-                "Parsing completed in {:.1} ms.",
-                elapsed_time.as_millis_f32()
-            );
-            repo
-        };
-        self.load_data_from_repo(
-            &repo,
-            "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.964561",
-        );
     }
 
     /// Get a reference to the window
@@ -812,6 +765,58 @@ impl State {
         log::info!(
             "Volume format toggle feature disabled. Default format in use: {}",
             if self.enable_float_volume_texture { "R16Float" } else { "Rg8Unorm" }
+        );
+    }
+
+        fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
+        let mut file_paths = Vec::new();
+
+        // Open the directory and iterate over its contents
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?; // unwrap the result of read_dir
+            let path = entry.path();
+
+            // Check if the entry is a file (not a directory)
+            if path.is_file() {
+                file_paths.push(path); // Add the full path to the list
+            }
+        }
+
+        Ok(file_paths)
+    }
+
+    
+    #[cfg(not(target_arch = "wasm32"))]
+    /// Loads local DICOM data for pipeline creation.
+    /// Native-only helper used during development/testing.
+    pub async fn load_data(&mut self) {
+        let repo = {
+            // Start the timer
+
+            use crate::{core::Instant, dicom::fileio};
+            let start_time = Instant::now();
+    
+            let _file_names = Self::list_files_in_directory("C:\\share\\imrt").unwrap();
+            let repo =
+                fileio::parse_dcm_directories(vec!["C:\\share\\imrt", "C:\\share\\head_mold"]) 
+                    .await
+                    .unwrap();
+            println!("DicomRepo:\n{}", repo.to_string());
+            println!("Patients:\n{:?}", repo.get_all_patients());
+            // Stop the timer
+            let elapsed_time = start_time.elapsed();
+    
+            // Print the repository and performance details
+            // println!("Parsed repository: {:?}", repo);
+            println!(
+                "Parsing completed in {:.1} ms.",
+                elapsed_time.as_millis_f32()
+            );
+            repo
+        };
+        self.load_data_from_repo(
+            &repo,
+            "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.964561",
         );
     }
 }

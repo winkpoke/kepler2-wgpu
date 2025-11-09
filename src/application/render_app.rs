@@ -11,7 +11,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::rendering::{LayoutContainer, core::state::State};
+use crate::{application::App, rendering::LayoutContainer};
 use crate::rendering::core::Graphics;
 use crate::application::gl_canvas::{GLCanvas, UserEvent};
 use winit::event_loop::EventLoopProxy;
@@ -28,13 +28,13 @@ pub async fn create_graphics(window: Arc<Window>) -> Result<Graphics, crate::cor
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct RenderApp {
-    pub(crate) state: Option<State>,
+    pub(crate) state: Option<App>,
     pub(crate) event_loop: Option<EventLoop<UserEvent>>,
     pub(crate) proxy: Option<EventLoopProxy<UserEvent>>,
 }
 
 impl RenderApp {
-    pub fn new(state: State, event_loop: EventLoop<UserEvent>) -> Self {
+    pub fn new(state: App, event_loop: EventLoop<UserEvent>) -> Self {
         let proxy = event_loop.create_proxy();
         RenderApp {
             state: Some(state),
