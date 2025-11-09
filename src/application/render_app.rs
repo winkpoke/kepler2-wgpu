@@ -123,7 +123,7 @@ impl RenderApp {
                 }
                 Event::UserEvent(UserEvent::Quit) => {
                     log::info!("Quit event received. Exiting event loop.");
-                    state.layout.remove_all();
+                    state.app_view.layout.remove_all();
                     target.exit();
                 }
                 Event::UserEvent(UserEvent::SetWindowByDivId(div_id, volume)) => {
@@ -147,7 +147,7 @@ impl RenderApp {
                             .expect("Couldn't append canvas to document body.");
                         let _ = window.request_inner_size(PhysicalSize::new(800, 800)); 
                         let proxy = proxy.clone();
-                        state.layout.remove_all();
+                        state.app_view.layout.remove_all();
                         spawn_local(async move {
                             match Graphics::new(window.clone()).await {
                                 Ok(graphics) => {
@@ -170,7 +170,7 @@ impl RenderApp {
                 }
                 Event::UserEvent(UserEvent::ClearLayout) => {
                     log::info!("ClearLayout event received.");
-                    state.layout.remove_all();
+                    state.app_view.layout.remove_all();
                 }
                 Event::UserEvent(UserEvent::ReloadShaders) => {
                     // Function-level comment: Shader reload is now handled by individual render contexts that recreate their pipelines as needed.

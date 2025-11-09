@@ -1,5 +1,14 @@
 # Changelog
 
+## 2025-11-09T12-05-38
+- AppView refactor follow-up: completed redirect of all remaining `State` references from `self.layout` and `self.view_factory` to `self.app_view.layout` and `self.app_view.view_factory` to ensure consistency with the `AppView` architecture.
+- Fixed trait method resolution for layout resizing by explicitly invoking `LayoutContainer::resize(&mut self.layout, dim)` inside `AppView::resize`.
+- Native build succeeded (`cargo build`).
+- Tests executed (`cargo test`): 27 passed, 2 integration tests failed due to missing external file paths in the environment; these failures are unrelated to the refactor and will be addressed separately.
+- WebAssembly build succeeded (`wasm-pack build -t web`).
+- No user-visible UI changes; internal API consistency improved.
+
+
 All notable changes to the Kepler WGPU Medical Imaging Framework will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),

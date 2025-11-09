@@ -49,30 +49,19 @@ fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use crate::application::app_model::AppModel;
-
-pub struct AppView {
-    pub(crate) layout: DynamicLayout,
-    pub(crate) app: Arc<App>,
-}
-
-pub struct App {
-    pub(crate) view: Arc<AppView>,
-    pub(crate) doc: Arc<AppModel>,
-}
+use crate::application::appview::AppView;
 
 // #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct State {
     /// Graphics context that encapsulates both hardware abstraction and rendering pipeline orchestration
     pub(crate) graphics_context: GraphicsContext,
     // pub(crate) layout: Layout<OneCellLayout>,
-    pub(crate) layout: DynamicLayout,
+    pub(crate) app_view: AppView,
     pub(crate) enable_float_volume_texture: bool,
     pub(crate) toggle_enabled: bool,
     pub(crate) last_volume: Option<CTVolume>,
     pub(crate) enable_mesh: bool,
     pub(crate) texture_pool: MeshTexturePool,
-    pub(crate) view_factory: DefaultViewFactory,
 }
 
 impl State {
@@ -155,13 +144,12 @@ impl State {
         
         Ok(Self {
             graphics_context,
-            layout,
             enable_float_volume_texture: default_float,
             toggle_enabled: true,
             last_volume: None,
             enable_mesh: false,
             texture_pool: texture_pool,
-            view_factory: factory,
+            app_view: AppView::new(layout, factory),
         })
     }
 
@@ -174,7 +162,7 @@ impl State {
         self.texture_pool.clear_depth_view();
         // Function-level comment: Reinitialize the DefaultViewFactory with the new device/queue to avoid cross-device resource mismatches on WASM.
         // This fixes a panic where a TextureView created on the new device was used to create a bind group on the old device.
-        self.view_factory = crate::rendering::view::DefaultViewFactory::new(
+        self.app_view.view_factory = crate::rendering::view::DefaultViewFactory::new(
             std::sync::Arc::clone(&self.graphics_context.graphics.device),
             std::sync::Arc::clone(&self.graphics_context.graphics.queue),
             self.graphics_context.graphics.surface_config.format,
@@ -285,7 +273,7 @@ impl State {
             self.surface_config_mut().width = new_size.width;
             self.surface_config_mut().height = new_size.height;
 
-            self.layout.resize((new_size.width, new_size.height));
+            self.app_view.layout.resize((new_size.width, new_size.height));
 
             #[cfg(target_arch = "wasm32")]
             {
@@ -327,26 +315,26 @@ impl State {
     }
 
     pub fn update(&mut self) {
-        self.layout.update(&self.graphics_context.graphics.queue);
+        self.app_view.layout.update(&self.graphics_context.graphics.queue);
     }
 
     /// Function-level comment: Check if the layout contains any MIP views for MIP pass execution.
     fn has_mip_content(&self) -> bool {
-        self.layout.views().iter().any(|view| {
+        self.app_view.layout.views().iter().any(|view| {
             view.as_any().downcast_ref::<view::MipView>().is_some()
         })
     }
 
     /// Function-level comment: Check if the layout contains any mesh views.
     fn has_mesh_view(&self) -> bool {
-        self.layout.views().iter().any(|view| {
+        self.app_view.layout.views().iter().any(|view| {
             view.as_any().downcast_ref::<view::MeshView>().is_some()
         })
     }
 
     /// Function-level comment: Check if the layout contains any MPR views.
     fn has_mpr_view(&self) -> bool {
-        self.layout.views().iter().any(|view| {
+        self.app_view.layout.views().iter().any(|view| {
             view.as_any().downcast_ref::<view::MprView>().is_some()
         })
     }
@@ -371,7 +359,7 @@ impl State {
         
         // Debug logging for pass execution conditions
         trace!("View-driven pass conditions - has_mesh_view: {}, has_mip_view: {}, has_mpr_view: {}, views_len: {}", 
-               has_mesh_view, has_mip_view, has_mpr_view, self.layout.views().len());
+               has_mesh_view, has_mip_view, has_mpr_view, self.app_view.layout.views().len());
         
         // Reset mesh pass error state if mesh view is present and pass executor is unhealthy
         // Do this before borrowing texture_pool to avoid borrowing conflicts
@@ -383,7 +371,7 @@ impl State {
         // Execute frame using PassExecutor with separate render passes
         // Extract all needed values and mutable references in one go to avoid borrowing conflicts
         let texture_pool = &mut self.texture_pool;
-        let layout = &mut self.layout;
+        let layout = &mut self.app_view.layout;
         
         let surface_width = self.graphics_context.graphics.surface_config.width;
         let surface_height = self.graphics_context.graphics.surface_config.height;
@@ -497,12 +485,12 @@ impl State {
             ).unwrap())
         };
     
-        self.layout.remove_all();
+        self.app_view.layout.remove_all();
     
         if self.enable_mesh {
             // Add MPR views to slots 0 and 1 (Transverse and Coronal) using factory
             for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1]].iter() {
-                let view = self.view_factory
+                let view = self.app_view.view_factory
                     .create_mpr_view_with_content(
                         texture.clone(),
                         &vol,
@@ -511,25 +499,25 @@ impl State {
                         (0, 0),
                     )
                     .unwrap();
-                self.layout.add_view(view);
+                self.app_view.layout.add_view(view);
             }
 
             // Add Mesh view to slot 2 (third position - replacing Sagittal) using factory
             let mesh = crate::rendering::mesh::mesh::Mesh::spine_vertebra();
-            let mesh_view = self.view_factory
+            let mesh_view = self.app_view.view_factory
                 .create_mesh_view(&mesh, (0, 0), (0, 0))
                 .unwrap();
-            self.layout.add_view(mesh_view);
+            self.app_view.layout.add_view(mesh_view);
 
             // Add MIP view to slot 3 (fourth position - replacing Oblique) using factory
-            let mip_view = self.view_factory
+            let mip_view = self.app_view.view_factory
                 .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))
                 .unwrap();
-            self.layout.add_view(mip_view);
+            self.app_view.layout.add_view(mip_view);
         } else {
             // Mesh disabled: add all four MPR views (including oblique) using factory
             for orientation in ALL_ORIENTATIONS.iter() {
-                let view = self.view_factory
+                let view = self.app_view.view_factory
                     .create_mpr_view_with_content(
                         texture.clone(),
                         &vol,
@@ -538,7 +526,7 @@ impl State {
                         (0, 0),
                     )
                     .unwrap();
-                self.layout.add_view(view);
+                self.app_view.layout.add_view(view);
             }
         }
     }
@@ -577,13 +565,13 @@ impl State {
 
     /// Function-level comment: Calculate position and size for a view at the specified index.
     fn calculate_view_position_and_size(&self, index: usize) -> ((i32, i32), (u32, u32)) {
-        let total_views = self.layout.views().len() as u32;
+        let total_views = self.app_view.layout.views().len() as u32;
         let parent_dim = (self.surface_config().width, self.surface_config().height);
-        self.layout.strategy().calculate_position_and_size(index as u32, total_views, parent_dim)
+        self.app_view.layout.strategy().calculate_position_and_size(index as u32, total_views, parent_dim)
     }
 
     pub fn set_window_level(&mut self, index: usize, window_level: f32) {
-        let view = self.layout.views_mut().get_mut(index).unwrap();
+        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             if self.enable_float_volume_texture {
                 // Float path uses native HU values
@@ -597,7 +585,7 @@ impl State {
     }
 
     pub fn set_window_width(&mut self, index: usize, window_width: f32) {
-        let view = self.layout.views_mut().get_mut(index).unwrap();
+        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             mpr_view.set_window_width(window_width);
             log::info!("View {} set_window_width: {}", index, window_width);
@@ -605,7 +593,7 @@ impl State {
     }
 
     pub fn set_slice_mm(&mut self, index: usize, z: f32) {
-        let view = self.layout.views_mut().get_mut(index).unwrap();
+        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             mpr_view.set_slice_mm(z);
             log::info!("View {} set_slice: {}", index, z);
@@ -613,7 +601,7 @@ impl State {
     }
 
     pub fn set_scale(&mut self, index: usize, scale: f32) {
-        let view = self.layout.views_mut().get_mut(index).unwrap();
+        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             mpr_view.set_scale(scale);
             log::info!("View {} set_scale: {}", index, scale);
@@ -621,7 +609,7 @@ impl State {
     }
 
     pub fn set_translate_in_screen_coord(&mut self, index: usize, translate: [f32; 3]) {
-        let view = self.layout.views_mut().get_mut(index).unwrap();
+        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             log::info!("View {} move to: {:#?}", index, translate);
             mpr_view.set_translate_in_screen_coord(translate);
@@ -629,7 +617,7 @@ impl State {
     }
 
     pub fn set_pan(&mut self, index: usize, x: f32, y: f32 ) {
-        let view = self.layout.views_mut().get_mut(index).unwrap();
+        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             log::info!("View {} move to: {:#?}", index, (x, y));
             mpr_view.set_pan(x, y);
@@ -637,7 +625,7 @@ impl State {
     }
 
     pub fn set_pan_mm(&mut self, index: usize, x_mm: f32, y_mm: f32 ) {
-        let view = self.layout.views_mut().get_mut(index).unwrap();
+        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             log::info!("View {} move to mm: {:#?}", index, (x_mm, y_mm));
             mpr_view.set_pan_mm(x_mm, y_mm);
@@ -645,7 +633,7 @@ impl State {
     }
 
     pub fn set_center_at_point_in_mm(&mut self, index: usize, x_mm: f32, y_mm: f32, z_mm: f32) {
-        let view = self.layout.views_mut().get_mut(index).unwrap();
+        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             log::info!("View {} set_center_at_point_in_mm: {:#?}", index, (x_mm, y_mm, z_mm));
             mpr_view.set_center_at_point_in_mm([x_mm, y_mm, z_mm]);
@@ -654,7 +642,7 @@ impl State {
 
     /// Get screen coordinate in millimeters for the specified view
     pub fn get_screen_coord_in_mm(&self, index: usize, coord: [f32; 3]) -> [f32; 3] {
-        if let Some(view) = self.layout.views().get(index) {
+        if let Some(view) = self.app_view.layout.views().get(index) {
             if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
                 return mpr_view.screen_coord_to_world(coord);
             }
@@ -664,7 +652,7 @@ impl State {
     }
 
     pub fn world_coord_to_screen(&self, index: usize, world_coord: [f32; 3]) -> [f32; 3] {
-        if let Some(view) = self.layout.views().get(index) {
+        if let Some(view) = self.app_view.layout.views().get(index) {
             if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
                 return mpr_view.world_coord_to_screen(world_coord);
             }
@@ -688,23 +676,23 @@ impl State {
     /// Function-level comment: Enable or disable Y-axis rotation for the mesh view in slot 2.
     /// This method provides external control over mesh rotation animation.
     pub fn set_mesh_rotation_enabled(&mut self, enabled: bool) {
-        if self.layout.views().len() > 2 {
-            if let Some(mesh_view) = self.layout.views_mut()[2].as_any_mut().downcast_mut::<MeshView>() {
+        if self.app_view.layout.views().len() > 2 {
+            if let Some(mesh_view) = self.app_view.layout.views_mut()[2].as_any_mut().downcast_mut::<MeshView>() {
                 mesh_view.set_rotation_enabled(enabled);
                 log::info!("Mesh rotation {} via State control", if enabled { "enabled" } else { "disabled" });
             } else {
                 log::warn!("Cannot control mesh rotation: slot 2 does not contain a MeshView");
             }
         } else {
-            log::warn!("Cannot control mesh rotation: insufficient views (need at least 3, found {})", self.layout.views().len());
+            log::warn!("Cannot control mesh rotation: insufficient views (need at least 3, found {})", self.app_view.layout.views().len());
         }
     }
 
     /// Function-level comment: Set the rotation speed for the mesh view in slot 2.
     /// Speed is specified in radians per second. Use set_mesh_rotation_speed_degrees for degree-based input.
     pub fn set_mesh_rotation_speed(&mut self, speed_rad_per_sec: f32) {
-        if self.layout.views().len() > 2 {
-            if let Some(mesh_view) = self.layout.views_mut()[2].as_any_mut().downcast_mut::<MeshView>() {
+        if self.app_view.layout.views().len() > 2 {
+            if let Some(mesh_view) = self.app_view.layout.views_mut()[2].as_any_mut().downcast_mut::<MeshView>() {
                 mesh_view.set_rotation_speed(speed_rad_per_sec);
                 log::info!("Mesh rotation speed set to {:.3} rad/s ({:.1}°/s) via State control", 
                            speed_rad_per_sec, speed_rad_per_sec.to_degrees());
@@ -712,7 +700,7 @@ impl State {
                 log::warn!("Cannot set mesh rotation speed: slot 2 does not contain a MeshView");
             }
         } else {
-            log::warn!("Cannot set mesh rotation speed: insufficient views (need at least 3, found {})", self.layout.views().len());
+            log::warn!("Cannot set mesh rotation speed: insufficient views (need at least 3, found {})", self.app_view.layout.views().len());
         }
     }
 
@@ -725,23 +713,23 @@ impl State {
     /// Function-level comment: Reset the mesh rotation angle to zero.
     /// Useful for returning the mesh to its initial orientation.
     pub fn reset_mesh_rotation(&mut self) {
-        if self.layout.views().len() > 2 {
-            if let Some(mesh_view) = self.layout.views_mut()[2].as_any_mut().downcast_mut::<MeshView>() {
+        if self.app_view.layout.views().len() > 2 {
+            if let Some(mesh_view) = self.app_view.layout.views_mut()[2].as_any_mut().downcast_mut::<MeshView>() {
                 mesh_view.reset_rotation();
                 log::info!("Mesh rotation angle reset via State control");
             } else {
                 log::warn!("Cannot reset mesh rotation: slot 2 does not contain a MeshView");
             }
         } else {
-            log::warn!("Cannot reset mesh rotation: insufficient views (need at least 3, found {})", self.layout.views().len());
+            log::warn!("Cannot reset mesh rotation: insufficient views (need at least 3, found {})", self.app_view.layout.views().len());
         }
     }
 
     /// Function-level comment: Check if mesh rotation is currently enabled.
     /// Returns false if slot 2 doesn't contain a MeshView.
     pub fn is_mesh_rotation_enabled(&self) -> bool {
-        if self.layout.views().len() > 2 {
-            if let Some(mesh_view) = self.layout.views()[2].as_any().downcast_ref::<crate::rendering::view::MeshView>() {
+        if self.app_view.layout.views().len() > 2 {
+            if let Some(mesh_view) = self.app_view.layout.views()[2].as_any().downcast_ref::<crate::rendering::view::MeshView>() {
                 mesh_view.is_rotation_enabled()
             } else {
                 false
@@ -754,8 +742,8 @@ impl State {
     /// Function-level comment: Get the current mesh rotation speed in radians per second.
     /// Returns 0.0 if slot 2 doesn't contain a MeshView.
     pub fn get_mesh_rotation_speed(&self) -> f32 {
-        if self.layout.views().len() > 2 {
-            if let Some(mesh_view) = self.layout.views()[2].as_any().downcast_ref::<crate::rendering::view::MeshView>() {
+        if self.app_view.layout.views().len() > 2 {
+            if let Some(mesh_view) = self.app_view.layout.views()[2].as_any().downcast_ref::<crate::rendering::view::MeshView>() {
                 mesh_view.get_rotation_speed()
             } else {
                 0.0
