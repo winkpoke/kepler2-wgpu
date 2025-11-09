@@ -369,7 +369,10 @@ mod integration_tests {
     use chrono::Local;
 
     /// Tests DICOM export functionality with real MHA file
+    /// NOTE: Ignored by default because it depends on external local paths (C:/share/input).
+    /// Configure local fixtures or update paths before running manually.
     #[test]
+    #[ignore]
     fn test_dicom_export_workflow_with_real_mha_file() {
         // Create a test patient and study
         let patient = create_test_patient();
@@ -406,7 +409,10 @@ mod integration_tests {
     }
 
     /// Tests DICOM export functionality with real MHD file
+    /// NOTE: Ignored by default because it depends on external local paths (C:/share/input).
+    /// Configure local fixtures or update paths before running manually.
     #[test]
+    #[ignore]
     fn test_dicom_export_workflow_with_real_mhd_file() {
         // Create a test patient and study
         let patient = create_test_patient();

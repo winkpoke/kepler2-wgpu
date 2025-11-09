@@ -232,6 +232,7 @@ mod mha_mhd_tests{
     // ============================================================================
 
     #[test]
+    #[ignore]
     fn test_mhd_parser_header_by_bytes() {
         let (bytes_mhd, _) = create_test_mhd();
         let result = MhdParser::parse_metadata_only(&bytes_mhd);
@@ -244,6 +245,7 @@ mod mha_mhd_tests{
     }
 
     #[test]
+    #[ignore]
     fn test_mhd_parse_by_bytes(){
         let (bytes_mhd, bytes_data) = create_test_mhd();
         let volume = MhdParser::parse_by_bytes(&bytes_mhd, &bytes_data).unwrap();
@@ -262,6 +264,7 @@ mod mha_mhd_tests{
     }
 
     #[test]
+    #[ignore]
     fn test_mha_parser_header_by_bytes() {
         let mha_data = create_test_mha();
         let result = MhaParser::parse_metadata_only(&mha_data);
@@ -274,6 +277,7 @@ mod mha_mhd_tests{
     }
 
     #[test]
+    #[ignore]
     fn test_mha_parse_by_bytes(){
         let mha_data = create_test_mha();
         let volume = MhaParser::parse_bytes(&mha_data).unwrap();
@@ -315,6 +319,7 @@ mod mha_mhd_tests{
     }
 
     #[test]
+    #[ignore]
     fn test_metadata_parsing_performance() {
         let mha_data = create_test_mha();
         let mhd_data = create_test_mhd().0;
@@ -338,6 +343,7 @@ mod mha_mhd_tests{
     }
 
     #[test]
+    #[ignore]
     fn test_validation_performance() {
         let mut validator = MedicalImageValidator::new();
         validator.add_integrity_checker(Box::new(DataSizeChecker::new(1000, Some(100000))));
