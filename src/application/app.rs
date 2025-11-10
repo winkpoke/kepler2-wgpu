@@ -1,10 +1,10 @@
-#![allow(dead_code)]
+﻿#![allow(dead_code)]
 
 use log::{trace, info, warn};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::{fs, io};
-use crate::core::timing::Instant;
+use std::sync::Arc;
+use crate::mesh::mesh::Mesh;
 use crate::rendering::{view, Graphics, GraphicsContext};
 
 // use wgpu::util::DeviceExt;
@@ -16,29 +16,13 @@ use winit::{
     window::Window,
 };
 
-use crate::data::ct_volume::*;
+use crate::data::{AppModel, ct_volume::*};
 use crate::data::dicom::*;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::*;
 use crate::core::{error::KeplerError, WindowLevel};
 use crate::rendering::mesh::mesh_texture_pool::MeshTexturePool;
 
-fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
-    let mut file_paths = Vec::new();
-
-    // Open the directory and iterate over its contents
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?; // unwrap the result of read_dir
-        let path = entry.path();
-
-        // Check if the entry is a file (not a directory)
-        if path.is_file() {
-            file_paths.push(path); // Add the full path to the list
-        }
-    }
-
-    Ok(file_paths)
-}
 
 // static STATE: Lazy<Arc<Mutex<Option<State>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 
@@ -49,55 +33,39 @@ fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-
-pub struct AppModel {
-    pub(crate) vol: Option<CTVolume>,
-    pub(crate) app: Arc<App>,
-}
-
-pub struct AppView {
-    pub(crate) graphics: Graphics,
-    pub(crate) layout: Layout<GridLayout>,
-    pub(crate) app: Arc<App>,
-}
-
-pub struct App {
-    pub(crate) view: Arc<AppView>,
-    pub(crate) doc: Arc<AppModel>,
-}
+use crate::application::appview::AppView;
 
 // #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-pub struct State {
+pub struct App {
     /// Graphics context that encapsulates both hardware abstraction and rendering pipeline orchestration
     pub(crate) graphics_context: GraphicsContext,
-    // pub(crate) layout: Layout<OneCellLayout>,
-    pub(crate) layout: Layout<GridLayout>,
+    pub(crate) app_view: AppView,
     pub(crate) enable_float_volume_texture: bool,
     pub(crate) toggle_enabled: bool,
-    pub(crate) last_volume: Option<CTVolume>,
     pub(crate) enable_mesh: bool,
     pub(crate) texture_pool: MeshTexturePool,
+    pub(crate) app_model: AppModel,
 }
 
-impl State {
+impl App {
     const HU_OFFSET: f32 = 1100.0;
     
-    pub async fn new(window: Arc<Window>) -> Result<State, KeplerError> {
-        State::initialize(window).await
+    pub async fn new(window: Arc<Window>) -> Result<App, KeplerError> {
+        App::initialize(window).await
     }
 
-    pub async fn initialize(window: Arc<Window>) -> Result<State, KeplerError> {
+    pub async fn initialize(window: Arc<Window>) -> Result<App, KeplerError> {
         let graphics = Graphics::new(window.clone()).await?;
         // println!("supported texture formats: {:?}", surface_caps.formats);
         // println!("format: {:?}", config.format);
 
-        let layout = Layout::new(
+        let layout = DynamicLayout::new(
             (graphics.surface_config.width, graphics.surface_config.height),
-            GridLayout {
+            Box::new(GridLayout {
                 rows: 2,
                 cols: 2,
                 spacing: 2,
-            },
+            }),
         );
 
         // Choose default format based on device capability: prefer R16Float when supported, else RG8
@@ -148,15 +116,23 @@ impl State {
 
         // Create GraphicsContext which encapsulates both graphics and pass_executor
         let graphics_context = GraphicsContext::from_graphics(graphics);
+
+        // Initialize DefaultViewFactory with current GPU resources and configuration
+        let factory = crate::rendering::view::DefaultViewFactory::new(
+            Arc::clone(&graphics_context.graphics.device),
+            Arc::clone(&graphics_context.graphics.queue),
+            graphics_context.graphics.surface_config.format,
+            default_float,
+        );
         
         Ok(Self {
             graphics_context,
-            layout,
             enable_float_volume_texture: default_float,
             toggle_enabled: true,
-            last_volume: None,
             enable_mesh: false,
             texture_pool: texture_pool,
+            app_view: AppView::new(layout, factory),
+            app_model: AppModel::new(),
         })
     }
 
@@ -175,38 +151,20 @@ impl State {
         self.graphics_context = new_gc;
         // Clear cached mesh depth texture views bound to the old device
         self.texture_pool.clear_depth_view();
-    }
-
-    #[cfg(not(target_arch = "wasm32"))]
-    /// Loads local DICOM data for pipeline creation.
-    /// Native-only helper used during development/testing.
-    pub async fn load_data(&mut self) {
-        let repo = {
-            // Start the timer
-            let start_time = Instant::now();
-    
-            let file_names = list_files_in_directory("C:\\share\\imrt").unwrap();
-            let repo =
-                fileio::parse_dcm_directories(vec!["C:\\share\\imrt", "C:\\share\\head_mold"]) 
-                    .await
-                    .unwrap();
-            println!("DicomRepo:\n{}", repo.to_string());
-            println!("Patients:\n{:?}", repo.get_all_patients());
-            // Stop the timer
-            let elapsed_time = start_time.elapsed();
-    
-            // Print the repository and performance details
-            // println!("Parsed repository: {:?}", repo);
-            println!(
-                "Parsing completed in {:.1} ms.",
-                elapsed_time.as_millis_f32()
-            );
-            repo
-        };
-        self.load_data_from_repo(
-            &repo,
-            "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.964561",
+        // Function-level comment: Reinitialize the DefaultViewFactory with the new device/queue to avoid cross-device resource mismatches on WASM.
+        // This fixes a panic where a TextureView created on the new device was used to create a bind group on the old device.
+        self.app_view.view_factory = crate::rendering::view::DefaultViewFactory::new(
+            std::sync::Arc::clone(&self.graphics_context.graphics.device),
+            std::sync::Arc::clone(&self.graphics_context.graphics.queue),
+            self.graphics_context.graphics.surface_config.format,
+            self.enable_float_volume_texture,
         );
+        log::info!("ViewFactory reinitialized after graphics swap.");
+        
+        // self.resize(winit::dpi::PhysicalSize {
+        //     width: self.surface_config().width,
+        //     height: self.surface_config().height,
+        // });
     }
 
     /// Get a reference to the window
@@ -274,7 +232,7 @@ impl State {
             self.surface_config_mut().width = new_size.width;
             self.surface_config_mut().height = new_size.height;
 
-            self.layout.resize((new_size.width, new_size.height));
+            self.app_view.layout.resize((new_size.width, new_size.height));
 
             #[cfg(target_arch = "wasm32")]
             {
@@ -316,26 +274,26 @@ impl State {
     }
 
     pub fn update(&mut self) {
-        self.layout.update(&self.graphics_context.graphics.queue);
+        self.app_view.layout.update(&self.graphics_context.graphics.queue);
     }
 
     /// Function-level comment: Check if the layout contains any MIP views for MIP pass execution.
     fn has_mip_content(&self) -> bool {
-        self.layout.views.iter().any(|view| {
+        self.app_view.layout.views().iter().any(|view| {
             view.as_any().downcast_ref::<view::MipView>().is_some()
         })
     }
 
     /// Function-level comment: Check if the layout contains any mesh views.
     fn has_mesh_view(&self) -> bool {
-        self.layout.views.iter().any(|view| {
+        self.app_view.layout.views().iter().any(|view| {
             view.as_any().downcast_ref::<view::MeshView>().is_some()
         })
     }
 
     /// Function-level comment: Check if the layout contains any MPR views.
     fn has_mpr_view(&self) -> bool {
-        self.layout.views.iter().any(|view| {
+        self.app_view.layout.views().iter().any(|view| {
             view.as_any().downcast_ref::<view::MprView>().is_some()
         })
     }
@@ -354,13 +312,13 @@ impl State {
         });
 
         // Function-level comment: Determine which rendering passes to enable based on view types present in layout
-        let has_mesh_view = self.has_mesh_view();
+        let has_mesh_view = self.enable_mesh;
         let has_mip_view = self.has_mip_content(); // Keep existing method name for MIP
         let has_mpr_view = self.has_mpr_view();
         
         // Debug logging for pass execution conditions
         trace!("View-driven pass conditions - has_mesh_view: {}, has_mip_view: {}, has_mpr_view: {}, views_len: {}", 
-               has_mesh_view, has_mip_view, has_mpr_view, self.layout.views.len());
+               has_mesh_view, has_mip_view, has_mpr_view, self.app_view.layout.views().len());
         
         // Reset mesh pass error state if mesh view is present and pass executor is unhealthy
         // Do this before borrowing texture_pool to avoid borrowing conflicts
@@ -372,7 +330,7 @@ impl State {
         // Execute frame using PassExecutor with separate render passes
         // Extract all needed values and mutable references in one go to avoid borrowing conflicts
         let texture_pool = &mut self.texture_pool;
-        let layout = &mut self.layout;
+        let layout = &mut self.app_view.layout;
         
         let surface_width = self.graphics_context.graphics.surface_config.width;
         let surface_height = self.graphics_context.graphics.surface_config.height;
@@ -393,7 +351,7 @@ impl State {
                 match pass_context.pass_id {
                     crate::rendering::core::PassId::MeshPass => {
                         // Function-level comment: Render 3D mesh content by finding MeshView in the layout
-                        for view in layout.views.iter_mut() {
+                        for view in layout.views_mut().iter_mut() {
                             if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
                                 // Call the MeshView render method with the pass context
                                 mesh_view.render(pass_context.pass).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
@@ -404,7 +362,7 @@ impl State {
                     }
                     crate::rendering::core::PassId::MipPass => {
                         // Function-level comment: Render MIP content by finding and rendering MIP views in the layout
-                        for view in layout.views.iter_mut() {
+                        for view in layout.views_mut().iter_mut() {
                             // Check if this view is a MipView and render it
                             if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
                                 mip_view.render(pass_context.pass).map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
@@ -415,7 +373,7 @@ impl State {
                     crate::rendering::core::PassId::SlicePass => {
                         // Function-level comment: Render 2D slice content (MPR views only, skip MeshView)
                         // Iterate through views and only render MPR views, not MeshView
-                        for (_, view) in layout.views.iter_mut().enumerate() {
+                        for (_, view) in layout.views_mut().iter_mut().enumerate() {
                             // Check if this is a MeshView and skip it during slice pass
                             if view.as_any().downcast_ref::<MeshView>().is_some() {
                                 continue;
@@ -440,11 +398,13 @@ impl State {
     }
 
     pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume) {
-        self.last_volume = Some(vol.clone());
+        self.app_model.load_volume(vol.clone());
         let mut winlev;
         let texture = if self.enable_float_volume_texture {
             winlev = WindowLevel::new();
-            winlev.apply_bone_preset();
+            if let Err(e) = winlev.apply_bone_preset() {
+                log::warn!("apply_bone_preset (float path) failed: {}", e);
+            }
             info!("Using R16Float volume texture path");
             // Convert voxel i16 values to half-float bytes
             let bytes: Vec<u8> = {
@@ -466,8 +426,12 @@ impl State {
             ).unwrap())
         } else {
             winlev = WindowLevel::new();
-            winlev.set_bias(Self::HU_OFFSET);
-            winlev.apply_bone_preset();
+            if let Err(e) = winlev.set_bias(Self::HU_OFFSET) {
+                log::warn!("set_bias (packed RG8 path) failed: {}", e);
+            }
+            if let Err(e) = winlev.apply_bone_preset() {
+                log::warn!("apply_bone_preset (packed RG8 path) failed: {}", e);
+            }
             info!("Using Rg8Unorm volume texture path");
             let voxel_data: Vec<u16> = vol
                 .voxel_data
@@ -486,60 +450,48 @@ impl State {
             ).unwrap())
         };
     
-        self.layout.remove_all();
-    
+        self.app_view.layout.remove_all();
+        let view_factory = &self.app_view.view_factory;
         if self.enable_mesh {
-            // Add MPR views to slots 0 and 1 (Transverse and Coronal)
+            // Add MPR views to slots 0 and 1 (Transverse and Coronal) using factory
             for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1]].iter() {
-                let render_context = Arc::new(crate::rendering::view::mpr::mpr_render_context::MprRenderContext::new(
-                    self.device(),
-                ));
-                let view = MprView::new(
-                    render_context,
-                    self.device(),
-                    texture.clone(),
-                    &vol,
-                    *orientation,
-                    WindowLevel::new(),  // Default window/level with no bias
-                    1.0,
-                    [0.0, 0.0, 0.0],
-                    (0, 0),
-                    (0, 0),
-                );
-                self.layout.add_view(Box::new(view));
+                let view = view_factory
+                    .create_mpr_view_with_content(
+                        texture.clone(),
+                        &vol,
+                        *orientation,
+                        (0, 0),
+                        (0, 0),
+                    )
+                    .unwrap();
+                self.app_view.layout.add_view(view);
             }
-            
-            // Add Mesh view to slot 2 (third position - replacing Sagittal)
-            let mesh_view = self.create_mesh_view((0, 0), (0, 0));
-            self.layout.add_view(Box::new(mesh_view));
-            
-            // Add MIP view to slot 3 (fourth position - replacing Oblique)
-            let mip_wgpu_impl = crate::rendering::MipViewWgpuImpl::new(
-                texture.clone(),
-                self.device(),
-                self.surface_config().format,
-            );
-            let mip_view = crate::rendering::mip::MipView::new(Arc::new(mip_wgpu_impl));
-            self.layout.add_view(Box::new(mip_view));
+
+            // Add Mesh view to slot 2 (third position - replacing Sagittal) using factory
+            let mesh = Mesh::spine_vertebra();
+            let mesh_view = view_factory
+                .create_mesh_view(&mesh, (0, 0), (0, 0))
+                .unwrap();
+            self.app_view.layout.add_view(mesh_view);
+
+            // Add MIP view to slot 3 (fourth position - replacing Oblique) using factory
+            let mip_view = view_factory
+                .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))
+                .unwrap();
+            self.app_view.layout.add_view(mip_view);
         } else {
-            // Mesh disabled: add all four MPR views (including oblique)
+            // Mesh disabled: add all four MPR views (including oblique) using factory
             for orientation in ALL_ORIENTATIONS.iter() {
-                let render_context = Arc::new(crate::rendering::view::mpr::mpr_render_context::MprRenderContext::new(
-                    self.device(),
-                ));
-                let view = MprView::new(
-                    render_context,
-                    self.device(),
-                    texture.clone(),
-                    &vol,
-                    *orientation,
-                    winlev,
-                    1.0,
-                    [0.0, 0.0, 0.0],
-                    (0, 0),
-                    (0, 0),
-                );
-                self.layout.add_view(Box::new(view));
+                let view = view_factory
+                    .create_mpr_view_with_content(
+                        texture.clone(),
+                        &vol,
+                        *orientation,
+                        (0, 0),
+                        (0, 0),
+                    )
+                    .unwrap();
+                self.app_view.layout.add_view(view);
             }
         }
     }
@@ -564,126 +516,108 @@ impl State {
         }
         self.enable_mesh = enabled;
     
-        if self.last_volume.is_none() {
-            log::info!("Mesh mode set to {} without loaded volume; will apply on next data load.", enabled);
-            return;
-        }
-    
-        // Rebuild the entire layout to ensure proper view configuration
-        if let Some(vol) = &self.last_volume.clone() {
-            self.load_data_from_ct_volume(vol);
+        // Rebuild layout immediately if a volume is already loaded
+        if let Ok(vol) = self.app_model.volume() {
+            self.load_data_from_ct_volume(&vol.clone());
             log::info!("Layout rebuilt for mesh mode: {}", enabled);
+        } else {
+            log::info!("Mesh mode set to {} without loaded volume; will apply on next data load.", enabled);
         }
     }
 
     /// Function-level comment: Calculate position and size for a view at the specified index.
     fn calculate_view_position_and_size(&self, index: usize) -> ((i32, i32), (u32, u32)) {
-        let total_views = self.layout.views.len() as u32;
+        let total_views = self.app_view.layout.views().len() as u32;
         let parent_dim = (self.surface_config().width, self.surface_config().height);
-        self.layout.strategy.calculate_position_and_size(index as u32, total_views, parent_dim)
-    }
-
-    /// Function-level comment: Create a MeshView with fresh BasicMeshContext.
-    fn create_mesh_view(&mut self, 
-                       pos: (i32, i32), size: (u32, u32)) -> crate::rendering::view::MeshView {
-        use std::sync::Arc;
-        use crate::rendering::mesh::{mesh::Mesh, basic_mesh_context::BasicMeshContext};
-        use crate::rendering::view::{MeshView, View as _};
-    
-        let mut mesh_view = MeshView::new();
-        mesh_view.set_rotation_enabled(true);
-        log::info!("Mesh rotation enabled");
-        
-        // Create fresh BasicMeshContext for each mesh view
-        // let mesh = Mesh::uniform_color_cube();
-        let mesh = Mesh::spine_vertebra();
-        let ctx = BasicMeshContext::new(
-            self.device(),
-            self.queue(),
-            &mesh,
-            true, // Enable depth testing for proper 3D rendering
-        );
-        let ctx_arc = Arc::new(ctx);
-        
-        mesh_view.attach_context(ctx_arc);
-        mesh_view.move_to(pos);
-        mesh_view.resize(size);
-        mesh_view
+        self.app_view.layout.strategy().calculate_position_and_size(index as u32, total_views, parent_dim)
     }
 
     pub fn set_window_level(&mut self, index: usize, window_level: f32) {
-        let view = self.layout.views.get_mut(index).unwrap();
+        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-            if self.enable_float_volume_texture {
-                // Float path uses native HU values
-                mpr_view.set_window_level(window_level);
-            } else {
-                // Packed RG8 path uses offset
-                mpr_view.set_window_level(window_level + Self::HU_OFFSET);
+            if let Err(e) = mpr_view.set_window_level(window_level) {
+                log::warn!("set_window_level {} failed on view {}: {}", 
+                        if self.enable_float_volume_texture {"(float)"} else {"(packed RG8)"}, 
+                        index, e);
             }
             log::info!("View {} set_window_level: {}", index, window_level);
         }
     }
 
     pub fn set_window_width(&mut self, index: usize, window_width: f32) {
-        let view = self.layout.views.get_mut(index).unwrap();
+        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-            mpr_view.set_window_width(window_width);
+            if let Err(e) = mpr_view.set_window_width(window_width) {
+                log::warn!("set_window_width failed on view {}: {}", index, e);
+            }
             log::info!("View {} set_window_width: {}", index, window_width);
         }
     }
 
     pub fn set_slice_mm(&mut self, index: usize, z: f32) {
-        let view = self.layout.views.get_mut(index).unwrap();
+        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-            mpr_view.set_slice_mm(z);
+            if let Err(e) = mpr_view.set_slice_mm(z) {
+                log::warn!("set_slice_mm failed on view {}: {}", index, e);
+            }
             log::info!("View {} set_slice: {}", index, z);
         }
     }
 
     pub fn set_scale(&mut self, index: usize, scale: f32) {
-        let view = self.layout.views.get_mut(index).unwrap();
+        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-            mpr_view.set_scale(scale);
+            if let Err(e) = mpr_view.set_scale(scale) {
+                log::warn!("set_scale failed on view {}: {}", index, e);
+            }
             log::info!("View {} set_scale: {}", index, scale);
         }
     }
 
     pub fn set_translate_in_screen_coord(&mut self, index: usize, translate: [f32; 3]) {
-        let view = self.layout.views.get_mut(index).unwrap();
+        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             log::info!("View {} move to: {:#?}", index, translate);
-            mpr_view.set_translate_in_screen_coord(translate);
+            // Handle potential error from translate operation to avoid unused Result warnings.
+            if let Err(e) = mpr_view.set_translate_in_screen_coord(translate) {
+                log::warn!("set_translate_in_screen_coord failed on view {}: {}", index, e);
+            }
         }
     }
 
     pub fn set_pan(&mut self, index: usize, x: f32, y: f32 ) {
-        let view = self.layout.views.get_mut(index).unwrap();
+        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             log::info!("View {} move to: {:#?}", index, (x, y));
-            mpr_view.set_pan(x, y);
+            if let Err(e) = mpr_view.set_pan(x, y) {
+                log::warn!("set_pan failed on view {}: {}", index, e);
+            }
         }
     }
 
     pub fn set_pan_mm(&mut self, index: usize, x_mm: f32, y_mm: f32 ) {
-        let view = self.layout.views.get_mut(index).unwrap();
+        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             log::info!("View {} move to mm: {:#?}", index, (x_mm, y_mm));
-            mpr_view.set_pan_mm(x_mm, y_mm);
+            if let Err(e) = mpr_view.set_pan_mm(x_mm, y_mm) {
+                log::warn!("set_pan_mm failed on view {}: {}", index, e);
+            }
         }
     }
 
     pub fn set_center_at_point_in_mm(&mut self, index: usize, x_mm: f32, y_mm: f32, z_mm: f32) {
-        let view = self.layout.views.get_mut(index).unwrap();
+        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             log::info!("View {} set_center_at_point_in_mm: {:#?}", index, (x_mm, y_mm, z_mm));
-            mpr_view.set_center_at_point_in_mm([x_mm, y_mm, z_mm]);
+            if let Err(e) = mpr_view.set_center_at_point_in_mm([x_mm, y_mm, z_mm]) {
+                log::warn!("set_center_at_point_in_mm failed on view {}: {}", index, e);
+            }
         }
     }
 
     /// Get screen coordinate in millimeters for the specified view
     pub fn get_screen_coord_in_mm(&self, index: usize, coord: [f32; 3]) -> [f32; 3] {
-        if let Some(view) = self.layout.views.get(index) {
+        if let Some(view) = self.app_view.layout.views().get(index) {
             if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
                 return mpr_view.screen_coord_to_world(coord);
             }
@@ -745,7 +679,7 @@ impl State {
     }
 
     pub fn world_coord_to_screen(&self, index: usize, world_coord: [f32; 3]) -> [f32; 3] {
-        if let Some(view) = self.layout.views.get(index) {
+        if let Some(view) = self.app_view.layout.views().get(index) {
             if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
                 return mpr_view.world_coord_to_screen(world_coord);
             }
@@ -769,23 +703,23 @@ impl State {
     /// Function-level comment: Enable or disable Y-axis rotation for the mesh view in slot 2.
     /// This method provides external control over mesh rotation animation.
     pub fn set_mesh_rotation_enabled(&mut self, enabled: bool) {
-        if self.layout.views.len() > 2 {
-            if let Some(mesh_view) = self.layout.views[2].as_any_mut().downcast_mut::<crate::rendering::view::MeshView>() {
+        if self.app_view.layout.views().len() > 2 {
+            if let Some(mesh_view) = self.app_view.layout.views_mut()[2].as_any_mut().downcast_mut::<MeshView>() {
                 mesh_view.set_rotation_enabled(enabled);
                 log::info!("Mesh rotation {} via State control", if enabled { "enabled" } else { "disabled" });
             } else {
                 log::warn!("Cannot control mesh rotation: slot 2 does not contain a MeshView");
             }
         } else {
-            log::warn!("Cannot control mesh rotation: insufficient views (need at least 3, found {})", self.layout.views.len());
+            log::warn!("Cannot control mesh rotation: insufficient views (need at least 3, found {})", self.app_view.layout.views().len());
         }
     }
 
     /// Function-level comment: Set the rotation speed for the mesh view in slot 2.
     /// Speed is specified in radians per second. Use set_mesh_rotation_speed_degrees for degree-based input.
     pub fn set_mesh_rotation_speed(&mut self, speed_rad_per_sec: f32) {
-        if self.layout.views.len() > 2 {
-            if let Some(mesh_view) = self.layout.views[2].as_any_mut().downcast_mut::<crate::rendering::view::MeshView>() {
+        if self.app_view.layout.views().len() > 2 {
+            if let Some(mesh_view) = self.app_view.layout.views_mut()[2].as_any_mut().downcast_mut::<MeshView>() {
                 mesh_view.set_rotation_speed(speed_rad_per_sec);
                 log::info!("Mesh rotation speed set to {:.3} rad/s ({:.1}°/s) via State control", 
                            speed_rad_per_sec, speed_rad_per_sec.to_degrees());
@@ -793,7 +727,7 @@ impl State {
                 log::warn!("Cannot set mesh rotation speed: slot 2 does not contain a MeshView");
             }
         } else {
-            log::warn!("Cannot set mesh rotation speed: insufficient views (need at least 3, found {})", self.layout.views.len());
+            log::warn!("Cannot set mesh rotation speed: insufficient views (need at least 3, found {})", self.app_view.layout.views().len());
         }
     }
 
@@ -806,23 +740,23 @@ impl State {
     /// Function-level comment: Reset the mesh rotation angle to zero.
     /// Useful for returning the mesh to its initial orientation.
     pub fn reset_mesh_rotation(&mut self) {
-        if self.layout.views.len() > 2 {
-            if let Some(mesh_view) = self.layout.views[2].as_any_mut().downcast_mut::<crate::rendering::view::MeshView>() {
+        if self.app_view.layout.views().len() > 2 {
+            if let Some(mesh_view) = self.app_view.layout.views_mut()[2].as_any_mut().downcast_mut::<MeshView>() {
                 mesh_view.reset_rotation();
                 log::info!("Mesh rotation angle reset via State control");
             } else {
                 log::warn!("Cannot reset mesh rotation: slot 2 does not contain a MeshView");
             }
         } else {
-            log::warn!("Cannot reset mesh rotation: insufficient views (need at least 3, found {})", self.layout.views.len());
+            log::warn!("Cannot reset mesh rotation: insufficient views (need at least 3, found {})", self.app_view.layout.views().len());
         }
     }
 
     /// Function-level comment: Check if mesh rotation is currently enabled.
     /// Returns false if slot 2 doesn't contain a MeshView.
     pub fn is_mesh_rotation_enabled(&self) -> bool {
-        if self.layout.views.len() > 2 {
-            if let Some(mesh_view) = self.layout.views[2].as_any().downcast_ref::<crate::rendering::view::MeshView>() {
+        if self.app_view.layout.views().len() > 2 {
+            if let Some(mesh_view) = self.app_view.layout.views()[2].as_any().downcast_ref::<crate::rendering::view::MeshView>() {
                 mesh_view.is_rotation_enabled()
             } else {
                 false
@@ -835,8 +769,8 @@ impl State {
     /// Function-level comment: Get the current mesh rotation speed in radians per second.
     /// Returns 0.0 if slot 2 doesn't contain a MeshView.
     pub fn get_mesh_rotation_speed(&self) -> f32 {
-        if self.layout.views.len() > 2 {
-            if let Some(mesh_view) = self.layout.views[2].as_any().downcast_ref::<crate::rendering::view::MeshView>() {
+        if self.app_view.layout.views().len() > 2 {
+            if let Some(mesh_view) = self.app_view.layout.views()[2].as_any().downcast_ref::<crate::rendering::view::MeshView>() {
                 mesh_view.get_rotation_speed()
             } else {
                 0.0
@@ -867,12 +801,19 @@ impl State {
             "Toggled enable_float_volume_texture to {}",
             self.enable_float_volume_texture
         );
-        if let Some(vol) = self.last_volume.clone() {
-            // Clone to avoid borrowing self immutably while mutably reloading
-            self.load_data_from_ct_volume(&vol);
-        } else {
-            log::warn!("No cached CTVolume to reload after toggle.");
-        }
+        let vol = {
+            let vol = match self.app_model.volume() {
+                Ok(v) => v,
+                Err(e) => {
+                    log::warn!("Failed to get volume: {}", e);
+                    return;
+                }   
+            };
+            vol.clone()
+        };
+
+        self.load_data_from_ct_volume(&vol);
+        log::warn!("No cached CTVolume to reload after toggle.");
     }
 
     pub fn disable_volume_format_toggle(&mut self) {
@@ -880,6 +821,58 @@ impl State {
         log::info!(
             "Volume format toggle feature disabled. Default format in use: {}",
             if self.enable_float_volume_texture { "R16Float" } else { "Rg8Unorm" }
+        );
+    }
+
+        fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
+        let mut file_paths = Vec::new();
+
+        // Open the directory and iterate over its contents
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?; // unwrap the result of read_dir
+            let path = entry.path();
+
+            // Check if the entry is a file (not a directory)
+            if path.is_file() {
+                file_paths.push(path); // Add the full path to the list
+            }
+        }
+
+        Ok(file_paths)
+    }
+
+    
+    #[cfg(not(target_arch = "wasm32"))]
+    /// Loads local DICOM data for pipeline creation.
+    /// Native-only helper used during development/testing.
+    pub async fn load_data(&mut self) {
+        let repo = {
+            // Start the timer
+
+            use crate::{core::Instant, dicom::fileio};
+            let start_time = Instant::now();
+    
+            let _file_names = Self::list_files_in_directory("C:\\share\\imrt").unwrap();
+            let repo =
+                fileio::parse_dcm_directories(vec!["C:\\share\\imrt", "C:\\share\\head_mold"]) 
+                    .await
+                    .unwrap();
+            println!("DicomRepo:\n{}", repo.to_string());
+            println!("Patients:\n{:?}", repo.get_all_patients());
+            // Stop the timer
+            let elapsed_time = start_time.elapsed();
+    
+            // Print the repository and performance details
+            // println!("Parsed repository: {:?}", repo);
+            println!(
+                "Parsing completed in {:.1} ms.",
+                elapsed_time.as_millis_f32()
+            );
+            repo
+        };
+        self.load_data_from_repo(
+            &repo,
+            "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.964561",
         );
     }
 }

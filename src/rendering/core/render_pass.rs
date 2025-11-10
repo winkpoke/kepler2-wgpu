@@ -5,7 +5,7 @@
 
 use wgpu;
 use std::collections::HashMap;
-use crate::core::timing::{Instant, DurationExt};
+use crate::core::timing::Instant;
 
 use crate::rendering::mesh::mesh_texture_pool::MeshTexturePool;
 
@@ -562,7 +562,7 @@ impl PassExecutor {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         frame_view: &wgpu::TextureView,
-        texture_pool: &TexturePoolType,
+        _texture_pool: &TexturePoolType,
         descriptor: &PassDescriptor,
         render_fn: &mut F,
     ) -> Result<(), Box<dyn std::error::Error>>
@@ -620,7 +620,7 @@ impl PassExecutor {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         frame_view: &wgpu::TextureView,
-        texture_pool: &TexturePoolType,
+        _texture_pool: &TexturePoolType,
         descriptor: &PassDescriptor,
         render_fn: &mut F,
     ) -> Result<(), Box<dyn std::error::Error>>

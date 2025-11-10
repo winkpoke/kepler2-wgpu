@@ -11,7 +11,7 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-use crate::rendering::core::state::State;
+use crate::{application::App, rendering::LayoutContainer};
 use crate::rendering::core::Graphics;
 use crate::application::gl_canvas::{GLCanvas, UserEvent};
 use winit::event_loop::EventLoopProxy;
@@ -28,13 +28,13 @@ pub async fn create_graphics(window: Arc<Window>) -> Result<Graphics, crate::cor
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct RenderApp {
-    pub(crate) state: Option<State>,
+    pub(crate) state: Option<App>,
     pub(crate) event_loop: Option<EventLoop<UserEvent>>,
     pub(crate) proxy: Option<EventLoopProxy<UserEvent>>,
 }
 
 impl RenderApp {
-    pub fn new(state: State, event_loop: EventLoop<UserEvent>) -> Self {
+    pub fn new(state: App, event_loop: EventLoop<UserEvent>) -> Self {
         let proxy = event_loop.create_proxy();
         RenderApp {
             state: Some(state),
@@ -123,15 +123,19 @@ impl RenderApp {
                 }
                 Event::UserEvent(UserEvent::Quit) => {
                     log::info!("Quit event received. Exiting event loop.");
-                    state.layout.remove_all();
+                    state.app_view.layout.remove_all();
                     target.exit();
                 }
                 Event::UserEvent(UserEvent::SetWindowByDivId(div_id, volume)) => {
                     log::info!("SetWindowByDivId event received for div_id: {div_id}");
-
-                    let window = Arc::new(WindowBuilder::new().build(target).unwrap());
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        // Silence unused variable in native builds; volume is used on web.
+                        let _ = &volume;
+                    }
                     #[cfg(target_arch = "wasm32")]
                     {
+                        let window = Arc::new(WindowBuilder::new().build(target).unwrap());
                         // Winit prevents sizing with CSS, so we have to set
                         // the size manually when on web.
                         use winit::dpi::PhysicalSize;
@@ -147,7 +151,7 @@ impl RenderApp {
                             .expect("Couldn't append canvas to document body.");
                         let _ = window.request_inner_size(PhysicalSize::new(800, 800)); 
                         let proxy = proxy.clone();
-                        state.layout.remove_all();
+                        state.app_view.layout.remove_all();
                         spawn_local(async move {
                             match Graphics::new(window.clone()).await {
                                 Ok(graphics) => {
@@ -170,7 +174,7 @@ impl RenderApp {
                 }
                 Event::UserEvent(UserEvent::ClearLayout) => {
                     log::info!("ClearLayout event received.");
-                    state.layout.remove_all();
+                    state.app_view.layout.remove_all();
                 }
                 Event::UserEvent(UserEvent::ReloadShaders) => {
                     // Function-level comment: Shader reload is now handled by individual render contexts that recreate their pipelines as needed.

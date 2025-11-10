@@ -15,8 +15,9 @@ pub struct Graphics {
     pub(crate) surface: wgpu::Surface<'static>,
     pub(crate) surface_config: wgpu::SurfaceConfiguration,
     pub(crate) adapter: wgpu::Adapter,
-    pub(crate) device: wgpu::Device,
-    pub(crate) queue: wgpu::Queue,
+    // Function-level comment: Wrap device and queue in Arc for cheap cloning across subsystems
+    pub(crate) device: Arc<wgpu::Device>,
+    pub(crate) queue: Arc<wgpu::Queue>,
 }
 
 /// Graphics context that encapsulates both hardware abstraction and rendering pipeline orchestration
@@ -219,6 +220,10 @@ impl Graphics {
             surface.configure(&device, &surface_config);
             crate::rendering::core::pipeline::set_swapchain_format(surface_config.format);
         }
+
+        // Wrap device and queue in Arc to enable sharing without cloning wgpu handles
+        let device = Arc::new(device);
+        let queue = Arc::new(queue);
 
         Ok(Self {
             surface,

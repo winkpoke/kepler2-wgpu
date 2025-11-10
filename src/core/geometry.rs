@@ -4,8 +4,10 @@ use crate::{core::coord::{Base, Matrix4x4}, data::{dicom::{DicomRepo, CTImage}, 
 use wasm_bindgen::prelude::*;
 
 pub struct GeometryBuilder<'a> {
+    #[allow(dead_code)]
     repo: Option<&'a DicomRepo>,
-    sorted_image_series: Option<Vec<&'a CTImage>>,
+    #[allow(dead_code)]
+    sorted_image_series: Option<Vec<&'a CTImage>>, 
 }
 
 // #[cfg(not(target_arch = "wasm32"))]

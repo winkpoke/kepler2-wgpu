@@ -12,10 +12,12 @@ use std::path::PathBuf;
 /// Handles header files that reference external raw or compressed data
 pub struct MhdParser {
     /// Validates MHD header format
+    #[allow(dead_code)]
     validator: MedicalImageValidator,
     /// Resolves data file paths relative to header
     path_resolver: PathBuf,
     /// Handles various data file formats
+    #[allow(dead_code)]
     data_loader: PathBuf,
 }
 

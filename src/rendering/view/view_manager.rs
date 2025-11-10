@@ -133,7 +133,10 @@ impl ViewManager {
         size: (u32, u32),
     ) -> Result<Box<dyn View>, String> {
         log::info!("Creating mesh view through ViewManager at pos: {:?}, size: {:?}", pos, size);
-        self.factory.create_mesh_view(pos, size)
+        // Build a default mesh if caller did not supply one via a higher-level API.
+        // Using spine_vertebra as the default demo mesh keeps existing ergonomics intact.
+        let mesh = crate::rendering::mesh::mesh::Mesh::spine_vertebra();
+        self.factory.create_mesh_view(&mesh, pos, size)
             .map_err(|e| {
                 log::error!("Failed to create mesh view: {}", e);
                 format!("{}", e)
@@ -163,6 +166,30 @@ impl ViewManager {
         self.factory.create_mpr_view(vol, orientation, pos, size)
             .map_err(|e| {
                 log::error!("Failed to create MPR view: {}", e);
+                format!("{}", e)
+            })
+    }
+
+    /// Create a new MIP view using the configured factory.
+    ///
+    /// # Arguments
+    /// * `vol` - CT volume data for MIP rendering
+    /// * `pos` - Position (x, y) for the view
+    /// * `size` - Size (width, height) for the view
+    ///
+    /// # Returns
+    /// * `Ok(Box<dyn View>)` - Successfully created MIP view
+    /// * `Err(String)` - Factory error or creation failure
+    pub fn create_mip_view(
+        &self,
+        vol: &crate::data::ct_volume::CTVolume,
+        pos: (i32, i32),
+        size: (u32, u32),
+    ) -> Result<Box<dyn View>, String> {
+        log::info!("Creating MIP view through ViewManager at pos: {:?}, size: {:?}", pos, size);
+        self.factory.create_mip_view(vol, pos, size)
+            .map_err(|e| {
+                log::error!("Failed to create MIP view: {}", e);
                 format!("{}", e)
             })
     }
@@ -217,30 +244,7 @@ impl std::fmt::Debug for ViewManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rendering::view::Orientation;
-
-    // Mock factory for testing
-    struct MockViewFactory;
-    
-    impl ViewFactory for MockViewFactory {
-        fn create_mesh_view(
-            &self,
-            _pos: (i32, i32),
-            _size: (u32, u32),
-        ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-            Err("Mock factory - not implemented".into())
-        }
-        
-        fn create_mpr_view(
-            &self,
-            _vol: &crate::data::ct_volume::CTVolume,
-            _orientation: Orientation,
-            _pos: (i32, i32),
-            _size: (u32, u32),
-        ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-            Err("Mock factory - not implemented".into())
-        }
-    }
+    use crate::rendering::view::MockViewFactory;
 
     #[test]
     fn test_view_manager_creation() {

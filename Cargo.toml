@@ -82,6 +82,7 @@ uuid = { version = "1.18.1", features = ["js"] }
 [features]
 # Default features remain empty
 default = []
+trace-logging = []
 
 [[bin]]
 name = "kepler"

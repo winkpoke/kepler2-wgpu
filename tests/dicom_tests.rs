@@ -516,7 +516,10 @@ mod integration_tests {
     use chrono::Local;
 
     /// Tests DICOM export functionality with real MHA file
+    /// NOTE: Ignored by default because it depends on external local paths (C:/share/input).
+    /// Configure local fixtures or update paths before running manually.
     #[test]
+    #[ignore]
     fn test_dicom_export_workflow_with_real_mha_file() {
         // Create a test patient and study
         let patient = create_test_patient();
@@ -538,6 +541,49 @@ mod integration_tests {
         let result = build_ct_dicom(
             mha_path,
             None,
+            &patient,
+            &study,
+            120.0, // kV
+            100.0, // mAs
+            1612.903,   // slope
+            -1016.129, // intercept
+            &mut sink
+        );
+
+        assert!(result.is_ok());
+    }
+
+    /// Tests DICOM export functionality with real MHD file
+    /// NOTE: Ignored by default because it depends on external local paths (C:/share/input).
+    /// Configure local fixtures or update paths before running manually.
+    #[test]
+    #[ignore]
+    fn test_dicom_export_workflow_with_real_mhd_file() {
+        // Create a test patient and study
+        let patient = create_test_patient();
+        let mut study = create_test_study();
+
+        // Generate a Study UID
+        let study_uid = generate_uid();
+        study.uid = study_uid.to_string();
+        println!("Generated Study UID: {}", study_uid);
+
+        // Load test data
+        let mhd_path = "C:/share/input/CT_new.mhd";
+        let data_path = "C:/share/input/CT_new.raw";
+        let mhd = fs::read(mhd_path);
+        let data = fs::read(data_path);
+        let mhd_path = mhd.as_ref().map(|v| v.as_slice()).unwrap();
+        let data_path = Some(data.as_ref().map(|v| v.as_slice()).unwrap());
+        let out_dir = Path::new("C:/share").join(Local::now().format("%Y-%m-%d").to_string());
+        std::fs::create_dir_all(&out_dir).unwrap();
+
+        let mut sink = FsSink { out_dir };
+        
+        // Test would call build_ct_dicom with test parameters
+        let result = build_ct_dicom(
+            mhd_path,
+            data_path,
             &patient,
             &study,
             120.0, // kV
