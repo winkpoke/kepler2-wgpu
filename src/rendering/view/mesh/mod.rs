@@ -4,6 +4,7 @@
 // This module contains inert data structures without rendering logic.
 
 pub mod mesh;
+pub mod mesh_3d;
 pub mod material;
 pub mod camera;
 pub mod mesh_view;

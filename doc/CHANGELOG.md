@@ -1,5 +1,24 @@
 # Changelog
 
+## 2025-11-11T16-02-46
+- Fixed compilation errors in `src/rendering/view/mesh/mesh_3d.rs` by correcting DICOM and ndarray imports:
+  - Replaced `use dicom::object::open_file;` with `use dicom_object::open_file;`.
+  - Replaced `use dicom::core::Tag;` with `use dicom_core::Tag;`.
+  - Simplified ndarray import to `use ndarray::Array3;` and ensured `ndarray_stats::QuantileExt` is available.
+- Added missing dependencies to `Cargo.toml`:
+  - `ndarray = "0.15"`
+  - `ndarray-stats = "0.6"`
+- Documentation added: `doc/rendering/mesh-3d-imports-fix.md`.
+- No UI/visual changes; native build expected to succeed (`cargo build`, `cargo test`). WASM build unaffected.
+
+## 2025-11-11T16-02-46
+- Fixed WebAssembly build failure for `wasm32-unknown-unknown` caused by `getrandom` crate not enabling JS backend.
+  - Added target-specific dependency in `Cargo.toml`:
+    - `[target.'cfg(target_arch = "wasm32")'.dependencies] getrandom = { version = "0.2", features = ["js"] }`
+  - This enables randomness via `Crypto.getRandomValues` in the browser.
+  - Minimal change scoped to wasm builds; native builds unaffected.
+  - Documentation: `doc/wasm/getrandom-js-backend.md`.
+
 ## 2025-11-09T14-14-57
 - Fix wasm build failure (error E0425: cannot find value `volume`) in `src/application/render_app.rs`.
   - Restored the event binding to `volume` for the `SetWindowByDivId` user event so the wasm path can use it.
