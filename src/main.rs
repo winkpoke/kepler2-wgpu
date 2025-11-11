@@ -20,8 +20,10 @@ async fn main() {
     gl_canvas.load_data_from_ct_volume(&vol);
 
     // Inject test events for verification
-    // gl_canvase.set_window_level(0, 40.0);
-    // gl_canvase.set_window_width(0, 400.0);
+    gl_canvas.set_window_level(0, 40.0);
+    gl_canvas.set_window_width(0, 350.0);
+    gl_canvas.set_window_level(1, 40.0);
+    gl_canvas.set_window_width(1, 350.0);
     // gl_canvase.set_slice_mm(0, 5.0);
     // gl_canvase.set_scale(0, 1.25);
     // gl_canvase.set_translate(0, 0.0, 0.0, 0.0);

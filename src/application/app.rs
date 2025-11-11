@@ -635,7 +635,7 @@ impl App {
         
         // Convert screen coordinates to world coordinates for the clicked view
         let (world_coord, slice_mm) = {
-            let clicked_view = self.layout.views.get(clicked_view_index).unwrap();
+            let clicked_view = self.app_view.layout.views().get(clicked_view_index).unwrap();
             if let Some(mpr_view) = clicked_view.as_any().downcast_ref::<MprView>() {
                 let world_coord = mpr_view.screen_coord_to_world([screen_x, screen_y, screen_z]);
                 let slice = mpr_view.get_slice_mm();
@@ -648,7 +648,7 @@ impl App {
         };
 
         // Update slice positions for all other MPR views
-        for (index, view) in self.layout.views.iter_mut().enumerate() {
+        for (index, view) in self.app_view.layout.views_mut().iter_mut().enumerate() {
             // Skip the clicked view itself
             if index == clicked_view_index {
                 result[index] = slice_mm;

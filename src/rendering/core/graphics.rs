@@ -194,19 +194,26 @@ impl Graphics {
         );
 
         let surface_caps = surface.get_capabilities(&adapter);
+        // tests
+        info!("Surface supports {} formats:", surface_caps.formats.len());
+        for fmt in surface_caps.formats.iter().copied() {
+            let is_srgb = fmt.is_srgb();
+            info!("  - {:?}: sRGB={}",fmt, is_srgb);
+        }
         // Prefer non-sRGB (linear) format for medical grayscale accuracy.
         // sRGB applies gamma on present, which can alter perceived contrast of DICOM WL.
         // Choose BGRA/RGBA Unorm if available; otherwise any non-sRGB; else fallback.
-        let surface_format = {
-            if let Some(fmt) = surface_caps.formats.iter().copied().find(|f| !f.is_srgb()) {
-                fmt
-            } else {
-                surface_caps.formats[0]
-            }
-        };
+        // let surface_format = {
+        //     if let Some(fmt) = surface_caps.formats.iter().copied().find(|f| !f.is_srgb()) {
+        //         fmt
+        //     } else {
+        //         surface_caps.formats[0]
+        //     }
+        // };
+
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface_format,
+            format: wgpu::TextureFormat::Rgba8Unorm,
             width: size.width,
             height: size.height,
             present_mode: surface_caps.present_modes[0],
