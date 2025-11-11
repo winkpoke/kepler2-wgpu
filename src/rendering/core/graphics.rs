@@ -203,17 +203,15 @@ impl Graphics {
         // Prefer non-sRGB (linear) format for medical grayscale accuracy.
         // sRGB applies gamma on present, which can alter perceived contrast of DICOM WL.
         // Choose BGRA/RGBA Unorm if available; otherwise any non-sRGB; else fallback.
-        // let surface_format = {
-        //     if let Some(fmt) = surface_caps.formats.iter().copied().find(|f| !f.is_srgb()) {
-        //         fmt
-        //     } else {
-        //         surface_caps.formats[0]
-        //     }
-        // };
-
+        let surface_format = surface_caps
+            .formats
+            .iter()
+            .copied()
+            .find(|f| !f.is_srgb())
+            .unwrap_or(surface_caps.formats[0]);
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: wgpu::TextureFormat::Rgba8Unorm,
+            format: surface_format,
             width: size.width,
             height: size.height,
             present_mode: surface_caps.present_modes[0],
