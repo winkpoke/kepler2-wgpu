@@ -225,6 +225,7 @@ impl App {
         self.graphics_context.pass_executor.update_surface_format(format);
     }
 
+    /// Function-level comment: Resize the application window and update graphics resources.
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         println!("Resizing to: {}, {}", new_size.width, new_size.height);
         if new_size.width > 0 && new_size.height > 0 {
@@ -397,7 +398,7 @@ impl App {
         Ok(())
     }
 
-    pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume) {
+    pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume)  -> Arc<RenderContent> {
         self.app_model.load_volume(vol.clone());
         let mut winlev;
         let texture = if self.enable_float_volume_texture {
@@ -452,48 +453,21 @@ impl App {
     
         self.app_view.layout.remove_all();
         let view_factory = &self.app_view.view_factory;
-        if self.enable_mesh {
-            // Add MPR views to slots 0 and 1 (Transverse and Coronal) using factory
-            for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1]].iter() {
-                let view = view_factory
-                    .create_mpr_view_with_content(
-                        texture.clone(),
-                        &vol,
-                        *orientation,
-                        (0, 0),
-                        (0, 0),
-                    )
-                    .unwrap();
-                self.app_view.layout.add_view(view);
-            }
-
-            // Add Mesh view to slot 2 (third position - replacing Sagittal) using factory
-            let mesh = Mesh::spine_vertebra();
-            let mesh_view = view_factory
-                .create_mesh_view(&mesh, (0, 0), (0, 0))
+        for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1], ALL_ORIENTATIONS[2], ALL_ORIENTATIONS[0]].iter() {
+            let view = view_factory
+                .create_mpr_view_with_content(
+                    texture.clone(),
+                    &vol,
+                    *orientation,
+                    (0, 0),
+                    (0, 0),
+                )
                 .unwrap();
-            self.app_view.layout.add_view(mesh_view);
-
-            // Add MIP view to slot 3 (fourth position - replacing Oblique) using factory
-            let mip_view = view_factory
-                .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))
-                .unwrap();
-            self.app_view.layout.add_view(mip_view);
-        } else {
-            // Mesh disabled: add all four MPR views (including oblique) using factory
-            for orientation in ALL_ORIENTATIONS.iter() {
-                let view = view_factory
-                    .create_mpr_view_with_content(
-                        texture.clone(),
-                        &vol,
-                        *orientation,
-                        (0, 0),
-                        (0, 0),
-                    )
-                    .unwrap();
-                self.app_view.layout.add_view(view);
-            }
+            self.app_view.layout.add_view(view);
         }
+
+        // Return the shared render content for caller access
+        texture
     }
 
     pub fn load_data_from_repo(&mut self, repo: &DicomRepo, image_series_number: &str) {
@@ -506,19 +480,81 @@ impl App {
         self.enable_mesh
     }
 
-    /// Function-level comment: Clear cached mesh context to force recreation and prevent buffer reference issues.
-
-
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
-    pub fn set_mesh_mode_enabled(&mut self, enabled: bool) {
-        if self.enable_mesh == enabled { 
-            return; 
+    pub fn set_mesh_mode_enabled(&mut self, enabled: bool, mip: bool, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize) {
+        // if self.enable_mesh == enabled { 
+        //     return; 
+        // }
+
+        if enabled || mip || change_mpr {
+            self.enable_mesh = true;
         }
-        self.enable_mesh = enabled;
+
+        let vol_option = self.app_model.volume().ok().map(|vol| vol.clone());
     
         // Rebuild layout immediately if a volume is already loaded
-        if let Ok(vol) = self.app_model.volume() {
-            self.load_data_from_ct_volume(&vol.clone());
+        if let Some(vol) = vol_option {
+            let texture = self.load_data_from_ct_volume(&vol.clone());
+            if self.enable_mesh {
+                if mip{
+                    self.app_view.layout.remove_all();
+                    for orientation in [ALL_ORIENTATIONS[index_1], ALL_ORIENTATIONS[index_2], ALL_ORIENTATIONS[index_3]].iter() {
+                        let view = self.app_view.view_factory
+                            .create_mpr_view_with_content(
+                                texture.clone(),
+                                &vol,
+                                *orientation,
+                            (0, 0),
+                            (0, 0),
+                        )
+                        .unwrap();
+                    self.app_view.layout.add_view(view);
+                    }
+
+                    // Add MIP view to slot 3 using factory
+                    let mip_view = self.app_view.view_factory
+                        .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))
+                        .unwrap();
+                    self.app_view.layout.add_view(mip_view);
+                }else if change_mpr{
+                    self.app_view.layout.remove_all();
+                    for orientation in [ALL_ORIENTATIONS[index_1], ALL_ORIENTATIONS[index_2], ALL_ORIENTATIONS[index_3], ALL_ORIENTATIONS[index_4]].iter() {
+                        let view = self.app_view.view_factory
+                            .create_mpr_view_with_content(
+                                texture.clone(),
+                                &vol,
+                                *orientation,
+                            (0, 0),
+                            (0, 0),
+                        )
+                        .unwrap();
+                    self.app_view.layout.add_view(view);
+                    }
+                }else {
+                    self.app_view.layout.remove_all();
+                    for orientation in [ALL_ORIENTATIONS[index_1], ALL_ORIENTATIONS[index_2], ALL_ORIENTATIONS[index_3]].iter() {
+                        let view = self.app_view.view_factory
+                            .create_mpr_view_with_content(
+                                texture.clone(),
+                                &vol,
+                                *orientation,
+                            (0, 0),
+                            (0, 0),
+                        )
+                        .unwrap();
+                    self.app_view.layout.add_view(view);
+                    }
+
+                    // Add Mesh view to slot 3 using factory
+                    let mesh = Mesh::spine_vertebra();
+                    let mesh_view = self.app_view.view_factory
+                        .create_mesh_view(&mesh, (0, 0), (0, 0))
+                        .unwrap();
+                    self.app_view.layout.add_view(mesh_view);
+                }
+            }else {
+                self.load_data_from_ct_volume(&vol.clone());
+            }
             log::info!("Layout rebuilt for mesh mode: {}", enabled);
         } else {
             log::info!("Mesh mode set to {} without loaded volume; will apply on next data load.", enabled);
@@ -678,6 +714,8 @@ impl App {
         result
     }
 
+    /// Function-level comment: Convert world coordinates to screen coordinates for the specified view.
+    /// This method is useful for mapping 3D world positions to 2D screen positions for rendering.
     pub fn world_coord_to_screen(&self, index: usize, world_coord: [f32; 3]) -> [f32; 3] {
         if let Some(view) = self.app_view.layout.views().get(index) {
             if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {

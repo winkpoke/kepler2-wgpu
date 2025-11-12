@@ -184,9 +184,9 @@ impl RenderApp {
                     // Function-level comment: Pipeline invalidation is now handled by individual render contexts.
                     log::info!("InvalidatePipelines event: render contexts will rebuild pipelines as needed.");
                 }
-                Event::UserEvent(UserEvent::SetEnableMesh(enabled)) => {
+                Event::UserEvent(UserEvent::SetEnableMesh(enabled, mip, change_mpr, index_1, index_2, index_3, index_4)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_mesh_mode_enabled(enabled);
+                    state.set_mesh_mode_enabled(enabled, mip, change_mpr, index_1, index_2, index_3, index_4);
                     log::info!("EnableMesh toggled at runtime: {}", enabled);
                 }
                 Event::UserEvent(UserEvent::SetCenterAtPointInMM(index, x_mm, y_mm, z_mm)) => {
@@ -289,7 +289,7 @@ impl RenderApp {
                             } => {
                                 // Function-level comment: Toggle mesh mode on 'M' key press at runtime.
                                 let new_enabled = !state.mesh_mode_enabled();
-                                state.set_mesh_mode_enabled(new_enabled);
+                                state.set_mesh_mode_enabled(new_enabled, false, false, 0, 0, 0, 0);
                                 log::info!("KeyM pressed: mesh mode toggled to {}", new_enabled);
                             }
                             WindowEvent::RedrawRequested => {

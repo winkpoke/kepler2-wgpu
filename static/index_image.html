@@ -187,8 +187,20 @@
           <button id="btn">运行重建</button>
           <button id="analyzeBtn">分析文件</button>
           <button id="rerender">视图显示</button>
-          <button id="mesh">3D视图+MIP模式切换</button>
         </div>
+      <div>
+        <span id="3d-label">3d</span>
+        <input type="checkbox" id="3d" />
+        <span id="mip-label">mip</span>
+        <input type="checkbox" id="mip" />
+        <span id="change_mpr-label">change_mpr</span>
+        <input type="checkbox" id="change_mpr" /><br>
+        <span id="index-1-label">index-1: </span><input type="number" id="index-1" step="1.0" value="0.0"><br>
+        <span id="index-2-label">index-2: </span><input type="number" id="index-2" step="1.0" value="0.0"><br>
+        <span id="index-3-label">index-3: </span><input type="number" id="index-3" step="1.0" value="0.0"><br>
+        <span id="index-4-label">index-4: </span><input type="number" id="index-4" step="1.0" value="0.0"><br><br>
+        <button id="mesh">enable_mesh</button>
+      </div>
       <label for="index-input">操作视图窗口:</label>
       <input type="number" id="index-input" step="1.0" value="0.0">
       <div>
@@ -293,7 +305,6 @@
       render_app: null,
       spacing: [],
       dim:[],
-      enable_mesh: false,
     };
 
     let gl_canvas = null;
@@ -493,16 +504,24 @@
     });
 
     byId('mesh').addEventListener('click', () => {
+      const checkbox3d = byId('3d').checked;
+      const checkboxMip = byId('mip').checked;
+      const checkboxChangeMpr = byId('change_mpr').checked;
+      
+      // Indices: convert to numbers for downstream logic
+      const index_1 = parseInt(byId('index-1').value, 10);
+      const index_2 = parseInt(byId('index-2').value, 10);
+      const index_3 = parseInt(byId('index-3').value, 10);
+      const index_4 = parseInt(byId('index-4').value, 10);
+
+      console.log('meshclick:', checkbox3d, checkboxMip, checkboxChangeMpr, index_1, index_2, index_3, index_4 );
+
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
-      if (state.enable_mesh){
-        state.enable_mesh = false;
-      }else{
-        state.enable_mesh = true;
-      }
-      gl_canvas.enable_mesh(state.enable_mesh);
+
+      gl_canvas.enable_mesh(checkbox3d, checkboxMip, checkboxChangeMpr, index_1, index_2, index_3, index_4);
     })
     
     // ========= MHX文件解析函数 =========
