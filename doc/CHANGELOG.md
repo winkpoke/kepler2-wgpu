@@ -1,5 +1,18 @@
 # Changelog
 
+## 2025-11-12T22-05-30
+- **State Simplification: Removed Unnecessary Fields from App Struct**
+  - **Removed Fields**: Eliminated deprecated fields from `App` struct as per state simplification plan:
+    - `toggle_enabled: bool` - Functionality moved to per-view flags in `AppView`
+    - `texture_pool: MeshTexturePool` - Replaced with temporary per-frame texture pool creation
+  - **Per-Frame Texture Pool**: Implemented temporary texture pool creation in `App::render()` method
+    - Creates `MeshTexturePool` instance per frame to avoid persistent state
+    - Creates depth texture only when mesh rendering is enabled (`has_mesh_view`)
+    - Improved memory management by avoiding persistent GPU resource allocation
+  - **Code Quality**: Reduced coupling between `App` struct and GPU resources
+  - **Build Verification**: Both native (`cargo build`, `cargo test`) and WebAssembly (`wasm-pack build -t web`) builds successful
+  - **Documentation**: Refer to `doc/state-simplification.md` for architectural details
+
 ## 2025-11-09T14-14-57
 - Fix wasm build failure (error E0425: cannot find value `volume`) in `src/application/render_app.rs`.
   - Restored the event binding to `volume` for the `SetWindowByDivId` user event so the wasm path can use it.
