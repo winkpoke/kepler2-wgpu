@@ -530,8 +530,8 @@ impl App {
                 if enabled {
                     // Add Mesh view to slot 3 using factory
                     // let mesh = Mesh::spine_vertebra();
-                    // let mesh = Mesh::new(&vol, 300.0, Some(3), 0); // Changed from 100.0 to 300.0 for better bone visualization
-                    let mesh = Mesh::unit_cube();
+                    let mesh = Mesh::new(&vol, 100.0, Some(3), 0); // Changed from 100.0 to 300.0 for better bone visualization
+                    // let mesh = Mesh::unit_cube();
                     let mesh_view = self.app_view.view_factory
                         .create_mesh_view(&mesh, (0, 0), (0, 0))
                         .unwrap();
@@ -581,7 +581,7 @@ impl App {
                     self.app_view.layout.add_view(mip_view);
                 }
                 2 => {
-                    let mesh = Mesh::spine_vertebra();
+                    let mesh = Mesh::new(&vol, 100.0, Some(3), 0);
                     let mesh_view = view_factory
                         .create_mesh_view(&mesh, (0, 0), (0, 0))
                         .unwrap();

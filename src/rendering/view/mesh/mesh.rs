@@ -271,21 +271,77 @@ impl MarchingTetrahedra {
             return (vec![], vec![]);
         }
 
-        // Convert vertices to MeshVertex format with proper coordinate system
-        let mesh_vertices: Vec<MeshVertex> = vertices.iter().map(|&v| {
-            // Convert from volume coordinates to world coordinates
-            // Medical imaging typically uses DICOM coordinate system
-            MeshVertex {
-                position: [v[0], v[1], v[2]], // Keep original coordinates for now
-                normal: [0.0, 0.0, 1.0], // Simple normal for now
-                color: [0.8, 0.8, 0.8], // Default gray color
-            }
-        }).collect();
+        // // Convert vertices to MeshVertex format with proper coordinate system
+        // let mesh_vertices: Vec<MeshVertex> = vertices.iter().map(|&v| {
+        //     // Convert from volume coordinates to world coordinates
+        //     // Medical imaging typically uses DICOM coordinate system
+        //     MeshVertex {
+        //         position: [v[0], v[1], v[2]], // Keep original coordinates for now
+        //         normal: [0.0, 0.0, 1.0], // Simple normal for now
+        //         color: [0.8, 0.8, 0.8], // Default gray color
+        //     }
+        // }).collect();
 
-        // Convert triangles to u16 format (flatten the triangle indices)
-        let mesh_triangles: Vec<u16> = triangles.iter().flat_map(|tri| {
-            tri.iter().map(|&idx| idx as u16)
-        }).collect();
+        // // Convert triangles to u16 format (flatten the triangle indices)
+        // let mesh_triangles: Vec<u16> = triangles.iter().flat_map(|tri| {
+        //     tri.iter().map(|&idx| idx as u16)
+        // }).collect();
+
+        // 1. 计算包围盒（体素坐标系）
+        let mut min_vox = [f32::INFINITY; 3];
+        let mut max_vox = [f32::NEG_INFINITY; 3];
+        for &v in &vertices {
+            for i in 0..3 {
+                min_vox[i] = min_vox[i].min(v[i]);
+                max_vox[i] = max_vox[i].max(v[i]);
+            }
+        }
+        let center_vox = [
+            (min_vox[0] + max_vox[0]) * 0.5,
+            (min_vox[1] + max_vox[1]) * 0.5,
+            (min_vox[2] + max_vox[2]) * 0.5,
+        ];
+        let extent_vox = [
+            max_vox[0] - min_vox[0],
+            max_vox[1] - min_vox[1],
+            max_vox[2] - min_vox[2],
+        ];
+        let max_extent = extent_vox.iter().fold(0.0f32, |a, &b| a.max(b));
+        if max_extent < f32::EPSILON {
+            log::warn!("extract_isosurface: empty bounding box, skipping.");
+            return (vec![], vec![]);
+        }
+
+        // 2. 归一化 + 可选地放大到「医学常用 512 体素≈ -256..256 mm」范围
+        //    这里直接缩到 [-1,1] 立方体，摄像机放在 z=2 看原点即可看到。
+        let scale = 1.0 / max_extent;
+        let mut mesh_vertices = Vec::with_capacity(vertices.len());
+        for v in vertices {
+            let x = (v[0] - center_vox[0]) * scale;
+            let y = (v[1] - center_vox[1]) * scale;
+            let z = (v[2] - center_vox[2]) * scale;
+            // 简单面法线：沿 Z 向上，以后可换加权法线
+            let normal = [0.0, 0.0, 1.0];
+            // 高对比颜色方便第一眼看到
+            let color = [0.95, 0.7, 0.2];
+            mesh_vertices.push(MeshVertex {
+                position: [x, y, z],
+                normal,
+                color,
+            });
+        }
+
+        // 3. 索引转 u16（之前已经 flatten 过，这里直接 cast）
+        let mesh_triangles: Vec<u16> = triangles
+            .into_iter()
+            .flat_map(|tri| tri.into_iter().map(|i| i as u16)) // 使用 `into_iter` 而不是 `iter`
+            .collect();
+
+        log::info!(
+            "extract_isosurface: {} vertices, {} triangles (normalized to unit cube)",
+            mesh_vertices.len(),
+            mesh_triangles.len() / 3
+        );
 
         (mesh_vertices, mesh_triangles)
     }
