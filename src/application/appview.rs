@@ -101,9 +101,7 @@ impl AppView {
     ///
     /// Function-level comment: Helper to gate active-view-specific operations.
     pub fn is_one_cell_layout(&self) -> bool {
-        let strategy = LayoutContainer::strategy(&self.layout);
-        let type_name = std::any::type_name_of_val(strategy);
-        type_name.contains("OneCellLayout")
+        self.layout.strategy_id() == "OneCellLayout"
     }
 
     /// Create and add an MPR view for a given volume and orientation.

@@ -189,6 +189,11 @@ impl RenderApp {
                     state.set_mesh_mode_enabled(enabled, mip, change_mpr, index_1, index_2, index_3, index_4);
                     log::info!("EnableMesh toggled at runtime: {}", enabled);
                 }
+                Event::UserEvent(UserEvent::SetOneCellLayout(mode, orientation_index)) => {
+                    // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
+                    state.set_one_cell_layout(mode, orientation_index);
+                    log::info!("OneCellLayout set to: mode={mode}, orientation_index={orientation_index}");
+                }
                 Event::UserEvent(UserEvent::SetCenterAtPointInMM(index, x_mm, y_mm, z_mm)) => {
                     state.set_center_at_point_in_mm(index, x_mm, y_mm, z_mm);
                     log::info!("CenterAtPointInMM set to: x_mm={x_mm}, y_mm={y_mm}, z_mm={z_mm}");

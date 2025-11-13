@@ -25,7 +25,10 @@ use super::{Renderable, View};
 /// Notes:
 /// - Implementations should avoid panics and handle edge cases like small parent sizes.
 /// - `_total_views` may be unused by some strategies, but can help for dynamic spacing.
-pub trait LayoutStrategy {
+pub trait LayoutStrategy: Send + Sync {
+    /// 返回策略的静态标识，用于运行时判断
+    fn id(&self) -> &str;
+
     // fn layout(&self, views: &mut Vec<Box<dyn View>>, dim: (u32, u32));
     /// Calculate position and size for a single view.
     ///
@@ -66,6 +69,8 @@ pub struct GridLayout {
 }
 
 impl LayoutStrategy for GridLayout {
+    fn id(&self) -> &str { "GridLayout" }
+
     /// Compute the origin and size for the cell corresponding to `index`.
     ///
     /// Notes:
@@ -105,6 +110,8 @@ pub struct OneCellLayout {
 }
 
 impl LayoutStrategy for OneCellLayout {
+    fn id(&self) -> &str { "OneCellLayout" }
+
     /// Compute position and size where only index 0 occupies the parent; others are hidden.
     /// Function-level comment: Displays the first view (index 0) in full screen, which is now the mesh view.
     fn calculate_position_and_size(
@@ -286,6 +293,11 @@ pub struct DynamicLayout {
 }
 
 impl DynamicLayout {
+    /// 返回当前布局策略的静态标识
+    pub fn strategy_id(&self) -> &str {
+        self.strategy.id()
+    }
+
     pub fn new(dim: (u32, u32), strategy: Box<dyn LayoutStrategy>) -> Self {
         Self {
             dim,

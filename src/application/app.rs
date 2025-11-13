@@ -494,6 +494,11 @@ impl App {
             self.enable_mesh = true;
         }
 
+        if self.app_view.is_one_cell_layout() {
+            self.app_view.set_grid_layout(2, 2, 2);
+            log::info!("set_grid_layout(2, 2, 2)");
+        }
+
         let vol_option = self.app_model.volume().ok().map(|vol| vol.clone());
     
         // Rebuild layout immediately if a volume is already loaded
@@ -525,8 +530,8 @@ impl App {
                 if enabled {
                     // Add Mesh view to slot 3 using factory
                     // let mesh = Mesh::spine_vertebra();
-                    let mesh = Mesh::new(&vol, 300.0, Some(3), 0); // Changed from 100.0 to 300.0 for better bone visualization
-                    // let mesh = Mesh::unit_cube();
+                    // let mesh = Mesh::new(&vol, 300.0, Some(3), 0); // Changed from 100.0 to 300.0 for better bone visualization
+                    let mesh = Mesh::unit_cube();
                     let mesh_view = self.app_view.view_factory
                         .create_mesh_view(&mesh, (0, 0), (0, 0))
                         .unwrap();
@@ -538,6 +543,77 @@ impl App {
             log::info!("Layout rebuilt for mesh mode: {}", enabled);
         } else {
             log::info!("Mesh mode set to {} without loaded volume; will apply on next data load.", enabled);
+        }
+    }
+
+    /// Switch to a single-cell layout and display the requested view type (MPR/MIP/MESH).
+    /// Mode: 0=MPR, 1=MIP, 2=MESH. For MPR, provide `orientation_index` to select orientation.
+    /// For MESH, `iso_value`, `downsample`, and `vertex_precision` control isosurface extraction.
+    pub fn set_one_cell_layout(
+        &mut self,
+        mode: usize,
+        orientation_index: usize,
+    ) {
+        let vol_option = self.app_model.volume().ok().map(|vol| vol.clone());
+        if let Some(vol) = vol_option {
+            let texture = self.load_data_from_ct_volume(&vol.clone());
+            self.app_view.set_one_cell_layout();
+            self.app_view.layout.remove_all();
+            let view_factory = &self.app_view.view_factory;
+            match mode {
+                0 => {
+                    let orientation = ALL_ORIENTATIONS[orientation_index];
+                    let view = view_factory
+                        .create_mpr_view_with_content(
+                            texture.clone(),
+                            &vol,
+                            orientation,
+                            (0, 0),
+                            (0, 0),
+                        )
+                        .unwrap();
+                    self.app_view.layout.add_view(view);
+                }
+                1 => {
+                    let mip_view = view_factory
+                        .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))
+                        .unwrap();
+                    self.app_view.layout.add_view(mip_view);
+                }
+                2 => {
+                    let mesh = Mesh::spine_vertebra();
+                    let mesh_view = view_factory
+                        .create_mesh_view(&mesh, (0, 0), (0, 0))
+                        .unwrap();
+                    self.app_view.layout.add_view(mesh_view);
+                }
+                _ => {
+                    log::warn!("Unsupported mode {} for one-cell layout; defaulting to MPR.", mode);
+                    let orientation = ALL_ORIENTATIONS[orientation_index];
+                    let view = view_factory
+                        .create_mpr_view_with_content(
+                            texture.clone(),
+                            &vol,
+                            orientation,
+                            (0, 0),
+                            (0, 0),
+                        )
+                        .unwrap();
+                    self.app_view.layout.add_view(view);
+                }
+            }
+
+            log::info!(
+                "Switched to one-cell layout: mode={}, orientation_index={}, one_cell={}",
+                mode,
+                orientation_index,
+                self.app_view.is_one_cell_layout(),
+            );
+        } else {
+            log::info!(
+                "One-cell layout requested (mode={}) without loaded volume; will apply on next data load.",
+                mode
+            );
         }
     }
     

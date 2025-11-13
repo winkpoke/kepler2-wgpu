@@ -189,15 +189,20 @@
           <button id="rerender">视图显示</button>
         </div>
       <div>
-        <span id="3d-label">3d</span>
-        <input type="checkbox" id="3d" />
-        <span id="change_mpr-label">change_mpr</span>
-        <input type="checkbox" id="change_mpr" /><br>
-        <span id="mipSpan">mip:</span><input type="checkbox" id="change_mip" /><br><input type="number" id="mip" step="1.0" value="0.0"><br>
+        <label for="one-cell">单张图:</label>
+        <span id="mode-label">模式: </span><input type="number" id="mode" step="1.0" value="0.0"><br>
+        <span id="orientation_index-label">方向索引: </span><input type="number" id="orientation_index" step="1.0" value="0.0"><br>
+        <button id="one-cell-submit">Submit</button>
+      </div>
+      <br>
+      <div>
+        <span id="3d-label">3d</span><input type="checkbox" id="3d" />
+        <span id="change_mpr-label">change_mpr</span><input type="checkbox" id="change_mpr" /><br>
+        <span id="mipSpan">mip:</span><input type="number" id="mip" step="1.0" value="0.0"><input type="checkbox" id="change_mip" /><br>
         <span id="index-1-label">index-1: </span><input type="number" id="index-1" step="1.0" value="0.0"><br>
         <span id="index-2-label">index-2: </span><input type="number" id="index-2" step="1.0" value="0.0"><br>
         <span id="index-3-label">index-3: </span><input type="number" id="index-3" step="1.0" value="0.0"><br>
-        <span id="index-4-label">index-4: </span><input type="number" id="index-4" step="1.0" value="0.0"><br><br>
+        <span id="index-4-label">index-4: </span><input type="number" id="index-4" step="1.0" value="0.0"><br>
         <button id="mesh">enable_mesh</button>
       </div>
       <label for="index-input">操作视图窗口:</label>
@@ -528,7 +533,14 @@
       }
 
       gl_canvas.enable_mesh(checkbox3d, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4);
-    })
+    });
+
+    byId('one-cell-submit').addEventListener('click', () => {
+      const mode = parseInt(byId('mode').value, 10); // Mode: 0=MPR, 1=MIP, 2=MESH
+      const orientation_index = parseInt(byId('orientation_index').value, 10);
+
+      gl_canvas.set_one_cell_layout(mode, orientation_index);
+    });
     
     // ========= MHX文件解析函数 =========
     async function parseMHXContent(mhxText) {

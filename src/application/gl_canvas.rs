@@ -30,6 +30,7 @@ pub enum UserEvent {
     /// Manually trigger pipeline cache invalidation without any other action.
     InvalidatePipelines,
     SetEnableMesh(bool, Option<usize>, bool, usize, usize, usize, usize),
+    SetOneCellLayout(usize, usize),
     #[cfg(target_arch = "wasm32")]
     GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     #[cfg(target_arch = "wasm32")]
@@ -137,6 +138,14 @@ impl GLCanvas {
             log::error!("Failed to send SetEnableMesh event: {:?}", e);
         } else {
             log::info!("Sent SetEnableMesh event: enabled={}", enabled);
+        }
+    }
+
+    pub fn set_one_cell_layout(&self, mode: usize, orientation_index: usize) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetOneCellLayout(mode, orientation_index)) {
+            log::error!("Failed to send SetOneCellLayout event: {:?}", e);
+        } else {
+            log::info!("Sent SetOneCellLayout event: mode={}, orientation_index={}", mode, orientation_index);
         }
     }
 
