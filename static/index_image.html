@@ -191,10 +191,9 @@
       <div>
         <span id="3d-label">3d</span>
         <input type="checkbox" id="3d" />
-        <span id="mip-label">mip</span>
-        <input type="checkbox" id="mip" />
         <span id="change_mpr-label">change_mpr</span>
         <input type="checkbox" id="change_mpr" /><br>
+        <span id="mipSpan">mip:</span><input type="checkbox" id="change_mip" /><br><input type="number" id="mip" step="1.0" value="0.0"><br>
         <span id="index-1-label">index-1: </span><input type="number" id="index-1" step="1.0" value="0.0"><br>
         <span id="index-2-label">index-2: </span><input type="number" id="index-2" step="1.0" value="0.0"><br>
         <span id="index-3-label">index-3: </span><input type="number" id="index-3" step="1.0" value="0.0"><br>
@@ -305,6 +304,7 @@
       render_app: null,
       spacing: [],
       dim:[],
+      mip: null,
     };
 
     let gl_canvas = null;
@@ -505,23 +505,29 @@
 
     byId('mesh').addEventListener('click', () => {
       const checkbox3d = byId('3d').checked;
-      const checkboxMip = byId('mip').checked;
       const checkboxChangeMpr = byId('change_mpr').checked;
+      const checkboxChangeMip = byId('change_mip').checked;
       
       // Indices: convert to numbers for downstream logic
+      if (checkboxChangeMip) {
+        state.mip = parseInt(byId('mip').value, 10);
+        console.log('meshclick_mip:',state.mip);
+      }else{
+        state.mip = null;
+      }
       const index_1 = parseInt(byId('index-1').value, 10);
       const index_2 = parseInt(byId('index-2').value, 10);
       const index_3 = parseInt(byId('index-3').value, 10);
       const index_4 = parseInt(byId('index-4').value, 10);
 
-      console.log('meshclick:', checkbox3d, checkboxMip, checkboxChangeMpr, index_1, index_2, index_3, index_4 );
+      console.log('meshclick:', checkbox3d, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4 );
 
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
 
-      gl_canvas.enable_mesh(checkbox3d, checkboxMip, checkboxChangeMpr, index_1, index_2, index_3, index_4);
+      gl_canvas.enable_mesh(checkbox3d, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4);
     })
     
     // ========= MHX文件解析函数 =========

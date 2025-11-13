@@ -481,12 +481,16 @@ impl App {
     }
 
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
-    pub fn set_mesh_mode_enabled(&mut self, enabled: bool, mip: bool, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize) {
+    pub fn set_mesh_mode_enabled(&mut self, enabled: bool, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize) {
         // if self.enable_mesh == enabled { 
         //     return; 
         // }
 
-        if enabled || mip || change_mpr {
+        if enabled || change_mpr {
+            self.enable_mesh = true;
+        }
+
+        if let Some(_) = mip {
             self.enable_mesh = true;
         }
 
@@ -496,61 +500,37 @@ impl App {
         if let Some(vol) = vol_option {
             let texture = self.load_data_from_ct_volume(&vol.clone());
             if self.enable_mesh {
-                if mip{
-                    self.app_view.layout.remove_all();
-                    for orientation in [ALL_ORIENTATIONS[index_1], ALL_ORIENTATIONS[index_2], ALL_ORIENTATIONS[index_3]].iter() {
-                        let view = self.app_view.view_factory
-                            .create_mpr_view_with_content(
-                                texture.clone(),
-                                &vol,
-                                *orientation,
-                            (0, 0),
-                            (0, 0),
-                        )
-                        .unwrap();
-                    self.app_view.layout.add_view(view);
-                    }
+                self.app_view.layout.remove_all();
+                for orientation in [ALL_ORIENTATIONS[index_1], ALL_ORIENTATIONS[index_2], ALL_ORIENTATIONS[index_3], ALL_ORIENTATIONS[index_4]].iter() {
+                    let view = self.app_view.view_factory
+                        .create_mpr_view_with_content(
+                            texture.clone(),
+                            &vol,
+                            *orientation,
+                        (0, 0),
+                        (0, 0),
+                    )
+                    .unwrap();
+                self.app_view.layout.add_view(view);
+                }
 
+                if let Some(mip) = mip{
                     // Add MIP view to slot 3 using factory
                     let mip_view = self.app_view.view_factory
                         .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))
                         .unwrap();
-                    self.app_view.layout.add_view(mip_view);
-                }else if change_mpr{
-                    self.app_view.layout.remove_all();
-                    for orientation in [ALL_ORIENTATIONS[index_1], ALL_ORIENTATIONS[index_2], ALL_ORIENTATIONS[index_3], ALL_ORIENTATIONS[index_4]].iter() {
-                        let view = self.app_view.view_factory
-                            .create_mpr_view_with_content(
-                                texture.clone(),
-                                &vol,
-                                *orientation,
-                            (0, 0),
-                            (0, 0),
-                        )
-                        .unwrap();
-                    self.app_view.layout.add_view(view);
-                    }
-                }else {
-                    self.app_view.layout.remove_all();
-                    for orientation in [ALL_ORIENTATIONS[index_1], ALL_ORIENTATIONS[index_2], ALL_ORIENTATIONS[index_3]].iter() {
-                        let view = self.app_view.view_factory
-                            .create_mpr_view_with_content(
-                                texture.clone(),
-                                &vol,
-                                *orientation,
-                            (0, 0),
-                            (0, 0),
-                        )
-                        .unwrap();
-                    self.app_view.layout.add_view(view);
-                    }
+                    self.app_view.layout.replace_view_at(mip, mip_view);
+                }
 
+                if enabled {
                     // Add Mesh view to slot 3 using factory
-                    let mesh = Mesh::spine_vertebra();
+                    // let mesh = Mesh::spine_vertebra();
+                    let mesh = Mesh::new(&vol, 300.0, Some(3), 0); // Changed from 100.0 to 300.0 for better bone visualization
+                    // let mesh = Mesh::unit_cube();
                     let mesh_view = self.app_view.view_factory
                         .create_mesh_view(&mesh, (0, 0), (0, 0))
                         .unwrap();
-                    self.app_view.layout.add_view(mesh_view);
+                    self.app_view.layout.replace_view_at(3, mesh_view);
                 }
             }else {
                 self.load_data_from_ct_volume(&vol.clone());
@@ -560,7 +540,7 @@ impl App {
             log::info!("Mesh mode set to {} without loaded volume; will apply on next data load.", enabled);
         }
     }
-
+    
     /// Function-level comment: Calculate position and size for a view at the specified index.
     fn calculate_view_position_and_size(&self, index: usize) -> ((i32, i32), (u32, u32)) {
         let total_views = self.app_view.layout.views().len() as u32;

@@ -289,7 +289,7 @@ impl RenderApp {
                             } => {
                                 // Function-level comment: Toggle mesh mode on 'M' key press at runtime.
                                 let new_enabled = !state.mesh_mode_enabled();
-                                state.set_mesh_mode_enabled(new_enabled, false, false, 0, 0, 0, 0);
+                                state.set_mesh_mode_enabled(new_enabled, None, false, 0, 0, 0, 0);
                                 log::info!("KeyM pressed: mesh mode toggled to {}", new_enabled);
                             }
                             WindowEvent::RedrawRequested => {
