@@ -1,5 +1,9 @@
 #![allow(dead_code)]
 
+use crate::data::CTVolume;
+use std::collections::HashMap;
+use ndarray::Array3;
+
 
 /// Function-level comment: Minimal lighting uniform structure for basic mesh lighting MVP.
 /// Supports a single directional light with ambient lighting for simple 3D illumination.
@@ -74,6 +78,334 @@ unsafe impl bytemuck::Pod for MeshVertex {}
 pub struct Mesh {
     pub vertices: Vec<MeshVertex>,
     pub indices: Vec<u16>,
+}
+
+/// Function-level comment: Marching Tetrahedra algorithm implementation for isosurface extraction
+/// Converts 3D volume data into triangular mesh representation using tetrahedral decomposition
+#[derive(Clone, Debug)]
+struct MarchingTetrahedra {
+    cube_to_tetrahedra: [[usize; 4]; 6],
+    tetrahedra_edges: [[usize; 2]; 6],
+    triangle_table: HashMap<u8, Vec<[usize; 3]>>,
+}
+
+impl MarchingTetrahedra {
+    fn new() -> Self {
+        let mut triangle_table: HashMap<u8, Vec<[usize; 3]>> = HashMap::new();
+        triangle_table.insert(0b0000, vec![]);
+        triangle_table.insert(0b0001, vec![[0, 1, 2]]);
+        triangle_table.insert(0b0010, vec![[0, 3, 4]]);
+        triangle_table.insert(0b0100, vec![[1, 3, 5]]);
+        triangle_table.insert(0b1000, vec![[2, 4, 5]]);
+        triangle_table.insert(0b0011, vec![[2, 4, 3], [2, 3, 1]]);
+        triangle_table.insert(0b0101, vec![[0, 2, 5], [0, 5, 1]]);
+        triangle_table.insert(0b0110, vec![[0, 1, 5], [0, 5, 3]]);
+        triangle_table.insert(0b1001, vec![[0, 4, 5], [0, 5, 2]]);
+        triangle_table.insert(0b1010, vec![[0, 3, 5], [0, 5, 4]]);
+        triangle_table.insert(0b1100, vec![[1, 4, 5], [1, 5, 3]]);
+        triangle_table.insert(0b1110, vec![[0, 2, 1]]);
+        triangle_table.insert(0b1101, vec![[0, 4, 3]]);
+        triangle_table.insert(0b1011, vec![[1, 5, 3]]);
+        triangle_table.insert(0b0111, vec![[2, 5, 4]]);
+        triangle_table.insert(0b1111, vec![]);
+
+        MarchingTetrahedra {
+            cube_to_tetrahedra: [
+                [0, 1, 3, 4],
+                [1, 4, 5, 7],
+                [1, 3, 4, 7],
+                [1, 2, 3, 7],
+                [2, 3, 6, 7],
+                [3, 4, 6, 7],
+            ],
+            tetrahedra_edges: [
+                [0, 1], [0, 2], [0, 3],
+                [1, 2], [1, 3], [2, 3],
+            ],
+            triangle_table,
+        }
+    }
+
+    fn extract_isosurface(
+        &self,
+        voxel_data: &Vec<i16>,
+        dimensions: (usize, usize, usize),
+        iso_value: f32,
+        spacing: (f32, f32, f32),
+        downsample: Option<usize>,
+        vertex_precision: usize,
+    ) -> (Vec<MeshVertex>, Vec<u16>) {
+        log::info!("原始体数据大小: {:?}", dimensions);
+
+        // Convert Vec<i16> to Array3<f32> with correct dimensions
+        // Note: dimensions are (width, height, depth) but we need (depth, height, width) for Array3
+        let vec_f32: Vec<f32> = voxel_data.iter().map(|&v| v as f32).collect();
+        let mut volume = match Array3::from_shape_vec((dimensions.2, dimensions.1, dimensions.0), vec_f32) {
+            Ok(arr) => arr,
+            Err(e) => {
+                log::warn!(
+                    "volume shape mismatch: expected {} elements, got {}; error: {}",
+                    dimensions.2 * dimensions.1 * dimensions.0,
+                    voxel_data.len(),
+                    e
+                );
+                return (vec![], vec![]);
+            }
+        };
+        
+        let mut final_spacing = spacing;
+
+        if let Some(ds) = downsample {
+            if ds > 1 {
+                log::info!("降采样因子: {}", ds);
+                let new_shape = [
+                    volume.shape()[0] / ds,
+                    volume.shape()[1] / ds,
+                    volume.shape()[2] / ds,
+                ];
+                let mut downsampled = Array3::zeros(new_shape);
+                for z in 0..new_shape[0] {
+                    for y in 0..new_shape[1] {
+                        for x in 0..new_shape[2] {
+                            let slice = volume.slice(ndarray::s![
+                                z * ds..(z + 1) * ds,
+                                y * ds..(y + 1) * ds,
+                                x * ds..(x + 1) * ds
+                            ]);
+                            downsampled[[z, y, x]] = slice.mean().unwrap_or(0.0);
+                        }
+                    }
+                }
+                volume = downsampled;
+                final_spacing = (spacing.0 * ds as f32, spacing.1 * ds as f32, spacing.2 * ds as f32);
+                log::info!("降采样后大小: {:?}", volume.shape());
+                log::info!("更新后的体素间距: {:?}", final_spacing);
+            }
+        }
+
+        let shape = volume.shape();
+        let depth = shape[0];
+        let height = shape[1];
+        let width = shape[2];
+
+        log::info!("筛选活跃区域...");
+        let active_mask = self.find_active_voxels(&volume, iso_value);
+        let mut active_indices: Vec<(usize, usize, usize)> = vec![];
+        for z in 0..depth - 1 {
+            for y in 0..height - 1 {
+                for x in 0..width - 1 {
+                    if active_mask[[z, y, x]] {
+                        active_indices.push((z, y, x));
+                    }
+                }
+            }
+        }
+        log::info!("活跃体素数: {}", active_indices.len());
+
+        if active_indices.is_empty() {
+            log::warn!("未找到包含等值面的体素");
+            return (vec![], vec![]);
+        }
+
+        let mut vertex_dict: HashMap<(i32, i32, i32), usize> = HashMap::new();
+        let mut vertices: Vec<[f32; 3]> = vec![];
+        let mut triangles: Vec<[u32; 3]> = vec![];
+
+        let total = active_indices.len();
+        for (idx, &(z, y, x)) in active_indices.iter().enumerate() {
+            if idx % 10000 == 0 {
+                log::info!("处理进度: {}/{} ({:.1}%)", idx, total, 100.0 * idx as f32 / total as f32);
+            }
+
+            let cube_values = [
+                volume[[z, y, x]],
+                volume[[z, y, x + 1]],
+                volume[[z, y + 1, x + 1]],
+                volume[[z, y + 1, x]],
+                volume[[z + 1, y, x]],
+                volume[[z + 1, y, x + 1]],
+                volume[[z + 1, y + 1, x + 1]],
+                volume[[z + 1, y + 1, x]],
+            ];
+
+            let cube_positions = [
+                [x as f32 * final_spacing.0, y as f32 * final_spacing.1, z as f32 * final_spacing.2],
+                [(x + 1) as f32 * final_spacing.0, y as f32 * final_spacing.1, z as f32 * final_spacing.2],
+                [(x + 1) as f32 * final_spacing.0, (y + 1) as f32 * final_spacing.1, z as f32 * final_spacing.2],
+                [x as f32 * final_spacing.0, (y + 1) as f32 * final_spacing.1, z as f32 * final_spacing.2],
+                [x as f32 * final_spacing.0, y as f32 * final_spacing.1, (z + 1) as f32 * final_spacing.2],
+                [(x + 1) as f32 * final_spacing.0, y as f32 * final_spacing.1, (z + 1) as f32 * final_spacing.2],
+                [(x + 1) as f32 * final_spacing.0, (y + 1) as f32 * final_spacing.1, (z + 1) as f32 * final_spacing.2],
+                [x as f32 * final_spacing.0, (y + 1) as f32 * final_spacing.1, (z + 1) as f32 * final_spacing.2],
+            ];
+
+            for &tet_indices in self.cube_to_tetrahedra.iter() {
+                let tet_positions = [
+                    cube_positions[tet_indices[0]],
+                    cube_positions[tet_indices[1]],
+                    cube_positions[tet_indices[2]],
+                    cube_positions[tet_indices[3]],
+                ];
+                let tet_values = [
+                    cube_values[tet_indices[0]],
+                    cube_values[tet_indices[1]],
+                    cube_values[tet_indices[2]],
+                    cube_values[tet_indices[3]],
+                ];
+                
+                self.process_tetrahedron_dedup(
+                    &tet_positions,
+                    &tet_values,
+                    iso_value,
+                    &mut vertices,
+                    &mut triangles,
+                    &mut vertex_dict,
+                    vertex_precision,
+                );
+            }
+        }
+
+        log::info!("生成完成: {} 个顶点, {} 个三角形", vertices.len(), triangles.len());
+
+        if vertices.is_empty() {
+            return (vec![], vec![]);
+        }
+
+        // Convert vertices to MeshVertex format with proper coordinate system
+        let mesh_vertices: Vec<MeshVertex> = vertices.iter().map(|&v| {
+            // Convert from volume coordinates to world coordinates
+            // Medical imaging typically uses DICOM coordinate system
+            MeshVertex {
+                position: [v[0], v[1], v[2]], // Keep original coordinates for now
+                normal: [0.0, 0.0, 1.0], // Simple normal for now
+                color: [0.8, 0.8, 0.8], // Default gray color
+            }
+        }).collect();
+
+        // Convert triangles to u16 format (flatten the triangle indices)
+        let mesh_triangles: Vec<u16> = triangles.iter().flat_map(|tri| {
+            tri.iter().map(|&idx| idx as u16)
+        }).collect();
+
+        (mesh_vertices, mesh_triangles)
+    }
+
+    fn find_active_voxels(&self, volume: &Array3<f32>, iso_value: f32) -> Array3<bool> {
+        let shape = volume.shape();
+        let depth = shape[0] - 1;
+        let height = shape[1] - 1;
+        let width = shape[2] - 1;
+
+        let mut mask = Array3::from_elem((depth, height, width), false);
+
+        for z in 0..depth {
+            for y in 0..height {
+                for x in 0..width {
+                    let cube_vals = [
+                        volume[[z, y, x]],
+                        volume[[z, y, x + 1]],
+                        volume[[z, y + 1, x + 1]],
+                        volume[[z, y + 1, x]],
+                        volume[[z + 1, y, x]],
+                        volume[[z + 1, y, x + 1]],
+                        volume[[z + 1, y + 1, x + 1]],
+                        volume[[z + 1, y + 1, x]],
+                    ];
+                    let cube_min = cube_vals.iter().fold(f32::INFINITY, |a, &b| a.min(b));
+                    let cube_max = cube_vals.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
+                    mask[[z, y, x]] = cube_min < iso_value && cube_max >= iso_value;
+                }
+            }
+        }
+
+        mask
+    }
+
+    fn process_tetrahedron_dedup(
+        &self,
+        positions: &[[f32; 3]],
+        values: &[f32],
+        iso_value: f32,
+        vertices: &mut Vec<[f32; 3]>,
+        triangles: &mut Vec<[u32; 3]>,
+        vertex_dict: &mut HashMap<(i32, i32, i32), usize>,
+        precision: usize,
+    ) {
+        let inside = [
+            values[0] >= iso_value,
+            values[1] >= iso_value,
+            values[2] >= iso_value,
+            values[3] >= iso_value,
+        ];
+        let case_index: u8 = (inside[0] as u8) << 0
+            | (inside[1] as u8) << 1
+            | (inside[2] as u8) << 2
+            | (inside[3] as u8) << 3;
+
+        if case_index == 0 || case_index == 15 {
+            return;
+        }
+
+        if let Some(triangle_config) = self.triangle_table.get(&case_index) {
+            if triangle_config.is_empty() {
+                return;
+            }
+
+            let mut edge_vertex_indices: Vec<Option<usize>> = vec![None; 6];
+            for (i, edge) in self.tetrahedra_edges.iter().enumerate() {
+                let v1 = edge[0];
+                let v2 = edge[1];
+                if inside[v1] != inside[v2] {
+                    let val1 = values[v1];
+                    let val2 = values[v2];
+                    let t = if (val1 - val2).abs() > 1e-10 {
+                        (iso_value - val1) / (val2 - val1)
+                    } else {
+                        0.5
+                    };
+                    let vertex = [
+                        positions[v1][0] + t * (positions[v2][0] - positions[v1][0]),
+                        positions[v1][1] + t * (positions[v2][1] - positions[v1][1]),
+                        positions[v1][2] + t * (positions[v2][2] - positions[v1][2]),
+                    ];
+
+                    let factor = 10f32.powi(precision as i32);
+                    let vertex_key = (
+                        (vertex[0] * factor).round() as i32,
+                        (vertex[1] * factor).round() as i32,
+                        (vertex[2] * factor).round() as i32,
+                    );
+
+                    let index = if let Some(&idx) = vertex_dict.get(&vertex_key) {
+                        idx
+                    } else {
+                        let idx = vertices.len();
+                        vertices.push(vertex);
+                        vertex_dict.insert(vertex_key, idx);
+                        idx
+                    };
+
+                    edge_vertex_indices[i] = Some(index);
+                }
+            }
+
+            for tri in triangle_config.iter() {
+                let mut tri_indices: [u32; 3] = [0; 3];
+                let mut valid = true;
+                for (j, &edge_idx) in tri.iter().enumerate() {
+                    if let Some(idx) = edge_vertex_indices[edge_idx] {
+                        tri_indices[j] = idx as u32;
+                    } else {
+                        valid = false;
+                        break;
+                    }
+                }
+                if valid {
+                    triangles.push(tri_indices);
+                }
+            }
+        }
+    }
 }
 
 impl Mesh {
@@ -420,6 +752,51 @@ impl Mesh {
         // Inferior articular processes
         add_box([-0.5, -0.5, -0.8], [0.2, 0.3, 0.4], bone_color);
         add_box([0.5, -0.5, -0.8], [0.2, 0.3, 0.4], bone_color);
+        
+        Self { vertices, indices }
+    }
+
+    pub fn new(
+        ctvolume: &CTVolume,
+        iso_value: f32,
+        downsample: Option<usize>,
+        vertex_precision: usize,
+    ) -> Self {
+        log::info!("开始从CT体积数据生成网格...");
+        log::info!("等值面值: {}", iso_value);
+        log::info!("降采样: {:?}", downsample);
+        log::info!("顶点精度: {}", vertex_precision);
+        log::info!("体积维度: {:?}", ctvolume.dimensions);
+        log::info!("体素间距: {:?}", ctvolume.voxel_spacing);
+        
+        let mt = MarchingTetrahedra::new();
+        let (vertices, indices) = mt.extract_isosurface(
+            &ctvolume.voxel_data,
+            ctvolume.dimensions,
+            iso_value,
+            ctvolume.voxel_spacing,
+            downsample,
+            vertex_precision,
+        );
+        
+        if vertices.is_empty() {
+            log::warn!("未生成任何网格数据");
+            return Self { vertices: Vec::new(), indices: Vec::new() };
+        }
+        
+        // Calculate mesh bounds for debugging
+        let mut min_bounds = [f32::INFINITY, f32::INFINITY, f32::INFINITY];
+        let mut max_bounds = [f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
+        
+        for vertex in &vertices {
+            for i in 0..3 {
+                min_bounds[i] = min_bounds[i].min(vertex.position[i]);
+                max_bounds[i] = max_bounds[i].max(vertex.position[i]);
+            }
+        }
+        
+        let triangle_count = indices.len() / 3;
+        log::info!("网格生成完成: {} 个顶点, {} 个三角形", vertices.len(), triangle_count);
         
         Self { vertices, indices }
     }
