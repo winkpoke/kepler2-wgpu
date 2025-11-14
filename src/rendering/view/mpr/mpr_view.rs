@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    core::{array_to_slice, error::{KeplerResult, MprError}, window_level, Base, GeometryBuilder, WindowLevel},
+    core::{array_to_slice, error::{KeplerResult, MprError},  Base, GeometryBuilder, WindowLevel},
     data::CTVolume,
     rendering::{Orientation, RenderContent, StatefulView, ViewState},
     Renderable, View,
@@ -785,7 +785,7 @@ impl MprView {
         self.pan = new_pan;
         log::debug!("set_center_at_point_in_mm: updated pan={:?}", self.pan);
         
-        Ok((shift))
+        Ok(shift)
     }
 }
 
