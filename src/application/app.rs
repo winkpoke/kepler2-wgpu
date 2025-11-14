@@ -869,16 +869,15 @@ impl App {
 
     /// Set uniform mesh scale factor for the first MeshView present.
     pub fn set_mesh_scale(&mut self, scale: f32) {
-        let mut updated = false;
-        for view in self.app_view.layout.views_mut().iter_mut() {
-            if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
-                mesh_view.set_scale_factor(scale);
-                log::info!("Mesh scale set to {:.3}", scale);
-                updated = true;
-                break;
+        if self.app_view.layout.views().len() > 0 {
+            for view in self.app_view.layout.views_mut().iter_mut() {
+                if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                    mesh_view.set_scale_factor(scale);
+                    log::info!("Mesh scale set to {:.3}", scale);
+                    break;
+                }
             }
-        }
-        if !updated {
+        }else {
             log::warn!("Cannot set mesh scale: no MeshView in layout");
         }
     }
@@ -895,16 +894,15 @@ impl App {
 
     /// Set mesh rotation angle in degrees for the first MeshView.
     pub fn set_mesh_rotation_angle_degrees(&mut self, degrees_x: f32, degrees_y: f32, degrees_z: f32) {
-        let mut updated = false;
-        for view in self.app_view.layout.views_mut().iter_mut() {
-            if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
-                let degrees = [degrees_x, degrees_y, degrees_z];
-                mesh_view.set_rotation_angle_degrees(degrees);
-                updated = true;
-                break;
+        if self.app_view.layout.views().len() > 0 {
+            for view in self.app_view.layout.views_mut().iter_mut() {
+                if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                    let degrees = [degrees_x, degrees_y, degrees_z];
+                    mesh_view.set_rotation_angle_degrees(degrees);
+                    break;
+                }
             }
-        }
-        if !updated {
+        }else {
             log::warn!("Cannot set mesh rotation angle: no MeshView in layout");
         }
     }

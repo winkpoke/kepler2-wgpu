@@ -84,6 +84,8 @@ pub struct MeshView {
     rotation_enabled: bool,
     /// Current rotation angle in radians
     rotation_angle: [f32; 3],
+    /// Cached rotation angle used when rotation is disabled to preserve orientation
+    rotation_angle_cache: [f32; 3],
     /// Rotation speed in radians per second (default: π/2 = 90 degrees/second)
     rotation_speed: f32,
     /// Last frame time for rotation calculation
@@ -110,6 +112,7 @@ impl Default for MeshView {
             quality_controller: QualityController::default(),
             rotation_enabled: true,
             rotation_angle: [0.0, 0.0, 0.0],
+            rotation_angle_cache: [0.0, 0.0, 0.0],
             rotation_speed: PI / 2.0, // 90 degrees per second - reasonable default speed
             last_frame_time: Instant::now(),
             scale_factor: 1.0,
@@ -185,6 +188,8 @@ impl MeshView {
             self.last_frame_time = Instant::now();
             log::info!("Mesh rotation enabled at {:.1}°/s", self.rotation_speed.to_degrees());
         } else {
+            // Preserve current orientation when stopping rotation
+            self.rotation_angle_cache = self.rotation_angle;
             log::info!("Mesh rotation disabled");
         }
     }
@@ -207,6 +212,7 @@ impl MeshView {
     /// Useful for returning to a known orientation or synchronizing multiple objects.
     pub fn reset_rotation(&mut self) {
         self.rotation_angle = [0.0, 0.0, 0.0];
+        self.rotation_angle_cache = self.rotation_angle;
         self.last_frame_time = Instant::now();
         log::debug!("Mesh rotation angle reset to 0°");
     }
@@ -220,6 +226,7 @@ impl MeshView {
     /// This directly sets the orientation without affecting rotation speed.
     pub fn set_rotation_angle_degrees(&mut self, degrees: [f32; 3]) {
         self.rotation_angle = degrees.map(|d| d.to_radians());
+        self.rotation_angle_cache = self.rotation_angle;
         self.last_frame_time = Instant::now();
         log::info!("Mesh rotation angle set to {:?}°", degrees);
     }
@@ -279,7 +286,7 @@ impl MeshView {
         // Keep angle in [0, 2π] range to prevent floating point precision issues
         use std::f32::consts::TAU; // TAU = 2π
 
-        // Update rotation angle if rotation is enabled
+        // Update rotation angle only when rotation is enabled; orientation should persist when disabled
         if self.rotation_enabled {
             let current_time = Instant::now();
             let delta_time = current_time.duration_since(self.last_frame_time).as_secs_f32();
@@ -293,7 +300,6 @@ impl MeshView {
                 log::trace!("[MESH_ROTATION] Angle: {:.3} rad ({:.1}°), Speed: {:.3} rad/s, Delta: {:.3}ms",
                     self.rotation_angle[i], self.rotation_angle[i].to_degrees(), self.rotation_speed, delta_time * 1000.0);
             }
-            
             self.last_frame_time = current_time;
         }
         
@@ -307,7 +313,7 @@ impl MeshView {
             log::debug!("[BASIC_MESH_UNIFORMS] Viewport dimensions: {}x{}, aspect_ratio: {:.3}", 
                        self.dim.0, self.dim.1, aspect_ratio);
             
-            // Model matrix - scaling with optional Y-axis rotation
+            // Model matrix - apply persistent rotation (if any) and uniform scale
             let scale = self.scale_factor;
             
             // Create scale matrix
@@ -318,41 +324,38 @@ impl MeshView {
                 0.0,   0.0,   0.0,   1.0,
             ]);
             
-            let model_matrix = if self.rotation_enabled {
-                // Create X-axis rotation matrix
-                let ax = self.rotation_angle[0];
-                let rx = Matrix4x4::from_array([
-                    1.0,    0.0,     0.0, 0.0,
-                    0.0,  ax.cos(), -ax.sin(), 0.0,
-                    0.0,  ax.sin(),  ax.cos(), 0.0,
-                    0.0,    0.0,     0.0, 1.0,
-                ]);
+            // Use cached angles when rotation is disabled to preserve orientation
+            let angles = if self.rotation_enabled { self.rotation_angle } else { self.rotation_angle_cache };
+            // Create X-axis rotation matrix
+            let ax = angles[0];
+            let rx = Matrix4x4::from_array([
+                1.0,    0.0,     0.0, 0.0,
+                0.0,  ax.cos(), -ax.sin(), 0.0,
+                0.0,  ax.sin(),  ax.cos(), 0.0,
+                0.0,    0.0,     0.0, 1.0,
+            ]);
 
-                // Create Y-axis rotation matrix
-                let ay = self.rotation_angle[1];
-                let ry = Matrix4x4::from_array([
-                    ay.cos(), 0.0, ay.sin(), 0.0,
-                    0.0,      1.0, 0.0,      0.0,
-                -ay.sin(), 0.0, ay.cos(), 0.0,
-                    0.0,      0.0, 0.0,      1.0,
-                ]);
+            // Create Y-axis rotation matrix
+            let ay = angles[1];
+            let ry = Matrix4x4::from_array([
+                ay.cos(), 0.0, ay.sin(), 0.0,
+                0.0,      1.0, 0.0,      0.0,
+            -ay.sin(), 0.0, ay.cos(), 0.0,
+                0.0,      0.0, 0.0,      1.0,
+            ]);
 
-                // Create Z-axis rotation matrix
-                let az = self.rotation_angle[2];
-                let rz = Matrix4x4::from_array([
-                    az.cos(), -az.sin(), 0.0, 0.0,
-                    az.sin(),  az.cos(), 0.0, 0.0,
-                    0.0,       0.0,      1.0, 0.0,
-                    0.0,       0.0,      0.0, 1.0,
-                ]);
+            // Create Z-axis rotation matrix
+            let az = angles[2];
+            let rz = Matrix4x4::from_array([
+                az.cos(), -az.sin(), 0.0, 0.0,
+                az.sin(),  az.cos(), 0.0, 0.0,
+                0.0,       0.0,      1.0, 0.0,
+                0.0,       0.0,      0.0, 1.0,
+            ]);
 
-                let rotation_matrix = rx.multiply(&ry).multiply(&rz);
-                // Apply scale first, then rotation: rotation * scale
-                rotation_matrix.multiply(&scale_matrix)
-            } else {
-                // Use scale matrix only when rotation is disabled
-                scale_matrix
-            };
+            let rotation_matrix = rx.multiply(&ry).multiply(&rz);
+            // Apply scale first, then rotation: rotation * scale
+            let model_matrix = rotation_matrix.multiply(&scale_matrix);
             
             // View matrix - camera positioned for optimal viewing of smaller cube
             let view_matrix = Matrix4x4::from_array([
@@ -381,13 +384,9 @@ impl MeshView {
             let view_model = view_matrix.multiply(&model_matrix);
             let mvp_matrix = proj_matrix.multiply(&view_model);
             
-            if self.rotation_enabled {
-                log::trace!("[BASIC_MESH_MATRICES] Model matrix (scale {} with rotation {:?} rad): {:?}", 
-                scale, self.rotation_angle, model_matrix.data);
-            } else {
-                log::trace!("[BASIC_MESH_MATRICES] Model matrix (scale {} no rotation): {:?}", 
-                           scale, model_matrix.data);
-            }
+            #[cfg(feature = "trace-logging")]
+            log::trace!("[BASIC_MESH_MATRICES] Model matrix (scale {} with rotation {:?} rad, enabled={}): {:?}", 
+                        scale, angles, self.rotation_enabled, model_matrix.data);
             log::trace!("[BASIC_MESH_MATRICES] View matrix (camera at -3): {:?}", view_matrix.data);
             log::trace!("[BASIC_MESH_MATRICES] Projection matrix (orthogonal): {:?}", proj_matrix.data);
             log::trace!("[BASIC_MESH_MATRICES] Combined MVP matrix: {:?}", mvp_matrix.data);
