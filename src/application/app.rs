@@ -841,12 +841,13 @@ impl App {
 
     /// Function-level comment: Reset the mesh rotation angle to zero.
     /// Useful for returning the mesh to its initial orientation.
-    pub fn reset_mesh_rotation(&mut self) {
+    pub fn reset_mesh(&mut self) {
         if self.app_view.layout.views().len() > 0 {
             for view in self.app_view.layout.views_mut().iter_mut() {
                 if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
                     mesh_view.reset_rotation();
-                    log::info!("Mesh rotation angle reset via State control");
+                    mesh_view.reset_scale_factor();
+                    log::info!("Mesh reset via State control");
                     break;
                 }
             }
@@ -893,10 +894,11 @@ impl App {
     }
 
     /// Set mesh rotation angle in degrees for the first MeshView.
-    pub fn set_mesh_rotation_angle_degrees(&mut self, degrees: f32) {
+    pub fn set_mesh_rotation_angle_degrees(&mut self, degrees_x: f32, degrees_y: f32, degrees_z: f32) {
         let mut updated = false;
         for view in self.app_view.layout.views_mut().iter_mut() {
             if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                let degrees = [degrees_x, degrees_y, degrees_z];
                 mesh_view.set_rotation_angle_degrees(degrees);
                 updated = true;
                 break;

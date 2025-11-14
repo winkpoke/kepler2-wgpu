@@ -207,17 +207,17 @@ impl RenderApp {
                     state.set_mesh_rotation_speed_degrees(degrees_per_sec);
                     log::info!("Mesh rotation speed set to {:.1}°/s", degrees_per_sec);
                 }
-                Event::UserEvent(UserEvent::ResetMeshRotation(_index)) => {
-                    state.reset_mesh_rotation();
+                Event::UserEvent(UserEvent::ResetMesh(_index)) => {
+                    state.reset_mesh();
                     log::info!("Mesh rotation reset");
                 }
                 Event::UserEvent(UserEvent::SetMeshScale(_index, scale)) => {
                     state.set_mesh_scale(scale);
                     log::info!("Mesh scale set to {:.3}", scale);
                 }
-                Event::UserEvent(UserEvent::SetMeshRotationAngleDeg(_index, degrees)) => {
-                    state.set_mesh_rotation_angle_degrees(degrees);
-                    log::info!("Mesh rotation angle set to {:.1}°", degrees);
+                Event::UserEvent(UserEvent::SetMeshRotationAngleDeg(_index, degrees_x, degrees_y, degrees_z)) => {
+                    state.set_mesh_rotation_angle_degrees(degrees_x, degrees_y, degrees_z);
+                    log::info!("Mesh rotation angle set to {:?}°", [degrees_x, degrees_y, degrees_z]);
                 }
                 Event::UserEvent(UserEvent::ViewClick(view_index, screen_x, screen_y, screen_z)) => {
                     state.handle_view_click(view_index, screen_x, screen_y, screen_z);

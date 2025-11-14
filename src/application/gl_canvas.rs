@@ -46,9 +46,9 @@ pub enum UserEvent {
     // Mesh control events
     SetMeshRotationEnabled(usize, bool),
     SetMeshRotationSpeedDeg(usize, f32),
-    ResetMeshRotation(usize),
+    ResetMesh(usize),
     SetMeshScale(usize, f32),
-    SetMeshRotationAngleDeg(usize, f32),
+    SetMeshRotationAngleDeg(usize, f32, f32, f32),
 }
 
 #[macro_export]
@@ -257,7 +257,7 @@ impl_user_event_senders_for_glcanvas! {
     // Mesh controls
     set_mesh_rotation_enabled => SetMeshRotationEnabled(enabled: bool),
     set_mesh_rotation_speed_degrees => SetMeshRotationSpeedDeg(degrees_per_sec: f32),
-    reset_mesh_rotation => ResetMeshRotation(),
+    reset_mesh => ResetMesh(),
     set_mesh_scale => SetMeshScale(scale: f32),
-    set_mesh_rotation_angle_degrees => SetMeshRotationAngleDeg(degrees: f32),
+    set_mesh_rotation_angle_degrees => SetMeshRotationAngleDeg(degrees_x: f32, degrees_y: f32, degrees_z: f32),
 }

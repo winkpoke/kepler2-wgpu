@@ -246,7 +246,9 @@
           <label for="3d-change">3d:</label>
           <span id="3d-scale-label">scale:</span><input type="number" id="3d-scale" step="0.1" value="1.0"><br>
           <span id="3d-rotation-label">rotation speed:</span><input type="number" id="3d-speed" step="0.1" value="0.0" min="0" max="10"><br>
-          <span id="3d-rotation-label">rotation angle:</span><input type="number" id="3d-rotation" step="15" value="0" min="0" max="360"><br>
+          <span id="3d-rotation-label">angle:</span><input type="number" id="3d-rotation-x" step="15" value="0" min="0" max="360">
+          <input type="number" id="3d-rotation-y" step="15" value="0" min="0" max="360">
+          <input type="number" id="3d-rotation-z" step="15" value="0" min="0" max="360"><br>
           <button id="3d-submit">ON/OFF</button>
           <button id="3d-reset">Reset</button>
         </div>
@@ -590,26 +592,20 @@
       gl_canvas.set_mesh_rotation_enabled(indexValue, state.enable_rotation);
 
       const scale = parseFloat(byId('3d-scale').value);
-      const rotation = parseFloat(byId('3d-rotation').value);
+      const rotation_x = parseFloat(byId('3d-rotation-x').value);
+      const rotation_y = parseFloat(byId('3d-rotation-y').value);
+      const rotation_z = parseFloat(byId('3d-rotation-z').value);
 
       if (state.mesh){
-        console.log('3d-submit:', scale, rotation);
-        if (!Number.isNaN(scale)) {
-          gl_canvas.set_mesh_scale(indexValue, scale);
-        } else {
-          alert('Please enter a valid number for scale!');
-        }
-        if (!Number.isNaN(rotation)) {
-          // gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation);
-        } else {
-          alert('Please enter a valid number for rotation!');
-        }
+        console.log('3d-submit:', scale, rotation_x, rotation_y, rotation_z);
+        gl_canvas.set_mesh_scale(indexValue, scale);
+        gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
       }
     });
 
     byId('3d-reset').addEventListener('click', () => {
         const indexValue = parseInt(byId('index-input').value, 10);
-        gl_canvas.reset_mesh_rotation(indexValue);
+        gl_canvas.reset_mesh(indexValue);
     });
 
     // ========= MHX文件解析函数 =========
