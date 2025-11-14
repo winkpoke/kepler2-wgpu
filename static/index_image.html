@@ -81,7 +81,7 @@
       background: #5b74ff;
       border: 1px solid #6b82ff;
       color: white;
-      padding: 8px 12px;
+      padding: 4px 12px;
       border-radius: 10px;
       cursor: pointer
     }
@@ -188,60 +188,68 @@
           <button id="analyzeBtn">分析文件</button>
           <button id="rerender">视图显示</button>
         </div>
-      <div>
-        <label for="one-cell">单张图:</label>
-        <span id="mode-label">模式: </span><input type="number" id="mode" step="1.0" value="0.0"><br>
-        <span id="orientation_index-label">方向索引: </span><input type="number" id="orientation_index" step="1.0" value="0.0"><br>
-        <button id="one-cell-submit">Submit</button>
-      </div>
-      <br>
-      <div>
-        <span id="3d-label">3d</span><input type="checkbox" id="3d" />
-        <span id="change_mpr-label">change_mpr</span><input type="checkbox" id="change_mpr" /><br>
-        <span id="mipSpan">mip:</span><input type="number" id="mip" step="1.0" value="0.0"><input type="checkbox" id="change_mip" /><br>
-        <span id="index-1-label">index-1: </span><input type="number" id="index-1" step="1.0" value="0.0"><br>
-        <span id="index-2-label">index-2: </span><input type="number" id="index-2" step="1.0" value="0.0"><br>
-        <span id="index-3-label">index-3: </span><input type="number" id="index-3" step="1.0" value="0.0"><br>
-        <span id="index-4-label">index-4: </span><input type="number" id="index-4" step="1.0" value="0.0"><br>
-        <button id="mesh">enable_mesh</button>
-      </div>
-      <label for="index-input">操作视图窗口:</label>
-      <input type="number" id="index-input" step="1.0" value="0.0">
-      <div>
-        <label for="slice-input">slice:</label>
-        <input type="number" id="slice-input" step="0.5" value="0.0">
-        <button id="slice-submit">Submit</button>
-      </div>
-      <div>
-        <label for="center-input">center:</label>
-        <label for="center-x">x:</label> <input type="number" id="center-x" step="0.1" value="0.0" placeholder="x">
-        <label for="center-y">y:</label> <input type="number" id="center-y" step="0.1" value="0.0" placeholder="y">
-        <label for="center-z">z:</label> <input type="number" id="center-z" step="0.1" value="0.0" placeholder="z">
-        <button id="set-center">Set Center</button>
-      </div>
-      <div>
-        <label for="scale-input">Scale:</label>
-        <input type="number" id="scale-input" step="10.0" value="1.0">
-        <button id="scale-submit">Submit</button>
-      </div>
-      <div>
-        <label for="translate-input">translate:</label>
-        <label for="trans-x">x:</label> <input type="number" id="trans-x" step="10.0" value="0.0" placeholder="x">
-        <label for="trans-y">y:</label><input type="number" id="trans-y" step="10.0" value="0.0" placeholder="y">
-        <label for="trans-z">z:</label><input type="number" id="trans-z" step="10.0" value="0.0" placeholder="z">
-        <button id="trans-submit">Submit</button>
-      </div>
-      <div>
-        <label for="window">window width:</label><input type="number" id="window" step="10.0" value="0.0">
-        <label for="level">window level:</label><input type="number" id="level" step="10.0" value="0.0">
-        <button id="winlev-submit">Submit</button>
-      </div>
-      <div>
-        <label for="resize-input">resize:</label>
-        <label for="width">width:</label><input type="number" id="width" step="10.0" value="0.0" placeholder="800">
-        <label for="height">height:</label><input type="number" id="height" step="10.0" value="0.0" placeholder="800">
-        <button id="resize-submit">Submit</button>
-      </div>
+        <div>
+          <label for="one-cell">单张图:</label>
+          <span id="mode-label">模式: </span><input type="number" id="mode" step="1.0" value="0.0"><br>
+          <span id="orientation_index-label">方向索引: </span><input type="number" id="orientation_index" step="1.0" value="0.0"><br>
+          <button id="one-cell-submit">Submit</button>
+        </div>
+        <div>
+          <label for="one-cell">切换视图:</label>
+          <span id="3d-label">3d</span><input type="checkbox" id="3d" /><br>
+          <span id="change_mpr-label">change_mpr</span><input type="checkbox" id="change_mpr" /><br>
+          <span id="mipSpan">mip:</span><input type="number" id="mip" step="1.0" value="0.0"><input type="checkbox" id="change_mip" /><br>
+          <span id="index-1-label">index-1: </span><input type="number" id="index-1" step="1.0" value="0.0"><br>
+          <span id="index-2-label">index-2: </span><input type="number" id="index-2" step="1.0" value="0.0"><br>
+          <span id="index-3-label">index-3: </span><input type="number" id="index-3" step="1.0" value="0.0"><br>
+          <span id="index-4-label">index-4: </span><input type="number" id="index-4" step="1.0" value="0.0"><br>
+          <button id="mesh">enable_mesh</button>
+        </div>
+        <span id="index-input-label">操作视图窗口:</span><input type="number" id="index-input" step="1.0" value="0.0">
+        <div>
+          <label for="slice-input">slice:</label>
+          <input type="number" id="slice-input" step="0.5" value="0.0">
+          <button id="slice-submit">Submit</button>
+        </div>
+        <div>
+          <label for="center-input">center:</label>
+          <span id="center-x-label">x:</span><input type="number" id="center-x" step="0.1" value="0.0" placeholder="x"><br>
+          <span id="center-y-label">y:</span><input type="number" id="center-y" step="0.1" value="0.0" placeholder="y"><br>
+          <span id="center-z-label">z:</span><input type="number" id="center-z" step="0.1" value="0.0" placeholder="z">
+          <button id="set-center">Set Center</button>
+        </div>
+        <div>
+          <label for="scale-input">Scale:</label>
+          <input type="number" id="scale-input" step="10.0" value="1.0">
+          <button id="scale-submit">Submit</button>
+        </div>
+        <div>
+          <label for="translate-input">translate:</label>
+          <span id="trans-x-label">x:</span> <input type="number" id="trans-x" step="10.0" value="0.0" placeholder="x"><br>
+          <span id="trans-y-label">y:</span><input type="number" id="trans-y" step="10.0" value="0.0" placeholder="y"><br>
+          <span id="trans-z-label">z:</span><input type="number" id="trans-z" step="10.0" value="0.0" placeholder="z">
+          <button id="trans-submit">Submit</button>
+        </div>
+        <br>
+        <div>
+          <span id="window-label">window width:</span><input type="number" id="window" step="10.0" value="0.0"><br>
+          <span id="level-label">window level:</span><input type="number" id="level" step="10.0" value="0.0">
+          <button id="winlev-submit">Submit</button><button id="winlev-get">Get</button>
+        </div>
+        <div>
+          <label for="resize-input">resize:</label>
+          <span id="width-label">width:</span><input type="number" id="width" step="10.0" value="0.0" placeholder="800"><br>
+          <span id="height-label">height:</span><input type="number" id="height" step="10.0" value="0.0" placeholder="800">
+          <button id="resize-submit">Submit</button>
+        </div>
+        <div>
+          <label for="3d-change">3d:</label>
+          <span id="3d-scale-label">scale:</span><input type="number" id="3d-scale" step="0.1" value="1.0"><br>
+          <span id="3d-rotation-label">rotation speed:</span><input type="number" id="3d-speed" step="0.1" value="0.0" min="0" max="10"><br>
+          <span id="3d-rotation-label">rotation angle:</span><input type="number" id="3d-rotation" step="15" value="0" min="0" max="360"><br>
+          <button id="3d-submit">ON/OFF</button>
+          <button id="3d-reset">Reset</button>
+        </div>
       </div>
     </section>
 
@@ -310,6 +318,8 @@
       spacing: [],
       dim:[],
       mip: null,
+      mesh: false,
+      enable_rotation: true,
     };
 
     let gl_canvas = null;
@@ -508,10 +518,30 @@
         lev && gl_canvas.set_window_level(indexValue, lev);
     });
 
+    byId('winlev-get').addEventListener('click', () => {
+      const input_index = byId('index-input');
+      const indexValue = parseInt(input_index.value);
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+      gl_canvas.get_window_level(indexValue).then((result) => {
+        console.log('window_level:', result[0], 'window_width:', result[1]);
+      }).catch((err) => {
+        console.error('get_window_level error:', err);
+      });
+    });
+
     byId('mesh').addEventListener('click', () => {
       const checkbox3d = byId('3d').checked;
       const checkboxChangeMpr = byId('change_mpr').checked;
       const checkboxChangeMip = byId('change_mip').checked;
+
+      if (checkbox3d){
+        state.mesh = true;
+      }else{
+        state.mesh = false;
+      }
       
       // Indices: convert to numbers for downstream logic
       if (checkboxChangeMip) {
@@ -539,9 +569,49 @@
       const mode = parseInt(byId('mode').value, 10); // Mode: 0=MPR, 1=MIP, 2=MESH
       const orientation_index = parseInt(byId('orientation_index').value, 10);
 
+      if (mode === 2){
+        state.mesh = true;
+      }else{
+        state.mesh = false;
+      }
+
       gl_canvas.set_one_cell_layout(mode, orientation_index);
     });
     
+    byId('3d-submit').addEventListener('click', () => {
+      const indexValue = parseInt(byId('index-input').value, 10);
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+
+      state.enable_rotation = !state.enable_rotation;
+      console.log('Mesh rotation', state.enable_rotation);
+      gl_canvas.set_mesh_rotation_enabled(indexValue, state.enable_rotation);
+
+      const scale = parseFloat(byId('3d-scale').value);
+      const rotation = parseFloat(byId('3d-rotation').value);
+
+      if (state.mesh){
+        console.log('3d-submit:', scale, rotation);
+        if (!Number.isNaN(scale)) {
+          gl_canvas.set_mesh_scale(indexValue, scale);
+        } else {
+          alert('Please enter a valid number for scale!');
+        }
+        if (!Number.isNaN(rotation)) {
+          // gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation);
+        } else {
+          alert('Please enter a valid number for rotation!');
+        }
+      }
+    });
+
+    byId('3d-reset').addEventListener('click', () => {
+        const indexValue = parseInt(byId('index-input').value, 10);
+        gl_canvas.reset_mesh_rotation(indexValue);
+    });
+
     // ========= MHX文件解析函数 =========
     async function parseMHXContent(mhxText) {
       const lines = mhxText.split('\n');

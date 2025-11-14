@@ -89,6 +89,8 @@ pub struct MeshView {
     rotation_speed: f32,
     /// Last frame time for rotation calculation
     last_frame_time: Instant,
+    /// Uniform scale factor applied to the mesh model
+    scale_factor: f32,
 }
 
 impl Default for MeshView {
@@ -111,6 +113,7 @@ impl Default for MeshView {
             rotation_angle: 0.0,
             rotation_speed: PI / 2.0, // 90 degrees per second - reasonable default speed
             last_frame_time: Instant::now(),
+            scale_factor: 1.0,
         }
     }
 }
@@ -178,21 +181,14 @@ impl MeshView {
     /// Function-level comment: Enable or disable Y-axis rotation animation.
     /// When enabled, the mesh will continuously rotate around the Y-axis at the configured speed.
     pub fn set_rotation_enabled(&mut self, enabled: bool) {
-        if enabled != self.rotation_enabled {
-            self.rotation_enabled = enabled;
-            if enabled {
-                // Reset timing when enabling rotation to prevent jumps
-                self.last_frame_time = Instant::now();
-                log::info!("Mesh Y-axis rotation enabled at {:.1}°/s", self.rotation_speed.to_degrees());
-            } else {
-                log::info!("Mesh Y-axis rotation disabled");
-            }
+        self.rotation_enabled = enabled;
+        if enabled {
+            // Reset timing when enabling rotation to prevent jumps
+            self.last_frame_time = Instant::now();
+            log::info!("Mesh rotation enabled at {:.1}°/s", self.rotation_speed.to_degrees());
+        } else {
+            log::info!("Mesh rotation disabled");
         }
-    }
-
-    /// Function-level comment: Check if Y-axis rotation is currently enabled.
-    pub fn is_rotation_enabled(&self) -> bool {
-        self.rotation_enabled
     }
 
     /// Function-level comment: Set the rotation speed in radians per second.
@@ -220,6 +216,34 @@ impl MeshView {
     /// Function-level comment: Get the current rotation angle in radians.
     pub fn get_rotation_angle(&self) -> f32 {
         self.rotation_angle
+    }
+
+    /// Function-level comment: Set the current rotation angle using degrees for convenience.
+    /// This directly sets the orientation without affecting rotation speed.
+    pub fn set_rotation_angle_degrees(&mut self, degrees: f32) {
+        self.rotation_angle = degrees.to_radians();
+        self.last_frame_time = Instant::now();
+        log::info!("Mesh rotation angle set to {:.1}°", degrees);
+    }
+
+    /// Function-level comment: Set uniform scale factor applied to the mesh model.
+    /// Typical values: 0.25 (very small) .. 2.0 (double size). Default is 0.5.
+    pub fn set_scale_factor(&mut self, scale: f32) {
+        // Clamp to a reasonable range to avoid clipping or degenerate matrices
+        let clamped = scale.clamp(0.001, 100.0);
+        self.scale_factor = clamped;
+        log::info!("Mesh scale factor set to {:.3}", clamped);
+    }
+
+    /// Function-level comment: Get the current uniform scale factor.
+    pub fn get_scale_factor(&self) -> f32 {
+        self.scale_factor
+    }
+
+    /// Function-level comment: Reset the uniform scale factor to default (0.5).
+    pub fn reset_scale_factor(&mut self) {
+        self.scale_factor = 0.5;
+        log::info!("Mesh scale factor reset to default (0.5)");
     }
 
     /// Function-level comment: Set rotation speed using degrees per second for convenience.
@@ -284,7 +308,7 @@ impl MeshView {
                        self.dim.0, self.dim.1, aspect_ratio);
             
             // Model matrix - scaling with optional Y-axis rotation
-            let scale = 1.0 / 2.0; // Make cube much smaller
+            let scale = self.scale_factor;
             
             // Create scale matrix
             let scale_matrix = Matrix4x4::from_array([

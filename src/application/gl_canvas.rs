@@ -34,6 +34,8 @@ pub enum UserEvent {
     #[cfg(target_arch = "wasm32")]
     GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     #[cfg(target_arch = "wasm32")]
+    GetWindowLevel(usize, oneshot::Sender<[f32;2]>),
+    #[cfg(target_arch = "wasm32")]
     WorldCoordToScreen(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     SetCenterAtPointInMM(usize, f32, f32, f32), // screen coords
     ViewClick(usize, f32, f32, f32), // view_index, screen_x, screen_y, screen_z
@@ -41,6 +43,12 @@ pub enum UserEvent {
     /// View click with reply; returns [x_mm, y_mm, slice_mm, reserved]
     ViewClickGet(usize, f32, f32, f32, oneshot::Sender<[f32; 4]>),
     // ... add more events as needed
+    // Mesh control events
+    SetMeshRotationEnabled(usize, bool),
+    SetMeshRotationSpeedDeg(usize, f32),
+    ResetMeshRotation(usize),
+    SetMeshScale(usize, f32),
+    SetMeshRotationAngleDeg(usize, f32),
 }
 
 #[macro_export]
@@ -174,6 +182,23 @@ impl GLCanvas {
     }
 
     #[cfg(target_arch = "wasm32")]
+    pub async fn get_window_level(&self, index:usize) -> Result<Box<[f32]>, String> {
+        let (tx, rx) = oneshot::channel();
+        
+        if let Err(e) = self.proxy.send_event(UserEvent::GetWindowLevel(index, tx)) {
+            log::error!("Failed to send GetWindowLevel event for window {}: {:?}", index, e);
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+        
+        log::info!("Sent GetWindowLevel event for window {}", index);
+        
+        match rx.await {
+            Ok(result) => Ok(result.into()),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
     /// Dispatch a view click and asynchronously return computed world/slice data.
     pub async fn handle_view_click_get(&self, index: usize, x: f32, y: f32, z: f32) -> Result<Box<[f32]>, String> {
         let (tx, rx) = oneshot::channel();
@@ -229,4 +254,10 @@ impl_user_event_senders_for_glcanvas! {
     set_pan_mm => SetPanMM(dx_mm: f32, dy_mm: f32),
     set_center_at_point_in_mm => SetCenterAtPointInMM(x_mm: f32, y_mm: f32, z_mm: f32),
     handle_view_click => ViewClick(screen_x: f32, screen_y: f32, screen_z: f32),
+    // Mesh controls
+    set_mesh_rotation_enabled => SetMeshRotationEnabled(enabled: bool),
+    set_mesh_rotation_speed_degrees => SetMeshRotationSpeedDeg(degrees_per_sec: f32),
+    reset_mesh_rotation => ResetMeshRotation(),
+    set_mesh_scale => SetMeshScale(scale: f32),
+    set_mesh_rotation_angle_degrees => SetMeshRotationAngleDeg(degrees: f32),
 }

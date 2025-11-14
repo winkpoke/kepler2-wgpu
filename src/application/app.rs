@@ -314,7 +314,7 @@ impl App {
 
         // Function-level comment: Determine which rendering passes to enable based on view types present in layout
         let has_mesh_view = self.enable_mesh;
-        let has_mip_view = self.has_mip_content(); // Keep existing method name for MIP
+        let has_mip_view = self.has_mip_content();
         let has_mpr_view = self.has_mpr_view();
         
         // Debug logging for pass execution conditions
@@ -482,21 +482,20 @@ impl App {
 
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
     pub fn set_mesh_mode_enabled(&mut self, enabled: bool, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize) {
-        // if self.enable_mesh == enabled { 
-        //     return; 
-        // }
-
-        if enabled || change_mpr {
-            self.enable_mesh = true;
+        if self.enable_mesh != enabled { 
+            self.enable_mesh = enabled;
         }
 
+        let mut change_index =false;
+        if enabled || change_mpr {
+            change_index = true;
+        }
         if let Some(_) = mip {
-            self.enable_mesh = true;
+            change_index = true;
         }
 
         if self.app_view.is_one_cell_layout() {
             self.app_view.set_grid_layout(2, 2, 2);
-            log::info!("set_grid_layout(2, 2, 2)");
         }
 
         let vol_option = self.app_model.volume().ok().map(|vol| vol.clone());
@@ -504,7 +503,7 @@ impl App {
         // Rebuild layout immediately if a volume is already loaded
         if let Some(vol) = vol_option {
             let texture = self.load_data_from_ct_volume(&vol.clone());
-            if self.enable_mesh {
+            if change_index {
                 self.app_view.layout.remove_all();
                 for orientation in [ALL_ORIENTATIONS[index_1], ALL_ORIENTATIONS[index_2], ALL_ORIENTATIONS[index_3], ALL_ORIENTATIONS[index_4]].iter() {
                     let view = self.app_view.view_factory
@@ -529,9 +528,7 @@ impl App {
 
                 if enabled {
                     // Add Mesh view to slot 3 using factory
-                    // let mesh = Mesh::spine_vertebra();
                     let mesh = Mesh::new(&vol, 100.0, Some(3), 0); // Changed from 100.0 to 300.0 for better bone visualization
-                    // let mesh = Mesh::unit_cube();
                     let mesh_view = self.app_view.view_factory
                         .create_mesh_view(&mesh, (0, 0), (0, 0))
                         .unwrap();
@@ -540,9 +537,9 @@ impl App {
             }else {
                 self.load_data_from_ct_volume(&vol.clone());
             }
-            log::info!("Layout rebuilt for mesh mode: {}", enabled);
+            log::info!("Layout rebuilt for mode: {}", change_index);
         } else {
-            log::info!("Mesh mode set to {} without loaded volume; will apply on next data load.", enabled);
+            log::info!("Mode set to {} without loaded volume; will apply on next data load.", change_index);
         }
     }
 
@@ -643,6 +640,15 @@ impl App {
                 log::warn!("set_window_width failed on view {}: {}", index, e);
             }
             log::info!("View {} set_window_width: {}", index, window_width);
+        }
+    }
+
+    pub fn get_window_level(&self, index: usize) -> [f32; 2] {
+        let view = self.app_view.layout.views().get(index).unwrap();
+        if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
+            [mpr_view.get_window_level(), mpr_view.get_window_width()]
+        } else {
+            [f32::NAN, f32::NAN]
         }
     }
 
@@ -794,34 +800,36 @@ impl App {
         filterable && can_sample
     }
 
-    /// Function-level comment: Enable or disable Y-axis rotation for the mesh view in slot 2.
+    /// Function-level comment: Enable or disable Y-axis rotation for the mesh view.
     /// This method provides external control over mesh rotation animation.
     pub fn set_mesh_rotation_enabled(&mut self, enabled: bool) {
-        if self.app_view.layout.views().len() > 2 {
-            if let Some(mesh_view) = self.app_view.layout.views_mut()[2].as_any_mut().downcast_mut::<MeshView>() {
-                mesh_view.set_rotation_enabled(enabled);
-                log::info!("Mesh rotation {} via State control", if enabled { "enabled" } else { "disabled" });
-            } else {
-                log::warn!("Cannot control mesh rotation: slot 2 does not contain a MeshView");
+        if self.app_view.layout.views().len() > 0 {
+            for view in self.app_view.layout.views_mut().iter_mut() {
+                if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                    mesh_view.set_rotation_enabled(enabled);
+                    log::info!("Mesh rotation {} via State control", if enabled { "enabled" } else { "disabled" });
+                    break;
+                }
             }
         } else {
-            log::warn!("Cannot control mesh rotation: insufficient views (need at least 3, found {})", self.app_view.layout.views().len());
+            log::warn!("Cannot control mesh rotation: no MeshView in layout");
         }
     }
 
-    /// Function-level comment: Set the rotation speed for the mesh view in slot 2.
+    /// Function-level comment: Set the rotation speed for the mesh view.
     /// Speed is specified in radians per second. Use set_mesh_rotation_speed_degrees for degree-based input.
     pub fn set_mesh_rotation_speed(&mut self, speed_rad_per_sec: f32) {
-        if self.app_view.layout.views().len() > 2 {
-            if let Some(mesh_view) = self.app_view.layout.views_mut()[2].as_any_mut().downcast_mut::<MeshView>() {
-                mesh_view.set_rotation_speed(speed_rad_per_sec);
-                log::info!("Mesh rotation speed set to {:.3} rad/s ({:.1}°/s) via State control", 
-                           speed_rad_per_sec, speed_rad_per_sec.to_degrees());
-            } else {
-                log::warn!("Cannot set mesh rotation speed: slot 2 does not contain a MeshView");
+        if self.app_view.layout.views().len() > 0 {
+            for view in self.app_view.layout.views_mut().iter_mut() {
+                if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                    mesh_view.set_rotation_speed(speed_rad_per_sec);
+                    log::info!("Mesh rotation speed set to {:.3} rad/s ({:.1}°/s) via State control", 
+                            speed_rad_per_sec, speed_rad_per_sec.to_degrees());
+                    break;
+                }
             }
         } else {
-            log::warn!("Cannot set mesh rotation speed: insufficient views (need at least 3, found {})", self.app_view.layout.views().len());
+            log::warn!("Cannot set mesh rotation speed: no MeshView in layout");
         }
     }
 
@@ -834,43 +842,68 @@ impl App {
     /// Function-level comment: Reset the mesh rotation angle to zero.
     /// Useful for returning the mesh to its initial orientation.
     pub fn reset_mesh_rotation(&mut self) {
-        if self.app_view.layout.views().len() > 2 {
-            if let Some(mesh_view) = self.app_view.layout.views_mut()[2].as_any_mut().downcast_mut::<MeshView>() {
-                mesh_view.reset_rotation();
-                log::info!("Mesh rotation angle reset via State control");
-            } else {
-                log::warn!("Cannot reset mesh rotation: slot 2 does not contain a MeshView");
+        if self.app_view.layout.views().len() > 0 {
+            for view in self.app_view.layout.views_mut().iter_mut() {
+                if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                    mesh_view.reset_rotation();
+                    log::info!("Mesh rotation angle reset via State control");
+                    break;
+                }
             }
         } else {
-            log::warn!("Cannot reset mesh rotation: insufficient views (need at least 3, found {})", self.app_view.layout.views().len());
-        }
-    }
-
-    /// Function-level comment: Check if mesh rotation is currently enabled.
-    /// Returns false if slot 2 doesn't contain a MeshView.
-    pub fn is_mesh_rotation_enabled(&self) -> bool {
-        if self.app_view.layout.views().len() > 2 {
-            if let Some(mesh_view) = self.app_view.layout.views()[2].as_any().downcast_ref::<crate::rendering::view::MeshView>() {
-                mesh_view.is_rotation_enabled()
-            } else {
-                false
-            }
-        } else {
-            false
+            log::warn!("Cannot reset mesh rotation: no MeshView in layout");
         }
     }
 
     /// Function-level comment: Get the current mesh rotation speed in radians per second.
     /// Returns 0.0 if slot 2 doesn't contain a MeshView.
     pub fn get_mesh_rotation_speed(&self) -> f32 {
-        if self.app_view.layout.views().len() > 2 {
-            if let Some(mesh_view) = self.app_view.layout.views()[2].as_any().downcast_ref::<crate::rendering::view::MeshView>() {
-                mesh_view.get_rotation_speed()
-            } else {
-                0.0
+        for view in self.app_view.layout.views().iter() {
+            if let Some(mesh_view) = view.as_any().downcast_ref::<crate::rendering::view::MeshView>() {
+                return mesh_view.get_rotation_speed();
             }
-        } else {
-            0.0
+        }
+        0.0
+    }
+
+    /// Set uniform mesh scale factor for the first MeshView present.
+    pub fn set_mesh_scale(&mut self, scale: f32) {
+        let mut updated = false;
+        for view in self.app_view.layout.views_mut().iter_mut() {
+            if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view.set_scale_factor(scale);
+                log::info!("Mesh scale set to {:.3}", scale);
+                updated = true;
+                break;
+            }
+        }
+        if !updated {
+            log::warn!("Cannot set mesh scale: no MeshView in layout");
+        }
+    }
+
+    /// Get current mesh scale factor; returns 0.0 if no MeshView present.
+    pub fn get_mesh_scale(&self) -> f32 {
+        for view in self.app_view.layout.views().iter() {
+            if let Some(mesh_view) = view.as_any().downcast_ref::<crate::rendering::view::MeshView>() {
+                return mesh_view.get_scale_factor();
+            }
+        }
+        0.0
+    }
+
+    /// Set mesh rotation angle in degrees for the first MeshView.
+    pub fn set_mesh_rotation_angle_degrees(&mut self, degrees: f32) {
+        let mut updated = false;
+        for view in self.app_view.layout.views_mut().iter_mut() {
+            if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view.set_rotation_angle_degrees(degrees);
+                updated = true;
+                break;
+            }
+        }
+        if !updated {
+            log::warn!("Cannot set mesh rotation angle: no MeshView in layout");
         }
     }
 
