@@ -96,7 +96,7 @@ pub struct MeshView {
 
 impl Default for MeshView {
     fn default() -> Self {
-        use std::f32::consts::{PI, FRAC_PI_2};
+        use std::f32::consts::FRAC_PI_2;
         Self {
             mesh: None,
             material: None,
@@ -112,9 +112,9 @@ impl Default for MeshView {
             quality_controller: QualityController::default(),
             rotation_enabled: true,
             // Angles are stored in radians; 90°=FRAC_PI_2, 180°=PI
-            rotation_angle: [FRAC_PI_2, PI, 0.0],
-            rotation_angle_cache: [FRAC_PI_2, PI, 0.0],
-            rotation_speed: PI / 2.0, // 90 degrees per second - reasonable default speed
+            rotation_angle: [-FRAC_PI_2 , 0.0, 0.0],
+            rotation_angle_cache: [-FRAC_PI_2, 0.0, 0.0],
+            rotation_speed: FRAC_PI_2, // 90 degrees per second - reasonable default speed
             last_frame_time: Instant::now(),
             scale_factor: 1.0,
         }
@@ -213,7 +213,8 @@ impl MeshView {
     /// Useful for returning to a known orientation or synchronizing multiple objects.
     pub fn reset_rotation(&mut self) {
         // Reset to default orientation: [90°, 180°, 0°] in radians
-        self.rotation_angle = [std::f32::consts::FRAC_PI_2, std::f32::consts::PI, 0.0];
+        use std::f32::consts::FRAC_PI_2;
+        self.rotation_angle = [-FRAC_PI_2, 0.0, 0.0];
         self.rotation_angle_cache = self.rotation_angle;
         self.last_frame_time = Instant::now();
         log::debug!("Mesh rotation angle reset to default (90°, 180°, 0°)");
