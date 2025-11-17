@@ -249,7 +249,7 @@ impl ViewFactory for DefaultViewFactory {
         use crate::rendering::view::View as _;
 
         let mut mesh_view = MeshView::new();
-        mesh_view.set_rotation_enabled(true);
+        mesh_view.set_rotation_enabled(false);
         info!("[DefaultViewFactory] Mesh rotation enabled");
 
         // Create fresh BasicMeshContext for each mesh view

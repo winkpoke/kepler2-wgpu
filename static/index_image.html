@@ -250,7 +250,7 @@
           <input type="number" id="3d-rotation-x" step="15" value="-90" min="0" max="360">
           <input type="number" id="3d-rotation-y" step="15" value="0" min="0" max="360">
           <input type="number" id="3d-rotation-z" step="15" value="0" min="0" max="360"><br>
-          <button id="3d-submit">ON/OFF</button>
+          <button id="3d-submit">Submit</button>
           <button id="3d-reset">Reset</button>
         </div>
       </div>
@@ -322,7 +322,7 @@
       dim:[],
       mip: null,
       mesh: false,
-      enable_rotation: true,
+      enable_rotation: false,
     };
 
     let gl_canvas = null;
@@ -590,8 +590,8 @@
         return;
       }
 
-      state.enable_rotation = !state.enable_rotation;
-      console.log('Mesh rotation', state.enable_rotation);
+      // state.enable_rotation = !state.enable_rotation;
+      // console.log('Mesh rotation', state.enable_rotation);
       gl_canvas.set_mesh_rotation_enabled(indexValue, state.enable_rotation);
 
       const scale = parseFloat(byId('3d-scale').value);
