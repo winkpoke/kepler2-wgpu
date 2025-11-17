@@ -247,6 +247,7 @@
           <span id="3d-scale-label">scale:</span><input type="number" id="3d-scale" step="0.1" value="1.0"><br>
           <span id="3d-pan-label">pan_x:</span><input type="number" id="3d-pan-x" step="0.1" value="0.0"><br>
           <span id="3d-pan-label">pan_y:</span><input type="number" id="3d-pan-y" step="0.1" value="0.0"><br>
+          <span id="3d-pan-label">pan_z:</span><input type="number" id="3d-pan-z" step="0.1" value="0.0"><br>
           <span id="3d-rotation-label">angle:</span>
           <input type="number" id="3d-rotation-x" step="15" value="-90" min="0" max="360">
           <input type="number" id="3d-rotation-y" step="15" value="0" min="0" max="360">
@@ -598,6 +599,7 @@
       const scale = parseFloat(byId('3d-scale').value);
       const pan_x = parseFloat(byId('3d-pan-x').value);
       const pan_y = parseFloat(byId('3d-pan-y').value);
+      const pan_z = parseFloat(byId('3d-pan-z').value);
       const rotation_x = parseFloat(byId('3d-rotation-x').value);
       const rotation_y = parseFloat(byId('3d-rotation-y').value);
       const rotation_z = parseFloat(byId('3d-rotation-z').value);
@@ -605,7 +607,7 @@
       if (state.mesh){
         console.log('3d-submit:', scale, rotation_x, rotation_y, rotation_z);
         gl_canvas.set_mesh_scale(indexValue, scale);
-        gl_canvas.set_mesh_pan(indexValue, pan_x, pan_y);
+        gl_canvas.set_mesh_pan(indexValue, pan_x, pan_y, pan_z);
         gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
       }
     });
