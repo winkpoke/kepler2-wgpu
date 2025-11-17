@@ -254,25 +254,28 @@ impl MeshView {
         log::info!("Mesh scale factor reset to default (1.0)");
     }
 
+    /// Function-level comment: Set the pan offset for the mesh view.
+    pub fn set_pan(&mut self, dx: i32, dy: i32) {
+        self.pos = (dx, dy);
+        log::info!("Mesh pan offset set to ({}, {})", dx, dy);
+    }
+
+    /// Function-level comment: Get the current pan offset.
+    pub fn get_pan(&self) -> (i32, i32) {
+        self.pos
+    }
+
+    /// Function-level comment: Reset the pan offset to default (0, 0).
+    pub fn reset_pan(&mut self) {
+        self.pos = (0, 0);
+        log::info!("Mesh pan offset reset to default (0, 0)");
+    }
+
     /// Function-level comment: Set rotation speed using degrees per second for convenience.
     /// This is a helper method that converts degrees to radians internally.
     pub fn set_rotation_speed_degrees(&mut self, degrees_per_sec: f32) {
         self.set_rotation_speed(degrees_per_sec.to_radians());
     }
-
-    /// Function-level comment: Create a default camera positioned to view a unit cube
-    // fn create_default_camera(&self) -> Camera {
-    //     // Use perspective projection for initial testing to match working implementation
-    //     let mut camera = Camera::new_perspective();
-    //     camera.eye = [0.0, 0.0, 3.0]; // Position camera closer to the cube
-    //     camera.center = [0.0, 0.0, 0.0]; // Look at origin
-    //     camera.up = [0.0, 1.0, 0.0]; // Y-up
-    //     camera.fov_y_radians = std::f32::consts::PI / 4.0; // 45 degrees FOV
-    //     camera.near = 0.01;
-    //     camera.far = 100.0;
-        
-    //     camera
-    // }
 
     /// Function-level comment: Create a default camera compatible with orthogonal projection
     /// Ensures the entire unit cube is visible without clipping when using orthographic mode.

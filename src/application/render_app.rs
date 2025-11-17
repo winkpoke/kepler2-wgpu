@@ -203,9 +203,9 @@ impl RenderApp {
                     state.set_mesh_rotation_enabled(enabled);
                     log::info!("Mesh rotation enabled={}", enabled);
                 }
-                Event::UserEvent(UserEvent::SetMeshRotationSpeedDeg(_index, degrees_per_sec)) => {
-                    state.set_mesh_rotation_speed_degrees(degrees_per_sec);
-                    log::info!("Mesh rotation speed set to {:.1}°/s", degrees_per_sec);
+                Event::UserEvent(UserEvent::SetMeshPan(_index, dx, dy)) => {
+                    state.set_mesh_pan(dx, dy);
+                    log::info!("Mesh pan set to dx={:.3}, dy={:.3}", dx, dy);
                 }
                 Event::UserEvent(UserEvent::ResetMesh(_index)) => {
                     state.reset_mesh();

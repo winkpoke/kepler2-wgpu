@@ -834,12 +834,6 @@ impl App {
         }
     }
 
-    /// Function-level comment: Set the rotation speed for the mesh view using degrees per second.
-    /// This is a convenience method that converts degrees to radians internally.
-    pub fn set_mesh_rotation_speed_degrees(&mut self, degrees_per_sec: f32) {
-        self.set_mesh_rotation_speed(degrees_per_sec.to_radians());
-    }
-
     /// Function-level comment: Reset the mesh rotation angle to zero.
     /// Useful for returning the mesh to its initial orientation.
     pub fn reset_mesh(&mut self) {
@@ -848,6 +842,7 @@ impl App {
                 if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
                     mesh_view.reset_rotation();
                     mesh_view.reset_scale_factor();
+                    mesh_view.reset_pan();
                     log::info!("Mesh reset via State control");
                     break;
                 }
@@ -855,17 +850,6 @@ impl App {
         } else {
             log::warn!("Cannot reset mesh rotation: no MeshView in layout");
         }
-    }
-
-    /// Function-level comment: Get the current mesh rotation speed in radians per second.
-    /// Returns 0.0 if slot 2 doesn't contain a MeshView.
-    pub fn get_mesh_rotation_speed(&self) -> f32 {
-        for view in self.app_view.layout.views().iter() {
-            if let Some(mesh_view) = view.as_any().downcast_ref::<crate::rendering::view::MeshView>() {
-                return mesh_view.get_rotation_speed();
-            }
-        }
-        0.0
     }
 
     /// Set uniform mesh scale factor for the first MeshView present.
@@ -893,6 +877,32 @@ impl App {
         0.0
     }
 
+    /// Function-level comment: Set the pan offset for the mesh view.
+    /// dx, dy: Pan offsets in normalized device coordinates (-1 to 1 range).
+    pub fn set_mesh_pan(&mut self, dx: f32, dy: f32) {
+        if self.app_view.layout.views().len() > 0 {
+            for view in self.app_view.layout.views_mut().iter_mut() {
+                if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                    mesh_view.set_pan(dx as i32, dy as i32);
+                    break;
+                }
+            }
+        }else {
+            log::warn!("Cannot set mesh pan: no MeshView in layout");
+        }
+    }
+    
+    /// Function-level comment: Get the current pan offset for the mesh view.
+    /// Returns a tuple (dx, dy) in normalized device coordinates (-1 to 1 range).
+    pub fn get_mesh_pan(&self) -> (i32, i32) {
+        for view in self.app_view.layout.views().iter() {
+            if let Some(mesh_view) = view.as_any().downcast_ref::<crate::rendering::view::MeshView>() {
+                return mesh_view.get_pan();
+            }
+        }
+        (0, 0)
+    }
+    
     /// Set mesh rotation angle in degrees for the first MeshView.
     pub fn set_mesh_rotation_angle_degrees(&mut self, degrees_x: f32, degrees_y: f32, degrees_z: f32) {
         if self.app_view.layout.views().len() > 0 {
