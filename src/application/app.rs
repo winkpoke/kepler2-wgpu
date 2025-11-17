@@ -481,7 +481,7 @@ impl App {
     }
 
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
-    pub fn set_mesh_mode_enabled(&mut self, enabled: bool, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize) {
+    pub fn set_mesh_mode_enabled(&mut self, enabled: bool, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, downsample: usize) {
         if self.enable_mesh != enabled { 
             self.enable_mesh = enabled;
         }
@@ -528,7 +528,7 @@ impl App {
 
                 if enabled {
                     // Add Mesh view to slot 3 using factory
-                    let mesh = Mesh::new(&vol, 100.0, Some(3), 0); // Changed from 100.0 to 300.0 for better bone visualization
+                    let mesh = Mesh::new(&vol, 100.0, Some(downsample), 0);
                     let mesh_view = self.app_view.view_factory
                         .create_mesh_view(&mesh, (0, 0), (0, 0))
                         .unwrap();
@@ -550,6 +550,7 @@ impl App {
         &mut self,
         mode: usize,
         orientation_index: usize,
+        downsample: usize,
     ) {
         let vol_option = self.app_model.volume().ok().map(|vol| vol.clone());
         if let Some(vol) = vol_option {
@@ -578,7 +579,7 @@ impl App {
                     self.app_view.layout.add_view(mip_view);
                 }
                 2 => {
-                    let mesh = Mesh::new(&vol, 100.0, Some(3), 0);
+                    let mesh = Mesh::new(&vol, 100.0, Some(downsample), 0);
                     let mesh_view = view_factory
                         .create_mesh_view(&mesh, (0, 0), (0, 0))
                         .unwrap();

@@ -260,16 +260,41 @@ impl MeshView {
     }
 
     /// Function-level comment: Create a default camera positioned to view a unit cube
-    fn create_default_camera(&self) -> Camera {
-        // Use perspective projection for initial testing to match working implementation
-        let mut camera = Camera::new_perspective();
-        camera.eye = [0.0, 0.0, 3.0]; // Position camera closer to the cube
-        camera.center = [0.0, 0.0, 0.0]; // Look at origin
-        camera.up = [0.0, 1.0, 0.0]; // Y-up
-        camera.fov_y_radians = std::f32::consts::PI / 4.0; // 45 degrees FOV
-        camera.near = 0.1;
-        camera.far = 100.0;
+    // fn create_default_camera(&self) -> Camera {
+    //     // Use perspective projection for initial testing to match working implementation
+    //     let mut camera = Camera::new_perspective();
+    //     camera.eye = [0.0, 0.0, 3.0]; // Position camera closer to the cube
+    //     camera.center = [0.0, 0.0, 0.0]; // Look at origin
+    //     camera.up = [0.0, 1.0, 0.0]; // Y-up
+    //     camera.fov_y_radians = std::f32::consts::PI / 4.0; // 45 degrees FOV
+    //     camera.near = 0.01;
+    //     camera.far = 100.0;
         
+    //     camera
+    // }
+
+    /// Function-level comment: Create a default camera compatible with orthogonal projection
+    /// Ensures the entire unit cube is visible without clipping when using orthographic mode.
+    fn create_default_camera(&self) -> Camera {
+        // Start with orthogonal projection camera
+        let mut camera = Camera::new(); // uses Orthogonal by default
+
+        // Set standard viewing parameters
+        camera.eye = [0.0, 0.0, 3.0];      // Camera in front of the scene
+        camera.center = [0.0, 0.0, 0.0];   // Look at origin
+        camera.up = [0.0, 1.0, 0.0];       // Y-up coordinate system
+        
+        // Fix clipping issues: near and far planes must include the scene
+        // For orthographic projection, near MUST be < far; negative near is allowed.
+        camera.near = -5.0;   // Allow objects between camera and center
+        camera.far = 5.0;     // Small range improves depth precision
+
+        // Setup orthogonal bounds to ensure a unit cube (-1..1) fits inside view
+        camera.ortho_left = -2.0;
+        camera.ortho_right = 2.0;
+        camera.ortho_bottom = -2.0;
+        camera.ortho_top = 2.0;
+
         camera
     }
 
@@ -306,7 +331,7 @@ impl MeshView {
         }
         
         if let Some(ctx) = &self.ctx {
-            let aspect_ratio = if self.dim.1 > 0 && self.dim.0 > 0 {
+            let aspect_ratio = if self.dim.0 > 0 && self.dim.1 > 0 {
                 self.dim.0 as f32 / self.dim.1 as f32
             } else {
                 1.0
@@ -327,7 +352,12 @@ impl MeshView {
             ]);
             
             // Use cached angles when rotation is disabled to preserve orientation
-            let angles = if self.rotation_enabled { self.rotation_angle } else { self.rotation_angle_cache };
+            let angles = if self.rotation_enabled { 
+                self.rotation_angle 
+            } else { 
+                self.rotation_angle_cache 
+            };
+
             // Create X-axis rotation matrix
             let ax = angles[0];
             let rx = Matrix4x4::from_array([
@@ -356,6 +386,7 @@ impl MeshView {
             ]);
 
             let rotation_matrix = rx.multiply(&ry).multiply(&rz);
+
             // Apply scale first, then rotation: rotation * scale
             let model_matrix = rotation_matrix.multiply(&scale_matrix);
             
@@ -367,13 +398,16 @@ impl MeshView {
                 0.0, 0.0, 0.0, 1.0,
             ]);
             
-            // Orthogonal projection matrix for medical imaging accuracy
-            let left = -2.0;
-            let right = 2.0;
-            let bottom = -2.0 / aspect_ratio;
-            let top = 2.0 / aspect_ratio;
-            let near = 0.1;
-            let far = 4.;
+            // Dynamic orthographic range adjustment
+            let base_extent = 2.0;
+            let expand_factor = 1.8;
+            let view_extent = base_extent * expand_factor;
+            let left = -view_extent;
+            let right = view_extent;
+            let bottom = -view_extent / aspect_ratio;
+            let top = view_extent / aspect_ratio;
+            let near = -view_extent * 2.0;
+            let far = view_extent * 2.0;
             
             let proj_matrix = Matrix4x4::from_array([
                 2.0 / (right - left), 0.0, 0.0, -(right + left) / (right - left),

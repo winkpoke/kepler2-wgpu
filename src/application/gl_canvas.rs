@@ -29,8 +29,8 @@ pub enum UserEvent {
     ReloadShaders,
     /// Manually trigger pipeline cache invalidation without any other action.
     InvalidatePipelines,
-    SetEnableMesh(bool, Option<usize>, bool, usize, usize, usize, usize),
-    SetOneCellLayout(usize, usize),
+    SetEnableMesh(bool, Option<usize>, bool, usize, usize, usize, usize, usize),
+    SetOneCellLayout(usize, usize, usize),
     #[cfg(target_arch = "wasm32")]
     GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     #[cfg(target_arch = "wasm32")]
@@ -141,16 +141,16 @@ impl GLCanvas {
         }
     }
 
-    pub fn enable_mesh(&self, enabled: bool, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetEnableMesh(enabled, mip, change_mpr, index_1, index_2, index_3, index_4)) {
+    pub fn enable_mesh(&self, enabled: bool, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, downsample: usize) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetEnableMesh(enabled, mip, change_mpr, index_1, index_2, index_3, index_4, downsample)) {
             log::error!("Failed to send SetEnableMesh event: {:?}", e);
         } else {
-            log::info!("Sent SetEnableMesh event: enabled={}", enabled);
+            log::info!("Sent SetEnableMesh event: enabled={}, mip={:?}, change_mpr={}, index_1={}, index_2={}, index_3={}, index_4={}, downsample={}", enabled, mip, change_mpr, index_1, index_2, index_3, index_4, downsample);
         }
     }
 
-    pub fn set_one_cell_layout(&self, mode: usize, orientation_index: usize) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetOneCellLayout(mode, orientation_index)) {
+    pub fn set_one_cell_layout(&self, mode: usize, orientation_index: usize, downsample:usize) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetOneCellLayout(mode, orientation_index, downsample)) {
             log::error!("Failed to send SetOneCellLayout event: {:?}", e);
         } else {
             log::info!("Sent SetOneCellLayout event: mode={}, orientation_index={}", mode, orientation_index);

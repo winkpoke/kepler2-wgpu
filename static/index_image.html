@@ -190,13 +190,13 @@
         </div>
         <div>
           <label for="one-cell">单张图:</label>
-          <span id="mode-label">模式: </span><input type="number" id="mode" step="1.0" value="0.0"><br>
-          <span id="orientation_index-label">方向索引: </span><input type="number" id="orientation_index" step="1.0" value="0.0"><br>
+          <span id="mode-label">模式: </span><input type="number" id="mode" step="1" value="0" min = "0" max = "2"><br>
+          <span id="orientation_index-label">方向索引: </span><input type="number" id="orientation_index" step="1" value="0" min = "0" max = "2"><br>
           <button id="one-cell-submit">Submit</button>
         </div>
         <div>
           <label for="one-cell">切换视图:</label>
-          <span id="3d-label">3d</span><input type="checkbox" id="3d" /><br>
+          <span id="3d-label">3d</span><input type="number" id="downsample" step="1.0" value="3.0"><input type="checkbox" id="3d" /><br>
           <span id="change_mpr-label">change_mpr</span><input type="checkbox" id="change_mpr" /><br>
           <span id="mipSpan">mip:</span><input type="number" id="mip" step="1.0" value="0.0"><input type="checkbox" id="change_mip" /><br>
           <span id="index-1-label">index-1: </span><input type="number" id="index-1" step="1.0" value="0.0"><br>
@@ -557,20 +557,22 @@
       const index_2 = parseInt(byId('index-2').value, 10);
       const index_3 = parseInt(byId('index-3').value, 10);
       const index_4 = parseInt(byId('index-4').value, 10);
+      const downsample = parseInt(byId('downsample').value, 10);
 
-      console.log('meshclick:', checkbox3d, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4 );
+      console.log('meshclick:', checkbox3d, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, downsample);
 
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
 
-      gl_canvas.enable_mesh(checkbox3d, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4);
+      gl_canvas.enable_mesh(checkbox3d, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, downsample);
     });
 
     byId('one-cell-submit').addEventListener('click', () => {
       const mode = parseInt(byId('mode').value, 10); // Mode: 0=MPR, 1=MIP, 2=MESH
       const orientation_index = parseInt(byId('orientation_index').value, 10);
+      const downsample = parseInt(byId('downsample').value, 10);
 
       if (mode === 2){
         state.mesh = true;
@@ -578,7 +580,7 @@
         state.mesh = false;
       }
 
-      gl_canvas.set_one_cell_layout(mode, orientation_index);
+      gl_canvas.set_one_cell_layout(mode, orientation_index, downsample);
     });
     
     byId('3d-submit').addEventListener('click', () => {

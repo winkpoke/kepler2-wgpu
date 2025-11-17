@@ -184,15 +184,15 @@ impl RenderApp {
                     // Function-level comment: Pipeline invalidation is now handled by individual render contexts.
                     log::info!("InvalidatePipelines event: render contexts will rebuild pipelines as needed.");
                 }
-                Event::UserEvent(UserEvent::SetEnableMesh(enabled, mip, change_mpr, index_1, index_2, index_3, index_4)) => {
+                Event::UserEvent(UserEvent::SetEnableMesh(enabled, mip, change_mpr, index_1, index_2, index_3, index_4, downsample)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_mesh_mode_enabled(enabled, mip, change_mpr, index_1, index_2, index_3, index_4);
+                    state.set_mesh_mode_enabled(enabled, mip, change_mpr, index_1, index_2, index_3, index_4, downsample);
                     log::info!("EnableMesh toggled at runtime: {}", enabled);
                 }
-                Event::UserEvent(UserEvent::SetOneCellLayout(mode, orientation_index)) => {
+                Event::UserEvent(UserEvent::SetOneCellLayout(mode, orientation_index, downsample)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_one_cell_layout(mode, orientation_index);
-                    log::info!("OneCellLayout set to: mode={mode}, orientation_index={orientation_index}");
+                    state.set_one_cell_layout(mode, orientation_index, downsample);
+                    log::info!("OneCellLayout set to: mode={mode}, orientation_index={orientation_index}, downsample={downsample}");
                 }
                 Event::UserEvent(UserEvent::SetCenterAtPointInMM(index, x_mm, y_mm, z_mm)) => {
                     state.set_center_at_point_in_mm(index, x_mm, y_mm, z_mm);
@@ -324,7 +324,7 @@ impl RenderApp {
                             } => {
                                 // Function-level comment: Toggle mesh mode on 'M' key press at runtime.
                                 let new_enabled = !state.mesh_mode_enabled();
-                                state.set_mesh_mode_enabled(new_enabled, None, false, 0, 0, 0, 0);
+                                state.set_mesh_mode_enabled(new_enabled, None, false, 0, 0, 0, 0, 3);
                                 log::info!("KeyM pressed: mesh mode toggled to {}", new_enabled);
                             }
                             WindowEvent::RedrawRequested => {
