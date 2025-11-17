@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use crate::{
-    core::{array_to_slice, error::{KeplerResult, MprError},  Base, GeometryBuilder, WindowLevel},
-    data::CTVolume,
-    rendering::{Orientation, RenderContent, StatefulView, ViewState},
     Renderable, View,
+    core::{Base, GeometryBuilder, Matrix4x4, WindowLevel, array_to_slice, error::{KeplerResult, MprError}, window_level}, 
+    data::CTVolume,
+     rendering::{Orientation, RenderContent, StatefulView, ViewState}
 };
 
 use super::{MprRenderContext, MprViewWgpuImpl};
@@ -624,6 +624,16 @@ impl MprView {
                 // Clone the base screen matrix to apply transformations
         let mut base_screen_cloned = self.base_screen.clone();
 
+        let (width, height) = self.dim;
+        let ratio = width as f32 / height as f32;
+        let ratio_matrix = Matrix4x4::<f32>::from_array([
+            ratio, 0.0, 0.0, 0.0,
+            0.0, 1.0, 0.0, 0.0,
+            0.0, 0.0, 1.0, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        ]);
+        // base_screen_cloned.matrix = ratio_matrix.multiply(&base_screen_cloned.matrix);
+        base_screen_cloned.scale([1.0 / ratio, 1.0, 1.0]);
         // Apply the same transformation chain as update_transform_matrix
         // Note: Transformations are applied in reverse order due to matrix multiplication
         base_screen_cloned.translate([-self.pan[0], -self.pan[1], -self.pan[2]]);
