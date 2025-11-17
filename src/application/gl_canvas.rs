@@ -45,7 +45,7 @@ pub enum UserEvent {
     // ... add more events as needed
     // Mesh control events
     SetMeshRotationEnabled(usize, bool),
-    SetMeshPan(usize, f32, f32),
+    SetMeshPan(usize, f32, f32, f32),
     ResetMesh(usize),
     SetMeshScale(usize, f32),
     SetMeshRotationAngleDeg(usize, f32, f32, f32),
@@ -256,7 +256,7 @@ impl_user_event_senders_for_glcanvas! {
     handle_view_click => ViewClick(screen_x: f32, screen_y: f32, screen_z: f32),
     // Mesh controls
     set_mesh_rotation_enabled => SetMeshRotationEnabled(enabled: bool),
-    set_mesh_pan => SetMeshPan(dx: f32, dy: f32),
+    set_mesh_pan => SetMeshPan(dx: f32, dy: f32, dz: f32),
     reset_mesh => ResetMesh(),
     set_mesh_scale => SetMeshScale(scale: f32),
     set_mesh_rotation_angle_degrees => SetMeshRotationAngleDeg(degrees_x: f32, degrees_y: f32, degrees_z: f32),

@@ -92,6 +92,8 @@ pub struct MeshView {
     last_frame_time: Instant,
     /// Uniform scale factor
     scale_factor: f32,
+    /// Pan offset in pixels
+    pan_offset: [f32; 3],
 }
 
 impl Default for MeshView {
@@ -117,6 +119,7 @@ impl Default for MeshView {
             rotation_speed: FRAC_PI_2, // 90 degrees per second - reasonable default speed
             last_frame_time: Instant::now(),
             scale_factor: 1.0,
+            pan_offset: [0.0, 0.0, 0.0],
         }
     }
 }
@@ -255,20 +258,20 @@ impl MeshView {
     }
 
     /// Function-level comment: Set the pan offset for the mesh view.
-    pub fn set_pan(&mut self, dx: i32, dy: i32) {
-        self.pos = (dx, dy);
-        log::info!("Mesh pan offset set to ({}, {})", dx, dy);
+    pub fn set_pan(&mut self, dx: f32, dy: f32, dz: f32) {
+        self.pan_offset = [dx, dy, dz];
+        log::info!("Mesh pan offset set to ({:.3}, {:.3}, {:.3})", dx, dy, dz);
     }
 
     /// Function-level comment: Get the current pan offset.
-    pub fn get_pan(&self) -> (i32, i32) {
-        self.pos
+    pub fn get_pan(&self) -> (f32, f32, f32) {
+        self.pan_offset.into()
     }
 
-    /// Function-level comment: Reset the pan offset to default (0, 0).
+    /// Function-level comment: Reset the pan offset to default (0, 0, 0).
     pub fn reset_pan(&mut self) {
-        self.pos = (0, 0);
-        log::info!("Mesh pan offset reset to default (0, 0)");
+        self.pan_offset = [0.0, 0.0, 0.0];
+        log::info!("Mesh pan offset reset to default (0.0, 0.0, 0.0)");
     }
 
     /// Function-level comment: Set rotation speed using degrees per second for convenience.
@@ -354,7 +357,18 @@ impl MeshView {
                 0.0,   0.0,   scale, 0.0,
                 0.0,   0.0,   0.0,   1.0,
             ]);
-            
+
+            let tx = self.pan_offset[0];
+            let ty = self.pan_offset[1];
+            let tz = self.pan_offset[2];
+
+            let translation_matrix = Matrix4x4::from_array([
+                1.0, 0.0, 0.0, tx,
+                0.0, 1.0, 0.0, ty,
+                0.0, 0.0, 1.0, tz,
+                0.0, 0.0, 0.0, 1.0,
+            ]);
+
             // Use cached angles when rotation is disabled to preserve orientation
             let angles = if self.rotation_enabled { 
                 self.rotation_angle 
@@ -392,7 +406,9 @@ impl MeshView {
             let rotation_matrix = rx.multiply(&ry).multiply(&rz);
 
             // Apply scale first, then rotation: rotation * scale
-            let model_matrix = rotation_matrix.multiply(&scale_matrix);
+            let model_matrix = scale_matrix
+                .multiply(&rotation_matrix)
+                .multiply(&translation_matrix);
             
             // View matrix - camera positioned for optimal viewing of smaller cube
             let view_matrix = Matrix4x4::from_array([
