@@ -54,6 +54,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### In Progress
+- 2025-11-17T17-40-00: Camera orbiting implementation in `mesh_view.rs`:
+  - Transitioning from mesh rotation to camera orbiting around static mesh
+  - Updated rotation logic to use camera azimuth angle
+  - Preserved orthogonal projection for medical visualization accuracy
+  - Trace logging updated with `CAMERA_ORBIT` prefix
+  - Integration with `camera.set_orbit()` method pending completion
+
+### Changed
+- 2025-11-17T17-50-00: Reorganized documentation folder structure:
+  - Created subfolders: `architecture/`, `features/`, `file-formats/`, `fileio/`, `rendering/`, `views/`, `wasm/`
+  - Moved documentation files to appropriate categories based on content type
+  - Maintained `CHANGELOG.md` in root directory
+  - All documentation remains accessible and properly categorized
+
+### Fixed
+- 2025-11-17T17-45-00: Fixed pan function log formatting in `mesh_view.rs`:
+  - Removed `.3` precision specifiers from `i32` values in log messages
+  - Changed from `({:.3}, {:.3})` to `({}, {})` for proper integer formatting
+
 ### Changed
 - 2025-11-09T10-54-40: Moved `AppModel` from `src/data/mod.rs` to `src/application/app_model.rs`.
   - Reduces coupling between data and application/rendering layers.
