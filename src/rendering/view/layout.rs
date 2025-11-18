@@ -15,6 +15,73 @@
 
 
 use super::{Renderable, View};
+use log;
+
+/// Result of aspect-preserving fit computation
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AspectFitResult {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub scale: f32,
+}
+
+/// Compute a letterboxed/pillarboxed inner rectangle that preserves content aspect ratio
+/// within a container with optional uniform padding on all sides.
+/// Returns None if inputs are invalid. Width/height are guaranteed to be > 0 when Some.
+pub fn compute_aspect_fit(
+    container_w: u32,
+    container_h: u32,
+    content_w: f32,
+    content_h: f32,
+    padding: u32,
+) -> Option<AspectFitResult> {
+    if container_w == 0 || container_h == 0 { return None; }
+    if !content_w.is_finite() || !content_h.is_finite() { return None; }
+    if content_w <= 0.0 || content_h <= 0.0 { return None; }
+
+    let mut inner_w = container_w as i32 - 2 * (padding as i32);
+    let mut inner_h = container_h as i32 - 2 * (padding as i32);
+    if inner_w < 1 { inner_w = 1; }
+    if inner_h < 1 { inner_h = 1; }
+
+    let inner_wf = inner_w as f32;
+    let inner_hf = inner_h as f32;
+
+    // Clamp extreme content aspect ratios to avoid precision issues
+    let mut c_aspect = content_w / content_h;
+    if !c_aspect.is_finite() || c_aspect <= 0.0 {
+        return None;
+    }
+    const MIN_AR: f32 = 1.0 / 10_000.0;
+    const MAX_AR: f32 = 10_000.0;
+    if c_aspect < MIN_AR { log::debug!("AspectFit: content aspect {} capped to {}", c_aspect, MIN_AR); c_aspect = MIN_AR; }
+    if c_aspect > MAX_AR { log::debug!("AspectFit: content aspect {} capped to {}", c_aspect, MAX_AR); c_aspect = MAX_AR; }
+
+    let container_aspect = inner_wf / inner_hf;
+
+    let (fit_w, fit_h) = if c_aspect > container_aspect {
+        // pillarbox: match width, reduce height
+        let w = inner_wf;
+        let h = (w / c_aspect).max(1.0);
+        (w, h)
+    } else {
+        // letterbox: match height, reduce width
+        let h = inner_hf;
+        let w = (h * c_aspect).max(1.0);
+        (w, h)
+    };
+
+    // center within inner rect
+    let x = padding as f32 + (inner_wf - fit_w) * 0.5;
+    let y = padding as f32 + (inner_hf - fit_h) * 0.5;
+
+    // scale relative to content height (arbitrary; useful for downstream zoom math)
+    let scale = fit_h / (content_h.max(1e-6));
+
+    Some(AspectFitResult { x, y, w: fit_w, h: fit_h, scale })
+}
 
 /// A strategy that computes per-view position and size within a parent dimension.
 ///

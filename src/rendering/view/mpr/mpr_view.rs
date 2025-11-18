@@ -5,6 +5,7 @@ use crate::{
 };
 
 use super::{MprRenderContext, MprViewWgpuImpl};
+use crate::rendering::view::layout::compute_aspect_fit;
 
 /// Generic Multi-Planar Reconstruction (MPR) view implementation.
 ///
@@ -46,6 +47,12 @@ pub struct MprView {
     dim: (u32, u32),
     /// Window/level parameters for CT display
     window_level: WindowLevel,
+    /// Physical in-plane content width in millimeters
+    content_w_mm: f32,
+    /// Physical in-plane content height in millimeters
+    content_h_mm: f32,
+    /// Uniform viewport padding in pixels
+    padding_px: u32,
 }
 
 impl MprView {
@@ -166,6 +173,19 @@ impl MprView {
         log::info!("Created MprView with orientation: {:?}, scale: {:?}, translate: {:?}, pos: {:?}, dim: {:?}",
             orientation, validated_scale, validated_translate, validated_pos, validated_dim);
 
+        // Compute physical in-plane content size in millimeters for aspect fitting
+        let (nx, ny, nz) = (vol.dimensions.0 as f32, vol.dimensions.1 as f32, vol.dimensions.2 as f32);
+        let (nx, ny, nz) = (nx * vol.voxel_spacing.0, ny * vol.voxel_spacing.1, nz * vol.voxel_spacing.2);
+        let d = (nx + ny + nz) / 3.0;
+        // Use voxel counts to match isotropic in-plane scaling of current geometry bases
+        let (content_w_mm, content_h_mm) = match orientation {
+            Orientation::Transverse => (d, d),
+            Orientation::Coronal => (d, d),
+            Orientation::Sagittal => (d, d),
+            Orientation::Oblique => (d, d),
+        };
+        log::info!("[{:?}]: Content size in mm: {:?}", orientation, (content_w_mm, content_h_mm));
+
         Self {
             wgpu_impl,
             slice,
@@ -176,6 +196,9 @@ impl MprView {
             pos: validated_pos,
             dim: validated_dim,
             window_level,  // Use provided WindowLevel with configured bias
+            content_w_mm,
+            content_h_mm,
+            padding_px: 0,
         }
     }
 
@@ -265,9 +288,15 @@ impl Renderable for MprView {
         render_pass.set_pipeline(&self.wgpu_impl.render_context.render_pipeline);
 
         // Configure viewport to this view's screen region
-        let (x, y) = (self.pos.0 as f32, self.pos.1 as f32);
-        let (width, height) = (self.dim.0, self.dim.1);
-        render_pass.set_viewport(x, y, width as f32, height as f32, 0.0, 1.0);
+        // Compute fitted viewport to preserve in-plane aspect ratio
+        let (x0, y0) = (self.pos.0 as f32, self.pos.1 as f32);
+        let (w, h) = (self.dim.0, self.dim.1);
+        if let Some(fit) = compute_aspect_fit(w, h, self.content_w_mm, self.content_h_mm, self.padding_px) {
+            render_pass.set_viewport(x0 + fit.x, y0 + fit.y, fit.w, fit.h, 0.0, 1.0);
+        } else {
+            // Fallback safe viewport
+            render_pass.set_viewport(x0, y0, 1.0, 1.0, 0.0, 1.0);
+        }
 
         // Bind GPU resources
         // Volume texture (from per-view implementation)
