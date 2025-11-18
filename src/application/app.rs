@@ -1,6 +1,8 @@
 ﻿#![allow(dead_code)]
 
 use log::{trace, info, warn};
+
+// ---------------------------------------- WASM ---------------------------------------------
 use std::path::PathBuf;
 use std::{fs, io};
 use std::sync::Arc;
@@ -41,9 +43,9 @@ pub struct App {
     pub(crate) graphics_context: GraphicsContext,
     pub(crate) app_view: AppView,
     pub(crate) enable_float_volume_texture: bool,
-    pub(crate) toggle_enabled: bool,
+
     pub(crate) enable_mesh: bool,
-    pub(crate) texture_pool: MeshTexturePool,
+
     pub(crate) app_model: AppModel,
 }
 
@@ -64,8 +66,8 @@ impl App {
             Box::new(GridLayout {
                 rows: 2,
                 cols: 2,
-                spacing: 2,
-            }),
+                spacing: 2,}
+            ),
         );
 
         // Choose default format based on device capability: prefer R16Float when supported, else RG8
@@ -77,42 +79,7 @@ impl App {
         );
 
         crate::rendering::core::pipeline::set_swapchain_format(graphics.surface_config.format);
-
-        let mut texture_pool = MeshTexturePool::new();
-
-        {
-            // Create initial depth texture and view for mesh rendering.
-            // Function-level comment: This block initializes a depth attachment matching the current surface size.
-            // Guard against zero-sized canvas on WASM to avoid WebGPU validation errors.
-            let depth_format = crate::rendering::core::pipeline::get_mesh_depth_format();
-            let width = graphics.surface_config.width;
-            let height = graphics.surface_config.height;
-            if width > 0 && height > 0 {
-                let size = wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                };
-                let desc = wgpu::TextureDescriptor {
-                    label: Some("Mesh Depth Texture"),
-                    size,
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: depth_format,
-                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                    view_formats: &[],
-                };
-                let depth_tex = graphics.device.create_texture(&desc);
-                let depth_view = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
-                texture_pool.set_depth(depth_tex, depth_view);
-            } else {
-                warn!(
-                    "Skipping initial mesh depth texture creation: surface size is {}x{} (expected >0). Will create after first resize.",
-                    width, height
-                );
-            }
-        }
+        
 
         // Create GraphicsContext which encapsulates both graphics and pass_executor
         let graphics_context = GraphicsContext::from_graphics(graphics);
@@ -128,9 +95,9 @@ impl App {
         Ok(Self {
             graphics_context,
             enable_float_volume_texture: default_float,
-            toggle_enabled: true,
+
             enable_mesh: false,
-            texture_pool: texture_pool,
+
             app_view: AppView::new(layout, factory),
             app_model: AppModel::new(),
         })
@@ -149,8 +116,9 @@ impl App {
         crate::rendering::core::pipeline::set_swapchain_format(new_gc.graphics.surface_config.format);
         // Replace the graphics_context
         self.graphics_context = new_gc;
-        // Clear cached mesh depth texture views bound to the old device
-        self.texture_pool.clear_depth_view();
+        
+        // Function-level comment: Clear mesh resources bound to old device to prevent stale references.
+        // Texture pool is now created per-frame, so no persistent state to clear
         // Function-level comment: Reinitialize the DefaultViewFactory with the new device/queue to avoid cross-device resource mismatches on WASM.
         // This fixes a panic where a TextureView created on the new device was used to create a bind group on the old device.
         self.app_view.view_factory = crate::rendering::view::DefaultViewFactory::new(
@@ -265,7 +233,7 @@ impl App {
             };
             let depth_tex = self.device().create_texture(&desc);
             let depth_view = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
-            self.texture_pool.set_depth(depth_tex, depth_view);
+            // Texture pool is now created per-frame, so no persistent depth texture to update
         }
     }
 
@@ -330,7 +298,8 @@ impl App {
         
         // Execute frame using PassExecutor with separate render passes
         // Extract all needed values and mutable references in one go to avoid borrowing conflicts
-        let texture_pool = &mut self.texture_pool;
+        // Create temporary texture pool per-frame; depth is ensured by pass executor
+        let mut texture_pool = MeshTexturePool::new();
         let layout = &mut self.app_view.layout;
         
         let surface_width = self.graphics_context.graphics.surface_config.width;
@@ -341,7 +310,7 @@ impl App {
         pass_executor.execute_frame(
             &mut encoder,
             &frame_view,
-            texture_pool,
+            &mut texture_pool,
             device,
             surface_width,
             surface_height,
@@ -910,10 +879,7 @@ impl App {
     /// Toggle the volume texture format (R16Float vs Rg8Unorm) and reload the CT volume.
     /// Ensures hardware support when enabling float textures and reinitializes views.
     pub fn toggle_float_volume_texture(&mut self) {
-        if !self.toggle_enabled {
-            log::warn!("Toggle feature is disabled; ignoring.");
-            return;
-        }
+        // Toggle feature always enabled - removed toggle_enabled field
         // If enabling float path, ensure hardware support
         if !self.enable_float_volume_texture {
             if !Self::device_supports_r16float(self.adapter()) {
@@ -944,14 +910,14 @@ impl App {
     }
 
     pub fn disable_volume_format_toggle(&mut self) {
-        self.toggle_enabled = false;
+
         log::info!(
             "Volume format toggle feature disabled. Default format in use: {}",
             if self.enable_float_volume_texture { "R16Float" } else { "Rg8Unorm" }
         );
     }
 
-        fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
+    fn list_files_in_directory(dir: &str) -> io::Result<Vec<PathBuf>> {
         let mut file_paths = Vec::new();
 
         // Open the directory and iterate over its contents
