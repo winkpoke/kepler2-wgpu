@@ -384,7 +384,7 @@ impl MeshView {
             let ry = Matrix4x4::from_array([
                 ay.cos(), 0.0, ay.sin(), 0.0,
                 0.0,      1.0, 0.0,      0.0,
-            -ay.sin(), 0.0, ay.cos(), 0.0,
+                -ay.sin(), 0.0, ay.cos(), 0.0,
                 0.0,      0.0, 0.0,      1.0,
             ]);
 
@@ -399,8 +399,8 @@ impl MeshView {
 
             let rotation_matrix = rx.multiply(&ry).multiply(&rz);
 
-            // Apply scale first, then rotation: rotation * scale
-            let model_matrix = rotation_matrix.multiply(&scale_matrix).multiply(&translation_matrix);
+            // Compose model: translation * rotation * scale
+            let model_matrix = translation_matrix.multiply(&rotation_matrix).multiply(&scale_matrix);
             
             // View matrix - camera positioned for optimal viewing of smaller cube
             let view_matrix = Matrix4x4::from_array([
