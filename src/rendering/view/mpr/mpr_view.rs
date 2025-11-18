@@ -647,7 +647,7 @@ impl MprView {
             0.0, 0.0, 0.0, 1.0,
         ]);
         // base_screen_cloned.matrix = ratio_matrix.multiply(&base_screen_cloned.matrix);
-        base_screen_cloned.scale([1.0 / ratio, 1.0, 1.0]);
+        // base_screen_cloned.scale([1.0 / ratio, 1.0, 1.0]);
         // Apply the same transformation chain as update_transform_matrix
         // Note: Transformations are applied in reverse order due to matrix multiplication
         base_screen_cloned.translate([-self.pan[0], -self.pan[1], -self.pan[2]]);
