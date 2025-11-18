@@ -92,6 +92,8 @@ pub struct MeshView {
     last_frame_time: Instant,
     /// Uniform scale factor
     scale_factor: f32,
+    /// Pan translation in world units (X, Y, Z)
+    pan: [f32; 3],
 }
 
 impl Default for MeshView {
@@ -117,6 +119,7 @@ impl Default for MeshView {
             rotation_speed: FRAC_PI_2, // 90 degrees per second - reasonable default speed
             last_frame_time: Instant::now(),
             scale_factor: 1.0,
+            pan: [0.0, 0.0, 0.0],
         }
     }
 }
@@ -254,6 +257,21 @@ impl MeshView {
         log::info!("Mesh scale factor reset to default (1.0)");
     }
 
+    
+    /// Function-level comment: Set mesh pan translation (world units) for X and Y axes.
+    /// Pan values are uploaded to the vertex shader as a uniform offset.
+    pub fn set_pan(&mut self, dx: f32, dy: f32) {
+        self.pan[0] = dx;
+        self.pan[1] = dy;
+        log::info!("Mesh pan offset set to ({}, {})", dx, dy);
+    }
+
+    /// Function-level comment: Reset mesh pan translation to the origin.
+    pub fn reset_pan(&mut self) {
+        self.pan = [0.0, 0.0, 0.0];
+        log::info!("Mesh pan reset to (0, 0, 0)");
+    }
+
     /// Function-level comment: Set rotation speed using degrees per second for convenience.
     /// This is a helper method that converts degrees to radians internally.
     pub fn set_rotation_speed_degrees(&mut self, degrees_per_sec: f32) {
@@ -338,6 +356,13 @@ impl MeshView {
                 0.0,   0.0,   0.0,   1.0,
             ]);
 
+            let translation_matrix = Matrix4x4::from_array([
+                1.0, 0.0, 0.0, self.pan[0],
+                0.0, 1.0, 0.0, self.pan[1],
+                0.0, 0.0, 1.0, self.pan[2],
+                0.0, 0.0, 0.0, 1.0,
+            ]);
+
             // Use cached angles when rotation is disabled to preserve orientation
             let angles = if self.rotation_enabled { 
                 self.rotation_angle 
@@ -375,7 +400,7 @@ impl MeshView {
             let rotation_matrix = rx.multiply(&ry).multiply(&rz);
 
             // Apply scale first, then rotation: rotation * scale
-            let model_matrix = rotation_matrix.multiply(&scale_matrix);
+            let model_matrix = rotation_matrix.multiply(&scale_matrix).multiply(&translation_matrix);
             
             // View matrix - camera positioned for optimal viewing of smaller cube
             let view_matrix = Matrix4x4::from_array([
