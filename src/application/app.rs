@@ -879,7 +879,7 @@ impl App {
 
     /// Function-level comment: Set the pan offset for the mesh view.
     /// dx, dy: Pan offsets in normalized device coordinates (-1 to 1 range).
-    pub fn set_mesh_pan(&mut self, dx: f32, dy: f32, dz: f32) {
+    pub fn set_mesh_pan(&mut self, dx: f32, dy: f32) {
         if self.app_view.layout.views().len() > 0 {
             for view in self.app_view.layout.views_mut().iter_mut() {
                 if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
@@ -893,14 +893,13 @@ impl App {
     }
     
     /// Function-level comment: Get the current pan offset for the mesh view.
-    /// Returns a tuple (dx, dy, dz) in normalized device coordinates (-1 to 1 range).
-    pub fn get_mesh_pan(&self) -> (f32, f32, f32) {
+    pub fn get_mesh_pan(&self) -> (f32, f32) {
         for view in self.app_view.layout.views().iter() {
             if let Some(mesh_view) = view.as_any().downcast_ref::<crate::rendering::view::MeshView>() {
                 // return mesh_view.get_pan();
             }
         }
-        (0.0, 0.0, 0.0)
+        (0.0, 0.0)
     }
     
     /// Set mesh rotation angle in degrees for the first MeshView.
