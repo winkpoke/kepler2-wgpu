@@ -9,6 +9,8 @@ mod mesh_view_tests {
         performance::QualityLevel,
     };
     use wgpu::{Instance, Backends, DeviceDescriptor, Features, Limits};
+    use kepler_wgpu::core::coord::Matrix4x4;
+    use std::f32::consts::FRAC_PI_2;
 
 
 
@@ -165,7 +167,7 @@ mod mesh_view_tests {
     #[test]
     fn test_performance_statistics() {
         // Test performance statistics collection
-        let mut mesh_view = MeshView::new();
+        let mesh_view = MeshView::new();
         
         // Test initial statistics
         let stats = mesh_view.get_stats();
@@ -286,6 +288,57 @@ mod mesh_view_tests {
         assert!(stats.last_render_time_ms >= 0.0, "Render time should be non-negative");
         assert!(stats.average_render_time_ms >= 0.0, "Average render time should be non-negative");
     }
+    
+    #[test]
+    fn test_trs_composition_translation_column() {
+        let tx = 1.0f32;
+        let ty = -2.0f32;
+        let tz = 0.5f32;
+        let scale = 2.0f32;
 
+        let translation = Matrix4x4::from_array([
+            1.0, 0.0, 0.0, tx,
+            0.0, 1.0, 0.0, ty,
+            0.0, 0.0, 1.0, tz,
+            0.0, 0.0, 0.0, 1.0,
+        ]);
+        let scale_m = Matrix4x4::from_array([
+            scale, 0.0, 0.0, 0.0,
+            0.0, scale, 0.0, 0.0,
+            0.0, 0.0, scale, 0.0,
+            0.0, 0.0, 0.0, 1.0,
+        ]);
+        // Identity rotation for simplicity
+        let rotation = Matrix4x4::eye();
 
+        let m = translation.multiply(&rotation).multiply(&scale_m);
+        let col3 = m.get_column(3);
+        assert!((col3[0] - tx).abs() < 1e-6);
+        assert!((col3[1] - ty).abs() < 1e-6);
+        assert!((col3[2] - tz).abs() < 1e-6);
+        assert!((col3[3] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_mesh_view_pan_and_scale_api() {
+        let mut view = MeshView::new();
+        view.set_scale_factor(1.25);
+        assert!((view.get_scale_factor() - 1.25).abs() < 1e-6);
+
+        view.set_pan(0.1, -0.2);
+        // No direct getter for pan; ensure reset returns to origin
+        view.reset_pan();
+        view.reset_scale_factor();
+        assert!((view.get_scale_factor() - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_mesh_view_rotation_defaults() {
+        /// Check default orientation and speed align with implementation
+        let view = MeshView::new();
+        let angles = view.get_rotation_angle();
+        assert!((angles[0] + FRAC_PI_2).abs() < 1e-6);
+        assert!(angles[1].abs() < 1e-6);
+        assert!(angles[2].abs() < 1e-6);
+    }
 }

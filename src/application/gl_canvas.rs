@@ -29,8 +29,8 @@ pub enum UserEvent {
     ReloadShaders,
     /// Manually trigger pipeline cache invalidation without any other action.
     InvalidatePipelines,
-    SetEnableMesh(bool, Option<usize>, bool, usize, usize, usize, usize, usize),
-    SetOneCellLayout(usize, usize, usize),
+    SetEnableMesh(bool, Option<usize>, bool, usize, usize, usize, usize, usize, f32),
+    SetOneCellLayout(usize, usize, usize, f32),
     #[cfg(target_arch = "wasm32")]
     GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     #[cfg(target_arch = "wasm32")]
@@ -141,19 +141,19 @@ impl GLCanvas {
         }
     }
 
-    pub fn enable_mesh(&self, enabled: bool, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, downsample: usize) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetEnableMesh(enabled, mip, change_mpr, index_1, index_2, index_3, index_4, downsample)) {
+    pub fn enable_mesh(&self, enabled: bool, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, downsample: usize, iso_value: f32) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetEnableMesh(enabled, mip, change_mpr, index_1, index_2, index_3, index_4, downsample, iso_value)) {
             log::error!("Failed to send SetEnableMesh event: {:?}", e);
         } else {
-            log::info!("Sent SetEnableMesh event: enabled={}, mip={:?}, change_mpr={}, index_1={}, index_2={}, index_3={}, index_4={}, downsample={}", enabled, mip, change_mpr, index_1, index_2, index_3, index_4, downsample);
+            log::info!("Sent SetEnableMesh event: enabled={}, mip={:?}, change_mpr={}, index_1={}, index_2={}, index_3={}, index_4={}, downsample={}, iso_value={}", enabled, mip, change_mpr, index_1, index_2, index_3, index_4, downsample, iso_value);
         }
     }
 
-    pub fn set_one_cell_layout(&self, mode: usize, orientation_index: usize, downsample:usize) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetOneCellLayout(mode, orientation_index, downsample)) {
+    pub fn set_one_cell_layout(&self, mode: usize, orientation_index: usize, downsample:usize, iso_value: f32) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetOneCellLayout(mode, orientation_index, downsample, iso_value)) {
             log::error!("Failed to send SetOneCellLayout event: {:?}", e);
         } else {
-            log::info!("Sent SetOneCellLayout event: mode={}, orientation_index={}", mode, orientation_index);
+            log::info!("Sent SetOneCellLayout event: mode={}, orientation_index={}, downsample={}, iso_value={}", mode, orientation_index, downsample, iso_value);
         }
     }
 

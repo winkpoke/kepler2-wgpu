@@ -314,7 +314,8 @@ mod unit_tests {
             assert!(formatted.contains("PatientName"));
             assert!(formatted.contains("TEST001"));
             assert!(formatted.contains("Test^Patient"));
-            assert!(formatted.contains("PatientPosition"));
+            // PatientPosition is not part of Patient tags; verify optional fields presence formatting
+            assert!(formatted.contains("PatientBirthDate") || formatted.contains("PatientSex"));
         }
 
         #[test]
@@ -512,6 +513,7 @@ mod unit_tests {
 mod integration_tests {
     use super::*;
     use test_utils::*;
+    use std::fs;
     use std::path::Path;
     use chrono::Local;
 

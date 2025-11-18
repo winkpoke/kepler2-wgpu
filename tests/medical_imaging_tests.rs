@@ -65,6 +65,54 @@ mod mha_mhd_tests{
         header
     }
 
+    /// Creates a synthetic MHD header and separate raw data bytes for testing
+    pub fn create_test_mhd() -> (Vec<u8>, Vec<u8>) {
+        let dimensions = [512, 512, 300];
+        let spacing = [0.2, 0.2, 0.5];
+        let pixel_type = PixelType::Float32;
+
+        // Build MHD header with external data file reference
+        let header = format!(
+            "ObjectType = Image\n\
+            NDims = 3\n\
+            BinaryData = True\n\
+            BinaryDataByteOrderMSB = False\n\
+            CompressedData = False\n\
+            TransformMatrix = 1 0 0 0 1 0 0 0 1\n\
+            Offset = 0 0 0\n\
+            CenterOfRotation = 0 0 0\n\
+            AnatomicalOrientation = RAI\n\
+            ElementSpacing = {} {} {}\n\
+            DimSize = {} {} {}\n\
+            ElementType = {}\n\
+            ElementDataFile = data.raw\n",
+            spacing[0], spacing[1], spacing[2],
+            dimensions[0], dimensions[1], dimensions[2],
+            match pixel_type {
+                PixelType::UInt8 => "MET_UCHAR",
+                PixelType::UInt16 => "MET_USHORT",
+                PixelType::Int16 => "MET_SHORT",
+                PixelType::Int32 => "MET_INT",
+                PixelType::Float32 => "MET_FLOAT",
+                PixelType::Float64 => "MET_DOUBLE",
+            }
+        ).into_bytes();
+
+        // Create small synthetic raw data; tests using this are ignored by default
+        let voxel_count = dimensions[0] * dimensions[1] * dimensions[2];
+        let elem_size = 4usize; // Float32
+        let mut data = Vec::with_capacity(voxel_count * elem_size);
+        for i in 0..(voxel_count * elem_size) {
+            data.push((i % 256) as u8);
+        }
+        (header, data)
+    }
+
+    /// Creates a synthetic MHA byte buffer for testing
+    pub fn create_test_mha() -> Vec<u8> {
+        create_test_mha_data([512, 512, 300], PixelType::Float32, [0.2, 0.2, 0.5], true)
+    }
+
     // ============================================================================
     // Unit Tests - Metadata and Data Structures
     // ============================================================================

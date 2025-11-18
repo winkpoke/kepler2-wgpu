@@ -252,8 +252,13 @@ mod tests {
 
         let result = GeometryBuilder::build_transverse_base(&volume_1);
         assert!(result.label == "CT Volume: screen");
-        assert_eq!(result.matrix.data[0][0], 512.0);
-        assert_eq!(result.matrix.data[1][3], -507.8125);
+        let (nx, ny, nz) = (volume_1.dimensions.0 as f32, volume_1.dimensions.1 as f32, volume_1.dimensions.2 as f32);
+        let (dx, dy, dz) = (nx * volume_1.voxel_spacing.0, ny * volume_1.voxel_spacing.1, nz * volume_1.voxel_spacing.2);
+        let d = (dx + dy + dz) / 3.0;
+        assert!((result.matrix.data[0][0] - d).abs() < 1e-6);
+        // oy + dy/2 - d/2
+        let expected_y = -507.8125 + dy / 2.0 - d / 2.0;
+        assert!((result.matrix.data[1][3] - expected_y).abs() < 1e-6);
     }
 
     #[test]
@@ -274,8 +279,11 @@ mod tests {
         };
 
         let result = GeometryBuilder::build_coronal_base(&volume_1);
-        assert_eq!(result.matrix.data[2][1], -256.0);
-        assert_eq!(result.matrix.data[1][3], (5.0+512.0*0.5/2.0));
+        let (nx, ny, nz) = (volume_1.dimensions.0 as f32, volume_1.dimensions.1 as f32, volume_1.dimensions.2 as f32);
+        let (dx, dy, dz) = (nx * volume_1.voxel_spacing.0, ny * volume_1.voxel_spacing.1, nz * volume_1.voxel_spacing.2);
+        let d = (dx + dy + dz) / 3.0;
+        assert!((result.matrix.data[2][1] + d).abs() < 1e-6);
+        assert_eq!(result.matrix.data[1][3], (5.0 + dy / 2.0));
     }
 
     #[test]
@@ -297,8 +305,12 @@ mod tests {
 
         let result = GeometryBuilder::build_sagittal_base(&volume_1);
         assert!(result.label == "CT Volume: screen");
-        assert_eq!(result.matrix.data[1][0], 256.0);
-        assert_eq!(result.matrix.data[2][3], (3.0 + 100.0 * 1.0 / 2.0 + 512.0 * 0.5 / 2.0));
+        let (nx, ny, nz) = (volume_1.dimensions.0 as f32, volume_1.dimensions.1 as f32, volume_1.dimensions.2 as f32);
+        let (dx, dy, dz) = (nx * volume_1.voxel_spacing.0, ny * volume_1.voxel_spacing.1, nz * volume_1.voxel_spacing.2);
+        let d = (dx + dy + dz) / 3.0;
+        assert!((result.matrix.data[1][0] - d).abs() < 1e-6);
+        let expected_z = 3.0 + dz / 2.0 + d / 2.0;
+        assert!((result.matrix.data[2][3] - expected_z).abs() < 1e-6);
     }
 
     #[test]

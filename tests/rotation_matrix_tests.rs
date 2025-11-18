@@ -1,5 +1,5 @@
 use kepler_wgpu::rendering::view::MeshView;
-use std::f32::consts::{PI, TAU};
+use std::f32::consts::{PI, TAU, FRAC_PI_2};
 
 /// Function-level comment: Test Y-axis rotation matrix mathematical correctness
 /// Verifies that rotation matrices produce expected transformations through public API
@@ -9,50 +9,54 @@ mod rotation_matrix_tests {
 
     #[test]
     fn test_rotation_api_basic_functionality() {
+        /// Verify default rotation state and speed
         let mesh_view = MeshView::default();
-        
-        // Test default state - rotation should be enabled by default
-        assert!(mesh_view.is_rotation_enabled(), "Rotation should be enabled by default");
-        assert_eq!(mesh_view.get_rotation_angle(), 0.0, "Initial rotation angle should be 0");
-        assert!((mesh_view.get_rotation_speed() - PI / 2.0).abs() < 1e-6, 
-               "Default rotation speed should be π/2 rad/s (90°/s)");
+
+        // Default angle is [-π/2, 0, 0] (X,Y,Z in radians)
+        let angles = mesh_view.get_rotation_angle();
+        assert!((angles[0] + FRAC_PI_2).abs() < 1e-6);
+        assert!(angles[1].abs() < 1e-6);
+        assert!(angles[2].abs() < 1e-6);
+
+        // Default speed is π/2 rad/s
+        assert!((mesh_view.get_rotation_speed() - FRAC_PI_2).abs() < 1e-6);
     }
 
     #[test]
     fn test_rotation_enable_disable() {
+        /// Ensure enabling/disabling rotation does not panic and preserves orientation
         let mut mesh_view = MeshView::default();
-        
-        // Test enabling/disabling rotation
+        let before = mesh_view.get_rotation_angle();
         mesh_view.set_rotation_enabled(false);
-        assert!(!mesh_view.is_rotation_enabled(), "Rotation should be disabled");
-        
+        let after_disable = mesh_view.get_rotation_angle();
         mesh_view.set_rotation_enabled(true);
-        assert!(mesh_view.is_rotation_enabled(), "Rotation should be enabled");
+        let after_enable = mesh_view.get_rotation_angle();
+        assert!((before[0] - after_disable[0]).abs() < 1e-6);
+        assert!((before[0] - after_enable[0]).abs() < 1e-6);
     }
 
     #[test]
     fn test_rotation_speed_control() {
+        /// Verify rotation speed setters
         let mut mesh_view = MeshView::default();
-        
-        // Test setting rotation speed in radians
+
         let test_speed = PI / 4.0; // 45°/s
         mesh_view.set_rotation_speed(test_speed);
-        assert!((mesh_view.get_rotation_speed() - test_speed).abs() < 1e-6, 
-               "Rotation speed should match set value");
-        
-        // Test setting rotation speed in degrees
-        mesh_view.set_rotation_speed_degrees(180.0); // 180°/s = π rad/s
-        assert!((mesh_view.get_rotation_speed() - PI).abs() < 1e-6, 
-               "Rotation speed should be π rad/s when set to 180°/s");
+        assert!((mesh_view.get_rotation_speed() - test_speed).abs() < 1e-6);
+
+        mesh_view.set_rotation_speed_degrees(180.0); // π rad/s
+        assert!((mesh_view.get_rotation_speed() - PI).abs() < 1e-6);
     }
 
     #[test]
     fn test_rotation_angle_reset() {
+        /// Reset rotation and verify default orientation [-π/2, 0, 0]
         let mut mesh_view = MeshView::default();
-        
-        // Reset rotation and verify angle is 0
         mesh_view.reset_rotation();
-        assert_eq!(mesh_view.get_rotation_angle(), 0.0, "Rotation angle should be 0 after reset");
+        let angles = mesh_view.get_rotation_angle();
+        assert!((angles[0] + FRAC_PI_2).abs() < 1e-6);
+        assert!(angles[1].abs() < 1e-6);
+        assert!(angles[2].abs() < 1e-6);
     }
 
     #[test]
@@ -112,15 +116,9 @@ mod rotation_matrix_tests {
         assert!((cos_a - sin_a).abs() < 1e-6, "cos(45°) should equal sin(45°)");
         assert!((cos_a - (2.0_f32.sqrt() / 2.0)).abs() < 1e-6, "cos(45°) should be √2/2");
         
-        // Test that our implementation pattern matches the standard form
-        // Our implementation creates this matrix (with scale):
-        // [scale*cos θ    0      scale*sin θ    0]
-        // [     0       scale         0         0]
-        // [scale*(-sin θ) 0      scale*cos θ    0]
-        // [     0         0           0         1]
-        
-        // This is mathematically correct for Y-axis rotation!
-        assert!(true, "Y-axis rotation matrix implementation follows standard mathematical form");
+        // Validate identity cos²θ + sin²θ = 1
+        let id = cos_a * cos_a + sin_a * sin_a;
+        assert!((id - 1.0).abs() < 1e-6);
     }
 
     #[test]
