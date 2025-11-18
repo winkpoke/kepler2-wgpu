@@ -3,6 +3,7 @@
 use std::{any::Any, sync::Arc};
 use wgpu::{Device, Queue, RenderPipeline, BindGroupLayout, BindGroup, Buffer, BufferUsages};
 use crate::rendering::view::render_content::RenderContent;
+use crate::rendering::view::layout::compute_aspect_fit;
 use crate::rendering::view::View;
 
 /// Function-level comment: Configuration for Maximum Intensity Projection (MIP) rendering.
@@ -377,10 +378,17 @@ impl MipView {
         // Set the MIP render pipeline
         render_pass.set_pipeline(&self.wgpu_impl.render_context().pipeline);
 
-        // Set viewport for this view
+        // Set viewport for this view (aspect-preserving fit)
         let (x, y) = (self.position.0 as f32, self.position.1 as f32);
-        let (width, height) = (self.dimensions.0 as f32, self.dimensions.1 as f32);
-        render_pass.set_viewport(x, y, width, height, 0.0, 1.0);
+        let (w, h) = (self.dimensions.0, self.dimensions.1);
+        let extent = self.wgpu_impl.render_content().texture.size();
+        let cw = extent.width.max(1) as f32;
+        let ch = extent.height.max(1) as f32;
+        if let Some(fit) = compute_aspect_fit(w, h, cw, ch, 0) {
+            render_pass.set_viewport(x + fit.x, y + fit.y, fit.w, fit.h, 0.0, 1.0);
+        } else {
+            render_pass.set_viewport(x, y, 1.0, 1.0, 0.0, 1.0);
+        }
 
         // Bind pre-created texture bind group (volume texture and sampler)
         render_pass.set_bind_group(0, &*self.wgpu_impl.bind_groups().0, &[]);
