@@ -232,7 +232,7 @@ impl App {
                 view_formats: &[],
             };
             let depth_tex = self.device().create_texture(&desc);
-            let depth_view = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
+            let _ = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
             // Texture pool is now created per-frame, so no persistent depth texture to update
         }
     }
@@ -368,7 +368,7 @@ impl App {
     }
 
     pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume)  -> Arc<RenderContent> {
-        self.app_model.load_volume(vol.clone());
+        let _ = self.app_model.load_volume(vol.clone());
         let mut winlev;
         let texture = if self.enable_float_volume_texture {
             winlev = WindowLevel::new();
@@ -450,17 +450,20 @@ impl App {
     }
 
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
-    pub fn set_mesh_mode_enabled(&mut self, enabled: bool, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, downsample: usize, iso_value: f32) {
-        if self.enable_mesh != enabled { 
-            self.enable_mesh = enabled;
-        }
-
+    pub fn set_mesh_mode_enabled(&mut self, mesh_index: Option<usize>, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, downsample: usize, iso_value: f32) {
         let mut change_index =false;
-        if enabled || change_mpr {
+        if change_mpr {
             change_index = true;
         }
         if let Some(_) = mip {
             change_index = true;
+        }
+
+        if let Some(_) = mesh_index {
+            change_index = true;
+            if self.enable_mesh != change_index { 
+                self.enable_mesh = change_index;
+            }
         }
 
         if self.app_view.is_one_cell_layout() {
@@ -495,13 +498,13 @@ impl App {
                     self.app_view.layout.replace_view_at(mip, mip_view);
                 }
 
-                if enabled {
+                if let Some(mesh_index) = mesh_index {
                     // Add Mesh view to slot 3 using factory
                     let mesh = Mesh::new(&vol, iso_value, Some(downsample), 0);
                     let mesh_view = self.app_view.view_factory
                         .create_mesh_view(&mesh, (0, 0), (0, 0))
                         .unwrap();
-                    self.app_view.layout.replace_view_at(3, mesh_view);
+                    self.app_view.layout.replace_view_at(mesh_index, mesh_view);
                 }
             }else {
                 self.load_data_from_ct_volume(&vol.clone());

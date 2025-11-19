@@ -196,7 +196,7 @@
         </div>
         <div>
           <label for="one-cell">切换视图:</label>
-          <span id="3d-label">3d: </span><input type="checkbox" id="3d" /><br>
+          <span id="3d-label">3d: </span><input type="number" id="mesh_index" step="1.0" value="0.0"><input type="checkbox" id="3d" /><br>
           <span id="downsample-label">Downsample: </span><input type="number" id="downsample" step="1.0" value="3.0"><br>
           <span id="iso-value-label">Iso Value: </span><input type="number" id="iso-value" step="1.0" value="100.0"><br>
           <span id="change_mpr-label">change_mpr</span><input type="checkbox" id="change_mpr" /><br>
@@ -325,6 +325,7 @@
       dim:[],
       mip: null,
       mesh: false,
+      mesh_index: null,
       enable_rotation: false,
     };
 
@@ -545,8 +546,10 @@
 
       if (checkbox3d){
         state.mesh = true;
+        state.mesh_index = parseInt(byId('mesh_index').value, 10);
       }else{
         state.mesh = false;
+        state.mesh_index = null;
       }
       
       // Indices: convert to numbers for downstream logic
@@ -563,14 +566,14 @@
       const downsample = parseInt(byId('downsample').value, 10);
       const iso_value = parseFloat(byId('iso-value').value);
 
-      console.log('meshclick:', checkbox3d, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, downsample, iso_value);
+      console.log('meshclick:', state.mesh_index, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, downsample, iso_value);
 
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
 
-      gl_canvas.enable_mesh(checkbox3d, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, downsample, iso_value);
+      gl_canvas.enable_mesh(state.mesh_index, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, downsample, iso_value);
     });
 
     byId('one-cell-submit').addEventListener('click', () => {
