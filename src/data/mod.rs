@@ -3,8 +3,6 @@
 //! This module contains domain models and data structures.
 //! Dependencies: Core utilities only, no rendering dependencies.
 
-use crate::core::error::KeplerError;
-
 // Data modules
 pub mod ct_volume;
 pub mod dicom;

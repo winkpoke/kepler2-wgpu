@@ -215,6 +215,10 @@ impl RenderApp {
                     state.set_mesh_scale(scale);
                     log::info!("Mesh scale set to {:.3}", scale);
                 }
+                Event::UserEvent(UserEvent::SetMeshOpacity(_index, alpha)) => {
+                    state.set_mesh_opacity(alpha);
+                    log::info!("Mesh opacity set to {:.3}", alpha);
+                }
                 Event::UserEvent(UserEvent::SetMeshRotationAngleDeg(_index, degrees_x, degrees_y, degrees_z)) => {
                     state.set_mesh_rotation_angle_degrees(degrees_x, degrees_y, degrees_z);
                     log::info!("Mesh rotation angle set to {:?}°", [degrees_x, degrees_y, degrees_z]);

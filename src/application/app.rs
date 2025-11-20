@@ -825,6 +825,7 @@ impl App {
                     mesh_view.reset_rotation();
                     mesh_view.reset_scale_factor();
                     mesh_view.reset_pan();
+                    mesh_view.reset_opacity();
                     log::info!("Mesh reset via State control");
                     break;
                 }
@@ -872,6 +873,20 @@ impl App {
             }
         }else {
             log::warn!("Cannot set mesh pan: no MeshView in layout");
+        }
+    }
+
+    pub fn set_mesh_opacity(&mut self, alpha: f32) {
+        if self.app_view.layout.views().len() > 0 {
+            for view in self.app_view.layout.views_mut().iter_mut() {
+                if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                    mesh_view.set_opacity(alpha);
+                    log::info!("Mesh opacity set to {:.3}", alpha);
+                    break;
+                }
+            }
+        }else {
+            log::warn!("Cannot set mesh opacity: no MeshView in layout");
         }
     }
     
