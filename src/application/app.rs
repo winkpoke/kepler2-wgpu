@@ -644,6 +644,10 @@ impl App {
             }
             log::info!("View {} set_scale: {}", index, scale);
         }
+        if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>(){
+            mip_view.set_scale(scale);
+            log::info!("Mip scale set to {:.3}", scale);
+        }
     }
 
     pub fn set_translate_in_screen_coord(&mut self, index: usize, translate: [f32; 3]) {
@@ -659,11 +663,16 @@ impl App {
 
     pub fn set_pan(&mut self, index: usize, x: f32, y: f32 ) {
         let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
+        log::info!("View {} pan to: {:#?}", index, (x, y));
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             log::info!("View {} move to: {:#?}", index, (x, y));
             if let Err(e) = mpr_view.set_pan(x, y) {
                 log::warn!("set_pan failed on view {}: {}", index, e);
             }
+        }
+        if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>(){
+            mip_view.set_pan(x, y);
+            log::info!("Mip pan set to ({:.3}, {:.3})", x, y);
         }
     }
 
@@ -857,6 +866,7 @@ impl App {
             for view in self.app_view.layout.views_mut().iter_mut() {
                 if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
                     mesh_view.set_pan(dx, dy);
+                    log::info!("Mesh pan set to ({:.3}, {:.3})", dx, dy);
                     break;
                 }
             }

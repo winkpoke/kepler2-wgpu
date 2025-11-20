@@ -227,9 +227,8 @@
         </div>
         <div>
           <label for="translate-input">translate:</label>
-          <span id="trans-x-label">x:</span> <input type="number" id="trans-x" step="10.0" value="0.0" placeholder="x"><br>
-          <span id="trans-y-label">y:</span><input type="number" id="trans-y" step="10.0" value="0.0" placeholder="y"><br>
-          <span id="trans-z-label">z:</span><input type="number" id="trans-z" step="10.0" value="0.0" placeholder="z">
+          <span id="trans-x-label">x:</span> <input type="number" id="trans-x" step="10.0" value="0.0"><br>
+          <span id="trans-y-label">y:</span><input type="number" id="trans-y" step="10.0" value="0.0"><br>
           <button id="trans-submit">Submit</button>
         </div>
         <br>
@@ -494,21 +493,17 @@
     });
 
     byId('trans-submit').addEventListener('click', () => {
-      let x = document.querySelector('#trans-x').value;
-      let y = document.querySelector('#trans-y').value;
-      let z = document.querySelector('#trans-z').value;
+      let x = parseFloat(byId('trans-x').value);
+      let y = parseFloat(byId('trans-y').value);
       const input_index = byId('index-input');
       const indexValue = parseInt(input_index.value);
-      console.log('translate:', x, y, z);
-      if (isNaN(x) && isNaN(y) && isNaN(z)) {
-        alert('Please enter a valid number');
-        return;
-      }
+      console.log('translate:', x, y);
+
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
-      // gl_canvas.set_translate_in_screen_coord(indexValue, x, y, z);
+
       gl_canvas.set_pan(indexValue, x, y);
     });
 

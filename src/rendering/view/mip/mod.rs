@@ -42,9 +42,10 @@ pub struct MipUniforms {
     // Window/Level for medical imaging
     pub window: f32,
     pub level: f32,
-    
-    // Padding to ensure 16-byte alignment for uniform buffer requirements
-    pub _padding: [f32; 3],
+
+    pub pan_x: f32,
+    pub pan_y: f32,
+    pub scale: f32,
 }
 
 impl Default for MipUniforms {
@@ -55,7 +56,9 @@ impl Default for MipUniforms {
             is_packed_rg8: 1.0,  // Default to packed format
             window: 1000.0,
             level: 500.0,
-            _padding: [0.0; 3],
+            pan_x: 0.0,
+            pan_y: 0.0,
+            scale: 1.0,
         }
     }
 }
@@ -248,7 +251,7 @@ impl MipViewWgpuImpl {
         // Create uniform buffer
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("MIP Uniform Buffer"),
-                        size: std::mem::size_of::<MipUniforms>() as u64,
+            size: std::mem::size_of::<MipUniforms>() as u64,
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -302,6 +305,10 @@ pub struct MipView {
     position: (i32, i32),
     /// View dimensions
     dimensions: (u32, u32),
+    /// scale factor
+    scale: f32,
+    /// Pan translation in screen coordinates
+    pan: [f32; 3], 
 }
 
 impl MipView {
@@ -314,6 +321,8 @@ impl MipView {
             config: MipConfig::default(),
             position: (0, 0),
             dimensions: (800, 600),
+            scale: 1.0,
+            pan: [0.0, 0.0, 0.0],
         }
     }
 
@@ -354,7 +363,9 @@ impl MipView {
             is_packed_rg8,
             window,
             level,
-            _padding: [0.0; 3],
+            pan_x: self.pan[0],
+            pan_y: self.pan[1],
+            scale: self.scale,
         };
 
         // Upload uniforms to GPU buffer
@@ -403,6 +414,25 @@ impl MipView {
         log::trace!("[MIP_RENDER] MIP render completed successfully");
 
         Ok(())
+    }
+
+    /// Function-level comment: Set scale factor.
+    pub fn set_scale(&mut self, scale: f32) {
+        // Clamp to a reasonable range to avoid clipping or degenerate matrices
+        let clamped = scale.clamp(0.001, 100.0);
+        self.scale = clamped;
+        log::info!("MIP scale factor set to {:.3}", clamped);
+    }
+
+    /// Function-level comment: Set MIP pan translation (world units) for X and Y axes.
+    /// Pan values are uploaded to the vertex shader as a uniform offset.
+    pub fn set_pan(&mut self, dx: f32, dy: f32) {
+        const MAX_PAN_DISTANCE: f32 = 10000.0; // Maximum pan distance in mm
+        let clamped_x = dx.clamp(-MAX_PAN_DISTANCE, MAX_PAN_DISTANCE);
+        let clamped_y = dy.clamp(-MAX_PAN_DISTANCE, MAX_PAN_DISTANCE);
+        self.pan[0] = clamped_x;
+        self.pan[1] = clamped_y;
+        log::info!("MIP pan offset set to ({}, {})", clamped_x, clamped_y);
     }
 }
 

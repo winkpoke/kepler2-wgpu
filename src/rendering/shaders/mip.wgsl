@@ -42,7 +42,9 @@ struct MipUniforms {
     // Window/Level for medical imaging
     window: f32,
     level: f32,
-    _padding0: vec2<f32>,
+    pan_x: f32,
+    pan_y: f32,
+    scale: f32,
 }
 
 @group(1) @binding(0)
@@ -99,6 +101,7 @@ fn sample_volume(coords: vec3<f32>) -> f32 {
 // Apply window/level transformation for display
 fn apply_window_level(value: f32) -> f32 {
     // Standard window/level transformation
+    // let windowed = (value - (u_mip.p1.x - u_mip.p0.w / 2.0)) / u_mip.p0.w;
     let windowed = (value - (u_mip.level - u_mip.window / 2.0)) / u_mip.window;
     let clamped = clamp(windowed, 0.0, 1.0);
     
@@ -149,17 +152,20 @@ fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>) -> f32 {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // Convert texture coordinates to normalized device coordinates [-1, 1]
-    let ndc = vec2<f32>(in.tex_coords.x * 2.0 - 1.0, 1.0 - in.tex_coords.y * 2.0);
-    
+    // Apply pan and scale in screen space (centered at 0.5,0.5)
+    let scale = max(u_mip.scale, 0.0001);
+    let uv_centered = in.tex_coords - vec2<f32>(0.5, 0.5);
+    let uv_scaled = uv_centered / scale;
+    let uv = uv_scaled + vec2<f32>(0.5, 0.5) + vec2<f32>(u_mip.pan_x, u_mip.pan_y);
+    let uv_clamped = clamp(uv, vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0));
+
     // For orthographic projection, all rays have the same direction
     // Point rays into the volume (positive Z direction)
     let ray_dir = vec3<f32>(0.0, 0.0, 1.0);
-    
+
     // Fixed ray generation for orthographic MIP
-    // Ray origin varies across screen (0 to 1 for X and Y), starts at Z = 0 (front face of volume)
-    let ray_origin = vec3<f32>(ndc.x * 0.5 + 0.5, ndc.y * 0.5 + 0.5, 0.0);
-    
+    let ray_origin = vec3<f32>(uv_clamped.x, 1.0 - uv_clamped.y, 0.0);
+
     // Use ray origin and direction directly in volume space
     let volume_ray_origin = ray_origin;
     let volume_ray_dir = ray_dir;
