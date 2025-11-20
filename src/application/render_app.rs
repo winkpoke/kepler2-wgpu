@@ -327,6 +327,75 @@ impl RenderApp {
                                 state.set_mesh_mode_enabled(Some(3), Some(2), false, 0, 1, 0, 0, 3, 100.0);
                                 log::info!("KeyM pressed: mesh mode toggled to {}", new_enabled);
                             }
+                            WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyN),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                let mode =  0 as usize;
+                                state.set_one_cell_layout(mode, 0, 3, 100.0);
+                                log::info!("KeyN pressed: one_cell layout mode toggled to {}", mode);
+                            }
+                            WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyB),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                let wc = 40.0;
+                                let wl = 350.0 as f32;
+                                state.set_window_level(0, wc);
+                                state.set_window_width(0, wl);
+                                state.set_window_level(1, wc);
+                                state.set_window_width(1, wl);
+                                log::info!("KeyB pressed: window level {} width {}", wc, wl);
+                            }
+                            WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyV),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                state.set_slice_mm(0, 100.0);
+                                state.set_scale(0, 2.0);
+                                state.set_pan(1, 0.09, 0.09);
+                                state.set_mesh_scale(2.0);
+                                state.set_mesh_pan(-1.0, 1.0);
+                                state.set_mesh_rotation_angle_degrees(0.0, 0.0, 0.0);
+                            }
+                            WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyC),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                state.set_scale(0, 1.0);
+                                state.set_mesh_scale(1.0);
+                            }
+                            WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyX),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                state.reset_mesh();
+                            }
                             WindowEvent::RedrawRequested => {
                                 // This tells winit that we want another frame after this one
                                 state.window().request_redraw();

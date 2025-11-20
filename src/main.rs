@@ -17,19 +17,6 @@ async fn main() {
     let mut render_app = get_render_app().await.expect("Failed to create render app");
     let gl_canvas = render_app.get_glcanvas();
     gl_canvas.load_data_from_ct_volume(&vol);
-    gl_canvas.enable_mesh(Some(3), Some(2), false, 0, 1, 0, 0, 3, 100.0);
-
-    // Inject test events for verification
-    // gl_canvas.set_window_level(0, 40.0);
-    // gl_canvas.set_window_width(0, 350.0);
-    // gl_canvas.set_window_level(1, 40.0);
-    // gl_canvas.set_window_width(1, 350.0);
-    // gl_canvas.set_window_level(2, 40.0);
-    // gl_canvas.set_window_width(2, 350.0);
-    // gl_canvase.set_slice_mm(0, 5.0);
-    // gl_canvase.set_scale(0, 1.25);
-    // gl_canvase.set_translate(0, 0.0, 0.0, 0.0);
-    // gl_canvase.set_pan(0, 10.0, -5.0);
 
     render_app.run().await;
 }
