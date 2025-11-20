@@ -31,7 +31,7 @@
 
     main {
       display: grid;
-      grid-template-columns: 320px 1fr;
+      grid-template-columns: 520px 1fr;
       gap: var(--gap);
       padding: var(--gap)
     }
@@ -57,6 +57,10 @@
 
     input[type="file"] {
       width: 100%
+    }
+
+    input[type="number"] {
+      width: 120px;
     }
 
     label {
@@ -177,84 +181,175 @@
     <section class="card">
       <h2>1) 选择文件</h2>
       <div class="content">
-        <label>输入DICOM文件：</label>
-        <input id="file" type="file" multiple accept=".dcm" />
-        <label>输入二维投影文件夹：</label>
-        <input id="FilesInput" type="file" multiple accept=".raw,.mhd,.dat" />
-        <label>输入重建文件：</label>
-        <input id="mhxInput" type="file" multiple accept=".mha,.mhd,.raw" />
-        <div class="row" style="margin-top:8px">
-          <button id="btn">运行重建</button>
-          <button id="analyzeBtn">分析文件</button>
-          <button id="rerender">视图显示</button>
-        </div>
-        <div>
-          <label for="one-cell">单张图:</label>
-          <span id="mode-label">模式: </span><input type="number" id="mode" step="1" value="0" min = "0" max = "2"><br>
-          <span id="orientation_index-label">方向索引: </span><input type="number" id="orientation_index" step="1" value="0" min = "0" max = "2"><br>
-          <button id="one-cell-submit">Submit</button>
-        </div>
-        <div>
-          <label for="one-cell">切换视图:</label>
-          <span id="3d-label">3d: </span><input type="number" id="mesh_index" step="1.0" value="0.0"><input type="checkbox" id="3d" /><br>
-          <span id="downsample-label">Downsample: </span><input type="number" id="downsample" step="1.0" value="3.0"><br>
-          <span id="iso-value-label">Iso Value: </span><input type="number" id="iso-value" step="1.0" value="100.0"><br>
-          <span id="change_mpr-label">change_mpr</span><input type="checkbox" id="change_mpr" /><br>
-          <span id="mipSpan">mip:</span><input type="number" id="mip" step="1.0" value="0.0"><input type="checkbox" id="change_mip" /><br>
-          <span id="index-1-label">index-1: </span><input type="number" id="index-1" step="1.0" value="0.0"><br>
-          <span id="index-2-label">index-2: </span><input type="number" id="index-2" step="1.0" value="0.0"><br>
-          <span id="index-3-label">index-3: </span><input type="number" id="index-3" step="1.0" value="0.0"><br>
-          <span id="index-4-label">index-4: </span><input type="number" id="index-4" step="1.0" value="0.0"><br>
-          <button id="mesh">enable_mesh</button>
-        </div>
-        <span id="index-input-label">操作视图窗口:</span><input type="number" id="index-input" step="1.0" value="0.0">
-        <div>
-          <label for="slice-input">slice:</label>
-          <input type="number" id="slice-input" step="0.5" value="0.0">
-          <button id="slice-submit">Submit</button>
-        </div>
-        <div>
-          <label for="center-input">center:</label>
-          <span id="center-x-label">x:</span><input type="number" id="center-x" step="0.1" value="0.0" placeholder="x"><br>
-          <span id="center-y-label">y:</span><input type="number" id="center-y" step="0.1" value="0.0" placeholder="y"><br>
-          <span id="center-z-label">z:</span><input type="number" id="center-z" step="0.1" value="0.0" placeholder="z">
-          <button id="set-center">Set Center</button>
-        </div>
-        <div>
-          <label for="scale-input">Scale:</label>
-          <input type="number" id="scale-input" step="10.0" value="1.0">
-          <button id="scale-submit">Submit</button>
-        </div>
-        <div>
-          <label for="translate-input">translate:</label>
-          <span id="trans-x-label">x:</span> <input type="number" id="trans-x" step="10.0" value="0.0"><br>
-          <span id="trans-y-label">y:</span><input type="number" id="trans-y" step="10.0" value="0.0"><br>
-          <button id="trans-submit">Submit</button>
-        </div>
-        <br>
-        <div>
-          <span id="window-label">window width:</span><input type="number" id="window" step="10.0" value="0.0"><br>
-          <span id="level-label">window level:</span><input type="number" id="level" step="10.0" value="0.0">
-          <button id="winlev-submit">Submit</button><button id="winlev-get">Get</button>
-        </div>
-        <div>
-          <label for="resize-input">resize:</label>
-          <span id="width-label">width:</span><input type="number" id="width" step="10.0" value="0.0" placeholder="800"><br>
-          <span id="height-label">height:</span><input type="number" id="height" step="10.0" value="0.0" placeholder="800">
-          <button id="resize-submit">Submit</button>
-        </div>
-        <div>
-          <label for="3d-change">3d:</label>
-          <span id="3d-scale-label">scale:</span><input type="number" id="3d-scale" step="0.1" value="1.0"><br>
-          <span id="3d-pan-label">pan_x:</span><input type="number" id="3d-pan-x" step="0.1" value="0.0"><br>
-          <span id="3d-pan-label">pan_y:</span><input type="number" id="3d-pan-y" step="0.1" value="0.0"><br>
-          <span id="3d-rotation-label">angle:</span>
-          <input type="number" id="3d-rotation-x" step="15" value="-90" min="0" max="360">
-          <input type="number" id="3d-rotation-y" step="15" value="0" min="0" max="360">
-          <input type="number" id="3d-rotation-z" step="15" value="0" min="0" max="360"><br>
-          <button id="3d-submit">Submit</button>
-          <button id="3d-reset">Reset</button>
-        </div>
+        <fieldset class="pill" style="margin-bottom:10px">
+          <legend>文件输入</legend>
+          <label>输入DICOM文件：</label>
+          <input id="file" type="file" multiple accept=".dcm" />
+          <label>输入二维投影文件夹：</label>
+          <input id="FilesInput" type="file" multiple accept=".raw,.mhd,.dat" />
+          <label>输入重建文件：</label>
+          <input id="mhxInput" type="file" multiple accept=".mha,.mhd,.raw" />
+          <div class="row" style="margin-top:8px">
+            <button id="btn">运行重建</button>
+            <button id="analyzeBtn">分析文件</button>
+            <button id="rerender">视图显示</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="pill" style="margin-bottom:10px">
+          <legend>视图模式</legend>
+          <div class="row">
+            <span id="mode-label">模式:</span>
+            <input type="number" id="mode" step="1" value="0" min="0" max="2">
+            <span id="orientation_index-label">方向索引:</span>
+            <input type="number" id="orientation_index" step="1" value="0" min="0" max="2">
+            <button id="one-cell-submit">应用</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="pill" style="margin-bottom:10px">
+          <legend>视图切换</legend>
+          <div class="grid">
+            <div>
+              <span id="3d-label">3D:</span>
+              <input type="number" id="mesh_index" step="1.0" value="0.0">
+              <input type="checkbox" id="3d" />
+            </div>
+            <div>
+              <span id="downsample-label">Downsample:</span>
+              <input type="number" id="downsample" step="1.0" value="3.0">
+            </div>
+            <div>
+              <span id="iso-value-label">Iso Value:</span>
+              <input type="number" id="iso-value" step="1.0" value="100.0">
+            </div>
+            <div>
+              <span id="change_mpr-label">change_mpr</span>
+              <input type="checkbox" id="change_mpr" />
+            </div>
+            <div>
+              <span id="index-1-label">index-1:</span>
+              <input type="number" id="index-1" step="1.0" value="0.0">
+            </div>
+            <div>
+              <span id="index-2-label">index-2:</span>
+              <input type="number" id="index-2" step="1.0" value="0.0">
+            </div>
+            <div>
+              <span id="mipSpan">mip:</span>
+              <input type="number" id="mip" step="1.0" value="0.0">
+              <input type="checkbox" id="change_mip" />
+            </div>
+            <div>
+              <span id="index-3-label">index-3:</span>
+              <input type="number" id="index-3" step="1.0" value="0.0">
+            </div>
+            <div>
+              <span id="index-4-label">index-4:</span>
+              <input type="number" id="index-4" step="1.0" value="0.0">
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button id="mesh">应用视图</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="pill" style="margin-bottom:10px">
+          <legend>操作视图窗口</legend>
+          <div class="row">
+            <span id="index-input-label">窗口索引:</span>
+            <input type="number" id="index-input" step="1.0" value="0.0">
+          </div>
+          <div class="grid" style="margin-top:8px">
+            <div>
+              <label for="slice-input">slice</label>
+              <input type="number" id="slice-input" step="0.5" value="0.0">
+              <button id="slice-submit">应用</button>
+            </div>
+            <div>
+              <label for="scale-input">Scale</label>
+              <input type="number" id="scale-input" step="10.0" value="1.0">
+              <button id="scale-submit">应用</button>
+            </div>
+            <div>
+              <label for="translate-input">Translate</label>
+              <div class="row">
+                <span id="trans-x-label">x:</span>
+                <input type="number" id="trans-x" step="10.0" value="0.0">
+                <span id="trans-y-label">y:</span>
+                <input type="number" id="trans-y" step="10.0" value="0.0">
+              </div>
+              <button id="trans-submit">应用</button>
+            </div>
+            <div>
+              <label>Window/Level</label>
+              <div class="row">
+                <span id="window-label">width:</span>
+                <input type="number" id="window" step="10.0" value="0.0">
+                <span id="level-label">level:</span>
+                <input type="number" id="level" step="10.0" value="0.0">
+              </div>
+              <div class="row" style="margin-top:6px">
+                <button id="winlev-submit">应用</button>
+                <button id="winlev-get">获取</button>
+              </div>
+            </div>
+            <div>
+              <label for="resize-input">Resize</label>
+              <div class="row">
+                <span id="width-label">width:</span>
+                <input type="number" id="width" step="10.0" value="0.0" placeholder="800">
+                <span id="height-label">height:</span>
+                <input type="number" id="height" step="10.0" value="0.0" placeholder="800">
+              </div>
+              <button id="resize-submit">应用</button>
+            </div>
+            <div>
+              <label>Center</label>
+              <div class="row">
+                <span id="center-x-label">x:</span>
+                <input type="number" id="center-x" step="0.1" value="0.0" placeholder="x">
+                <span id="center-y-label">y:</span>
+                <input type="number" id="center-y" step="0.1" value="0.0" placeholder="y">
+                <span id="center-z-label">z:</span>
+                <input type="number" id="center-z" step="0.1" value="0.0" placeholder="z">
+              </div>
+              <button id="set-center">应用</button>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="pill">
+          <legend>3D 网格</legend>
+          <div class="grid">
+            <div>
+              <span id="3d-scale-label">scale:</span>
+              <input type="number" id="3d-scale" step="0.1" value="1.0">
+            </div>
+            <div>
+              <span id="3d-pan-label">pan_x:</span>
+              <input type="number" id="3d-pan-x" step="0.1" value="0.0">
+            </div>
+            <div>
+              <span id="3d-pan-label">pan_y:</span>
+              <input type="number" id="3d-pan-y" step="0.1" value="0.0">
+            </div>
+            <div>
+              <span id="3d-opacity-label">opacity:</span>
+              <input type="number" id="3d-opacity" step="0.1" value="1.0" min="0" max="1">
+            </div>
+            <div>
+              <span id="3d-rotation-label">angle:</span>
+              <input type="number" id="3d-rotation-x" step="15" value="-90" min="0" max="360">
+              <input type="number" id="3d-rotation-y" step="15" value="0" min="0" max="360">
+              <input type="number" id="3d-rotation-z" step="15" value="0" min="0" max="360">
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button id="3d-submit">应用</button>
+            <button id="3d-reset">重置</button>
+          </div>
+        </fieldset>
       </div>
     </section>
 
@@ -602,14 +697,20 @@
       const scale = parseFloat(byId('3d-scale').value);
       const pan_x = parseFloat(byId('3d-pan-x').value);
       const pan_y = parseFloat(byId('3d-pan-y').value);
+      const opacity = parseFloat(byId('3d-opacity').value);
       const rotation_x = parseFloat(byId('3d-rotation-x').value);
       const rotation_y = parseFloat(byId('3d-rotation-y').value);
       const rotation_z = parseFloat(byId('3d-rotation-z').value);
 
       if (state.mesh){
-        console.log('3d-submit:', scale, rotation_x, rotation_y, rotation_z);
+        console.log('3d-submit:', scale, pan_x, pan_y, opacity, rotation_x, rotation_y, rotation_z);
         gl_canvas.set_mesh_scale(indexValue, scale);
         gl_canvas.set_mesh_pan(indexValue, pan_x, pan_y);
+        if (typeof gl_canvas.set_mesh_opacity === 'function') {
+          gl_canvas.set_mesh_opacity(indexValue, Math.max(0, Math.min(1, opacity)));
+        } else {
+          log('mesh opacity 方法未导出，已跳过', 'warn');
+        }
         gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
       }
     });
