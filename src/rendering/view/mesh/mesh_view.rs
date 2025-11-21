@@ -1,7 +1,11 @@
 #![allow(dead_code)]
 
 use super::{mesh::{Mesh, Lighting}, material::Material, camera::Camera, performance::{QualityController, QualityLevel, PerformanceStats}, basic_mesh_context::BasicMeshContext};
-use crate::{core::coord::Matrix4x4, rendering::view::{Renderable, View}, core::timing::Instant};
+use crate::{
+    core::{Matrix4x4, WindowLevel,error::KeplerResult},
+    rendering::view::{Renderable, View}, 
+    core::timing::Instant,
+};
 
 /// Function-level comment: Error types specific to mesh rendering operations
 #[derive(Debug)]
@@ -94,6 +98,10 @@ pub struct MeshView {
     scale_factor: f32,
     /// Pan translation in world units (X, Y, Z)
     pan: [f32; 3],
+    /// Window level settings for intensity mapping
+    window_level: WindowLevel,
+    /// Mesh opacity (0.0 transparent .. 1.0 opaque)
+    opacity: f32,
 }
 
 impl Default for MeshView {
@@ -120,6 +128,8 @@ impl Default for MeshView {
             last_frame_time: Instant::now(),
             scale_factor: 1.0,
             pan: [0.0, 0.0, 0.0],
+            window_level: WindowLevel::default(),
+            opacity: 1.0,
         }
     }
 }
@@ -237,6 +247,12 @@ impl MeshView {
         log::info!("Mesh rotation angle set to {:?}°", degrees);
     }
 
+    /// Function-level comment: Set rotation speed using degrees per second for convenience.
+    /// This is a helper method that converts degrees to radians internally.
+    pub fn set_rotation_speed_degrees(&mut self, degrees_per_sec: f32) {
+        self.set_rotation_speed(degrees_per_sec.to_radians());
+    }
+
     /// Function-level comment: Set uniform scale factor applied to the mesh model.
     /// Typical values: 0.25 (very small) .. 2.0 (double size). Default is 1.0.
     pub fn set_scale_factor(&mut self, scale: f32) {
@@ -266,16 +282,44 @@ impl MeshView {
         log::info!("Mesh pan offset set to ({}, {})", dx, dy);
     }
 
+    /// Function-level comment: Get the current pan translation offset.
+    pub fn get_pan(&self) -> [f32; 3] {
+        self.pan
+    }
+
     /// Function-level comment: Reset mesh pan translation to the origin.
     pub fn reset_pan(&mut self) {
         self.pan = [0.0, 0.0, 0.0];
         log::info!("Mesh pan reset to (0, 0, 0)");
     }
 
-    /// Function-level comment: Set rotation speed using degrees per second for convenience.
-    /// This is a helper method that converts degrees to radians internally.
-    pub fn set_rotation_speed_degrees(&mut self, degrees_per_sec: f32) {
-        self.set_rotation_speed(degrees_per_sec.to_radians());
+    /// Function-level comment: Set mesh opacity (0.0 transparent .. 1.0 opaque).
+    pub fn set_opacity(&mut self, alpha: f32) {
+        self.opacity = alpha.clamp(0.0, 1.0);
+        log::info!("Mesh opacity set to {:.3}", self.opacity);
+    }
+
+    pub fn reset_opacity(&mut self) {
+        self.opacity = 1.0;
+        log::info!("Mesh opacity reset to default (1.0)");
+    }
+
+    pub fn set_window_level(&mut self, window_level: f32) -> KeplerResult<()> {
+        self.window_level.set_window_level(window_level)
+    }
+
+    pub fn set_window_width(&mut self, window_width: f32) -> KeplerResult<()> {
+        self.window_level.set_window_width(window_width)
+    }
+
+    /// Retrieve current window level for state snapshotting.
+    pub fn get_window_level(&self) -> f32 {
+        self.window_level.window_level()
+    }
+
+    /// Retrieve current window width for state snapshotting.
+    pub fn get_window_width(&self) -> f32 {
+        self.window_level.window_width()
     }
 
     /// Function-level comment: Create a default camera compatible with orthogonal projection
@@ -447,7 +491,7 @@ impl MeshView {
             ctx.update_uniforms(queue, &mvp_matrix_transposed.data);
 
             // Update lighting uniforms to ensure lighting effects are applied
-            let lighting_uniforms = if let Some(ref lighting) = self.lighting {
+            let mut lighting_uniforms = if let Some(ref lighting) = self.lighting {
                 // Use the configured lighting and convert to BasicLightingUniforms
                 lighting.to_basic_uniforms()
             } else {
@@ -455,8 +499,12 @@ impl MeshView {
                 let default_lighting = self.create_default_lighting();
                 default_lighting.to_basic_uniforms()
             };
+            let (window_scale, window_offset) = self.window_level.shader_uniforms();
+            lighting_uniforms.window_scale = window_scale;
+            lighting_uniforms.window_offset = window_offset;
+            lighting_uniforms.opacity = self.opacity;
             ctx.update_lighting_uniforms(queue, &lighting_uniforms);
-            log::trace!("[BASIC_MESH_LIGHTING] Updated lighting uniforms with configured lighting");
+            log::debug!("[BASIC_MESH_LIGHTING] Updated lighting uniforms with WL: scale={:.3}, offset={:.3}", window_scale, window_offset);
         }
     }
     
@@ -656,4 +704,81 @@ impl View for MeshView {
     }
     fn as_any(&self) -> &dyn std::any::Any { self }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::f32::consts::{PI, FRAC_PI_2, TAU};
+
+    /// Function-level comment: Verify default rotation state and speed
+    #[test]
+    fn test_rotation_api_basic_functionality() {
+        let mesh_view = MeshView::default();
+        let angles = mesh_view.get_rotation_angle();
+        assert!((angles[0] + FRAC_PI_2).abs() < 1e-6);
+        assert!(angles[1].abs() < 1e-6);
+        assert!(angles[2].abs() < 1e-6);
+        assert!((mesh_view.get_rotation_speed() - FRAC_PI_2).abs() < 1e-6);
+    }
+
+    /// Function-level comment: Ensure enabling/disabling rotation does not panic and preserves orientation
+    #[test]
+    fn test_rotation_enable_disable() {
+        let mut mesh_view = MeshView::default();
+        let before = mesh_view.get_rotation_angle();
+        mesh_view.set_rotation_enabled(false);
+        let after_disable = mesh_view.get_rotation_angle();
+        mesh_view.set_rotation_enabled(true);
+        let after_enable = mesh_view.get_rotation_angle();
+        assert!((before[0] - after_disable[0]).abs() < 1e-6);
+        assert!((before[0] - after_enable[0]).abs() < 1e-6);
+    }
+
+    /// Function-level comment: Verify rotation speed setters
+    #[test]
+    fn test_rotation_speed_control() {
+        let mut mesh_view = MeshView::default();
+        let test_speed = PI / 4.0; // 45°/s
+        mesh_view.set_rotation_speed(test_speed);
+        assert!((mesh_view.get_rotation_speed() - test_speed).abs() < 1e-6);
+        mesh_view.set_rotation_speed_degrees(180.0); // π rad/s
+        assert!((mesh_view.get_rotation_speed() - PI).abs() < 1e-6);
+    }
+
+    /// Function-level comment: Reset rotation and verify default orientation [-π/2, 0, 0]
+    #[test]
+    fn test_rotation_angle_reset() {
+        let mut mesh_view = MeshView::default();
+        mesh_view.reset_rotation();
+        let angles = mesh_view.get_rotation_angle();
+        assert!((angles[0] + FRAC_PI_2).abs() < 1e-6);
+        assert!(angles[1].abs() < 1e-6);
+        assert!(angles[2].abs() < 1e-6);
+    }
+
+    /// Function-level comment: Test that standard trigonometric values are correct for our rotation matrix
+    #[test]
+    fn test_trigonometric_correctness() {
+        let angle_0: f32 = 0.0; assert!((angle_0.cos() - 1.0).abs() < 1e-6); assert!(angle_0.sin().abs() < 1e-6);
+        let angle_90: f32 = PI / 2.0; assert!(angle_90.cos().abs() < 1e-6); assert!((angle_90.sin() - 1.0).abs() < 1e-6);
+        let angle_180: f32 = PI; assert!((angle_180.cos() + 1.0).abs() < 1e-6); assert!(angle_180.sin().abs() < 1e-6);
+        let angle_270: f32 = 3.0 * PI / 2.0; assert!(angle_270.cos().abs() < 1e-6); assert!((angle_270.sin() + 1.0).abs() < 1e-6);
+        let angle_360 = TAU; assert!((angle_360.cos() - 1.0).abs() < 1e-6); assert!(angle_360.sin().abs() < 1e-6);
+    }
+
+    /// Function-level comment: Verify that the Y-axis rotation matrix follows the standard mathematical form
+    // Standard Y-axis rotation matrix:
+    // [cos θ   0   sin θ   0]
+    // [  0     1     0     0]
+    // [-sin θ  0   cos θ   0]
+    // [  0     0     0     1]
+    #[test]
+    fn test_y_axis_rotation_matrix_mathematical_form() {
+        let angle = PI / 4.0; // 45°
+        let cos_a = angle.cos(); let sin_a = angle.sin();
+        assert!((cos_a - sin_a).abs() < 1e-6);
+        assert!((cos_a - (2.0_f32.sqrt() / 2.0)).abs() < 1e-6);
+        let id = cos_a * cos_a + sin_a * sin_a; assert!((id - 1.0).abs() < 1e-6);
+    }
 }

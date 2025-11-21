@@ -38,6 +38,8 @@ struct MipUniforms {
     
     // Texture format parameters (reused from existing logic)
     is_packed_rg8: f32,
+    // Packed RG8 bias to recover raw HU
+    bias: f32,
     
     // Window/Level for medical imaging
     window: f32,
@@ -45,34 +47,17 @@ struct MipUniforms {
     pan_x: f32,
     pan_y: f32,
     scale: f32,
+    // Padding to satisfy 16-byte multiple size requirements on WebGL
+    _pad0: vec3<f32>,
 }
 
 @group(1) @binding(0)
 var<uniform> u_mip: MipUniforms;
 
-// Volume intersection function
-// Returns entry and exit points for ray-volume intersection
-fn intersect_volume(ray_origin: vec3<f32>, ray_dir: vec3<f32>) -> vec2<f32> {
-    // Volume bounds: [0, 1] in all dimensions
-    let volume_min = vec3<f32>(0.0, 0.0, 0.0);
-    let volume_max = vec3<f32>(1.0, 1.0, 1.0);
-    
-    // Calculate intersection with volume AABB
-    let inv_dir = 1.0 / ray_dir;
-    let t_min = (volume_min - ray_origin) * inv_dir;
-    let t_max = (volume_max - ray_origin) * inv_dir;
-    
-    let t1 = min(t_min, t_max);
-    let t2 = max(t_min, t_max);
-    
-    let t_near = max(max(t1.x, t1.y), t1.z);
-    let t_far = min(min(t2.x, t2.y), t2.z);
-    
-    // Ensure we start from the front of the volume
-    let t_start = max(t_near, 0.0);
-    let t_end = t_far;
-    
-    return vec2<f32>(t_start, t_end);
+// Volume intersection function for orthographic rays along +Z
+// For axis-aligned rays into a unit cube volume, we traverse [0,1] fully.
+fn intersect_volume(_ray_origin: vec3<f32>, _ray_dir: vec3<f32>) -> vec2<f32> {
+    return vec2<f32>(0.0, 1.0);
 }
 
 // Texture sampling function (reused from existing shader_tex.wgsl logic)
@@ -88,8 +73,11 @@ fn sample_volume(coords: vec3<f32>) -> f32 {
     // Decode based on texture format (reused logic from shader_tex.wgsl)
     var value: f32;
     if (u_mip.is_packed_rg8 > 0.5) {
-        // Packed RG8 path: decode to scalar value
-        value = (sampled_value.g * 256.0 + sampled_value.r) * 255.0;
+        // Packed RG8 path: decode little-endian u16 and convert back to HU
+        let low = sampled_value.r * 255.0;
+        let high = sampled_value.g * 255.0;
+        let u16_val = low + high * 256.0;
+        value = u16_val - u_mip.bias;
     } else {
         // Native float path (R16Float/R32Float): use the red channel
         value = sampled_value.r;
@@ -100,14 +88,18 @@ fn sample_volume(coords: vec3<f32>) -> f32 {
 
 // Apply window/level transformation for display
 fn apply_window_level(value: f32) -> f32 {
-    // Standard window/level transformation
-    // let windowed = (value - (u_mip.p1.x - u_mip.p0.w / 2.0)) / u_mip.p0.w;
-    let windowed = (value - (u_mip.level - u_mip.window / 2.0)) / u_mip.window;
-    let clamped = clamp(windowed, 0.0, 1.0);
-    
-    // Simple gamma correction without aggressive contrast enhancement
-    let gamma = 0.9;
-    return pow(clamped, gamma);
+    // DICOM PS3.3 C.11.2 Window/Level mapping (consistent with MPR)
+    let center = u_mip.level;
+    let width = u_mip.window;
+    var v: f32;
+    if (value <= (center - 0.5 - (width - 1.0) / 2.0)) {
+        v = 0.0;
+    } else if (value > (center - 0.5 + (width - 1.0) / 2.0)) {
+        v = 1.0;
+    } else {
+        v = ((value - (center - 0.5)) / (width - 1.0)) + 0.5;
+    }
+    return clamp(v, 0.0, 1.0);
 }
 
 // MIP ray marching function

@@ -239,6 +239,27 @@ impl MprView {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Function-level comment: 验证参数校验与钳制逻辑在异常与边界输入下的行为
+    #[test]
+    fn test_validate_and_clamp_params() {
+        let scale = -5.0; // 非法，需替换为默认并钳制
+        let translate = [f32::INFINITY, -20_000.0, 0.0];
+        let pos = (200_000, -200_000);
+        let dim = (0, 200_000);
+        let ((s, t), p, d) = MprView::validate_and_clamp_params(scale, translate, pos, dim);
+        assert!(s >= MprView::MIN_SCALE && s <= MprView::MAX_SCALE);
+        assert!(t[0].is_finite() && t[0].abs() <= MprView::MAX_PAN_DISTANCE);
+        assert!(t[1].abs() <= MprView::MAX_PAN_DISTANCE);
+        assert_eq!(p.0, 100_000);
+        assert_eq!(p.1, -100_000);
+        assert!(d.0 >= 1 && d.1 >= 1);
+    }
+}
+
 impl Drop for MprView {
     /// Clean up GPU resources when the view is dropped.
     ///
@@ -258,9 +279,9 @@ impl Renderable for MprView {
     fn update(&mut self, queue: &wgpu::Queue) {
         // Synchronize window/level settings with WGPU implementation only if dirty
         if self.window_level.is_dirty() {
-            // let (window_width, effective_level) = self.window_level.shader_uniforms();
+            // Upload raw window/level (HU); bias handled in shader for RG8 path
             let window_width = self.window_level.window_width();
-            let window_level = self.window_level.effective_level();
+            let window_level = self.window_level.window_level();
             self.wgpu_impl.set_window_level(window_level);
             self.wgpu_impl.set_window_width(window_width);
             self.window_level.mark_clean();

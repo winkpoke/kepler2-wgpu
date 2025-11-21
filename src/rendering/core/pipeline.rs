@@ -302,7 +302,7 @@ pub fn get_or_create_mesh_pipeline_with_depth(device: &wgpu::Device, use_depth: 
             entry_point: Some("fs_main"),
             targets: &[Some(wgpu::ColorTargetState {
                 format: target_format,
-                blend: Some(wgpu::BlendState::REPLACE),
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
@@ -552,7 +552,7 @@ pub fn create_basic_mesh_pipeline_with_lighting(
             entry_point: Some("fs_main"),
             targets: &[Some(wgpu::ColorTargetState {
                 format: target_format,
-                blend: Some(wgpu::BlendState::REPLACE),
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
@@ -620,7 +620,7 @@ pub fn create_simple_mesh_pipeline(
             entry_point: Some("fs_main"),
             targets: &[Some(wgpu::ColorTargetState {
                 format: target_format,
-                blend: Some(wgpu::BlendState::REPLACE),
+                blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
@@ -656,3 +656,26 @@ pub fn create_simple_mesh_pipeline(
 }
 
 // Tests removed - pipeline creation is now handled directly without caching.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Function-level comment: 验证全局交换链格式 set/get 的一次性设置行为
+    #[test]
+    fn test_swapchain_format_set_get() {
+        assert!(get_swapchain_format().is_none());
+        set_swapchain_format(wgpu::TextureFormat::Bgra8Unorm);
+        let fmt = get_swapchain_format().unwrap();
+        assert_eq!(fmt, wgpu::TextureFormat::Bgra8Unorm);
+        // 再次设置应被忽略
+        set_swapchain_format(wgpu::TextureFormat::Rgba8Unorm);
+        let fmt2 = get_swapchain_format().unwrap();
+        assert_eq!(fmt2, wgpu::TextureFormat::Bgra8Unorm);
+    }
+
+    /// Function-level comment: 验证默认深度格式为 Depth24Plus 以跨平台兼容
+    #[test]
+    fn test_get_mesh_depth_format() {
+        assert_eq!(get_mesh_depth_format(), wgpu::TextureFormat::Depth24Plus);
+    }
+}

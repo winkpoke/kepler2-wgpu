@@ -17,6 +17,10 @@ pub struct BasicLightingUniforms {
     pub light_intensity: f32,
     pub ambient_color: [f32; 3],
     pub ambient_intensity: f32,
+    pub window_scale: f32,
+    pub window_offset: f32,
+    pub opacity: f32,
+    pub _padding2: f32,
 }
 
 impl Default for BasicLightingUniforms {
@@ -30,6 +34,10 @@ impl Default for BasicLightingUniforms {
             light_intensity: 1.0,
             ambient_color: [0.2, 0.2, 0.2],       // Dim ambient light
             ambient_intensity: 0.3,
+            window_scale: 1.0,
+            window_offset: 0.5,
+            opacity: 1.0,
+            _padding2: 0.0,
         }
     }
 }
@@ -58,6 +66,10 @@ impl Lighting {
             light_intensity: self.intensity,
             ambient_color: [0.2, 0.2, 0.2],       // Dim ambient light
             ambient_intensity: 0.3,
+            window_scale: 1.0,
+            window_offset: 0.5,
+            opacity: 1.0,
+            _padding2: 0.0,
         }
     }
 }

@@ -12,10 +12,15 @@ struct Uniforms {
 
 struct BasicLightingUniforms {
     light_direction: vec3<f32>,
+    _padding1: f32,
     light_color: vec3<f32>,
     light_intensity: f32,
     ambient_color: vec3<f32>,
     ambient_intensity: f32,
+    window_scale: f32,
+    window_offset: f32,
+    opacity: f32,
+    _padding2: f32,
 };
 
 struct VertexInput {
@@ -51,8 +56,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Ambient lighting
     let ambient = lighting.ambient_color * lighting.ambient_intensity;
     
-    // Combine lighting with vertex color
+    // Combine lighting with vertex color (premultiplied alpha for correct ALPHA_BLENDING)
     let final_color = in.v_color * (ambient + diffuse);
-    
-    return vec4<f32>(final_color, 1.0);
+    let alpha = lighting.opacity;
+    let color_pm = final_color * alpha;
+    return vec4<f32>(color_pm, alpha);
 }

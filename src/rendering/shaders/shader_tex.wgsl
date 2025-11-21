@@ -69,7 +69,8 @@ struct UniformsFrag {
     level: f32,
     slice: f32,
     is_packed_rg8: f32,
-	mat: mat4x4<f32>,
+    bias: f32,
+    	mat: mat4x4<f32>,
 }
 
 @group(2) @binding(0)
@@ -99,8 +100,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Conditionally decode depending on texture format
     var value: f32;
     if (u_uniform_frag.is_packed_rg8 > 0.5) {
-        // Packed RG8 path: decode to scalar value
-        value = (sampled_value.g * 256.0 + sampled_value.r) * 255.0;
+        // Packed RG8 path: decode little-endian u16 and convert back to HU
+        let low = sampled_value.r * 255.0;
+        let high = sampled_value.g * 255.0;
+        let u16_val = low + high * 256.0;
+        value = u16_val - u_uniform_frag.bias;
     } else {
         // Native float path (R16Float/R32Float): use the red channel
         value = sampled_value.r;
