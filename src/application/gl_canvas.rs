@@ -37,6 +37,8 @@ pub enum UserEvent {
     #[cfg(target_arch = "wasm32")]
     GetWindowLevel(usize, oneshot::Sender<[f32;2]>),
     #[cfg(target_arch = "wasm32")]
+    GetPan(usize, oneshot::Sender<[f32;3]>),
+    #[cfg(target_arch = "wasm32")]
     WorldCoordToScreen(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     SetCenterAtPointInMM(usize, f32, f32, f32), // screen coords
     ViewClick(usize, f32, f32, f32), // view_index, screen_x, screen_y, screen_z
@@ -193,6 +195,23 @@ impl GLCanvas {
         }
         
         log::info!("Sent GetWindowLevel event for window {}", index);
+        
+        match rx.await {
+            Ok(result) => Ok(result.into()),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn get_pan(&self, index:usize) -> Result<Box<[f32]>, String> {
+        let (tx, rx) = oneshot::channel();
+        
+        if let Err(e) = self.proxy.send_event(UserEvent::GetPan(index, tx)) {
+            log::error!("Failed to send GetPan event for window {}: {:?}", index, e);
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+        
+        log::info!("Sent GetPan event for window {}", index);
         
         match rx.await {
             Ok(result) => Ok(result.into()),

@@ -707,6 +707,15 @@ impl App {
         coord
     }
 
+    pub fn get_translate_in_screen_coord(&self, index: usize) -> [f32; 3] {
+        let view = self.app_view.layout.views().get(index).unwrap();
+        if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
+            mpr_view.get_translate_in_screen_coord()
+        } else {
+            [f32::NAN, f32::NAN, f32::NAN]
+        }
+    }
+
     /// Function-level comment: Handle view click for cross-sectional linking between MPR views.
     /// When a user clicks on an MPR view, this method converts the screen coordinates to world coordinates
     /// and updates the slice positions of other MPR views to show the corresponding cross-sections.

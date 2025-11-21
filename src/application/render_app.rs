@@ -257,6 +257,15 @@ impl RenderApp {
                     }
                 }
                 #[cfg(target_arch = "wasm32")]
+                Event::UserEvent(UserEvent::GetPan(index, sender)) => {
+                    let result = state.get_translate_in_screen_coord(index);
+                    if let Err(_) = sender.send(result) {
+                        log::error!("Failed to send GetPan result for window {}", index);
+                    } else {
+                        log::info!("Sent GetPan result for window {}: {:?}", index, result);
+                    }
+                }
+                #[cfg(target_arch = "wasm32")]
                 Event::UserEvent(UserEvent::WorldCoordToScreen(index, coord, sender)) => {
                     // Function-level comment: Handle world_coord_to_screen request and send result back via oneshot channel.
                     let result = state.world_coord_to_screen(index, coord);

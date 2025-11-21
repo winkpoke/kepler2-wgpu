@@ -280,6 +280,7 @@
                 <input type="number" id="trans-y" step="10.0" value="0.0">
               </div>
               <button id="trans-submit">应用</button>
+              <button id="trans-get">获取</button>
             </div>
             <div>
               <label>Window/Level</label>
@@ -627,6 +628,20 @@
         console.log('window_level:', result[0], 'window_width:', result[1]);
       }).catch((err) => {
         console.error('get_window_level error:', err);
+      });
+    });
+
+    byId('trans-get').addEventListener('click', () => {
+      const input_index = byId('index-input');
+      const indexValue = parseInt(input_index.value);
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+      gl_canvas.get_pan(indexValue).then((result) => {
+        console.log('pan:', result[0], result[1], result[2]);
+      }).catch((err) => {
+        console.error('get_pan error:', err);
       });
     });
 
