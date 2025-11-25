@@ -98,8 +98,6 @@ pub struct MeshView {
     scale_factor: f32,
     /// Pan translation in world units (X, Y, Z)
     pan: [f32; 3],
-    /// Window level settings for intensity mapping
-    window_level: WindowLevel,
     /// Mesh opacity (0.0 transparent .. 1.0 opaque)
     opacity: f32,
 }
@@ -128,7 +126,6 @@ impl Default for MeshView {
             last_frame_time: Instant::now(),
             scale_factor: 1.0,
             pan: [0.0, 0.0, 0.0],
-            window_level: WindowLevel::default(),
             opacity: 1.0,
         }
     }
@@ -302,24 +299,6 @@ impl MeshView {
     pub fn reset_opacity(&mut self) {
         self.opacity = 1.0;
         log::info!("Mesh opacity reset to default (1.0)");
-    }
-
-    pub fn set_window_level(&mut self, window_level: f32) -> KeplerResult<()> {
-        self.window_level.set_window_level(window_level)
-    }
-
-    pub fn set_window_width(&mut self, window_width: f32) -> KeplerResult<()> {
-        self.window_level.set_window_width(window_width)
-    }
-
-    /// Retrieve current window level for state snapshotting.
-    pub fn get_window_level(&self) -> f32 {
-        self.window_level.window_level()
-    }
-
-    /// Retrieve current window width for state snapshotting.
-    pub fn get_window_width(&self) -> f32 {
-        self.window_level.window_width()
     }
 
     /// Function-level comment: Create a default camera compatible with orthogonal projection
@@ -499,12 +478,8 @@ impl MeshView {
                 let default_lighting = self.create_default_lighting();
                 default_lighting.to_basic_uniforms()
             };
-            let (window_scale, window_offset) = self.window_level.shader_uniforms();
-            lighting_uniforms.window_scale = window_scale;
-            lighting_uniforms.window_offset = window_offset;
             lighting_uniforms.opacity = self.opacity;
             ctx.update_lighting_uniforms(queue, &lighting_uniforms);
-            log::debug!("[BASIC_MESH_LIGHTING] Updated lighting uniforms with WL: scale={:.3}, offset={:.3}", window_scale, window_offset);
         }
     }
     

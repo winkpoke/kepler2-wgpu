@@ -17,10 +17,8 @@ struct BasicLightingUniforms {
     light_intensity: f32,
     ambient_color: vec3<f32>,
     ambient_intensity: f32,
-    window_scale: f32,
-    window_offset: f32,
+    padding2: vec3<f32>,
     opacity: f32,
-    _padding2: f32,
 };
 
 struct VertexInput {
