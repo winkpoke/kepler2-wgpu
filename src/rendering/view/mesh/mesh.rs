@@ -443,8 +443,7 @@ impl Mesh {
     pub fn new(
         ctvolume: &CTVolume,
         iso_value: f32,
-        downsample: Option<usize>,
-        vertex_precision: usize,
+        window: Option<[f32; 2]>,
     ) -> Self {
         // Smoothing settings
         let smooth_iterations = 5;
@@ -479,7 +478,20 @@ impl Mesh {
             ctvolume.voxel_spacing.1 as f64, // spacing_y
             ctvolume.voxel_spacing.0 as f64, // spacing_x
         );
-        let volume = match Array3::from_shape_vec((dimensions.2, dimensions.1, dimensions.0), voxel_data.clone()) {
+        // Apply WL/WW windowing to voxel data if provided, to make WW 和 WL 对几何的影响彼此独立
+        let windowed_data = if let Some([wl, ww]) = window {
+            let lower = (wl - ww * 0.5).round() as i16;
+            let upper = (wl + ww * 0.5).round() as i16;
+            let mut v = Vec::with_capacity(voxel_data.len());
+            for &val in &voxel_data {
+                if val < lower || val > upper { v.push(lower - 1); } else { v.push(val); }
+            }
+            v
+        } else {
+            voxel_data.clone()
+        };
+
+        let volume = match Array3::from_shape_vec((dimensions.2, dimensions.1, dimensions.0), windowed_data) {
             Ok(arr) => arr,
             Err(e) => {
                 log::warn!(

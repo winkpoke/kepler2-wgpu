@@ -184,15 +184,15 @@ impl RenderApp {
                     // Function-level comment: Pipeline invalidation is now handled by individual render contexts.
                     log::info!("InvalidatePipelines event: render contexts will rebuild pipelines as needed.");
                 }
-                Event::UserEvent(UserEvent::SetEnableMesh(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, downsample, iso_value)) => {
+                Event::UserEvent(UserEvent::SetEnableMesh(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_value, wwwl)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_mesh_mode_enabled(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, downsample, iso_value);
-                    log::info!("EnableMesh toggled at runtime: mesh_index={:?}, mip={:?}, change_mpr={change_mpr}, index_1={index_1}, index_2={index_2}, index_3={index_3}, index_4={index_4}, downsample={downsample}, iso_value={iso_value}", mesh_index, mip);
+                    state.set_mesh_mode_enabled(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_value, wwwl);
+                    log::info!("EnableMesh toggled at runtime: mesh_index={:?}, mip={:?}, change_mpr={change_mpr}, index_1={index_1}, index_2={index_2}, index_3={index_3}, index_4={index_4}, iso_value={iso_value}, wwwl={:?}", mesh_index, mip, wwwl);
                 }
-                Event::UserEvent(UserEvent::SetOneCellLayout(mode, orientation_index, downsample, iso_value)) => {
+                Event::UserEvent(UserEvent::SetOneCellLayout(mode, orientation_index, iso_value, wwwl)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_one_cell_layout(mode, orientation_index, downsample, iso_value);
-                    log::info!("OneCellLayout set to: mode={mode}, orientation_index={orientation_index}, downsample={downsample}, iso_value={iso_value}");
+                    state.set_one_cell_layout(mode, orientation_index, iso_value, wwwl);
+                    log::info!("OneCellLayout set to: mode={mode}, orientation_index={orientation_index}, iso_value={iso_value}, wwwl={:?}", wwwl);
                 }
                 Event::UserEvent(UserEvent::SetCenterAtPointInMM(index, x_mm, y_mm, z_mm)) => {
                     state.set_center_at_point_in_mm(index, x_mm, y_mm, z_mm);
@@ -337,7 +337,7 @@ impl RenderApp {
                             } => {
                                 // Function-level comment: Toggle mesh mode on 'M' key press at runtime.
                                 let new_enabled = !state.mesh_mode_enabled();
-                                state.set_mesh_mode_enabled(Some(3), Some(2), false, 0, 1, 0, 0, 3, 400.0);
+                                state.set_mesh_mode_enabled(Some(3), Some(2), false, 0, 1, 0, 0, 400.0, None);
                                 log::info!("KeyM pressed: mesh mode toggled to {}", new_enabled);
                             }
                             WindowEvent::KeyboardInput {
@@ -350,7 +350,7 @@ impl RenderApp {
                                 ..
                             } => {
                                 let mode =  0 as usize;
-                                state.set_one_cell_layout(mode, 0, 3, 100.0);
+                                state.set_one_cell_layout(mode, 0, 400.0, None);
                                 log::info!("KeyN pressed: one_cell layout mode toggled to {}", mode);
                             }
                             WindowEvent::KeyboardInput {

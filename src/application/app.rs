@@ -1,4 +1,4 @@
-﻿#![allow(dead_code)]
+#![allow(dead_code)]
 
 use log::{trace, info, warn};
 
@@ -450,7 +450,7 @@ impl App {
     }
 
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
-    pub fn set_mesh_mode_enabled(&mut self, mesh_index: Option<usize>, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, downsample: usize, iso_value: f32) {
+    pub fn set_mesh_mode_enabled(&mut self, mesh_index: Option<usize>, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, iso_value: f32,wwwl: Option<[f32; 2]>) {
         let mut change_index =false;
         if change_mpr {
             change_index = true;
@@ -499,11 +499,18 @@ impl App {
                 }
 
                 if let Some(mesh_index) = mesh_index {
-                    // Add Mesh view to slot 3 using factory
-                    let mesh = Mesh::new(&vol, iso_value, Some(downsample), 0);
-                    let mesh_view = self.app_view.view_factory
-                        .create_mesh_view(&mesh, (0, 0), (0, 0))
-                        .unwrap();
+                    let mesh_view = if let Some([wlww0, wlww1]) = wwwl {
+                        let iso_from_wl = if wlww0.is_nan() || wlww1.is_nan() { iso_value } else { wlww0 + wlww1 * 0.5 };
+                        let mesh = Mesh::new(&vol, iso_from_wl, Some([wlww0, wlww1]));
+                        self.app_view.view_factory
+                            .create_mesh_view(&mesh, (0, 0), (0, 0))
+                            .unwrap()
+                    }else {
+                        let mesh = Mesh::new(&vol, iso_value, None);
+                        self.app_view.view_factory
+                            .create_mesh_view(&mesh, (0, 0), (0, 0))
+                            .unwrap()
+                    };
                     self.app_view.layout.replace_view_at(mesh_index, mesh_view);
                 }
             }else {
@@ -522,8 +529,8 @@ impl App {
         &mut self,
         mode: usize,
         orientation_index: usize,
-        downsample: usize,
         iso_value: f32,
+        wwwl: Option<[f32; 2]>,
     ) {
         let vol_option = self.app_model.volume().ok().map(|vol| vol.clone());
         if let Some(vol) = vol_option {
@@ -552,10 +559,18 @@ impl App {
                     self.app_view.layout.add_view(mip_view);
                 }
                 2 => {
-                    let mesh = Mesh::new(&vol, iso_value, Some(downsample), 0);
-                    let mesh_view = view_factory
-                        .create_mesh_view(&mesh, (0, 0), (0, 0))
-                        .unwrap();
+                    let mesh_view = if let Some([wlww0, wlww1]) = wwwl {
+                        let iso_from_wl = if wlww0.is_nan() || wlww1.is_nan() { iso_value } else { wlww0 + wlww1 * 0.5 };
+                        let mesh = Mesh::new(&vol, iso_from_wl, Some([wlww0, wlww1]));
+                        self.app_view.view_factory
+                            .create_mesh_view(&mesh, (0, 0), (0, 0))
+                            .unwrap()
+                    }else {
+                        let mesh = Mesh::new(&vol, iso_value, None);
+                        self.app_view.view_factory
+                            .create_mesh_view(&mesh, (0, 0), (0, 0))
+                            .unwrap()
+                    };
                     self.app_view.layout.add_view(mesh_view);
                 }
                 _ => {
