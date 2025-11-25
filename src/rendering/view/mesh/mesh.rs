@@ -28,12 +28,12 @@ impl Default for BasicLightingUniforms {
     /// Provides reasonable defaults for directional lighting from top-left-front direction.
     fn default() -> Self {
         Self {
-            light_direction: [-0.5, -1.0, -0.5],  // Top-left-front direction
+            light_direction: [0.6, -0.7, 0.3],  // Top-left-front direction
             _padding1: 0.0,
             light_color: [1.0, 1.0, 1.0],         // White light
             light_intensity: 1.0,
-            ambient_color: [0.2, 0.2, 0.2],       // Dim ambient light
-            ambient_intensity: 0.3,
+            ambient_color: [0.4, 0.4, 0.4],
+            ambient_intensity: 0.5,
             window_scale: 1.0,
             window_offset: 0.5,
             opacity: 1.0,
@@ -64,8 +64,8 @@ impl Lighting {
             _padding1: 0.0,
             light_color: [1.0, 1.0, 1.0],         // White light
             light_intensity: self.intensity,
-            ambient_color: [0.2, 0.2, 0.2],       // Dim ambient light
-            ambient_intensity: 0.3,
+            ambient_color: [0.4, 0.4, 0.5],
+            ambient_intensity: 0.4,
             window_scale: 1.0,
             window_offset: 0.5,
             opacity: 1.0,
@@ -593,17 +593,17 @@ impl Mesh {
                     mesh_triangles.len() / 3
                 );
 
-                // Convert MeshVertex -> positions as f64 for OBJ-style export
-                let vertices_pos: Vec<[f64; 3]> = mesh_vertices
-                    .iter()
-                    .map(|v| [v.position[0] as f64, v.position[1] as f64, v.position[2] as f64])
-                    .collect();
+                // // Convert MeshVertex -> positions as f64 for OBJ-style export
+                // let vertices_pos: Vec<[f64; 3]> = mesh_vertices
+                //     .iter()
+                //     .map(|v| [v.position[0] as f64, v.position[1] as f64, v.position[2] as f64])
+                //     .collect();
 
-                // Convert flat u32 indices -> face triplets as usize
-                let faces_usize: Vec<[usize; 3]> = mesh_triangles
-                    .chunks(3)
-                    .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
-                    .collect();
+                // // Convert flat u32 indices -> face triplets as usize
+                // let faces_usize: Vec<[usize; 3]> = mesh_triangles
+                //     .chunks(3)
+                //     .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
+                //     .collect();
 
                 meshes.push(Self { vertices: mesh_vertices, indices: mesh_triangles });
 
