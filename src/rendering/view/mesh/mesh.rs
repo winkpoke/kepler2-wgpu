@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use crate::data::CTVolume;
-use std::collections::HashMap;
+use super::mesh_processing::*;
 use ndarray::Array3;
 
 
@@ -89,391 +89,13 @@ unsafe impl bytemuck::Pod for MeshVertex {}
 #[derive(Default, Debug, Clone)]
 pub struct Mesh {
     pub vertices: Vec<MeshVertex>,
-    pub indices: Vec<u16>,
+    pub indices: Vec<u32>,
 }
 
-/// Function-level comment: Marching Tetrahedra algorithm implementation for isosurface extraction
-/// Converts 3D volume data into triangular mesh representation using tetrahedral decomposition
-#[derive(Clone, Debug)]
-struct MarchingTetrahedra {
-    cube_to_tetrahedra: [[usize; 4]; 6],
-    tetrahedra_edges: [[usize; 2]; 6],
-    triangle_table: HashMap<u8, Vec<[usize; 3]>>,
-}
-
-impl MarchingTetrahedra {
-    fn new() -> Self {
-        let mut triangle_table: HashMap<u8, Vec<[usize; 3]>> = HashMap::new();
-        triangle_table.insert(0b0000, vec![]);
-        triangle_table.insert(0b0001, vec![[0, 1, 2]]);
-        triangle_table.insert(0b0010, vec![[0, 3, 4]]);
-        triangle_table.insert(0b0100, vec![[1, 3, 5]]);
-        triangle_table.insert(0b1000, vec![[2, 4, 5]]);
-        triangle_table.insert(0b0011, vec![[2, 4, 3], [2, 3, 1]]);
-        triangle_table.insert(0b0101, vec![[0, 2, 5], [0, 5, 1]]);
-        triangle_table.insert(0b0110, vec![[0, 1, 5], [0, 5, 3]]);
-        triangle_table.insert(0b1001, vec![[0, 4, 5], [0, 5, 2]]);
-        triangle_table.insert(0b1010, vec![[0, 3, 5], [0, 5, 4]]);
-        triangle_table.insert(0b1100, vec![[1, 4, 5], [1, 5, 3]]);
-        triangle_table.insert(0b1110, vec![[0, 2, 1]]);
-        triangle_table.insert(0b1101, vec![[0, 4, 3]]);
-        triangle_table.insert(0b1011, vec![[1, 5, 3]]);
-        triangle_table.insert(0b0111, vec![[2, 5, 4]]);
-        triangle_table.insert(0b1111, vec![]);
-
-        MarchingTetrahedra {
-            cube_to_tetrahedra: [
-                [0, 1, 3, 4],
-                [1, 4, 5, 7],
-                [1, 3, 4, 7],
-                [1, 2, 3, 7],
-                [2, 3, 6, 7],
-                [3, 4, 6, 7],
-            ],
-            tetrahedra_edges: [
-                [0, 1], [0, 2], [0, 3],
-                [1, 2], [1, 3], [2, 3],
-            ],
-            triangle_table,
-        }
-    }
-
-    fn extract_isosurface(
-        &self,
-        voxel_data: &Vec<i16>,
-        dimensions: (usize, usize, usize),
-        iso_value: f32,
-        spacing: (f32, f32, f32),
-        downsample: Option<usize>,
-        vertex_precision: usize,
-    ) -> (Vec<MeshVertex>, Vec<u16>) {
-        log::info!("原始体数据大小: {:?}", dimensions);
-
-        // Convert Vec<i16> to Array3<f32> with correct dimensions
-        // Note: dimensions are (width, height, depth) but we need (depth, height, width) for Array3
-        let vec_f32: Vec<f32> = voxel_data.iter().map(|&v| v as f32).collect();
-        let mut volume = match Array3::from_shape_vec((dimensions.2, dimensions.1, dimensions.0), vec_f32) {
-            Ok(arr) => arr,
-            Err(e) => {
-                log::warn!(
-                    "volume shape mismatch: expected {} elements, got {}; error: {}",
-                    dimensions.2 * dimensions.1 * dimensions.0,
-                    voxel_data.len(),
-                    e
-                );
-                return (vec![], vec![]);
-            }
-        };
-        
-        let mut final_spacing = spacing;
-
-        if let Some(ds) = downsample {
-            if ds > 1 {
-                log::info!("降采样因子: {}", ds);
-                let new_shape = [
-                    volume.shape()[0] / ds,
-                    volume.shape()[1] / ds,
-                    volume.shape()[2] / ds,
-                ];
-                let mut downsampled = Array3::zeros(new_shape);
-                for z in 0..new_shape[0] {
-                    for y in 0..new_shape[1] {
-                        for x in 0..new_shape[2] {
-                            let slice = volume.slice(ndarray::s![
-                                z * ds..(z + 1) * ds,
-                                y * ds..(y + 1) * ds,
-                                x * ds..(x + 1) * ds
-                            ]);
-                            downsampled[[z, y, x]] = slice.mean().unwrap_or(0.0);
-                        }
-                    }
-                }
-                volume = downsampled;
-                final_spacing = (spacing.0 * ds as f32, spacing.1 * ds as f32, spacing.2 * ds as f32);
-                log::info!("降采样后大小: {:?}", volume.shape());
-                log::info!("更新后的体素间距: {:?}", final_spacing);
-            }
-        }
-
-        let shape = volume.shape();
-        let depth = shape[0];
-        let height = shape[1];
-        let width = shape[2];
-
-        log::info!("筛选活跃区域...");
-        let active_mask = self.find_active_voxels(&volume, iso_value);
-        let mut active_indices: Vec<(usize, usize, usize)> = vec![];
-        for z in 0..depth - 1 {
-            for y in 0..height - 1 {
-                for x in 0..width - 1 {
-                    if active_mask[[z, y, x]] {
-                        active_indices.push((z, y, x));
-                    }
-                }
-            }
-        }
-        log::info!("活跃体素数: {}", active_indices.len());
-
-        if active_indices.is_empty() {
-            log::warn!("未找到包含等值面的体素");
-            return (vec![], vec![]);
-        }
-
-        let mut vertex_dict: HashMap<(i32, i32, i32), usize> = HashMap::new();
-        let mut vertices: Vec<[f32; 3]> = vec![];
-        let mut triangles: Vec<[u32; 3]> = vec![];
-
-        let total = active_indices.len();
-        for (idx, &(z, y, x)) in active_indices.iter().enumerate() {
-            if idx % 10000 == 0 {
-                log::info!("处理进度: {}/{} ({:.1}%)", idx, total, 100.0 * idx as f32 / total as f32);
-            }
-
-            let cube_values = [
-                volume[[z, y, x]],
-                volume[[z, y, x + 1]],
-                volume[[z, y + 1, x + 1]],
-                volume[[z, y + 1, x]],
-                volume[[z + 1, y, x]],
-                volume[[z + 1, y, x + 1]],
-                volume[[z + 1, y + 1, x + 1]],
-                volume[[z + 1, y + 1, x]],
-            ];
-
-            let cube_positions = [
-                [x as f32 * final_spacing.0, y as f32 * final_spacing.1, z as f32 * final_spacing.2],
-                [(x + 1) as f32 * final_spacing.0, y as f32 * final_spacing.1, z as f32 * final_spacing.2],
-                [(x + 1) as f32 * final_spacing.0, (y + 1) as f32 * final_spacing.1, z as f32 * final_spacing.2],
-                [x as f32 * final_spacing.0, (y + 1) as f32 * final_spacing.1, z as f32 * final_spacing.2],
-                [x as f32 * final_spacing.0, y as f32 * final_spacing.1, (z + 1) as f32 * final_spacing.2],
-                [(x + 1) as f32 * final_spacing.0, y as f32 * final_spacing.1, (z + 1) as f32 * final_spacing.2],
-                [(x + 1) as f32 * final_spacing.0, (y + 1) as f32 * final_spacing.1, (z + 1) as f32 * final_spacing.2],
-                [x as f32 * final_spacing.0, (y + 1) as f32 * final_spacing.1, (z + 1) as f32 * final_spacing.2],
-            ];
-
-            for &tet_indices in self.cube_to_tetrahedra.iter() {
-                let tet_positions = [
-                    cube_positions[tet_indices[0]],
-                    cube_positions[tet_indices[1]],
-                    cube_positions[tet_indices[2]],
-                    cube_positions[tet_indices[3]],
-                ];
-                let tet_values = [
-                    cube_values[tet_indices[0]],
-                    cube_values[tet_indices[1]],
-                    cube_values[tet_indices[2]],
-                    cube_values[tet_indices[3]],
-                ];
-                
-                self.process_tetrahedron_dedup(
-                    &tet_positions,
-                    &tet_values,
-                    iso_value,
-                    &mut vertices,
-                    &mut triangles,
-                    &mut vertex_dict,
-                    vertex_precision,
-                );
-            }
-        }
-
-        log::info!("生成完成: {} 个顶点, {} 个三角形", vertices.len(), triangles.len());
-
-        if vertices.is_empty() {
-            return (vec![], vec![]);
-        }
-
-        // // Convert vertices to MeshVertex format with proper coordinate system
-        // let mesh_vertices: Vec<MeshVertex> = vertices.iter().map(|&v| {
-        //     // Convert from volume coordinates to world coordinates
-        //     // Medical imaging typically uses DICOM coordinate system
-        //     MeshVertex {
-        //         position: [v[0], v[1], v[2]], // Keep original coordinates for now
-        //         normal: [0.0, 0.0, 1.0], // Simple normal for now
-        //         color: [0.8, 0.8, 0.8], // Default gray color
-        //     }
-        // }).collect();
-
-        // // Convert triangles to u16 format (flatten the triangle indices)
-        // let mesh_triangles: Vec<u16> = triangles.iter().flat_map(|tri| {
-        //     tri.iter().map(|&idx| idx as u16)
-        // }).collect();
-
-        // 1. 计算包围盒（体素坐标系）
-        let mut min_vox = [f32::INFINITY; 3];
-        let mut max_vox = [f32::NEG_INFINITY; 3];
-        for &v in &vertices {
-            for i in 0..3 {
-                min_vox[i] = min_vox[i].min(v[i]);
-                max_vox[i] = max_vox[i].max(v[i]);
-            }
-        }
-        let center_vox = [
-            (min_vox[0] + max_vox[0]) * 0.5,
-            (min_vox[1] + max_vox[1]) * 0.5,
-            (min_vox[2] + max_vox[2]) * 0.5,
-        ];
-        let extent_vox = [
-            max_vox[0] - min_vox[0],
-            max_vox[1] - min_vox[1],
-            max_vox[2] - min_vox[2],
-        ];
-        let max_extent = extent_vox.iter().fold(0.0f32, |a, &b| a.max(b));
-        if max_extent < f32::EPSILON {
-            log::warn!("extract_isosurface: empty bounding box, skipping.");
-            return (vec![], vec![]);
-        }
-
-        // 2. 归一化 + 可选地放大到「医学常用 512 体素≈ -256..256 mm」范围
-        //    这里直接缩到 [-1,1] 立方体，摄像机放在 z=2 看原点即可看到。
-        let scale = 1.0 / max_extent;
-        let mut mesh_vertices = Vec::with_capacity(vertices.len());
-        for v in vertices {
-            let x = (v[0] - center_vox[0]) * scale;
-            let y = (v[1] - center_vox[1]) * scale;
-            let z = (v[2] - center_vox[2]) * scale;
-            // 简单面法线：沿 Z 向上，以后可换加权法线
-            let normal = [0.0, 0.0, 1.0];
-            // 高对比颜色方便第一眼看到
-            let color = [0.95, 0.7, 0.2];
-            mesh_vertices.push(MeshVertex {
-                position: [x, y, z],
-                normal,
-                color,
-            });
-        }
-
-        // 3. 索引转 u16（之前已经 flatten 过，这里直接 cast）
-        let mesh_triangles: Vec<u16> = triangles
-            .into_iter()
-            .flat_map(|tri| tri.into_iter().map(|i| i as u16)) // 使用 `into_iter` 而不是 `iter`
-            .collect();
-
-        log::info!(
-            "extract_isosurface: {} vertices, {} triangles (normalized to unit cube)",
-            mesh_vertices.len(),
-            mesh_triangles.len() / 3
-        );
-
-        (mesh_vertices, mesh_triangles)
-    }
-
-    fn find_active_voxels(&self, volume: &Array3<f32>, iso_value: f32) -> Array3<bool> {
-        let shape = volume.shape();
-        let depth = shape[0] - 1;
-        let height = shape[1] - 1;
-        let width = shape[2] - 1;
-
-        let mut mask = Array3::from_elem((depth, height, width), false);
-
-        for z in 0..depth {
-            for y in 0..height {
-                for x in 0..width {
-                    let cube_vals = [
-                        volume[[z, y, x]],
-                        volume[[z, y, x + 1]],
-                        volume[[z, y + 1, x + 1]],
-                        volume[[z, y + 1, x]],
-                        volume[[z + 1, y, x]],
-                        volume[[z + 1, y, x + 1]],
-                        volume[[z + 1, y + 1, x + 1]],
-                        volume[[z + 1, y + 1, x]],
-                    ];
-                    let cube_min = cube_vals.iter().fold(f32::INFINITY, |a, &b| a.min(b));
-                    let cube_max = cube_vals.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b));
-                    mask[[z, y, x]] = cube_min < iso_value && cube_max >= iso_value;
-                }
-            }
-        }
-
-        mask
-    }
-
-    fn process_tetrahedron_dedup(
-        &self,
-        positions: &[[f32; 3]],
-        values: &[f32],
-        iso_value: f32,
-        vertices: &mut Vec<[f32; 3]>,
-        triangles: &mut Vec<[u32; 3]>,
-        vertex_dict: &mut HashMap<(i32, i32, i32), usize>,
-        precision: usize,
-    ) {
-        let inside = [
-            values[0] >= iso_value,
-            values[1] >= iso_value,
-            values[2] >= iso_value,
-            values[3] >= iso_value,
-        ];
-        let case_index: u8 = (inside[0] as u8) << 0
-            | (inside[1] as u8) << 1
-            | (inside[2] as u8) << 2
-            | (inside[3] as u8) << 3;
-
-        if case_index == 0 || case_index == 15 {
-            return;
-        }
-
-        if let Some(triangle_config) = self.triangle_table.get(&case_index) {
-            if triangle_config.is_empty() {
-                return;
-            }
-
-            let mut edge_vertex_indices: Vec<Option<usize>> = vec![None; 6];
-            for (i, edge) in self.tetrahedra_edges.iter().enumerate() {
-                let v1 = edge[0];
-                let v2 = edge[1];
-                if inside[v1] != inside[v2] {
-                    let val1 = values[v1];
-                    let val2 = values[v2];
-                    let t = if (val1 - val2).abs() > 1e-10 {
-                        (iso_value - val1) / (val2 - val1)
-                    } else {
-                        0.5
-                    };
-                    let vertex = [
-                        positions[v1][0] + t * (positions[v2][0] - positions[v1][0]),
-                        positions[v1][1] + t * (positions[v2][1] - positions[v1][1]),
-                        positions[v1][2] + t * (positions[v2][2] - positions[v1][2]),
-                    ];
-
-                    let factor = 10f32.powi(precision as i32);
-                    let vertex_key = (
-                        (vertex[0] * factor).round() as i32,
-                        (vertex[1] * factor).round() as i32,
-                        (vertex[2] * factor).round() as i32,
-                    );
-
-                    let index = if let Some(&idx) = vertex_dict.get(&vertex_key) {
-                        idx
-                    } else {
-                        let idx = vertices.len();
-                        vertices.push(vertex);
-                        vertex_dict.insert(vertex_key, idx);
-                        idx
-                    };
-
-                    edge_vertex_indices[i] = Some(index);
-                }
-            }
-
-            for tri in triangle_config.iter() {
-                let mut tri_indices: [u32; 3] = [0; 3];
-                let mut valid = true;
-                for (j, &edge_idx) in tri.iter().enumerate() {
-                    if let Some(idx) = edge_vertex_indices[edge_idx] {
-                        tri_indices[j] = idx as u32;
-                    } else {
-                        valid = false;
-                        break;
-                    }
-                }
-                if valid {
-                    triangles.push(tri_indices);
-                }
-            }
-        }
-    }
+struct Tissue {
+    name: String,
+    threshold: i16,
+    color: [f32; 3],
 }
 
 impl Mesh {
@@ -535,7 +157,7 @@ impl Mesh {
         ];
 
         // Create cube indices for each colored face (CCW winding)
-        let indices: Vec<u16> = vec![
+        let indices: Vec<u32> = vec![
             // Front face (Red)
             0, 1, 2,  2, 3, 0,
             // Back face (Green)
@@ -606,7 +228,7 @@ impl Mesh {
         ];
 
         // Create cube indices for each face (CCW winding) - all faces use uniform gray color
-        let indices: Vec<u16> = vec![
+        let indices: Vec<u32> = vec![
             // Front face (Uniform Gray)
             0, 1, 2,  2, 3, 0,
             // Back face (Uniform Gray)
@@ -784,17 +406,17 @@ impl Mesh {
             // Add indices for each face
             indices.extend_from_slice(&[
                 // Front face
-                base_index + 0, base_index + 1, base_index + 2,  base_index + 2, base_index + 3, base_index + 0,
+                (base_index + 0) as u32, (base_index + 1) as u32, (base_index + 2) as u32,  (base_index + 2) as u32, (base_index + 3) as u32, (base_index + 0) as u32,
                 // Back face
-                base_index + 4, base_index + 5, base_index + 6,  base_index + 6, base_index + 7, base_index + 4,
+                (base_index + 4) as u32, (base_index + 5) as u32, (base_index + 6) as u32,  (base_index + 6) as u32, (base_index + 7) as u32, (base_index + 4) as u32,
                 // Bottom face
-                base_index + 8, base_index + 9, base_index + 10,  base_index + 10, base_index + 11, base_index + 8,
+                (base_index + 8) as u32, (base_index + 9) as u32, (base_index + 10) as u32,  (base_index + 10) as u32, (base_index + 11) as u32, (base_index + 8) as u32,
                 // Top face
-                base_index + 12, base_index + 13, base_index + 14,  base_index + 14, base_index + 15, base_index + 12,
+                (base_index + 12) as u32, (base_index + 13) as u32, (base_index + 14) as u32,  (base_index + 14) as u32, (base_index + 15) as u32, (base_index + 12) as u32,
                 // Left face
-                base_index + 16, base_index + 17, base_index + 18,  base_index + 18, base_index + 19, base_index + 16,
+                (base_index + 16) as u32, (base_index + 17) as u32, (base_index + 18) as u32,  (base_index + 18) as u32, (base_index + 19) as u32, (base_index + 16) as u32,
                 // Right face
-                base_index + 20, base_index + 21, base_index + 22,  base_index + 22, base_index + 23, base_index + 20,
+                (base_index + 20) as u32, (base_index + 21) as u32, (base_index + 22) as u32,  (base_index + 22) as u32, (base_index + 23) as u32, (base_index + 20) as u32,
             ]);
             
             vertex_index += 24;
@@ -830,44 +452,209 @@ impl Mesh {
         downsample: Option<usize>,
         vertex_precision: usize,
     ) -> Self {
-        log::info!("开始从CT体积数据生成网格...");
-        log::info!("等值面值: {}", iso_value);
-        log::info!("降采样: {:?}", downsample);
-        log::info!("顶点精度: {}", vertex_precision);
-        log::info!("体积维度: {:?}", ctvolume.dimensions);
-        log::info!("体素间距: {:?}", ctvolume.voxel_spacing);
-        
-        let mt = MarchingTetrahedra::new();
-        let (vertices, indices) = mt.extract_isosurface(
-            &ctvolume.voxel_data,
-            ctvolume.dimensions,
-            iso_value,
-            ctvolume.voxel_spacing,
-            downsample,
-            vertex_precision,
+        // Smoothing settings
+        let smooth_iterations = 5;
+        let smooth_lambda = 0.5;
+        let tissues = vec![
+            // Bone (Cortical) - Hard bone
+            Tissue {
+                name: "Bone_Cortical".to_string(),
+                threshold: iso_value as i16,
+                color: [0.95, 0.90, 0.85], // #F2E6D9
+            },
+            // Bone (Trabecular) - Spongy bone
+            Tissue {
+                name: "Bone_Trabecular".to_string(),
+                threshold: iso_value as i16 / 2,
+                color: [0.85, 0.80, 0.75], // #D9CCBF
+            },
+            // Soft Tissue (Muscle)
+            //Tissue {
+            //     name: "Muscle".to_string(),
+            //     threshold: 40,
+            //     color: [0.80, 0.40, 0.40], // #CC6666
+            // },
+        ];
+        println!("Starting Marching Tetrahedra conversion...");
+
+        // 1. Read DICOM
+        let dimensions = ctvolume.dimensions;
+        let voxel_data = ctvolume.voxel_data.clone();
+        let spacing = (
+            ctvolume.voxel_spacing.2 as f64, // spacing_z
+            ctvolume.voxel_spacing.1 as f64, // spacing_y
+            ctvolume.voxel_spacing.0 as f64, // spacing_x
         );
-        
-        if vertices.is_empty() {
-            log::warn!("未生成任何网格数据");
-            return Self { vertices: Vec::new(), indices: Vec::new() };
-        }
-        
-        // Calculate mesh bounds for debugging
-        let mut min_bounds = [f32::INFINITY, f32::INFINITY, f32::INFINITY];
-        let mut max_bounds = [f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
-        
-        for vertex in &vertices {
-            for i in 0..3 {
-                min_bounds[i] = min_bounds[i].min(vertex.position[i]);
-                max_bounds[i] = max_bounds[i].max(vertex.position[i]);
+        let volume = match Array3::from_shape_vec((dimensions.2, dimensions.1, dimensions.0), voxel_data.clone()) {
+            Ok(arr) => arr,
+            Err(e) => {
+                log::warn!(
+                    "volume shape mismatch: expected {} elements, got {}; error: {}",
+                    dimensions.2 * dimensions.1 * dimensions.0,
+                    voxel_data.len(),
+                    e
+                );
+                return Self { vertices: Vec::new(), indices: Vec::new() };
+            }
+        };
+
+        // 2. Extract Surfaces
+        let mut meshes = Vec::new();
+        // let mut meshes_out = Vec::new();
+        for tissue in tissues {
+            println!("\n=== Processing {} (Threshold={}) ===", tissue.name, tissue.threshold);
+            let mt = MarchingTetrahedra::new(tissue.threshold);
+            let (vertices, faces) = mt.extract_surface(&volume, spacing);
+            
+            println!("Generated {} vertices, {} triangles", vertices.len(), faces.len());
+
+            if !vertices.is_empty() {
+                // Merge vertices to fix connectivity
+                let (merged_vertices, merged_faces) = merge_vertices(&vertices, &faces);
+
+                // Apply smoothing (match OBJ generation path)
+                let smoothed_vertices = laplacian_smooth(
+                    &merged_vertices,
+                    &merged_faces,
+                    smooth_iterations as usize,
+                    smooth_lambda as f64,
+                );
+
+                // smoothed_vertices are already in millimeters from Marching Tetrahedra
+                let mm_vertices: Vec<[f64; 3]> = smoothed_vertices.clone();
+
+                let mut min_mm = [f64::INFINITY; 3];
+                let mut max_mm = [f64::NEG_INFINITY; 3];
+                for p in &mm_vertices {
+                    for i in 0..3 {
+                        min_mm[i] = min_mm[i].min(p[i]);
+                        max_mm[i] = max_mm[i].max(p[i]);
+                    }
+                }
+                let center_mm = [
+                    (min_mm[0] + max_mm[0]) * 0.5,
+                    (min_mm[1] + max_mm[1]) * 0.5,
+                    (min_mm[2] + max_mm[2]) * 0.5,
+                ];
+                let extent_mm = [
+                    max_mm[0] - min_mm[0],
+                    max_mm[1] - min_mm[1],
+                    max_mm[2] - min_mm[2],
+                ];
+                let max_extent_mm = extent_mm.iter().fold(0.0f64, |a, &b| a.max(b));
+                if max_extent_mm < f64::EPSILON {
+                    log::warn!("extract_isosurface: empty bounding box (mm), skipping.");
+                }
+
+                let scale = 2.0 / max_extent_mm;
+
+                let normals = compute_vertex_normals_local(&mm_vertices, &merged_faces);
+
+                let mut mesh_vertices = Vec::with_capacity(mm_vertices.len());
+                for (idx, p) in mm_vertices.iter().enumerate() {
+                    let x = (p[0] - center_mm[0]) * scale;
+                    let y = (p[1] - center_mm[1]) * scale;
+                    let z = (p[2] - center_mm[2]) * scale;
+                    let normal = normals.get(idx).copied().unwrap_or([0.0, 0.0, 1.0]);
+                    let color = tissue.color;
+                    mesh_vertices.push(MeshVertex {
+                        position: [x as f32, y as f32, z as f32],
+                        normal,
+                        color,
+                    });
+                }
+
+                // generate final GPU indices (with consistent vertex order)
+                let mesh_triangles: Vec<u32> = merged_faces
+                    .into_iter()
+                    .flat_map(|tri| tri.into_iter().map(|i| i as u32))
+                    .collect();
+
+                log::info!(
+                    "extract_isosurface: {} vertices, {} triangles (normalized to unit cube)",
+                    mesh_vertices.len(),
+                    mesh_triangles.len() / 3
+                );
+
+                // Calculate mesh bounds for debugging
+                let mut min_bounds = [f32::INFINITY, f32::INFINITY, f32::INFINITY];
+                let mut max_bounds = [f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
+                
+                for vertex in &mesh_vertices {
+                    for i in 0..3 {
+                        min_bounds[i] = min_bounds[i].min(vertex.position[i]);
+                        max_bounds[i] = max_bounds[i].max(vertex.position[i]);
+                    }
+                }
+
+                log::info!(
+                    "extract_isosurface: {} vertices, {} triangles (normalized to unit cube)",
+                    mesh_vertices.len(),
+                    mesh_triangles.len() / 3
+                );
+
+                // Convert MeshVertex -> positions as f64 for OBJ-style export
+                let vertices_pos: Vec<[f64; 3]> = mesh_vertices
+                    .iter()
+                    .map(|v| [v.position[0] as f64, v.position[1] as f64, v.position[2] as f64])
+                    .collect();
+
+                // Convert flat u32 indices -> face triplets as usize
+                let faces_usize: Vec<[usize; 3]> = mesh_triangles
+                    .chunks(3)
+                    .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
+                    .collect();
+
+                meshes.push(Self { vertices: mesh_vertices, indices: mesh_triangles });
+
+                // meshes_out.push(NamedMesh {
+                //     name: tissue.name,
+                //     color: tissue.color,
+                //     vertices: vertices_pos,
+                //     faces: faces_usize,
+                // });
+
+                // let output_file = "output_mesh_mt.obj";
+                // save_obj(output_file, &meshes_out).unwrap();
+            } else {
+                println!("Warning: No mesh generated for {}", tissue.name);
             }
         }
         
-        let triangle_count = indices.len() / 3;
-        log::info!("网格生成完成: {} 个顶点, {} 个三角形", vertices.len(), triangle_count);
-        
-        Self { vertices, indices }
+        if meshes.is_empty() {
+            log::warn!("No mesh generated for any tissue.");
+            return Self { vertices: Vec::new(), indices: Vec::new() };
+        }
+
+        meshes.remove(0)
     }
+}
+
+/// Function-level comment: Accumulate face normals and normalize to per-vertex normals
+fn compute_vertex_normals_local(vertices: &[[f64; 3]], faces: &[[usize; 3]]) -> Vec<[f32; 3]> {
+    let mut acc: Vec<[f64; 3]> = vec![[0.0, 0.0, 0.0]; vertices.len()];
+    for face in faces {
+        let i0 = face[0];
+        let i1 = face[1];
+        let i2 = face[2];
+        let p0 = vertices[i0];
+        let p1 = vertices[i1];
+        let p2 = vertices[i2];
+        let v1 = [p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]];
+        let v2 = [p2[0] - p0[0], p2[1] - p0[1], p2[2] - p0[2]];
+        let n = [
+            v1[1] * v2[2] - v1[2] * v2[1],
+            v1[2] * v2[0] - v1[0] * v2[2],
+            v1[0] * v2[1] - v1[1] * v2[0],
+        ];
+        acc[i0][0] += n[0]; acc[i0][1] += n[1]; acc[i0][2] += n[2];
+        acc[i1][0] += n[0]; acc[i1][1] += n[1]; acc[i1][2] += n[2];
+        acc[i2][0] += n[0]; acc[i2][1] += n[1]; acc[i2][2] += n[2];
+    }
+    acc.into_iter().map(|a| {
+        let len = (a[0]*a[0] + a[1]*a[1] + a[2]*a[2]).sqrt();
+        if len > 1e-12 { [ (a[0]/len) as f32, (a[1]/len) as f32, (a[2]/len) as f32 ] } else { [0.0, 0.0, 1.0] }
+    }).collect()
 }
 
 impl MeshVertex {
