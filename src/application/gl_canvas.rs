@@ -30,8 +30,8 @@ pub enum UserEvent {
     /// Manually trigger pipeline cache invalidation without any other action.
     InvalidatePipelines,
     /// Set mesh mode enabled/disabled for a specific mesh index.
-    SetEnableMesh(Option<usize>, Option<usize>, bool, usize, usize, usize, usize, f32, Option<[f32; 2]>),
-    SetOneCellLayout(usize, usize, f32, Option<[f32; 2]>),
+    SetEnableMesh(Option<usize>, Option<usize>, bool, usize, usize, usize, usize, f32, Option<Vec<f32>>),
+    SetOneCellLayout(usize, usize, f32, Option<Vec<f32>>),
     #[cfg(target_arch = "wasm32")]
     GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     #[cfg(target_arch = "wasm32")]
@@ -145,16 +145,16 @@ impl GLCanvas {
         }
     }
 
-    pub fn enable_mesh(&self, mesh_index: Option<usize>, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, iso_value: f32, wwwl: Option<[f32; 2]>) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetEnableMesh(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_value, wwwl)) {
+    pub fn enable_mesh(&self, mesh_index: Option<usize>, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, iso_value: f32, wwwl: Option<Vec<f32>>) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetEnableMesh(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_value, wwwl.clone())) {
             log::error!("Failed to send SetEnableMesh event: {:?}", e);
         } else {
             log::info!("Sent SetEnableMesh event: mesh_index={:?}, mip={:?}, change_mpr={}, index_1={}, index_2={}, index_3={}, index_4={}, iso_value={}, wwwl={:?}", mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_value, wwwl);
         }
     }
 
-    pub fn set_one_cell_layout(&self, mode: usize, orientation_index: usize, iso_value: f32, wwwl: Option<[f32; 2]>) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetOneCellLayout(mode, orientation_index, iso_value, wwwl)) {
+    pub fn set_one_cell_layout(&self, mode: usize, orientation_index: usize, iso_value: f32, wwwl: Option<Vec<f32>>) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetOneCellLayout(mode, orientation_index, iso_value, wwwl.clone())) {
             log::error!("Failed to send SetOneCellLayout event: {:?}", e);
         } else {
             log::info!("Sent SetOneCellLayout event: mode={}, orientation_index={}, iso_value={}, wwwl={:?}", mode, orientation_index, iso_value, wwwl);

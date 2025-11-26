@@ -186,12 +186,12 @@ impl RenderApp {
                 }
                 Event::UserEvent(UserEvent::SetEnableMesh(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_value, wwwl)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_mesh_mode_enabled(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_value, wwwl);
+                    state.set_mesh_mode_enabled(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_value, wwwl.clone());
                     log::info!("EnableMesh toggled at runtime: mesh_index={:?}, mip={:?}, change_mpr={change_mpr}, index_1={index_1}, index_2={index_2}, index_3={index_3}, index_4={index_4}, iso_value={iso_value}, wwwl={:?}", mesh_index, mip, wwwl);
                 }
                 Event::UserEvent(UserEvent::SetOneCellLayout(mode, orientation_index, iso_value, wwwl)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_one_cell_layout(mode, orientation_index, iso_value, wwwl);
+                    state.set_one_cell_layout(mode, orientation_index, iso_value, wwwl.clone());
                     log::info!("OneCellLayout set to: mode={mode}, orientation_index={orientation_index}, iso_value={iso_value}, wwwl={:?}", wwwl);
                 }
                 Event::UserEvent(UserEvent::SetCenterAtPointInMM(index, x_mm, y_mm, z_mm)) => {

@@ -679,7 +679,7 @@
         return;
       }
 
-      gl_canvas.enable_mesh(state.mesh_index, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, downsample, iso_value);
+      gl_canvas.enable_mesh(state.mesh_index, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, iso_value, null);
     });
 
     byId('one-cell-submit').addEventListener('click', () => {
@@ -687,7 +687,7 @@
       const orientation_index = parseInt(byId('orientation_index').value, 10);
       const downsample = parseInt(byId('downsample').value, 10);
       const iso_value = parseFloat(byId('iso-value').value);
-      console.log('meshclick:', mode, orientation_index, downsample, iso_value);
+      console.log('meshclick:', mode, orientation_index, iso_value, null);
 
       if (mode === 2){
         state.mesh = true;
@@ -695,7 +695,7 @@
         state.mesh = false;
       }
 
-      gl_canvas.set_one_cell_layout(mode, orientation_index, downsample, iso_value);
+      gl_canvas.set_one_cell_layout(mode, orientation_index, iso_value, null);
     });
     
     byId('3d-submit').addEventListener('click', () => {

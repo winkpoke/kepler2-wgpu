@@ -450,7 +450,7 @@ impl App {
     }
 
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
-    pub fn set_mesh_mode_enabled(&mut self, mesh_index: Option<usize>, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, iso_value: f32,wwwl: Option<[f32; 2]>) {
+    pub fn set_mesh_mode_enabled(&mut self, mesh_index: Option<usize>, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, iso_value: f32, wwwl: Option<Vec<f32>>) {
         let mut change_index =false;
         if change_mpr {
             change_index = true;
@@ -499,9 +499,11 @@ impl App {
                 }
 
                 if let Some(mesh_index) = mesh_index {
-                    let mesh_view = if let Some([wlww0, wlww1]) = wwwl {
-                        let iso_from_wl = if wlww0.is_nan() || wlww1.is_nan() { iso_value } else { wlww0 + wlww1 * 0.5 };
-                        let mesh = Mesh::new(&vol, iso_from_wl, Some([wlww0, wlww1]));
+                    let mesh_view = if let Some(ref wlww) = wwwl {
+                        let wl = *wlww.get(0).unwrap_or(&f32::NAN);
+                        let ww = *wlww.get(1).unwrap_or(&f32::NAN);
+                        let iso_from_wl = if wl.is_nan() || ww.is_nan() { iso_value } else { wl + ww * 0.5 };
+                        let mesh = Mesh::new(&vol, iso_from_wl, Some([wl, ww]));
                         self.app_view.view_factory
                             .create_mesh_view(&mesh, (0, 0), (0, 0))
                             .unwrap()
@@ -530,7 +532,7 @@ impl App {
         mode: usize,
         orientation_index: usize,
         iso_value: f32,
-        wwwl: Option<[f32; 2]>,
+        wwwl: Option<Vec<f32>>,
     ) {
         let vol_option = self.app_model.volume().ok().map(|vol| vol.clone());
         if let Some(vol) = vol_option {
@@ -559,9 +561,11 @@ impl App {
                     self.app_view.layout.add_view(mip_view);
                 }
                 2 => {
-                    let mesh_view = if let Some([wlww0, wlww1]) = wwwl {
-                        let iso_from_wl = if wlww0.is_nan() || wlww1.is_nan() { iso_value } else { wlww0 + wlww1 * 0.5 };
-                        let mesh = Mesh::new(&vol, iso_from_wl, Some([wlww0, wlww1]));
+                    let mesh_view = if let Some(ref wlww) = wwwl {
+                        let wl = *wlww.get(0).unwrap_or(&f32::NAN);
+                        let ww = *wlww.get(1).unwrap_or(&f32::NAN);
+                        let iso_from_wl = if wl.is_nan() || ww.is_nan() { iso_value } else { wl + ww * 0.5 };
+                        let mesh = Mesh::new(&vol, iso_from_wl, Some([wl, ww]));
                         self.app_view.view_factory
                             .create_mesh_view(&mesh, (0, 0), (0, 0))
                             .unwrap()
