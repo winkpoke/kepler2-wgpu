@@ -412,3 +412,75 @@ const TETRA_TABLE: [[i8; 7]; 16] = [
     [0, 2, 3, -1, -1, -1, -1],    // 1110 (v1,v2,v3 in) -> v0 out. Cut (0,1), (0,2), (0,3) -> 0, 2, 3.
     [-1, -1, -1, -1, -1, -1, -1], // 1111
 ];
+
+pub fn downsample_mesh(
+    vertices: &[[f64; 3]],
+    faces: &[[usize; 3]],
+    grid_size: f64,
+) -> (Vec<[f64; 3]>, Vec<[usize; 3]>) {
+    if vertices.is_empty() || faces.is_empty() || grid_size <= 0.0 {
+        return (vertices.to_vec(), faces.to_vec());
+    }
+
+    println!("Downsampling mesh (grid_size={})...", grid_size);
+
+    // 1. Grid Clustering
+    // Map each vertex to a grid cell key
+    // We use a HashMap to group vertices by cell
+    let mut cell_map: HashMap<[i64; 3], Vec<usize>> = HashMap::new();
+
+    for (i, v) in vertices.iter().enumerate() {
+        let key = [
+            (v[0] / grid_size).floor() as i64,
+            (v[1] / grid_size).floor() as i64,
+            (v[2] / grid_size).floor() as i64,
+        ];
+        cell_map.entry(key).or_default().push(i);
+    }
+
+    // 2. Compute Representative Vertices
+    // For each cell, compute the centroid of its vertices
+    let mut new_vertices = Vec::with_capacity(cell_map.len());
+    // Map old vertex index to new vertex index
+    let mut old_to_new = vec![0; vertices.len()];
+
+    for (new_idx, indices) in cell_map.values().enumerate() {
+        let mut sum_pos = [0.0, 0.0, 0.0];
+        for &old_idx in indices {
+            let p = vertices[old_idx];
+            sum_pos[0] += p[0];
+            sum_pos[1] += p[1];
+            sum_pos[2] += p[2];
+        }
+        let count = indices.len() as f64;
+        let centroid = [
+            sum_pos[0] / count,
+            sum_pos[1] / count,
+            sum_pos[2] / count,
+        ];
+        new_vertices.push(centroid);
+
+        for &old_idx in indices {
+            old_to_new[old_idx] = new_idx;
+        }
+    }
+
+    // 3. Reconstruct Faces
+    let mut new_faces = Vec::with_capacity(faces.len());
+    for face in faces {
+        let v0 = old_to_new[face[0]];
+        let v1 = old_to_new[face[1]];
+        let v2 = old_to_new[face[2]];
+
+        // Discard degenerate triangles (where multiple vertices collapsed to the same cell)
+        if v0 != v1 && v1 != v2 && v0 != v2 {
+            new_faces.push([v0, v1, v2]);
+        }
+    }
+
+    println!("Downsampled: {} -> {} vertices, {} -> {} triangles", 
+        vertices.len(), new_vertices.len(), 
+        faces.len(), new_faces.len());
+
+    (new_vertices, new_faces)
+}
