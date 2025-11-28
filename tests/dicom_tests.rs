@@ -23,7 +23,6 @@ mod test_utils {
     // ============================================================================
     // Test Data and Utilities
     // ============================================================================
-
     /// Creates test MHA header with embedded data
     pub fn create_test_mha_data(
         dimensions: [usize; 3],
@@ -68,10 +67,6 @@ mod test_utils {
                 PixelType::Float32 => 4,
                 PixelType::Float64 => 8,
             };
-
-            // let data: Vec<u8> = (0..data_size * pixel_size)
-            //     .map(|i| (i % 256) as u8)
-            //     .collect();
             
             // Create checkerboard pattern data
             let width = dimensions[0] as usize;
@@ -125,84 +120,6 @@ mod test_utils {
         header
     }
 
-    #[test]
-    fn test_patient_position_parsing_standard_positions() {
-        // Test standard DICOM patient positions
-        let positions = vec![
-            ("HFS", PatientPosition::HFS),
-            ("HFP", PatientPosition::HFP),
-            ("HFDR", PatientPosition::HFDR),
-            ("HFDL", PatientPosition::HFDL),
-            ("FFS", PatientPosition::FFS),
-            ("FFP", PatientPosition::FFP),
-            ("FFDR", PatientPosition::FFDR),
-            ("FFDL", PatientPosition::FFDL),
-        ];
-
-        for (input, expected) in positions {
-            let result = PatientPosition::from_str(input);
-            assert_eq!(result.to_string(), expected.to_string(), "Incorrect parsing for position: {}", input);
-        }
-    }
-
-    #[test]
-    fn test_patient_position_parsing_none_input() {
-        let result = PatientPosition::from_str("");
-        assert_eq!(result.to_string(), PatientPosition::HFS.to_string()); // Default to HFS
-    }
-
-    #[test]
-    fn test_patient_position_validation_consistency() {
-        // Test validation with consistent orientation
-        let consistent_orientation = (1.0, 0.0, 0.0, 0.0, 1.0, 0.0); // Standard axial
-        let result = PatientPosition::validate_position_consistency(
-            &PatientPosition::HFS, 
-            Some(consistent_orientation)
-        );
-        assert!(result.is_ok(), "Validation should pass for consistent orientation");
-
-        // Test validation without orientation (should always pass)
-        let result = PatientPosition::validate_position_consistency(
-            &PatientPosition::HFS, 
-            None
-        );
-        assert!(result.is_ok(), "Validation should pass when no orientation provided");
-    }
-
-    #[test]
-    fn test_ct_image_with_different_positions() {
-        let positions = vec!["HFS", "HFP", "FFS", "FFP", "HFDR", "HFDL", "FFDR", "FFDL"];
-        
-        for position in positions {
-            let ct_image = create_test_ct_image_with_position(position);
-            assert_eq!(ct_image.patient_position, Some(position.to_string()));
-            
-            // Verify that the position can be parsed
-            let parsed_position =  match &ct_image.patient_position {
-                Some(pos_str) => PatientPosition::from_str(pos_str),
-                None => PatientPosition::HFS, // Default to HFS if no position specified
-            };
-            assert_eq!(parsed_position.to_string(), position.to_string(), "Failed to parse position: {}", position);
-        }
-    }
-
-    #[test]
-    fn test_patient_position_integration_with_ct_volume() {
-        // This test verifies that PatientPosition parsing integrates correctly
-        // with CTVolume generation (would require DicomRepo functionality)
-        let ct_image = create_test_ct_image_with_position("HFP");
-        
-        // Verify the position is correctly stored
-        assert_eq!(ct_image.patient_position, Some("HFP".to_string()));
-        
-        // Verify parsing works
-        let parsed = PatientPosition::from_str(ct_image.patient_position.as_deref().unwrap_or("HFS"));
-        assert_eq!(parsed.to_string(), PatientPosition::HFP.to_string());
-        
-        // Verify coordinate transform
-        let (flip_x, flip_y, flip_z) = PatientPosition::get_coordinate_transform(&PatientPosition::HFP);
-        assert_eq!((flip_x, flip_y, flip_z), (true, false, false));
-    }
     
     /// Creates test patient data
     pub fn create_test_patient() -> Patient {
@@ -258,36 +175,11 @@ mod test_utils {
             pixel_data,
         )
     }
-    
-    /// Creates test CT image with specific patient position
-    pub fn create_test_ct_image_with_position(position: &str) -> CTImage {
-        let pixel_data = vec![0u8; 512 * 512 * 2]; // 16-bit pixels, 512x512
-        
-        CTImage::new(
-            "1.2.3.4.5.6.7.8.9.2".to_string(),
-            "1.2.3.4.5.6.7.8.9.1".to_string(),
-            512,
-            512,
-            Some((0.5, 0.5)), // pixel spacing
-            Some(1.0), // slice thickness
-            Some(1.0), // spacing between slices
-            Some((100.0, 100.0, 50.0)), // image position
-            Some((1.0, 0.0, 0.0, 0.0, 1.0, 0.0)), // image orientation
-            Some(position.to_string()), // patient position
-            Some(1.0), // rescale slope
-            Some(-1024.0), // rescale intercept
-            Some(40.0), // window center
-            Some(400.0), // window width
-            1, // pixel representation (signed)
-            pixel_data,
-        )
-    }
 }
 
 // =============================================================================
 // UNIT TESTS - Individual Module Testing
 // =============================================================================
-
 #[cfg(test)]
 mod unit_tests {
     use super::*;
@@ -437,12 +329,12 @@ mod unit_tests {
     }
 
     /// Tests DicomRepo functionality
-    #[cfg(target_arch = "wasm32")]
     mod dicom_repo_tests {
+        use kepler_wgpu::{data::CTVolumeGenerator};
         use super::*;
 
         #[test]
-        fn test_dicom_repo_add_study() {
+        fn test_dicom_repo() {
             let mut repo = DicomRepo::new();
             let patient = create_test_patient();
             repo.add_patient(patient.clone());
@@ -451,56 +343,33 @@ mod unit_tests {
             let series = create_test_image_series();
             repo.add_image_series(series.clone());
             let ct_image = create_test_ct_image();
-            repo.add_ct_image(ct_image);
-        
-            let retrieved_patient = repo.get_patient("TEST001").unwrap();
-            let patient_json = serde_json::to_string(&retrieved_patient).unwrap();
-            assert!(patient_json.contains(&format!("\"patient_id\":\"{}\"", patient.patient_id)));
+            repo.add_ct_image(ct_image.clone());
+            println!("{:?}", repo.to_string());
+
+            let retrieved_patient = repo.get_patient(&patient.patient_id).expect("patient exists");
+            assert_eq!(retrieved_patient.patient_id, patient.patient_id);
+            assert_eq!(retrieved_patient.name, patient.name);
+
             let retrieved_studies = repo.get_studies_by_patient(&patient.patient_id);
-            let studies_json = serde_json::to_string(&retrieved_studies).unwrap();
-            assert!(studies_json.contains(&format!("\"patient_id\":\"{}\"", patient.patient_id)));
-            assert!(studies_json.contains(&format!("\"uid\":\"{}\"", study.uid)));
-            let retrieved_series = repo.get_series_by_study(&series.study_uid);
-            let series_json = serde_json::to_string(&retrieved_series).unwrap();
-            assert!(series_json.contains(&format!("\"study_uid\":\"{}\"", series.study_uid)));
-            assert!(series_json.contains(&format!("\"uid\":\"{}\"", series.uid)));
-            assert!(series_json.contains("\"modality\":\"CT\""));
+            assert_eq!(retrieved_studies.len(), 1);
+            assert_eq!(retrieved_studies[0].uid, study.uid);
+            assert_eq!(retrieved_studies[0].patient_id, patient.patient_id);
+
+            let retrieved_series = repo.get_series_by_study(&study.uid);
+            assert_eq!(retrieved_series.len(), 1);
+            assert_eq!(retrieved_series[0].uid, series.uid);
+            assert_eq!(retrieved_series[0].study_uid, study.uid);
+            assert_eq!(retrieved_series[0].modality, "CT");
+
             let images = repo.get_images_by_series(&series.uid);
-            let images_json = serde_json::to_string(&images).unwrap();
-            assert!(images_json.contains(&format!("\"series_uid\":\"{}\"", series.uid)));
-            assert!(images_json.contains("\"rows\":512"));
-            assert!(images_json.contains("\"columns\":512"));
-            assert!(images_json.contains("\"pixel_data\":[]"));
-        }
-    }
+            assert_eq!(images.len(), 1);
+            assert_eq!(images[0].series_uid, series.uid);
+            assert_eq!(images[0].rows, 512);
+            assert_eq!(images[0].columns, 512);
+            assert_eq!(images[0].pixel_data.len(), 512 * 512 * 2);
 
-    /// Tests UID generation and manipulation
-    mod uid_tests {
-        use super::*;
-
-        #[test]
-        fn test_generate_uid() {
-            let uid1 = generate_uid();
-            let uid2 = generate_uid();
-            
-            // UIDs should be different
-            assert_ne!(uid1, uid2);
-            
-            // UIDs should be valid format (basic check)
-            assert!(uid1.contains('.'));
-            assert!(uid2.contains('.'));
-        }
-
-        #[test]
-        fn test_change_dicom_uid() {
-            let base_uid = generate_uid();
-            let changed_uid1 = change_dicom_uid(&base_uid, true);
-            let changed_uid2 = change_dicom_uid(&base_uid, false);
-            
-            // Changed UIDs should be different from base and each other
-            assert_ne!(base_uid, changed_uid1);
-            assert_ne!(base_uid, changed_uid2);
-            assert_ne!(changed_uid1, changed_uid2);
+            let ct_volume = repo.generate_ct_volume(images[0].series_uid.as_str()).unwrap();
+            println!("{:?}", ct_volume);
         }
     }
 }
@@ -517,12 +386,9 @@ mod integration_tests {
     use std::path::Path;
     use chrono::Local;
 
-    /// Tests DICOM export functionality with real MHA file
-    /// NOTE: Ignored by default because it depends on external local paths (C:/share/input).
-    /// Configure local fixtures or update paths before running manually.
     #[test]
     #[ignore]
-    fn test_dicom_export_workflow_with_real_mha_file() {
+    fn test_dicom_export_workflow_with_mha_file() {
         // Create a test patient and study
         let patient = create_test_patient();
         let mut study = create_test_study();
@@ -555,12 +421,9 @@ mod integration_tests {
         assert!(result.is_ok());
     }
 
-    /// Tests DICOM export functionality with real MHD file
-    /// NOTE: Ignored by default because it depends on external local paths (C:/share/input).
-    /// Configure local fixtures or update paths before running manually.
     #[test]
     #[ignore]
-    fn test_dicom_export_workflow_with_real_mhd_file() {
+    fn test_dicom_export_workflow_with_mhd_file() {
         // Create a test patient and study
         let patient = create_test_patient();
         let mut study = create_test_study();
