@@ -445,9 +445,9 @@ impl Mesh {
         iso_value: f32,
         window: Option<[f32; 2]>,
     ) -> Self {
-        // Smoothing settings
         let smooth_iterations = 5;
         let smooth_lambda = 0.5;
+        let downsample_grid_size = 2.0; // 2.0 mm grid cell size
         let tissues = vec![
             // Bone (Cortical) - Hard bone
             Tissue {
@@ -525,9 +525,10 @@ impl Mesh {
                     smooth_iterations as usize,
                     smooth_lambda as f64,
                 );
+                let (downsampled_vertices, downsampled_faces) = downsample_mesh(&smoothed_vertices, &merged_faces, downsample_grid_size);
 
                 // smoothed_vertices are already in millimeters from Marching Tetrahedra
-                let mm_vertices: Vec<[f64; 3]> = smoothed_vertices.clone();
+                let mm_vertices: Vec<[f64; 3]> = downsampled_vertices.clone();
 
                 let mut min_mm = [f64::INFINITY; 3];
                 let mut max_mm = [f64::NEG_INFINITY; 3];
@@ -554,7 +555,7 @@ impl Mesh {
 
                 let scale = 2.0 / max_extent_mm;
 
-                let normals = compute_vertex_normals_local(&mm_vertices, &merged_faces);
+                let normals = compute_vertex_normals_local(&mm_vertices, &downsampled_faces);
 
                 let mut mesh_vertices = Vec::with_capacity(mm_vertices.len());
                 for (idx, p) in mm_vertices.iter().enumerate() {
@@ -571,7 +572,7 @@ impl Mesh {
                 }
 
                 // generate final GPU indices (with consistent vertex order)
-                let mesh_triangles: Vec<u32> = merged_faces
+                let mesh_triangles: Vec<u32> = downsampled_faces
                     .into_iter()
                     .flat_map(|tri| tri.into_iter().map(|i| i as u32))
                     .collect();
