@@ -44,29 +44,28 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    let normal = normalize(in.v_normal);
-    let light_dir = normalize(-lighting.light_direction);
-
-    // Lambert diffuse lighting calculation
-    let diffuse_factor = max(dot(normal, light_dir), 0.0);
-    let diffuse = lighting.light_color * lighting.light_intensity * diffuse_factor;
-
-    // Blinn-Phong specular
-    let view_dir = normalize(vec3<f32>(0.0, 0.0, 1.0));
-    let half_vec = normalize(light_dir + view_dir);
-    let spec_factor = pow(max(dot(normal, half_vec), 0.0), 32.0);
-    let specular = lighting.light_color * 0.45 * spec_factor;
-
-    // Ambient lighting
-    let ambient = lighting.ambient_color * lighting.ambient_intensity;
-
-    // Rim light to enhance silhouette (low intensity)
-    let rim = pow(1.0 - abs(dot(normal, view_dir)), 3.0) * 0.15;
-
-    // Combine and apply gentle gamma correction
-    let linear = in.v_color * (ambient + diffuse) + specular + vec3<f32>(rim, rim, rim) + vec3<f32>(0.1);
-    let gamma = vec3<f32>(1.0 / 2.0);
-    let final_color = pow(clamp(linear, vec3<f32>(0.0), vec3<f32>(1.0)), gamma);
-
-    return vec4<f32>(final_color * lighting.opacity, lighting.opacity);
+    let n = normalize(in.v_normal);
+    let l = normalize(-lighting.light_direction);
+    let d = abs(dot(n, l));
+    let factor = clamp(0.6 + 0.4 * d, 0.0, 1.0);
+    let c = vec3<f32>(factor);
+    return vec4<f32>(c, lighting.opacity);
 }
+
+// @fragment
+// fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
+    // let normal = normalize(in.v_normal);
+    // let light_dir = normalize(-lighting.light_direction);
+    
+    // // Lambert diffuse lighting calculation
+    // let diffuse_factor = max(dot(normal, light_dir), 0.0);
+    // let diffuse = lighting.light_color * lighting.light_intensity * diffuse_factor;
+    
+    // // Ambient lighting
+    // let ambient = lighting.ambient_color * lighting.ambient_intensity;
+    
+    // // Combine lighting with vertex color
+    // let final_color = in.v_color * (ambient + diffuse);
+    
+    // return vec4<f32>(final_color, 1.0);
+// }
