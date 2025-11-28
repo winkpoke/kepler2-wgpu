@@ -12,7 +12,7 @@
 // Import DICOM modules under test
 use kepler_wgpu::data::{dicom::{
     Patient, StudySet, ImageSeries, CTImage, DicomRepo,
-    build_ct_dicom, generate_uid, change_dicom_uid, FsSink},
+    build_ct_dicom, generate_uid, FsSink},
     medical_imaging::PixelType};
 use kepler_wgpu::data::medical_imaging::image_info::PatientPosition;
 
