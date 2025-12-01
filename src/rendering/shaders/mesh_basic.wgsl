@@ -47,8 +47,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let n = normalize(in.v_normal);
     let l = normalize(-lighting.light_direction);
     let d = abs(dot(n, l));
-    let factor = clamp(0.6 + 0.4 * d, 0.0, 1.0);
-    let c = vec3<f32>(factor);
+    let factor = clamp(0.8 + 0.2 * d, 0.0, 1.0);
+    let c = in.v_color * factor;
     return vec4<f32>(c, lighting.opacity);
 }
 

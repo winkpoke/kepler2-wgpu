@@ -454,15 +454,17 @@ impl Mesh {
                 name: "Bone_Cortical".to_string(),
                 threshold: iso_value as i16,
                 color: [0.95, 0.90, 0.85], // #F2E6D9
+                // color: [0.16, 0.87, 0.60], // rgba(40, 221, 152, 1)
             },
             // Bone (Trabecular) - Spongy bone
             Tissue {
                 name: "Bone_Trabecular".to_string(),
-                threshold: iso_value as i16 / 2,
+                threshold: 300,
                 color: [0.85, 0.80, 0.75], // #D9CCBF
+                // color: [0.16, 0.87, 0.47], // rgba(40, 221, 121, 1)
             },
             // Soft Tissue (Muscle)
-            //Tissue {
+            // Tissue {
             //     name: "Muscle".to_string(),
             //     threshold: 40,
             //     color: [0.80, 0.40, 0.40], // #CC6666
@@ -633,7 +635,16 @@ impl Mesh {
             return Self { vertices: Vec::new(), indices: Vec::new() };
         }
 
-        meshes.remove(0)
+        let mut merged_vertices: Vec<MeshVertex> = Vec::new();
+        let mut merged_indices: Vec<u32> = Vec::new();
+        let mut base: u32 = 0;
+        for m in meshes {
+            let n = m.vertices.len() as u32;
+            merged_vertices.extend(m.vertices.into_iter());
+            merged_indices.extend(m.indices.into_iter().map(|i| i + base));
+            base += n;
+        }
+        Self { vertices: merged_vertices, indices: merged_indices }
     }
 }
 

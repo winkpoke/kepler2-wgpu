@@ -349,8 +349,10 @@ impl RenderApp {
                                     },
                                 ..
                             } => {
-                                let mode =  0 as usize;
+                                let mode =  2 as usize;
                                 state.set_one_cell_layout(mode, 0, 400.0, None);
+                                state.set_mesh_rotation_angle_degrees(-90.0, 0.0, 0.0);
+                                state.set_mesh_scale(3.0);
                                 log::info!("KeyN pressed: one_cell layout mode toggled to {}", mode);
                             }
                             WindowEvent::KeyboardInput {
