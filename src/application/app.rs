@@ -43,10 +43,12 @@ pub struct App {
     pub(crate) graphics_context: GraphicsContext,
     pub(crate) app_view: AppView,
     pub(crate) enable_float_volume_texture: bool,
-
     pub(crate) enable_mesh: bool,
-
     pub(crate) app_model: AppModel,
+    /// Cached mesh to avoid recomputation when creating Mesh views
+    pub(crate) cached_mesh: Option<crate::mesh::mesh::Mesh>,
+    /// Cached parameters used to build the mesh (iso value and optional [WL, WW])
+    pub(crate) cached_mesh_params: Option<(f32, Option<[f32; 2]>)>,
 }
 
 impl App {
@@ -100,6 +102,8 @@ impl App {
 
             app_view: AppView::new(layout, factory),
             app_model: AppModel::new(),
+            cached_mesh: None,
+            cached_mesh_params: None,
         })
     }
 
@@ -499,18 +503,35 @@ impl App {
                 }
 
                 if let Some(mesh_index) = mesh_index {
-                    let mesh_view = if let Some(ref wlww) = wwwl {
-                        let wl = *wlww.get(0).unwrap_or(&f32::NAN);
-                        let ww = *wlww.get(1).unwrap_or(&f32::NAN);
-                        let iso_from_wl = if wl.is_nan() || ww.is_nan() { iso_value } else { wl + ww * 0.5 };
-                        let mesh = Mesh::new(&vol, iso_from_wl, Some([wl, ww]));
+                    let mesh_view = {
+                        let (params_iso, params_window): (f32, Option<[f32; 2]>) = if let Some(ref wlww) = wwwl {
+                            let wl = *wlww.get(0).unwrap_or(&f32::NAN);
+                            let ww = *wlww.get(1).unwrap_or(&f32::NAN);
+                            let iso_from_wl = if wl.is_nan() || ww.is_nan() { iso_value } else { wl + ww * 0.5 };
+                            (iso_from_wl, Some([wl, ww]))
+                        } else {
+                            (iso_value, None)
+                        };
+
+                        let need_rebuild = match self.cached_mesh_params {
+                            Some((cached_iso, cached_window)) => cached_iso != params_iso || cached_window != params_window,
+                            None => true,
+                        };
+
+                        if need_rebuild {
+                            let new_mesh = Mesh::new(&vol, params_iso, params_window);
+                            self.cached_mesh = Some(new_mesh);
+                            self.cached_mesh_params = Some((params_iso, params_window));
+                        }
+
+                        let mesh_ref = self.cached_mesh.as_ref().expect("cached_mesh must exist after rebuild");
                         self.app_view.view_factory
-                            .create_mesh_view(&mesh, (0, 0), (0, 0))
-                            .unwrap()
-                    }else {
-                        let mesh = Mesh::new(&vol, iso_value, None);
-                        self.app_view.view_factory
-                            .create_mesh_view(&mesh, (0, 0), (0, 0))
+                            .create_mesh_view_with_content(
+                                texture.clone(),
+                                mesh_ref,
+                                (0, 0),
+                                (0, 0),
+                            )
                             .unwrap()
                     };
                     self.app_view.layout.replace_view_at(mesh_index, mesh_view);
@@ -561,20 +582,35 @@ impl App {
                     self.app_view.layout.add_view(mip_view);
                 }
                 2 => {
-                    let mesh_view = if let Some(ref wlww) = wwwl {
+                    let (params_iso, params_window): (f32, Option<[f32; 2]>) = if let Some(ref wlww) = wwwl {
                         let wl = *wlww.get(0).unwrap_or(&f32::NAN);
                         let ww = *wlww.get(1).unwrap_or(&f32::NAN);
                         let iso_from_wl = if wl.is_nan() || ww.is_nan() { iso_value } else { wl + ww * 0.5 };
-                        let mesh = Mesh::new(&vol, iso_from_wl, Some([wl, ww]));
-                        self.app_view.view_factory
-                            .create_mesh_view(&mesh, (0, 0), (0, 0))
-                            .unwrap()
-                    }else {
-                        let mesh = Mesh::new(&vol, iso_value, None);
-                        self.app_view.view_factory
-                            .create_mesh_view(&mesh, (0, 0), (0, 0))
-                            .unwrap()
+                        (iso_from_wl, Some([wl, ww]))
+                    } else {
+                        (iso_value, None)
                     };
+
+                    let need_rebuild = match self.cached_mesh_params {
+                        Some((cached_iso, cached_window)) => cached_iso != params_iso || cached_window != params_window,
+                        None => true,
+                    };
+
+                    if need_rebuild {
+                        let new_mesh = Mesh::new(&vol, params_iso, params_window);
+                        self.cached_mesh = Some(new_mesh);
+                        self.cached_mesh_params = Some((params_iso, params_window));
+                    }
+
+                    let mesh_ref = self.cached_mesh.as_ref().expect("cached_mesh must exist after rebuild");
+                    let mesh_view = self.app_view.view_factory
+                        .create_mesh_view_with_content(
+                            texture.clone(),
+                            mesh_ref,
+                            (0, 0),
+                            (0, 0),
+                        )
+                        .unwrap();
                     self.app_view.layout.add_view(mesh_view);
                 }
                 _ => {
