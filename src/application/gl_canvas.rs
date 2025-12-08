@@ -29,6 +29,7 @@ pub enum UserEvent {
     ReloadShaders,
     /// Manually trigger pipeline cache invalidation without any other action.
     InvalidatePipelines,
+    EnableMesh(bool),
     /// Set mesh mode enabled/disabled for a specific mesh index.
     SetEnableMesh(Option<usize>, Option<usize>, bool, usize, usize, usize, usize, f32, Option<Vec<f32>>),
     SetOneCellLayout(usize, usize, f32, Option<Vec<f32>>),
@@ -142,6 +143,14 @@ impl GLCanvas {
             log::error!("Failed to send InvalidatePipelines event: {:?}", e);
         } else {
             log::info!("Sent InvalidatePipelines event");
+        }
+    }
+
+    pub fn enable_save_mesh(&self, enable_mesh: bool) {
+        if let Err(e) = self.proxy.send_event(UserEvent::EnableMesh(enable_mesh)) {
+            log::error!("Failed to send EnableMesh event: {:?}", e);
+        } else {
+            log::info!("Sent EnableMesh event: {}", enable_mesh);
         }
     }
 

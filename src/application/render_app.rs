@@ -184,10 +184,15 @@ impl RenderApp {
                     // Function-level comment: Pipeline invalidation is now handled by individual render contexts.
                     log::info!("InvalidatePipelines event: render contexts will rebuild pipelines as needed.");
                 }
+                Event::UserEvent(UserEvent::EnableMesh(enable_mesh)) => {
+                    // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
+                    state.mesh_mode_enabled(enable_mesh);
+                    log::info!("Mesh mode enabled: {}", enable_mesh);
+                }
                 Event::UserEvent(UserEvent::SetEnableMesh(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_value, wwwl)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
                     state.set_mesh_mode_enabled(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_value, wwwl.clone());
-                    log::info!("EnableMesh toggled at runtime: mesh_index={:?}, mip={:?}, change_mpr={change_mpr}, index_1={index_1}, index_2={index_2}, index_3={index_3}, index_4={index_4}, iso_value={iso_value}, wwwl={:?}", mesh_index, mip, wwwl);
+                    log::info!("SetEnableMesh toggled at runtime: mesh_index={:?}, mip={:?}, change_mpr={change_mpr}, index_1={index_1}, index_2={index_2}, index_3={index_3}, index_4={index_4}, iso_value={iso_value}, wwwl={:?}", mesh_index, mip, wwwl);
                 }
                 Event::UserEvent(UserEvent::SetOneCellLayout(mode, orientation_index, iso_value, wwwl)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
@@ -336,7 +341,7 @@ impl RenderApp {
                                 ..
                             } => {
                                 // Function-level comment: Toggle mesh mode on 'M' key press at runtime.
-                                let new_enabled = !state.mesh_mode_enabled();
+                                let new_enabled = true;
                                 state.set_mesh_mode_enabled(Some(3), Some(2), false, 0, 1, 0, 0, 400.0, None);
                                 log::info!("KeyM pressed: mesh mode toggled to {}", new_enabled);
                             }

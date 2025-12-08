@@ -47,8 +47,6 @@ pub struct App {
     pub(crate) app_model: AppModel,
     /// Cached mesh to avoid recomputation when creating Mesh views
     pub(crate) cached_mesh: Option<crate::mesh::mesh::Mesh>,
-    /// Cached parameters used to build the mesh (iso value and optional [WL, WW])
-    pub(crate) cached_mesh_params: Option<(f32, Option<[f32; 2]>)>,
 }
 
 impl App {
@@ -97,13 +95,10 @@ impl App {
         Ok(Self {
             graphics_context,
             enable_float_volume_texture: default_float,
-
             enable_mesh: false,
-
             app_view: AppView::new(layout, factory),
             app_model: AppModel::new(),
             cached_mesh: None,
-            cached_mesh_params: None,
         })
     }
 
@@ -448,14 +443,14 @@ impl App {
         self.load_data_from_ct_volume(&vol);
     }
 
-    /// Function-level comment: Returns whether mesh mode is currently enabled.
-    pub fn mesh_mode_enabled(&self) -> bool {
-        self.enable_mesh
+    pub fn mesh_mode_enabled(&mut self, enable_mesh: bool) {
+        self.enable_mesh = enable_mesh;
     }
 
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
     pub fn set_mesh_mode_enabled(&mut self, mesh_index: Option<usize>, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, iso_value: f32, wwwl: Option<Vec<f32>>) {
-        let mut change_index =false;
+        let mut change_index = false;
+
         if change_mpr {
             change_index = true;
         }
@@ -465,9 +460,6 @@ impl App {
 
         if let Some(_) = mesh_index {
             change_index = true;
-            if self.enable_mesh != change_index { 
-                self.enable_mesh = change_index;
-            }
         }
 
         if self.app_view.is_one_cell_layout() {
@@ -513,15 +505,12 @@ impl App {
                             (iso_value, None)
                         };
 
-                        let need_rebuild = match self.cached_mesh_params {
-                            Some((cached_iso, cached_window)) => cached_iso != params_iso || cached_window != params_window,
-                            None => true,
-                        };
-
-                        if need_rebuild {
+                        log::info!("mesh_mode_enabled: {}", self.enable_mesh);
+                        
+                        if !self.enable_mesh {
                             let new_mesh = Mesh::new(&vol, params_iso, params_window);
                             self.cached_mesh = Some(new_mesh);
-                            self.cached_mesh_params = Some((params_iso, params_window));
+                            self.enable_mesh = true;
                         }
 
                         let mesh_ref = self.cached_mesh.as_ref().expect("cached_mesh must exist after rebuild");
@@ -590,17 +579,6 @@ impl App {
                     } else {
                         (iso_value, None)
                     };
-
-                    let need_rebuild = match self.cached_mesh_params {
-                        Some((cached_iso, cached_window)) => cached_iso != params_iso || cached_window != params_window,
-                        None => true,
-                    };
-
-                    if need_rebuild {
-                        let new_mesh = Mesh::new(&vol, params_iso, params_window);
-                        self.cached_mesh = Some(new_mesh);
-                        self.cached_mesh_params = Some((params_iso, params_window));
-                    }
 
                     let mesh_ref = self.cached_mesh.as_ref().expect("cached_mesh must exist after rebuild");
                     let mesh_view = self.app_view.view_factory
