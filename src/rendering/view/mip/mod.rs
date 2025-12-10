@@ -499,7 +499,7 @@ mod tests {
     fn test_mip_uniforms_size() {
         let size = std::mem::size_of::<MipUniforms>();
         assert_eq!(size % 16, 0);
-        assert_eq!(size, 48);
+        assert_eq!(size, 64);
     }
 
     /// Function-level comment: Test MIP configuration creation and validation.

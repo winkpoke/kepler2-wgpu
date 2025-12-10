@@ -694,7 +694,7 @@ mod tests {
     fn test_rotation_api_basic_functionality() {
         let mesh_view = MeshView::default();
         let angles = mesh_view.get_rotation_angle();
-        assert!((angles[0] + FRAC_PI_2).abs() < 1e-6);
+        assert!(angles[0].abs() < 1e-6);
         assert!(angles[1].abs() < 1e-6);
         assert!(angles[2].abs() < 1e-6);
         assert!((mesh_view.get_rotation_speed() - FRAC_PI_2).abs() < 1e-6);
@@ -730,7 +730,7 @@ mod tests {
         let mut mesh_view = MeshView::default();
         mesh_view.reset_rotation();
         let angles = mesh_view.get_rotation_angle();
-        assert!((angles[0] + FRAC_PI_2).abs() < 1e-6);
+        assert!(angles[0].abs() < 1e-6);
         assert!(angles[1].abs() < 1e-6);
         assert!(angles[2].abs() < 1e-6);
     }

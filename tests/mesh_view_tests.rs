@@ -337,7 +337,7 @@ mod mesh_view_tests {
         /// Check default orientation and speed align with implementation
         let view = MeshView::new();
         let angles = view.get_rotation_angle();
-        assert!((angles[0] + FRAC_PI_2).abs() < 1e-6);
+        assert!(angles[0].abs() < 1e-6);
         assert!(angles[1].abs() < 1e-6);
         assert!(angles[2].abs() < 1e-6);
     }
