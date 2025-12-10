@@ -446,8 +446,8 @@ impl Mesh {
         window: Option<[f32; 2]>,
     ) -> Self {
         let smooth_iterations = 5;
-        let smooth_lambda = 0.5;
-        let downsample_grid_size = 2.0; // 2.0 mm grid cell size
+        let smooth_lambda = 2.0;
+        let downsample_grid_size = 8.0; // 2.0 mm grid cell size
         let tissues = vec![
             // Bone (Cortical) - Hard bone
             Tissue {
@@ -474,7 +474,6 @@ impl Mesh {
 
         // 1. Read DICOM
         let dimensions = ctvolume.dimensions;
-        let voxel_data = ctvolume.voxel_data.clone();
         let spacing = (
             ctvolume.voxel_spacing.2 as f64, // spacing_z
             ctvolume.voxel_spacing.1 as f64, // spacing_y
@@ -484,13 +483,15 @@ impl Mesh {
         let windowed_data = if let Some([wl, ww]) = window {
             let lower = (wl - ww * 0.5).round() as i16;
             let upper = (wl + ww * 0.5).round() as i16;
-            let mut v = Vec::with_capacity(voxel_data.len());
-            for &val in &voxel_data {
+            let mut v = Vec::with_capacity(ctvolume.voxel_data.len());
+            for &val in &ctvolume.voxel_data {
                 if val < lower || val > upper { v.push(lower - 1); } else { v.push(val); }
             }
             v
         } else {
-            voxel_data.clone()
+            // Avoid cloning if possible, but here we need a local copy for processing
+            // In a future optimization, we could pass the slice directly if no windowing is needed
+            ctvolume.voxel_data.clone()
         };
 
         let volume = match Array3::from_shape_vec((dimensions.2, dimensions.1, dimensions.0), windowed_data) {
@@ -499,7 +500,7 @@ impl Mesh {
                 log::warn!(
                     "volume shape mismatch: expected {} elements, got {}; error: {}",
                     dimensions.2 * dimensions.1 * dimensions.0,
-                    voxel_data.len(),
+                    ctvolume.voxel_data.len(),
                     e
                 );
                 return Self { vertices: Vec::new(), indices: Vec::new() };
