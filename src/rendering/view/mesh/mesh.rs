@@ -2,7 +2,7 @@
 
 use crate::data::CTVolume;
 use super::mesh_processing::*;
-use ndarray::Array3;
+use ndarray::{Array3, s};
 
 
 /// Function-level comment: Minimal lighting uniform structure for basic mesh lighting MVP.
@@ -88,7 +88,8 @@ pub struct Mesh {
 
 struct Tissue {
     name: String,
-    threshold: i16,
+    min: i16,
+    max: i16,
     color: [f32; 3],
 }
 
@@ -443,98 +444,108 @@ impl Mesh {
     pub fn new(
         ctvolume: &CTVolume,
         iso_value: f32,
-        window: Option<[f32; 2]>,
     ) -> Self {
+        // Smoothing settings
         let smooth_iterations = 5;
         let smooth_lambda = 2.0;
         let downsample_grid_size = 8.0; // 2.0 mm grid cell size
+
+        // Gaussian Filter settings
+        let enable_gaussian = true;
+        let gaussian_sigma = 1.0;
+
         let tissues = vec![
-            // Bone (Cortical) - Hard bone
             Tissue {
                 name: "Bone_Cortical".to_string(),
-                threshold: iso_value as i16,
-                color: [0.95, 0.90, 0.85], // #F2E6D9
-                // color: [0.16, 0.87, 0.60], // rgba(40, 221, 152, 1)
+                min: 0,
+                max: iso_value as i16,
+                color: [0.95, 0.90, 0.85],
             },
-            // Bone (Trabecular) - Spongy bone
-            Tissue {
-                name: "Bone_Trabecular".to_string(),
-                threshold: 300,
-                color: [0.85, 0.80, 0.75], // #D9CCBF
-                // color: [0.16, 0.87, 0.47], // rgba(40, 221, 121, 1)
-            },
-            // Soft Tissue (Muscle)
-            // Tissue {
-            //     name: "Muscle".to_string(),
-            //     threshold: 40,
-            //     color: [0.80, 0.40, 0.40], // #CC6666
-            // },
         ];
         println!("Starting Marching Tetrahedra conversion...");
 
-        // 1. Read DICOM
-        let dimensions = ctvolume.dimensions;
+        // Read DICOM
+        let (rows, columns, depth) = ctvolume.dimensions;
         let spacing = (
             ctvolume.voxel_spacing.2 as f64, // spacing_z
             ctvolume.voxel_spacing.1 as f64, // spacing_y
             ctvolume.voxel_spacing.0 as f64, // spacing_x
         );
-        // Apply WL/WW windowing to voxel data if provided, to make WW 和 WL 对几何的影响彼此独立
-        let windowed_data = if let Some([wl, ww]) = window {
-            let lower = (wl - ww * 0.5).round() as i16;
-            let upper = (wl + ww * 0.5).round() as i16;
-            let mut v = Vec::with_capacity(ctvolume.voxel_data.len());
-            for &val in &ctvolume.voxel_data {
-                if val < lower || val > upper { v.push(lower - 1); } else { v.push(val); }
-            }
-            v
+
+        // Downsampling logic
+        let target_size = 256;
+        let (new_rows, new_columns, scale_y, scale_x) = if rows > target_size || columns > target_size {
+            let scale = (target_size as f64) / (rows.max(columns) as f64);
+            let new_rows = (rows as f64 * scale).round() as usize;
+            let new_columns = (columns as f64 * scale).round() as usize;
+            (new_rows, new_columns, 1.0 / scale, 1.0 / scale)
         } else {
-            // Avoid cloning if possible, but here we need a local copy for processing
-            // In a future optimization, we could pass the slice directly if no windowing is needed
-            ctvolume.voxel_data.clone()
+            (rows, columns, 1.0, 1.0)
         };
 
-        let volume = match Array3::from_shape_vec((dimensions.2, dimensions.1, dimensions.0), windowed_data) {
-            Ok(arr) => arr,
-            Err(e) => {
-                log::warn!(
-                    "volume shape mismatch: expected {} elements, got {}; error: {}",
-                    dimensions.2 * dimensions.1 * dimensions.0,
-                    ctvolume.voxel_data.len(),
-                    e
-                );
-                return Self { vertices: Vec::new(), indices: Vec::new() };
-            }
-        };
+        if new_rows != rows || new_columns != columns {
+            println!("Downsampling images from {}x{} to {}x{}", rows, columns, new_rows, new_columns);
+        }
 
-        // 2. Extract Surfaces
-        let mut meshes = Vec::new();
-        // let mut meshes_out = Vec::new();
-        for tissue in tissues {
-            println!("\n=== Processing {} (Threshold={}) ===", tissue.name, tissue.threshold);
-            let mt = MarchingTetrahedra::new(tissue.threshold);
-            let (vertices, faces) = mt.extract_surface(&volume, spacing);
+        let mut volume_data = Array3::<i16>::zeros((depth, new_rows, new_columns));
+        let vol = ctvolume.voxel_data.clone();
+
+        for z in 0..depth {
+            let start = z * columns * rows;
+            let end = start + columns * rows;
+            let buf = &vol[start..end];
+            let buf_vec = buf.to_vec();
+
+            let slice_view = Array3::from_shape_vec((1, rows, columns), buf_vec).unwrap();
+
+            let final_slice = if new_rows != rows || new_columns != columns {
+                // We need to extract the 2D slice from the 3D view (1, rows, columns) -> (rows, columns)
+                let slice_2d = slice_view.index_axis(ndarray::Axis(0), 0).to_owned();
+                resize_slice(&slice_2d, (new_rows, new_columns))
+            } else {
+                slice_view.index_axis(ndarray::Axis(0), 0).to_owned()
+            };
             
+            volume_data.slice_mut(s![z..z+1, .., ..]).assign(&final_slice.insert_axis(ndarray::Axis(0)));
+        }
+
+        let final_spacing_y = spacing.1 * scale_y;
+        let final_spacing_x = spacing.2 * scale_x;
+        println!("Volume dimensions: {:?}", volume_data.shape());
+        println!("Spacing: z={:.3}, y={:.3}, x={:.3}", spacing.0, final_spacing_y, final_spacing_x);
+
+        // Apply Gaussian Filter
+        if enable_gaussian {
+            println!("\n=== Applying Gaussian Filter (sigma={:.2}) ===", gaussian_sigma);
+            volume_data = apply_gaussian_filter(&volume_data, gaussian_sigma);
+        }
+
+        // Extract Surfaces
+        let mut meshes = Vec::new();
+
+        for tissue in tissues {
+            println!("\n=== Processing {} (Range={}-{}) ===", tissue.name, tissue.min, tissue.max);
+            let mt = MarchingTetrahedra::new(tissue.min);
+            let (vertices, faces) = mt.extract_surface(&volume_data, (spacing.0, final_spacing_y, final_spacing_x));
             println!("Generated {} vertices, {} triangles", vertices.len(), faces.len());
 
             if !vertices.is_empty() {
                 // Merge vertices to fix connectivity
                 let (merged_vertices, merged_faces) = merge_vertices(&vertices, &faces);
 
-                // Apply smoothing (match OBJ generation path)
+                // Apply smoothing
                 let smoothed_vertices = laplacian_smooth(
                     &merged_vertices,
                     &merged_faces,
-                    smooth_iterations as usize,
-                    smooth_lambda as f64,
+                    smooth_iterations,
+                    smooth_lambda,
                 );
-                let (downsampled_vertices, downsampled_faces) = downsample_mesh(&smoothed_vertices, &merged_faces, downsample_grid_size);
 
-                // smoothed_vertices are already in millimeters from Marching Tetrahedra
-                let mm_vertices: Vec<[f64; 3]> = downsampled_vertices.clone();
+                // Apply Downsampling
+                let (mm_vertices, downsampled_faces) = downsample_mesh(&smoothed_vertices, &merged_faces, downsample_grid_size);
 
-                let mut min_mm = [f64::INFINITY; 3];
-                let mut max_mm = [f64::NEG_INFINITY; 3];
+                let mut min_mm = [f32::INFINITY; 3];
+                let mut max_mm = [f32::NEG_INFINITY; 3];
                 for p in &mm_vertices {
                     for i in 0..3 {
                         min_mm[i] = min_mm[i].min(p[i]);
@@ -551,8 +562,8 @@ impl Mesh {
                     max_mm[1] - min_mm[1],
                     max_mm[2] - min_mm[2],
                 ];
-                let max_extent_mm = extent_mm.iter().fold(0.0f64, |a, &b| a.max(b));
-                if max_extent_mm < f64::EPSILON {
+                let max_extent_mm = extent_mm.iter().fold(0.0f32, |a, &b| a.max(b));
+                if max_extent_mm < f32::EPSILON {
                     log::warn!("extract_isosurface: empty bounding box (mm), skipping.");
                 }
 
@@ -568,7 +579,7 @@ impl Mesh {
                     let normal = normals.get(idx).copied().unwrap_or([0.0, 0.0, 1.0]);
                     let color = tissue.color;
                     mesh_vertices.push(MeshVertex {
-                        position: [x as f32, y as f32, z as f32],
+                        position: [x, y, z],
                         normal,
                         color,
                     });
@@ -603,29 +614,8 @@ impl Mesh {
                     mesh_triangles.len() / 3
                 );
 
-                // // Convert MeshVertex -> positions as f64 for OBJ-style export
-                // let vertices_pos: Vec<[f64; 3]> = mesh_vertices
-                //     .iter()
-                //     .map(|v| [v.position[0] as f64, v.position[1] as f64, v.position[2] as f64])
-                //     .collect();
-
-                // // Convert flat u32 indices -> face triplets as usize
-                // let faces_usize: Vec<[usize; 3]> = mesh_triangles
-                //     .chunks(3)
-                //     .map(|c| [c[0] as usize, c[1] as usize, c[2] as usize])
-                //     .collect();
-
                 meshes.push(Self { vertices: mesh_vertices, indices: mesh_triangles });
 
-                // meshes_out.push(NamedMesh {
-                //     name: tissue.name,
-                //     color: tissue.color,
-                //     vertices: vertices_pos,
-                //     faces: faces_usize,
-                // });
-
-                // let output_file = "output_mesh_mt.obj";
-                // save_obj(output_file, &meshes_out).unwrap();
             } else {
                 println!("Warning: No mesh generated for {}", tissue.name);
             }
@@ -649,9 +639,45 @@ impl Mesh {
     }
 }
 
-/// Function-level comment: Accumulate face normals and normalize to per-vertex normals
-fn compute_vertex_normals_local(vertices: &[[f64; 3]], faces: &[[usize; 3]]) -> Vec<[f32; 3]> {
-    let mut acc: Vec<[f64; 3]> = vec![[0.0, 0.0, 0.0]; vertices.len()];
+/// Resize a 2D slice to a new shape using bilinear interpolation.
+fn resize_slice(data: &ndarray::Array2<i16>, new_shape: (usize, usize)) -> ndarray::Array2<i16> {
+    let (old_rows, old_cols) = data.dim();
+    let (new_rows, new_cols) = new_shape;
+    let mut new_data = ndarray::Array2::<i16>::zeros((new_rows, new_cols));
+
+    for r in 0..new_rows {
+        for c in 0..new_cols {
+            // Map new coordinates to old coordinates
+            let old_r = r as f64 * (old_rows - 1) as f64 / (new_rows - 1).max(1) as f64;
+            let old_c = c as f64 * (old_cols - 1) as f64 / (new_cols - 1).max(1) as f64;
+
+            let r0 = old_r.floor() as usize;
+            let c0 = old_c.floor() as usize;
+            let r1 = (r0 + 1).min(old_rows - 1);
+            let c1 = (c0 + 1).min(old_cols - 1);
+
+            let dr = old_r - r0 as f64;
+            let dc = old_c - c0 as f64;
+
+            let v00 = data[[r0, c0]] as f64;
+            let v01 = data[[r0, c1]] as f64;
+            let v10 = data[[r1, c0]] as f64;
+            let v11 = data[[r1, c1]] as f64;
+
+            let v = v00 * (1.0 - dr) * (1.0 - dc)
+                  + v01 * (1.0 - dr) * dc
+                  + v10 * dr * (1.0 - dc)
+                  + v11 * dr * dc;
+
+            new_data[[r, c]] = v.round() as i16;
+        }
+    }
+    new_data
+}
+
+/// Accumulate face normals and normalize to per-vertex normals
+fn compute_vertex_normals_local(vertices: &[[f32; 3]], faces: &[[usize; 3]]) -> Vec<[f32; 3]> {
+    let mut acc: Vec<[f32; 3]> = vec![[0.0, 0.0, 0.0]; vertices.len()];
     for face in faces {
         let i0 = face[0];
         let i1 = face[1];
@@ -672,7 +698,7 @@ fn compute_vertex_normals_local(vertices: &[[f64; 3]], faces: &[[usize; 3]]) -> 
     }
     acc.into_iter().map(|a| {
         let len = (a[0]*a[0] + a[1]*a[1] + a[2]*a[2]).sqrt();
-        if len > 1e-12 { [ (a[0]/len) as f32, (a[1]/len) as f32, (a[2]/len) as f32 ] } else { [0.0, 0.0, 1.0] }
+        if len > 1e-6 { [ a[0]/len, a[1]/len, a[2]/len ] } else { [0.0, 0.0, 1.0] }
     }).collect()
 }
 

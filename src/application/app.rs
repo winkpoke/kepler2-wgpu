@@ -508,7 +508,7 @@ impl App {
                         log::info!("mesh_mode_enabled: {}", self.enable_mesh);
                         
                         if !self.enable_mesh {
-                            let new_mesh = Mesh::new(&vol, params_iso, params_window);
+                            let new_mesh = Mesh::new(&vol, params_iso);
                             self.cached_mesh = Some(new_mesh);
                             self.enable_mesh = true;
                         }
