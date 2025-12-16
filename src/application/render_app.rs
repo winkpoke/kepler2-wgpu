@@ -194,10 +194,10 @@ impl RenderApp {
                     state.set_mesh_mode_enabled(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_min, iso_max);
                     log::info!("SetEnableMesh toggled at runtime: mesh_index={:?}, mip={:?}, change_mpr={change_mpr}, index_1={index_1}, index_2={index_2}, index_3={index_3}, index_4={index_4}, iso_min={iso_min}, iso_max={iso_max}", mesh_index, mip);
                 }
-                Event::UserEvent(UserEvent::SetOneCellLayout(mode, orientation_index)) => {
+                Event::UserEvent(UserEvent::SetOneCellLayout(mode, orientation_index, iso_min, iso_max)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_one_cell_layout(mode, orientation_index);
-                    log::info!("OneCellLayout set to: mode={mode}, orientation_index={orientation_index}");
+                    state.set_one_cell_layout(mode, orientation_index, iso_min, iso_max);
+                    log::info!("OneCellLayout set to: mode={mode}, orientation_index={orientation_index}, iso_min={iso_min}, iso_max={iso_max}");
                 }
                 Event::UserEvent(UserEvent::SetCenterAtPointInMM(index, x_mm, y_mm, z_mm)) => {
                     state.set_center_at_point_in_mm(index, x_mm, y_mm, z_mm);
@@ -355,7 +355,7 @@ impl RenderApp {
                                 ..
                             } => {
                                 let mode =  2 as usize;
-                                state.set_one_cell_layout(mode, 0);
+                                state.set_one_cell_layout(mode, 0, 300.0, 3000.0);
                                 state.set_mesh_rotation_angle_degrees(-90.0, 0.0, 0.0);
                                 state.set_mesh_scale(3.0);
                                 log::info!("KeyN pressed: one_cell layout mode toggled to {}", mode);

@@ -531,6 +531,8 @@ impl App {
         &mut self,
         mode: usize,
         orientation_index: usize,
+        iso_min: f32,
+        iso_max: f32,
     ) {
         let vol_option = self.app_model.volume().ok().map(|vol| vol.clone());
         if let Some(vol) = vol_option {
@@ -559,6 +561,12 @@ impl App {
                     self.app_view.layout.add_view(mip_view);
                 }
                 2 => {
+                    if !self.enable_mesh {
+                        let new_mesh = Mesh::new(&vol, iso_min, iso_max);
+                        self.cached_mesh = Some(new_mesh);
+                        self.enable_mesh = true;
+                    }
+
                     let mesh_ref = self.cached_mesh.as_ref().expect("cached_mesh must exist after rebuild");
                     let mesh_view = self.app_view.view_factory
                         .create_mesh_view_with_content(

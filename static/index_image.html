@@ -685,7 +685,9 @@
     byId('one-cell-submit').addEventListener('click', () => {
       const mode = parseInt(byId('mode').value, 10); // Mode: 0=MPR, 1=MIP, 2=MESH
       const orientation_index = parseInt(byId('orientation_index').value, 10);
-      console.log('meshclick:', mode, orientation_index);
+      const iso_min = parseFloat(byId('iso-min').value);
+      const iso_max = parseFloat(byId('iso-max').value);
+      console.log('meshclick:', mode, orientation_index, iso_min, iso_max);
 
       if (mode === 2){
         state.mesh = true;
@@ -693,7 +695,7 @@
         state.mesh = false;
       }
 
-      gl_canvas.set_one_cell_layout(mode, orientation_index);
+      gl_canvas.set_one_cell_layout(mode, orientation_index, iso_min, iso_max);
     });
     
     byId('3d-submit').addEventListener('click', () => {

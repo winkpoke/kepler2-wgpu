@@ -32,7 +32,7 @@ pub enum UserEvent {
     EnableMesh(bool),
     /// Set mesh mode enabled/disabled for a specific mesh index.
     SetEnableMesh(Option<usize>, Option<usize>, bool, usize, usize, usize, usize, f32, f32),
-    SetOneCellLayout(usize, usize),
+    SetOneCellLayout(usize, usize, f32, f32),
     #[cfg(target_arch = "wasm32")]
     GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     #[cfg(target_arch = "wasm32")]
@@ -162,11 +162,11 @@ impl GLCanvas {
         }
     }
 
-    pub fn set_one_cell_layout(&self, mode: usize, orientation_index: usize) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetOneCellLayout(mode, orientation_index)) {
+    pub fn set_one_cell_layout(&self, mode: usize, orientation_index: usize, iso_min: f32, iso_max: f32) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetOneCellLayout(mode, orientation_index, iso_min, iso_max)) {
             log::error!("Failed to send SetOneCellLayout event: {:?}", e);
         } else {
-            log::info!("Sent SetOneCellLayout event: mode={}, orientation_index={}", mode, orientation_index);
+            log::info!("Sent SetOneCellLayout event: mode={}, orientation_index={}, iso_min={}, iso_max={}", mode, orientation_index, iso_min, iso_max);
         }
     }
 
