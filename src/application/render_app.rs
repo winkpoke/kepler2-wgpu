@@ -189,10 +189,10 @@ impl RenderApp {
                     state.mesh_mode_enabled(enable_mesh);
                     log::info!("Mesh mode enabled: {}", enable_mesh);
                 }
-                Event::UserEvent(UserEvent::SetEnableMesh(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_value)) => {
+                Event::UserEvent(UserEvent::SetEnableMesh(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_min, iso_max)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_mesh_mode_enabled(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_value);
-                    log::info!("SetEnableMesh toggled at runtime: mesh_index={:?}, mip={:?}, change_mpr={change_mpr}, index_1={index_1}, index_2={index_2}, index_3={index_3}, index_4={index_4}, iso_value={iso_value}", mesh_index, mip);
+                    state.set_mesh_mode_enabled(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_min, iso_max);
+                    log::info!("SetEnableMesh toggled at runtime: mesh_index={:?}, mip={:?}, change_mpr={change_mpr}, index_1={index_1}, index_2={index_2}, index_3={index_3}, index_4={index_4}, iso_min={iso_min}, iso_max={iso_max}", mesh_index, mip);
                 }
                 Event::UserEvent(UserEvent::SetOneCellLayout(mode, orientation_index)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
@@ -342,7 +342,7 @@ impl RenderApp {
                             } => {
                                 // Function-level comment: Toggle mesh mode on 'M' key press at runtime.
                                 let new_enabled = true;
-                                state.set_mesh_mode_enabled(Some(3), Some(2), false, 0, 1, 0, 0, 3000.0);
+                                state.set_mesh_mode_enabled(Some(3), Some(2), false, 0, 1, 0, 0, 300.0, 400.0);
                                 log::info!("KeyM pressed: mesh mode toggled to {}", new_enabled);
                             }
                             WindowEvent::KeyboardInput {

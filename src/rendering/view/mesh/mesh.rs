@@ -443,7 +443,8 @@ impl Mesh {
 
     pub fn new(
         ctvolume: &CTVolume,
-        iso_value: f32,
+        iso_min: f32,
+        iso_max: f32,
     ) -> Self {
         // Smoothing settings
         let smooth_iterations = 5;
@@ -461,8 +462,8 @@ impl Mesh {
         let tissues = vec![
             Tissue {
                 name: "Bone_Cortical".to_string(),
-                min: 0,
-                max: iso_value as i16,
+                min: iso_min as i16,
+                max: iso_max as i16,
                 color: [0.95, 0.90, 0.85],
             },
         ];

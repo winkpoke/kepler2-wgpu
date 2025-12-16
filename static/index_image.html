@@ -216,12 +216,12 @@
               <input type="checkbox" id="3d" />
             </div>
             <div>
-              <span id="downsample-label">Downsample:</span>
-              <input type="number" id="downsample" step="1.0" value="3.0">
+              <span id="iso-min-label">Iso Min:</span>
+              <input type="number" id="iso-min" step="1.0" value="0.0">
             </div>
             <div>
-              <span id="iso-value-label">Iso Value:</span>
-              <input type="number" id="iso-value" step="1.0" value="100.0">
+              <span id="iso-max-label">Iso Max:</span>
+              <input type="number" id="iso-max" step="1.0" value="100.0">
             </div>
             <div>
               <span id="change_mpr-label">change_mpr</span>
@@ -669,25 +669,23 @@
       const index_2 = parseInt(byId('index-2').value, 10);
       const index_3 = parseInt(byId('index-3').value, 10);
       const index_4 = parseInt(byId('index-4').value, 10);
-      const downsample = parseInt(byId('downsample').value, 10);
-      const iso_value = parseFloat(byId('iso-value').value);
+      const iso_min = parseFloat(byId('iso-min').value);
+      const iso_max = parseFloat(byId('iso-max').value);
 
-      console.log('meshclick:', state.mesh_index, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, downsample, iso_value);
+      console.log('meshclick:', state.mesh_index, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, iso_min, iso_max);
 
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
 
-      gl_canvas.enable_mesh(state.mesh_index, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, iso_value, null);
+      gl_canvas.enable_mesh(state.mesh_index, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, iso_min, iso_max);
     });
 
     byId('one-cell-submit').addEventListener('click', () => {
       const mode = parseInt(byId('mode').value, 10); // Mode: 0=MPR, 1=MIP, 2=MESH
       const orientation_index = parseInt(byId('orientation_index').value, 10);
-      const downsample = parseInt(byId('downsample').value, 10);
-      const iso_value = parseFloat(byId('iso-value').value);
-      console.log('meshclick:', mode, orientation_index, iso_value, null);
+      console.log('meshclick:', mode, orientation_index);
 
       if (mode === 2){
         state.mesh = true;
@@ -695,7 +693,7 @@
         state.mesh = false;
       }
 
-      gl_canvas.set_one_cell_layout(mode, orientation_index, iso_value, null);
+      gl_canvas.set_one_cell_layout(mode, orientation_index);
     });
     
     byId('3d-submit').addEventListener('click', () => {

@@ -448,7 +448,7 @@ impl App {
     }
 
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
-    pub fn set_mesh_mode_enabled(&mut self, mesh_index: Option<usize>, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, iso_value: f32) {
+    pub fn set_mesh_mode_enabled(&mut self, mesh_index: Option<usize>, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, iso_min: f32, iso_max: f32) {
         let mut change_index = false;
 
         if change_mpr {
@@ -499,7 +499,7 @@ impl App {
                         log::info!("mesh_mode_enabled: {}", self.enable_mesh);
                         
                         if !self.enable_mesh {
-                            let new_mesh = Mesh::new(&vol, iso_value);
+                            let new_mesh = Mesh::new(&vol, iso_min, iso_max);
                             self.cached_mesh = Some(new_mesh);
                             self.enable_mesh = true;
                         }
@@ -527,7 +527,6 @@ impl App {
 
     /// Switch to a single-cell layout and display the requested view type (MPR/MIP/MESH).
     /// Mode: 0=MPR, 1=MIP, 2=MESH. For MPR, provide `orientation_index` to select orientation.
-    /// For MESH, `iso_value`, `downsample`, and `vertex_precision` control isosurface extraction.
     pub fn set_one_cell_layout(
         &mut self,
         mode: usize,
