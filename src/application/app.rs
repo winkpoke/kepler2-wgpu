@@ -448,7 +448,7 @@ impl App {
     }
 
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
-    pub fn set_mesh_mode_enabled(&mut self, mesh_index: Option<usize>, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, iso_value: f32, wwwl: Option<Vec<f32>>) {
+    pub fn set_mesh_mode_enabled(&mut self, mesh_index: Option<usize>, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, iso_value: f32) {
         let mut change_index = false;
 
         if change_mpr {
@@ -496,19 +496,10 @@ impl App {
 
                 if let Some(mesh_index) = mesh_index {
                     let mesh_view = {
-                        let (params_iso, params_window): (f32, Option<[f32; 2]>) = if let Some(ref wlww) = wwwl {
-                            let wl = *wlww.get(0).unwrap_or(&f32::NAN);
-                            let ww = *wlww.get(1).unwrap_or(&f32::NAN);
-                            let iso_from_wl = if wl.is_nan() || ww.is_nan() { iso_value } else { wl + ww * 0.5 };
-                            (iso_from_wl, Some([wl, ww]))
-                        } else {
-                            (iso_value, None)
-                        };
-
                         log::info!("mesh_mode_enabled: {}", self.enable_mesh);
                         
                         if !self.enable_mesh {
-                            let new_mesh = Mesh::new(&vol, params_iso);
+                            let new_mesh = Mesh::new(&vol, iso_value);
                             self.cached_mesh = Some(new_mesh);
                             self.enable_mesh = true;
                         }
@@ -541,8 +532,6 @@ impl App {
         &mut self,
         mode: usize,
         orientation_index: usize,
-        iso_value: f32,
-        wwwl: Option<Vec<f32>>,
     ) {
         let vol_option = self.app_model.volume().ok().map(|vol| vol.clone());
         if let Some(vol) = vol_option {
@@ -571,15 +560,6 @@ impl App {
                     self.app_view.layout.add_view(mip_view);
                 }
                 2 => {
-                    let (params_iso, params_window): (f32, Option<[f32; 2]>) = if let Some(ref wlww) = wwwl {
-                        let wl = *wlww.get(0).unwrap_or(&f32::NAN);
-                        let ww = *wlww.get(1).unwrap_or(&f32::NAN);
-                        let iso_from_wl = if wl.is_nan() || ww.is_nan() { iso_value } else { wl + ww * 0.5 };
-                        (iso_from_wl, Some([wl, ww]))
-                    } else {
-                        (iso_value, None)
-                    };
-
                     let mesh_ref = self.cached_mesh.as_ref().expect("cached_mesh must exist after rebuild");
                     let mesh_view = self.app_view.view_factory
                         .create_mesh_view_with_content(
