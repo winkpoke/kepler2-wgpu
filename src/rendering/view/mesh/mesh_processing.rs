@@ -1,111 +1,141 @@
 use std::collections::HashMap;
 use ndarray::{Array3, s};
+use std::f64::consts::PI;
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
 
-/// Merge duplicate vertices using sort-based grouping to reduce memory.
+// --- 1. Optimized Merge Vertices (Sort-based, Low Memory) ---
 pub fn merge_vertices(
     vertices: &[[f32; 3]],
     faces: &[[usize; 3]],
 ) -> (Vec<[f32; 3]>, Vec<[usize; 3]>) {
-    log::debug!("Merging vertices (Sort-based)...");
+    println!("Merging vertices (Sort-based)...");
+    
+    // Create indices 0..N
+    let mut indices: Vec<usize> = (0..vertices.len()).collect();
 
-    // Build sortable list of bit patterns and original indices
-    let mut indexed_verts: Vec<([u32; 3], usize)> = vertices
-        .iter()
-        .enumerate()
-        .map(|(i, v)| ([v[0].to_bits(), v[1].to_bits(), v[2].to_bits()], i))
-        .collect();
+    // Sort indices based on vertex values
+    // usage: 8 bytes/vertex instead of 20 bytes/vertex
+    indices.sort_unstable_by(|&a, &b| {
+        let va = vertices[a];
+        let vb = vertices[b];
+        // Compare bits to handle floats safely
+        let ka = [va[0].to_bits(), va[1].to_bits(), va[2].to_bits()];
+        let kb = [vb[0].to_bits(), vb[1].to_bits(), vb[2].to_bits()];
+        ka.cmp(&kb)
+    });
 
-    // Group duplicates by sorting
-    indexed_verts.sort_unstable_by_key(|k| k.0);
-
-    let mut unique_vertices: Vec<[f32; 3]> = Vec::new();
+    let mut unique_vertices = Vec::new();
+    // Map from old_index -> new_index
     let mut index_map = vec![0usize; vertices.len()];
+    
+    if !indices.is_empty() {
+        // First one
+        let first_idx = indices[0];
+        unique_vertices.push(vertices[first_idx]);
+        index_map[first_idx] = 0;
 
-    if !indexed_verts.is_empty() {
-        let first = indexed_verts[0];
-        unique_vertices.push(vertices[first.1]);
-        index_map[first.1] = 0;
+        let mut current_unique_idx = 0;
+        let v0 = vertices[first_idx];
+        let mut last_bits = [v0[0].to_bits(), v0[1].to_bits(), v0[2].to_bits()];
 
-        let mut current_unique_idx = 0usize;
-        let mut last_bits = first.0;
-
-        for i in 1..indexed_verts.len() {
-            let current = indexed_verts[i];
-            if current.0 == last_bits {
-                index_map[current.1] = current_unique_idx;
+        for &orig_idx in &indices[1..] {
+             let v = vertices[orig_idx];
+             let current_bits = [v[0].to_bits(), v[1].to_bits(), v[2].to_bits()];
+            
+            if current_bits == last_bits {
+                // Duplicate
+                index_map[orig_idx] = current_unique_idx;
             } else {
+                // New
                 current_unique_idx += 1;
-                unique_vertices.push(vertices[current.1]);
-                index_map[current.1] = current_unique_idx;
-                last_bits = current.0;
+                unique_vertices.push(v);
+                index_map[orig_idx] = current_unique_idx;
+                last_bits = current_bits;
             }
         }
     }
 
+    // Rebuild faces
     let new_faces: Vec<[usize; 3]> = faces
         .iter()
         .map(|f| [index_map[f[0]], index_map[f[1]], index_map[f[2]]])
         .collect();
 
-    log::debug!(
-        "Merged {} -> {} vertices",
-        vertices.len(),
-        unique_vertices.len()
-    );
+    println!("Merged {} -> {} vertices", vertices.len(), unique_vertices.len());
     (unique_vertices, new_faces)
 }
 
-/// Laplacian smoothing using face-based accumulators for low memory.
+// --- 2. Optimized Laplacian Smooth (Accumulator-based, Low Memory) ---
 pub fn laplacian_smooth(
     vertices: &[[f32; 3]],
     faces: &[[usize; 3]],
     iterations: usize,
     lambda: f32,
+    pinned_zs: &[f32], // New argument
 ) -> Vec<[f32; 3]> {
     if vertices.is_empty() || faces.is_empty() {
         return vertices.to_vec();
     }
 
-    log::debug!("Smoothing mesh (Accumulator-based)...");
+    println!("Smoothing mesh (Accumulator-based)...");
     let mut current_vertices = vertices.to_vec();
     let num_verts = current_vertices.len();
 
+    // Pre-calculate which vertices are pinned
+    // Using a simple bool mapping might be faster than checking Z every iter
+    let is_pinned: Vec<bool> = current_vertices.iter().map(|v| {
+        pinned_zs.iter().any(|&z_pin| (v[2] - z_pin).abs() < 1e-3)
+    }).collect();
+
+    // Pre-allocate buffers once
     let mut moves = vec![[0.0f32; 3]; num_verts];
     let mut counts = vec![0u32; num_verts];
 
     for _ in 0..iterations {
+        // Reset buffers
         moves.fill([0.0, 0.0, 0.0]);
         counts.fill(0);
 
+        // Iterate FACES to find neighbors implicitly
         for face in faces {
             let ia = face[0];
             let ib = face[1];
             let ic = face[2];
+
+            // Ignore degenerate triangles within index bounds
             if ia == ib || ib == ic || ia == ic { continue; }
 
             let pa = current_vertices[ia];
             let pb = current_vertices[ib];
             let pc = current_vertices[ic];
 
+            // Add pb and pc to a's accumulator
             moves[ia][0] += pb[0] + pc[0];
             moves[ia][1] += pb[1] + pc[1];
             moves[ia][2] += pb[2] + pc[2];
             counts[ia] += 2;
 
+            // Add pa and pc to b's accumulator
             moves[ib][0] += pa[0] + pc[0];
             moves[ib][1] += pa[1] + pc[1];
             moves[ib][2] += pa[2] + pc[2];
             counts[ib] += 2;
 
+            // Add pa and pb to c's accumulator
             moves[ic][0] += pa[0] + pb[0];
             moves[ic][1] += pa[1] + pb[1];
             moves[ic][2] += pa[2] + pb[2];
             counts[ic] += 2;
         }
 
+        // Apply Smoothing
         for i in 0..num_verts {
+            // SKIP pinned vertices
+            if is_pinned[i] {
+                continue;
+            }
+
             if counts[i] > 0 {
                 let scale = 1.0 / counts[i] as f32;
                 let center = [
@@ -125,6 +155,92 @@ pub fn laplacian_smooth(
 
     current_vertices
 }
+
+pub fn downsample_mesh(
+    vertices: &[[f32; 3]],
+    faces: &[[usize; 3]],
+    grid_size: f64,
+    pinned_zs: &[f32],
+) -> (Vec<[f32; 3]>, Vec<[usize; 3]>) {
+    let grid_size = grid_size as f32;
+    if vertices.is_empty() || faces.is_empty() {
+        return (vertices.to_vec(), faces.to_vec());
+    }
+    if grid_size <= 1e-6 {
+         return (vertices.to_vec(), faces.to_vec());
+    }
+
+    println!("Downsampling mesh (with pinning)...");
+
+    let is_pinned: Vec<bool> = vertices.iter().map(|v| {
+        pinned_zs.iter().any(|&z_pin| (v[2] - z_pin).abs() < 1e-3)
+    }).collect();
+
+    let mut cell_map: HashMap<[i32; 3], Vec<usize>> = HashMap::new();
+    let mut new_vertices = Vec::new();
+    let mut old_to_new = vec![usize::MAX; vertices.len()];
+
+    // 1. Handle Pinned Vertices
+    for (i, v) in vertices.iter().enumerate() {
+        if is_pinned[i] {
+            old_to_new[i] = new_vertices.len();
+            new_vertices.push(*v);
+        }
+    }
+
+    // 2. Group Unpinned Vertices
+    for (i, v) in vertices.iter().enumerate() {
+        if !is_pinned[i] {
+            let key = [
+                (v[0] / grid_size).floor() as i32,
+                (v[1] / grid_size).floor() as i32,
+                (v[2] / grid_size).floor() as i32,
+            ];
+            cell_map.entry(key).or_default().push(i);
+        }
+    }
+
+    // 3. Create Centroids
+    for indices in cell_map.values() {
+        let mut sum_pos = [0.0, 0.0, 0.0];
+        for &old_idx in indices {
+            let p = vertices[old_idx];
+            sum_pos[0] += p[0];
+            sum_pos[1] += p[1];
+            sum_pos[2] += p[2];
+        }
+        let count = indices.len() as f32;
+        let centroid = [
+            sum_pos[0] / count,
+            sum_pos[1] / count,
+            sum_pos[2] / count,
+        ];
+        
+        let new_idx = new_vertices.len();
+        new_vertices.push(centroid);
+
+        for &old_idx in indices {
+            old_to_new[old_idx] = new_idx;
+        }
+    }
+
+    // 4. Rebuild Faces
+    let mut new_faces = Vec::with_capacity(faces.len());
+    for face in faces {
+        let idx0 = old_to_new[face[0]];
+        let idx1 = old_to_new[face[1]];
+        let idx2 = old_to_new[face[2]];
+
+        if idx0 != usize::MAX && idx1 != usize::MAX && idx2 != usize::MAX {
+             if idx0 != idx1 && idx1 != idx2 && idx0 != idx2 {
+                new_faces.push([idx0, idx1, idx2]);
+            }
+        }
+    }
+
+    (new_vertices, new_faces)
+}
+
 
 pub struct MarchingTetrahedra {
     threshold: i16,
@@ -158,21 +274,23 @@ impl MarchingTetrahedra {
     }
 
     /// Extract isosurface using marching tetrahedra, output f32 vertices.
-    pub fn extract_surface(&self, volume: &Array3<i16>, spacing: (f64, f64, f64)) -> (Vec<[f32; 3]>, Vec<[usize; 3]>) {
+    pub fn extract_surface(&self, volume: &Array3<i16>, spacing: (f64, f64, f64), z_offset: usize, z_range: std::ops::Range<usize>) -> (Vec<[f32; 3]>, Vec<[usize; 3]>) {
         let (depth, height, width) = volume.dim();
         let (spacing_z, spacing_y, spacing_x) = spacing;
-        log::debug!("Processing volume: {}x{}x{}", width, height, depth);
-        log::debug!("Spacing: {:.3}x{:.3}x{:.3}", spacing_x, spacing_y, spacing_z);
+        
+        // Ensure range is within bounds
+        let start_z = z_range.start.max(0);
+        let end_z = z_range.end.min(depth - 1); 
 
         // Parallelize over Z slices (native), fallback to sequential on WASM
         #[cfg(not(target_arch = "wasm32"))]
-        let all_vertices: Vec<[f32; 3]> = (0..depth - 1).into_par_iter().flat_map(|z| {
-            self.process_slice(volume, z, width, height, spacing_x, spacing_y, spacing_z)
+        let all_vertices: Vec<[f32; 3]> = (start_z..end_z).into_par_iter().flat_map(|z| {
+            self.process_slice(volume, z, width, height, spacing_x, spacing_y, spacing_z, z_offset)
         }).collect();
 
         #[cfg(target_arch = "wasm32")]
-        let all_vertices: Vec<[f32; 3]> = (0..depth - 1).into_iter().flat_map(|z| {
-            self.process_slice(volume, z, width, height, spacing_x, spacing_y, spacing_z)
+        let all_vertices: Vec<[f32; 3]> = (start_z..end_z).into_iter().flat_map(|z| {
+            self.process_slice(volume, z, width, height, spacing_x, spacing_y, spacing_z, z_offset)
         }).collect();
 
         log::debug!("Generated {} vertices", all_vertices.len());
@@ -196,12 +314,12 @@ impl MarchingTetrahedra {
         spacing_x: f64,
         spacing_y: f64,
         spacing_z: f64,
+        z_offset: usize,
     ) -> Vec<[f32; 3]> {
         let mut local_vertices = Vec::new();
-
+            
         for y in 0..height - 1 {
             for x in 0..width - 1 {
-                // Get cube values
                 let v0 = volume[[z, y, x]];
                 let v1 = volume[[z, y, x + 1]];
                 let v2 = volume[[z, y + 1, x + 1]];
@@ -213,24 +331,17 @@ impl MarchingTetrahedra {
 
                 let cube_values = [v0, v1, v2, v3, v4, v5, v6, v7];
 
-                // Decompose into 6 tetrahedra
                 let tetrahedrons = [
-                    [0, 1, 3, 5],
-                    [1, 2, 3, 5],
-                    [2, 3, 5, 6],
-                    [0, 3, 4, 5],
-                    [3, 4, 5, 7],
-                    [3, 5, 6, 7],
+                    [0, 1, 3, 5], [1, 2, 3, 5], [2, 3, 5, 6],
+                    [0, 3, 4, 5], [3, 4, 5, 7], [3, 5, 6, 7],
                 ];
 
                 for tetra_indices in tetrahedrons {
                     let mut tetra_index = 0;
-                    let mut t_values = [0; 4];
                     let mut t_indices = [0; 4];
 
                     for (i, &idx) in tetra_indices.iter().enumerate() {
                         let val = cube_values[idx];
-                        t_values[i] = val;
                         t_indices[i] = idx;
                         if val > self.threshold {
                             tetra_index |= 1 << i;
@@ -253,7 +364,6 @@ impl MarchingTetrahedra {
                         let e3 = edges[i+2] as usize;
 
                         for &edge_idx in &[e1, e2, e3] {
-                            // Map edge index (0-5) to vertex pair in tetrahedron
                             let (v1_local, v2_local) = TETRA_EDGE_VERTICES[edge_idx];
                             let v1_cube_idx = t_indices[v1_local];
                             let v2_cube_idx = t_indices[v2_local];
@@ -265,7 +375,7 @@ impl MarchingTetrahedra {
                                 [
                                     (x as f64 + dx) * spacing_x,
                                     (y as f64 + dy) * spacing_y,
-                                    (z as f64 + dz) * spacing_z
+                                    (z as f64 + z_offset as f64 + dz) * spacing_z
                                 ]
                             };
 
@@ -316,66 +426,6 @@ const TETRA_TABLE: [[i8; 7]; 16] = [
     [-1, -1, -1, -1, -1, -1, -1], // 1111
 ];
 
-/// Downsample mesh by grid clustering using f32 for efficiency.
-pub fn downsample_mesh(
-    vertices: &[[f32; 3]],
-    faces: &[[usize; 3]],
-    grid_size: f64,
-) -> (Vec<[f32; 3]>, Vec<[usize; 3]>) {
-    let grid_size = grid_size as f32;
-    if vertices.is_empty() || faces.is_empty() || grid_size <= 0.0 {
-        return (vertices.to_vec(), faces.to_vec());
-    }
-
-    log::debug!("Downsampling mesh...");
-
-    let mut cell_map: HashMap<[i32; 3], Vec<usize>> = HashMap::new();
-    for (i, v) in vertices.iter().enumerate() {
-        let key = [
-            (v[0] / grid_size).floor() as i32,
-            (v[1] / grid_size).floor() as i32,
-            (v[2] / grid_size).floor() as i32,
-        ];
-        cell_map.entry(key).or_default().push(i);
-    }
-
-    let mut new_vertices = Vec::with_capacity(cell_map.len());
-    let mut old_to_new = vec![0; vertices.len()];
-
-    for (new_idx, indices) in cell_map.values().enumerate() {
-        let mut sum_pos = [0.0f32, 0.0f32, 0.0f32];
-        for &old_idx in indices {
-            let p = vertices[old_idx];
-            sum_pos[0] += p[0];
-            sum_pos[1] += p[1];
-            sum_pos[2] += p[2];
-        }
-        let count = indices.len() as f32;
-        let centroid = [
-            sum_pos[0] / count,
-            sum_pos[1] / count,
-            sum_pos[2] / count,
-        ];
-        new_vertices.push(centroid);
-
-        for &old_idx in indices {
-            old_to_new[old_idx] = new_idx;
-        }
-    }
-
-    let mut new_faces = Vec::with_capacity(faces.len());
-    for face in faces {
-        let v0 = old_to_new[face[0]];
-        let v1 = old_to_new[face[1]];
-        let v2 = old_to_new[face[2]];
-        if v0 != v1 && v1 != v2 && v0 != v2 {
-            new_faces.push([v0, v1, v2]);
-        }
-    }
-
-    (new_vertices, new_faces)
-}
-
 /// Applies a Gaussian filter to a 3D volume.
 /// 
 /// # Arguments
@@ -384,67 +434,76 @@ pub fn downsample_mesh(
 /// 
 /// # Returns
 /// A new 3D volume with the filter applied.
-pub fn apply_gaussian_filter(volume: &Array3<i16>, sigma: f64) -> Array3<i16> {
+pub fn apply_gaussian_filter(volume: Array3<i16>, sigma: f32) -> Array3<i16> {
     if sigma <= 0.0 {
-        return volume.clone();
+        return volume;
     }
 
     let kernel = create_gaussian_kernel(sigma);
     let (depth, rows, cols) = volume.dim();
     
-    // Convert to f64 for processing
-    let mut data_f64 = volume.mapv(|v| v as f64);
-    let mut temp = Array3::<f64>::zeros((depth, rows, cols));
+    // 1. Convert to f32 and FREE original i16 memory immediately
+    // usage: ~700MB (f32) instead of ~350MB(i16) + ~700MB(f32)
+    let mut current_buffer = volume.mapv(|v| v as f32);
+    // Explicitly drop input if mapv didn't consume it (mapv consumes self for Array, but we want to be sure)
+    // Actually mapv on Array3 consumes self, so `volume` is gone.
 
-    // Convolve along Z
+    // 2. Allocate second buffer for ping-pong
+    // usage: +700MB -> Total Peak ~1.4GB
+    let mut next_buffer = Array3::<f32>::zeros((depth, rows, cols));
+
+    // Convolve along Z: current -> next
     for y in 0..rows {
         for x in 0..cols {
-            let line = data_f64.slice(s![.., y, x]);
+            let line = current_buffer.slice(s![.., y, x]);
             let convolved = convolve_1d(&line.to_vec(), &kernel);
             for (z, val) in convolved.iter().enumerate() {
-                temp[[z, y, x]] = *val;
+                next_buffer[[z, y, x]] = *val;
             }
         }
     }
-    data_f64.assign(&temp);
+    // Swap: next is now current
+    std::mem::swap(&mut current_buffer, &mut next_buffer);
 
-    // Convolve along Y
+    // Convolve along Y: current -> next
     for z in 0..depth {
         for x in 0..cols {
-            let line = data_f64.slice(s![z, .., x]);
+            let line = current_buffer.slice(s![z, .., x]);
             let convolved = convolve_1d(&line.to_vec(), &kernel);
             for (y, val) in convolved.iter().enumerate() {
-                temp[[z, y, x]] = *val;
+                next_buffer[[z, y, x]] = *val;
             }
         }
     }
-    data_f64.assign(&temp);
+    std::mem::swap(&mut current_buffer, &mut next_buffer);
 
-    // Convolve along X
+    // Convolve along X: current -> next
     for z in 0..depth {
         for y in 0..rows {
-            let line = data_f64.slice(s![z, y, ..]);
+            let line = current_buffer.slice(s![z, y, ..]);
             let convolved = convolve_1d(&line.to_vec(), &kernel);
             for (x, val) in convolved.iter().enumerate() {
-                temp[[z, y, x]] = *val;
+                next_buffer[[z, y, x]] = *val;
             }
         }
     }
+    std::mem::swap(&mut current_buffer, &mut next_buffer);
 
-    // Convert back to i16
-    temp.mapv(|v| v.round() as i16)
+    // Final result is in current_buffer. Convert back to i16 and return.
+    // We can mapv over it.
+    current_buffer.mapv(|v| v.round() as i16)
 }
 
-fn create_gaussian_kernel(sigma: f64) -> Vec<f64> {
+fn create_gaussian_kernel(sigma: f32) -> Vec<f32> {
     let radius = (3.0 * sigma).ceil() as isize;
     let size = (2 * radius + 1) as usize;
     let mut kernel = Vec::with_capacity(size);
     let mut sum = 0.0;
     let two_sigma_sq = 2.0 * sigma * sigma;
-    // Removed unused 'norm' variable and PI import
+    let norm = 1.0 / (2.0 * PI as f32 * sigma * sigma).sqrt(); // 1D normalization is actually just 1/(sqrt(2pi)*sigma)
 
     for i in -radius..=radius {
-        let x = i as f64;
+        let x = i as f32;
         let val = (-x * x / two_sigma_sq).exp();
         kernel.push(val);
         sum += val;
@@ -458,7 +517,7 @@ fn create_gaussian_kernel(sigma: f64) -> Vec<f64> {
     kernel
 }
 
-fn convolve_1d(data: &[f64], kernel: &[f64]) -> Vec<f64> {
+fn convolve_1d(data: &[f32], kernel: &[f32]) -> Vec<f32> {
     let len = data.len();
     let k_len = kernel.len();
     let radius = k_len / 2;
@@ -492,9 +551,28 @@ mod tests {
     use ndarray::arr3;
 
     #[test]
+    fn test_downsample_pinning() {
+        let vertices = vec![
+            [0.0, 0.0, 0.0],
+            [0.1, 0.1, 0.0],
+            [0.0, 0.0, 5.0],
+            [0.1, 0.1, 5.0],
+        ];
+        let faces = vec![[0, 1, 2]];
+        let pinned_zs = vec![0.0];
+        let grid_size = 1.0;
+        
+        let (new_verts, _) = downsample_mesh(&vertices, &faces, grid_size, &pinned_zs);
+        
+        assert_eq!(new_verts.len(), 3);
+        assert!(new_verts.contains(&[0.0, 0.0, 0.0]));
+        assert!(new_verts.contains(&[0.1, 0.1, 0.0]));
+    }
+
+    #[test]
     fn test_gaussian_kernel_sum() {
         let kernel = create_gaussian_kernel(1.0);
-        let sum: f64 = kernel.iter().sum();
+        let sum: f32 = kernel.iter().sum();
         assert!((sum - 1.0).abs() < 1e-6);
     }
 
@@ -505,7 +583,7 @@ mod tests {
             [[10, 10], [10, 10]]
         ]);
         // Sigma 0 should return original
-        let filtered = apply_gaussian_filter(&volume, 0.0);
+        let filtered = apply_gaussian_filter(volume.clone(), 0.0);
         assert_eq!(filtered, volume);
     }
 }

@@ -447,12 +447,16 @@ impl Mesh {
     ) -> Self {
         // Smoothing settings
         let smooth_iterations = 5;
-        let smooth_lambda = 2.0;
-        let downsample_grid_size = 8.0; // 2.0 mm grid cell size
+        let smooth_lambda = 0.5;
+        let downsample_grid_size = 2.0; // 2.0 mm grid cell size
 
         // Gaussian Filter settings
         let enable_gaussian = true;
-        let gaussian_sigma = 1.0;
+        let gaussian_sigma = 0.5;
+
+        // Chunk settings
+        let chunk_size = 100;
+        let overlap = 4; // Sufficient for Gaussian + Derivatives
 
         let tissues = vec![
             Tissue {
@@ -483,159 +487,147 @@ impl Mesh {
             (rows, columns, 1.0, 1.0)
         };
 
-        if new_rows != rows || new_columns != columns {
-            println!("Downsampling images from {}x{} to {}x{}", rows, columns, new_rows, new_columns);
-        }
-
-        let mut volume_data = Array3::<i16>::zeros((depth, new_rows, new_columns));
-        let vol = ctvolume.voxel_data.clone();
-
-        for z in 0..depth {
-            let start = z * columns * rows;
-            let end = start + columns * rows;
-            let buf = &vol[start..end];
-            let buf_vec = buf.to_vec();
-
-            let slice_view = Array3::from_shape_vec((1, rows, columns), buf_vec).unwrap();
-
-            let final_slice = if new_rows != rows || new_columns != columns {
-                // We need to extract the 2D slice from the 3D view (1, rows, columns) -> (rows, columns)
-                let slice_2d = slice_view.index_axis(ndarray::Axis(0), 0).to_owned();
-                resize_slice(&slice_2d, (new_rows, new_columns))
-            } else {
-                slice_view.index_axis(ndarray::Axis(0), 0).to_owned()
-            };
-            
-            volume_data.slice_mut(s![z..z+1, .., ..]).assign(&final_slice.insert_axis(ndarray::Axis(0)));
-        }
-
         let final_spacing_y = spacing.1 * scale_y;
         let final_spacing_x = spacing.2 * scale_x;
-        println!("Volume dimensions: {:?}", volume_data.shape());
-        println!("Spacing: z={:.3}, y={:.3}, x={:.3}", spacing.0, final_spacing_y, final_spacing_x);
 
-        // Apply Gaussian Filter
-        if enable_gaussian {
-            println!("\n=== Applying Gaussian Filter (sigma={:.2}) ===", gaussian_sigma);
-            volume_data = apply_gaussian_filter(&volume_data, gaussian_sigma);
-        }
+        let mut accumulated_vertices = Vec::new();
+        let mut accumulated_indices = Vec::new();
+        let mut chunk_index = 0;
 
-        // Extract Surfaces
-        let mut meshes = Vec::new();
+        for z_start in (0..depth).step_by(chunk_size) {
+            let z_end = (z_start + chunk_size).min(depth);
+            if z_end <= z_start { break; }
 
-        for tissue in tissues {
-            println!("\n=== Processing {} (Range={}-{}) ===", tissue.name, tissue.min, tissue.max);
-            let mt = MarchingTetrahedra::new(tissue.min);
-            let (vertices, faces) = mt.extract_surface(&volume_data, (spacing.0, final_spacing_y, final_spacing_x));
-            println!("Generated {} vertices, {} triangles", vertices.len(), faces.len());
+            println!("\n--- Processing Chunk {} (Slices {} to {}) ---", chunk_index, z_start, z_end);
 
-            if !vertices.is_empty() {
-                // Merge vertices to fix connectivity
-                let (merged_vertices, merged_faces) = merge_vertices(&vertices, &faces);
+            // 1. Calculate Read Range (with Overlap)
+            let read_start = z_start.saturating_sub(overlap);
+            let read_end = (z_end + overlap).min(depth);
+            
+            if read_end - read_start < 2 { break; }
+            let chunk_depth = read_end - read_start;
 
-                // Apply smoothing
-                let smoothed_vertices = laplacian_smooth(
-                    &merged_vertices,
-                    &merged_faces,
-                    smooth_iterations,
-                    smooth_lambda,
-                );
+            // 2. Build Chunk Volume
+            let mut chunk_volume = Array3::<i16>::zeros((chunk_depth, new_rows, new_columns));
+            let vol = &ctvolume.voxel_data;
 
-                // Apply Downsampling
-                let (mm_vertices, downsampled_faces) = downsample_mesh(&smoothed_vertices, &merged_faces, downsample_grid_size);
-
-                let mut min_mm = [f32::INFINITY; 3];
-                let mut max_mm = [f32::NEG_INFINITY; 3];
-                for p in &mm_vertices {
-                    for i in 0..3 {
-                        min_mm[i] = min_mm[i].min(p[i]);
-                        max_mm[i] = max_mm[i].max(p[i]);
-                    }
-                }
-                let center_mm = [
-                    (min_mm[0] + max_mm[0]) * 0.5,
-                    (min_mm[1] + max_mm[1]) * 0.5,
-                    (min_mm[2] + max_mm[2]) * 0.5,
-                ];
-                let extent_mm = [
-                    max_mm[0] - min_mm[0],
-                    max_mm[1] - min_mm[1],
-                    max_mm[2] - min_mm[2],
-                ];
-                let max_extent_mm = extent_mm.iter().fold(0.0f32, |a, &b| a.max(b));
-                if max_extent_mm < f32::EPSILON {
-                    log::warn!("extract_isosurface: empty bounding box (mm), skipping.");
-                }
-
-                let scale = 2.0 / max_extent_mm;
-
-                let normals = compute_vertex_normals_local(&mm_vertices, &downsampled_faces);
-
-                let mut mesh_vertices = Vec::with_capacity(mm_vertices.len());
-                for (idx, p) in mm_vertices.iter().enumerate() {
-                    let x = (p[0] - center_mm[0]) * scale;
-                    let y = (p[1] - center_mm[1]) * scale;
-                    let z = (p[2] - center_mm[2]) * scale;
-                    let normal = normals.get(idx).copied().unwrap_or([0.0, 0.0, 1.0]);
-                    let color = tissue.color;
-                    mesh_vertices.push(MeshVertex {
-                        position: [x, y, z],
-                        normal,
-                        color,
-                    });
-                }
-
-                // generate final GPU indices (with consistent vertex order)
-                let mesh_triangles: Vec<u32> = downsampled_faces
-                    .into_iter()
-                    .flat_map(|tri| tri.into_iter().map(|i| i as u32))
-                    .collect();
-
-                log::info!(
-                    "extract_isosurface: {} vertices, {} triangles (normalized to unit cube)",
-                    mesh_vertices.len(),
-                    mesh_triangles.len() / 3
-                );
-
-                // Calculate mesh bounds for debugging
-                let mut min_bounds = [f32::INFINITY, f32::INFINITY, f32::INFINITY];
-                let mut max_bounds = [f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY];
+            for z in 0..chunk_depth {
+                let global_z = read_start + z;
+                let start = global_z * columns * rows;
+                let end = start + columns * rows;
+                let buf = &vol[start..end];
+                let slice_vec = buf.to_vec();
                 
-                for vertex in &mesh_vertices {
-                    for i in 0..3 {
-                        min_bounds[i] = min_bounds[i].min(vertex.position[i]);
-                        max_bounds[i] = max_bounds[i].max(vertex.position[i]);
-                    }
-                }
+                // Use from_shape_vec which returns Result, so we unwrap
+                let slice_view = ndarray::Array2::from_shape_vec((rows, columns), slice_vec).unwrap();
 
-                log::info!(
-                    "extract_isosurface: {} vertices, {} triangles (normalized to unit cube)",
-                    mesh_vertices.len(),
-                    mesh_triangles.len() / 3
+                let final_slice = if new_rows != rows || new_columns != columns {
+                    resize_slice(&slice_view, (new_rows, new_columns))
+                } else {
+                    slice_view
+                };
+                
+                chunk_volume.slice_mut(s![z, .., ..]).assign(&final_slice);
+            }
+
+            // 3. Apply Gaussian Filter
+            if enable_gaussian {
+                chunk_volume = apply_gaussian_filter(chunk_volume, gaussian_sigma);
+            }
+
+            // 4. Determine Pinned Z coordinates (Global Physical Units)
+            let mut pinned_zs = Vec::new();
+            let spacing_z_f32 = spacing.0 as f32;
+            if z_start > 0 {
+                pinned_zs.push(z_start as f32 * spacing_z_f32);
+            }
+            if z_end < depth {
+                pinned_zs.push(z_end as f32 * spacing_z_f32);
+            }
+
+            // 5. Extract and Process
+            let local_start = z_start - read_start;
+            let local_end = z_end - read_start;
+            let extract_range = local_start..local_end;
+            let z_offset = read_start;
+
+            for tissue in &tissues {
+                let mt = MarchingTetrahedra::new(tissue.min);
+                let (vertices, faces) = mt.extract_surface(
+                    &chunk_volume, 
+                    (spacing.0, final_spacing_y, final_spacing_x),
+                    z_offset,
+                    extract_range.clone()
                 );
 
-                meshes.push(Self { vertices: mesh_vertices, indices: mesh_triangles });
-
-            } else {
-                println!("Warning: No mesh generated for {}", tissue.name);
+                if !vertices.is_empty() {
+                    let (merged_vertices, merged_faces) = merge_vertices(&vertices, &faces);
+                    let smoothed_vertices = laplacian_smooth(&merged_vertices, &merged_faces, smooth_iterations, smooth_lambda, &pinned_zs);
+                    let (final_chunk_vertices, final_chunk_faces) = downsample_mesh(&smoothed_vertices, &merged_faces, downsample_grid_size, &pinned_zs);
+                    
+                    let normals = compute_vertex_normals_local(&final_chunk_vertices, &final_chunk_faces);
+                    
+                    let base_index = accumulated_vertices.len() as u32;
+                    for (i, p) in final_chunk_vertices.iter().enumerate() {
+                        accumulated_vertices.push(MeshVertex {
+                            position: *p,
+                            normal: normals[i],
+                            color: tissue.color,
+                        });
+                    }
+                    
+                    for tri in final_chunk_faces {
+                        accumulated_indices.push(tri[0] as u32 + base_index);
+                        accumulated_indices.push(tri[1] as u32 + base_index);
+                        accumulated_indices.push(tri[2] as u32 + base_index);
+                    }
+                }
             }
+            chunk_index += 1;
         }
-        
-        if meshes.is_empty() {
+
+        if accumulated_vertices.is_empty() {
             log::warn!("No mesh generated for any tissue.");
             return Self { vertices: Vec::new(), indices: Vec::new() };
         }
 
-        let mut merged_vertices: Vec<MeshVertex> = Vec::new();
-        let mut merged_indices: Vec<u32> = Vec::new();
-        let mut base: u32 = 0;
-        for m in meshes {
-            let n = m.vertices.len() as u32;
-            merged_vertices.extend(m.vertices.into_iter());
-            merged_indices.extend(m.indices.into_iter().map(|i| i + base));
-            base += n;
+        // 6. Post-Process: Normalize to Unit Cube
+        let mut min_mm = [f32::INFINITY; 3];
+        let mut max_mm = [f32::NEG_INFINITY; 3];
+        for v in &accumulated_vertices {
+            for i in 0..3 {
+                min_mm[i] = min_mm[i].min(v.position[i]);
+                max_mm[i] = max_mm[i].max(v.position[i]);
+            }
         }
-        Self { vertices: merged_vertices, indices: merged_indices }
+        
+        let center_mm = [
+            (min_mm[0] + max_mm[0]) * 0.5,
+            (min_mm[1] + max_mm[1]) * 0.5,
+            (min_mm[2] + max_mm[2]) * 0.5,
+        ];
+        let extent_mm = [
+            max_mm[0] - min_mm[0],
+            max_mm[1] - min_mm[1],
+            max_mm[2] - min_mm[2],
+        ];
+        let max_extent_mm = extent_mm.iter().fold(0.0f32, |a, &b| a.max(b));
+        
+        let scale = if max_extent_mm > f32::EPSILON { 2.0 / max_extent_mm } else { 1.0 };
+        
+        for v in &mut accumulated_vertices {
+             v.position[0] = (v.position[0] - center_mm[0]) * scale;
+             v.position[1] = (v.position[1] - center_mm[1]) * scale;
+             v.position[2] = (v.position[2] - center_mm[2]) * scale;
+        }
+
+        log::info!(
+            "Generated Total: {} vertices, {} triangles (normalized)",
+            accumulated_vertices.len(),
+            accumulated_indices.len() / 3
+        );
+
+        Self { vertices: accumulated_vertices, indices: accumulated_indices }
     }
 }
 
