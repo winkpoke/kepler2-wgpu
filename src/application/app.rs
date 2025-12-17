@@ -443,12 +443,40 @@ impl App {
         self.load_data_from_ct_volume(&vol);
     }
 
+    pub fn crop_volume(&mut self, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32) {
+        let vol = match self.app_model.volume() {
+            Ok(v) => v,
+            Err(e) => {
+                log::warn!("Cannot crop: {}", e);
+                return;
+            }
+        };
+
+        let world_min = [sx, sy, sz];
+        let world_max = [lx, ly, lz];
+        match vol.crop_by_world_bounds(world_min, world_max) {
+            Ok(cropped_vol) => {
+                self.load_data_from_ct_volume(&cropped_vol);
+            },
+            Err(e) => {
+                log::error!("Crop operation failed: {}", e);
+            }
+        }
+    }
+    
     pub fn mesh_mode_enabled(&mut self, enable_mesh: bool) {
         self.enable_mesh = enable_mesh;
     }
 
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
-    pub fn set_mesh_mode_enabled(&mut self, mesh_index: Option<usize>, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, iso_min: f32, iso_max: f32) {
+    pub fn set_mesh_mode_enabled(
+        &mut self, 
+        mesh_index: Option<usize>, 
+        mip: Option<usize>, 
+        change_mpr: bool, 
+        index_1: usize, index_2: usize, index_3: usize, index_4: usize, 
+        iso_min: f32, iso_max: f32,
+    ) {
         let mut change_index = false;
 
         if change_mpr {

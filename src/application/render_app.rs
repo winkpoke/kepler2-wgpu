@@ -184,6 +184,11 @@ impl RenderApp {
                     // Function-level comment: Pipeline invalidation is now handled by individual render contexts.
                     log::info!("InvalidatePipelines event: render contexts will rebuild pipelines as needed.");
                 }
+                Event::UserEvent(UserEvent::CropVolume(sx, sy, sz, lx, ly, lz)) => {
+                    // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
+                    state.crop_volume(sx, sy, sz, lx, ly, lz);
+                    log::info!("CropVolume event: world_min= [{sx:?},{sy:?},{sz:?}], world_max= [{lx:?},{ly:?},{lz:?}]");
+                }
                 Event::UserEvent(UserEvent::EnableMesh(enable_mesh)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
                     state.mesh_mode_enabled(enable_mesh);
