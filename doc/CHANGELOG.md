@@ -75,6 +75,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Integration with `camera.set_orbit()` method pending completion
 
 ### Changed
+- 2025-12-17T16-10-36: Updated `doc/redering/basic-mesh-rendering.md` with current WGPU architecture notes and corrected mesh doc paths.
+
+### Changed
 - 2025-11-17T17-50-00: Reorganized documentation folder structure:
   - Created subfolders: `architecture/`, `features/`, `file-formats/`, `fileio/`, `rendering/`, `views/`, `wasm/`
   - Moved documentation files to appropriate categories based on content type
