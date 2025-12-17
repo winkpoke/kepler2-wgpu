@@ -497,6 +497,7 @@ mod tests {
     /// Verify MipUniforms size matches expected scalar-only layout for uniform buffer
     #[test]
     fn test_mip_uniforms_size() {
+        // Verify size and alignment for WGSL
         let size = std::mem::size_of::<MipUniforms>();
         assert_eq!(size % 16, 0);
         assert_eq!(size, 64);

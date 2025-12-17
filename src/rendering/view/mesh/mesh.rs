@@ -42,16 +42,35 @@ impl Default for BasicLightingUniforms {
 
 /// Function-level comment: High-level lighting configuration for mesh rendering.
 /// Provides a simple interface for setting light direction and intensity.
-#[derive(Default, Debug, Clone)]
+#[derive(Debug, Clone)]
 pub struct Lighting {
     pub direction: [f32; 3],
-    pub intensity: f32,
+    pub light_color: [f32; 3],
+    pub light_intensity: f32,
+    pub ambient_color: [f32; 3],
+    pub ambient_intensity: f32,
+}
+
+impl Default for Lighting {
+    fn default() -> Self {
+        Self {
+            direction: [0.6, -0.7, 0.3],
+            light_color: [1.0, 1.0, 1.0],
+            light_intensity: 1.0,
+            ambient_color: [0.4, 0.4, 0.5],
+            ambient_intensity: 0.4,
+        }
+    }
 }
 
 impl Lighting {
     /// Function-level comment: Create a new lighting configuration with specified direction and intensity.
     pub fn new(direction: [f32; 3], intensity: f32) -> Self {
-        Self { direction, intensity }
+        Self { 
+            direction, 
+            light_intensity: intensity,
+            ..Default::default()
+        }
     }
 
     /// Function-level comment: Convert high-level Lighting to BasicLightingUniforms for GPU upload.
@@ -60,10 +79,10 @@ impl Lighting {
         BasicLightingUniforms {
             light_direction: self.direction,
             _padding1: 0.0,
-            light_color: [1.0, 1.0, 1.0],         // White light
-            light_intensity: self.intensity,
-            ambient_color: [0.4, 0.4, 0.5],
-            ambient_intensity: 0.4,
+            light_color: self.light_color,
+            light_intensity: self.light_intensity,
+            ambient_color: self.ambient_color,
+            ambient_intensity: self.ambient_intensity,
             padding2: [0.0, 0.0, 0.0],
             opacity: 1.0,
         }
