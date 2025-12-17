@@ -499,33 +499,23 @@ impl Mesh {
             ctvolume.voxel_spacing.0 as f64,
         );
         
-        // ROI definition - Use arguments if provided, else default
-        let roi_vertices = vec![
-            [-190.9629364013672, -91.0, -1257.0],
-            [200.0, 149.0, -932.0]
-        ];
+        // ROI definition - Use arguments if provided, else default to full volume
+        let roi_min = world_min.unwrap_or([f32::NEG_INFINITY; 3]);
+        let roi_max = world_max.unwrap_or([f32::INFINITY; 3]);
 
-        // Compute ROI AABB
-        let (roi_min, roi_max) = {
-            let mut min = [f32::INFINITY; 3];
-            let mut max = [f32::NEG_INFINITY; 3];
-            for v in &roi_vertices {
-                for i in 0..3 {
-                    if v[i] < min[i] { min[i] = v[i]; }
-                    if v[i] > max[i] { max[i] = v[i]; }
-                }
-            }
-            (min, max)
-        };
+        log::info!("Mesh ROI: Min {:?}, Max {:?}", roi_min, roi_max);
 
         // ROI Z Range
-        let origin_z = ctvolume.base.matrix.get_column(3)[2];
-        let z_min_idx = ((roi_min[2] - origin_z) / ctvolume.voxel_spacing.2).floor() as isize;
-        let z_max_idx = ((roi_max[2] - origin_z) / ctvolume.voxel_spacing.2).ceil() as isize;
+        let (process_z_start, process_z_end) = if world_min.is_some() && world_max.is_some() {
+            let origin_z = ctvolume.base.matrix.get_column(3)[2];
+            let z_min_idx = ((roi_min[2] - origin_z) / ctvolume.voxel_spacing.2).floor() as isize;
+            let z_max_idx = ((roi_max[2] - origin_z) / ctvolume.voxel_spacing.2).ceil() as isize;
+            
+            (z_min_idx.max(0) as usize, z_max_idx.min(depth as isize) as usize)
+        } else {
+            (0, depth)
+        };
         
-        let process_z_start = z_min_idx.max(0) as usize;
-        let process_z_end = z_max_idx.min(depth as isize) as usize;
-
         // Downsampling logic
         let target_size = 256;
         let (new_rows, new_columns, scale_y, scale_x) = if rows > target_size || columns > target_size {
@@ -569,20 +559,10 @@ impl Mesh {
             let mut chunk_volume = Array3::<i16>::zeros((chunk_depth, new_rows, new_columns));
             let vol = &ctvolume.voxel_data;
 
-            #[cfg(not(target_arch = "wasm32"))]
-            let slice_iter = (0..chunk_depth).into_par_iter();
-            #[cfg(target_arch = "wasm32")]
-            let slice_iter = (0..chunk_depth).into_iter();
-
-            let slices: Vec<(usize, ndarray::Array2<i16>)> = slice_iter.map(|z| {
+            for z in 0..chunk_depth {
                 let global_z = read_start + z;
                 let start = global_z * columns * rows;
                 let end = start + columns * rows;
-                
-                if end > vol.len() {
-                    return (z, ndarray::Array2::zeros((new_rows, new_columns)));
-                }
-
                 let buf = &vol[start..end];
                 let slice_vec = buf.to_vec();
                 let slice_view = ndarray::Array2::from_shape_vec((rows, columns), slice_vec).unwrap_or_else(|_| ndarray::Array2::zeros((rows, columns)));
@@ -592,11 +572,8 @@ impl Mesh {
                 } else {
                     slice_view
                 };
-                (z, final_slice)
-            }).collect();
 
-            for (z, slice) in slices {
-                chunk_volume.slice_mut(s![z, .., ..]).assign(&slice);
+                chunk_volume.slice_mut(s![z, .., ..]).assign(&final_slice);
             }
 
             // 3. Gaussian Filter
@@ -604,28 +581,34 @@ impl Mesh {
                 chunk_volume = apply_gaussian_filter(chunk_volume, gaussian_sigma);
             }
 
-            // ROI logic
-            let origin_x = ctvolume.base.matrix.get_column(3)[0];
-            let origin_y = ctvolume.base.matrix.get_column(3)[1];
+            let (crop_x_start, crop_y_start, cropped_volume) = if let (Some(world_min), Some(world_max)) = (world_min, world_max) {
+                // ROI logic
+                let origin_x = ctvolume.base.matrix.get_column(3)[0];
+                let origin_y = ctvolume.base.matrix.get_column(3)[1];
 
-            let x_min_idx = ((roi_min[0] - origin_x) / final_spacing_x as f32).floor() as isize;
-            let x_max_idx = ((roi_max[0] - origin_x) / final_spacing_x as f32).ceil() as isize;
-            let x_dim = chunk_volume.len_of(ndarray::Axis(2)) as isize;
-            let crop_x_start = x_min_idx.max(0) as usize;
-            let crop_x_end = x_max_idx.min(x_dim) as usize;
+                let x_min_idx = ((roi_min[0] - origin_x) / final_spacing_x as f32).floor() as isize;
+                let x_max_idx = ((roi_max[0] - origin_x) / final_spacing_x as f32).ceil() as isize;
+                let x_dim = chunk_volume.len_of(ndarray::Axis(2)) as isize;
+                let crop_x_start = x_min_idx.max(0) as usize;
+                let crop_x_end = x_max_idx.min(x_dim) as usize;
 
-            let y_min_idx = ((roi_min[1] - origin_y) / final_spacing_y as f32).floor() as isize;
-            let y_max_idx = ((roi_max[1] - origin_y) / final_spacing_y as f32).ceil() as isize;
-            let y_dim = chunk_volume.len_of(ndarray::Axis(1)) as isize;
-            let crop_y_start = y_min_idx.max(0) as usize;
-            let crop_y_end = y_max_idx.min(y_dim) as usize;
-            
-            if crop_x_end <= crop_x_start || crop_y_end <= crop_y_start {
-                log::warn!("Chunk {} outside ROI in X/Y plane, skipping.", chunk_idx);
-                return (Vec::new(), Vec::new());
-            }
+                let y_min_idx = ((roi_min[1] - origin_y) / final_spacing_y as f32).floor() as isize;
+                let y_max_idx = ((roi_max[1] - origin_y) / final_spacing_y as f32).ceil() as isize;
+                let y_dim = chunk_volume.len_of(ndarray::Axis(1)) as isize;
+                let crop_y_start = y_min_idx.max(0) as usize;
+                let crop_y_end = y_max_idx.min(y_dim) as usize;
+                
+                if crop_x_end <= crop_x_start || crop_y_end <= crop_y_start {
+                    log::warn!("Chunk {} outside ROI in X/Y plane, skipping.", chunk_idx);
+                    return (Vec::new(), Vec::new());
+                }
 
-            let cropped_volume = chunk_volume.slice(s![.., crop_y_start..crop_y_end, crop_x_start..crop_x_end]);
+                let cropped_volume = chunk_volume.slice(s![.., crop_y_start..crop_y_end, crop_x_start..crop_x_end]);
+
+                (crop_x_start, crop_y_start, cropped_volume)
+            } else {
+                (0, 0, chunk_volume.view())
+            };
 
             // 4. Pinning
             let mut pinned_zs = Vec::new();
@@ -696,15 +679,7 @@ impl Mesh {
 
         if accumulated_vertices.is_empty() {
             log::warn!("No mesh generated for any tissue. Returning degenerate mesh to prevent buffer errors.");
-            // Create a degenerate triangle (invisible) to avoid 0-sized buffers
-            // This prevents wgpu errors like "slice offset 0 is out of range for buffer of size 0"
-            let dummy_vertices = vec![
-                MeshVertex { position: [0.0, 0.0, 0.0], normal: [0.0, 1.0, 0.0], color: [0.0, 0.0, 0.0] },
-                MeshVertex { position: [0.0, 0.0, 0.0], normal: [0.0, 1.0, 0.0], color: [0.0, 0.0, 0.0] },
-                MeshVertex { position: [0.0, 0.0, 0.0], normal: [0.0, 1.0, 0.0], color: [0.0, 0.0, 0.0] },
-            ];
-            let dummy_indices = vec![0, 1, 2];
-            return Self { vertices: dummy_vertices, indices: dummy_indices };
+            return Self { vertices: Vec::new(), indices: Vec::new() };
         }
 
         // Post-Process (Normalize)

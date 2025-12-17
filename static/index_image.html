@@ -258,15 +258,15 @@
           <legend>ROI</legend>
           <div>
             <span id="roi-min-label">ROI Min:</span>
-            <input type="number" id="roi-min-x" step="1.0" value="0.0">
-            <input type="number" id="roi-min-y" step="1.0" value="0.0">
-            <input type="number" id="roi-min-z" step="1.0" value="0.0">
+            <input type="number" id="roi-min-x" step="1.0" value="-190.9629364013672">
+            <input type="number" id="roi-min-y" step="1.0" value="-91.0">
+            <input type="number" id="roi-min-z" step="1.0" value="-1257.0">
           </div>
           <div>
             <span id="roi-max-label">ROI Max:</span>
-            <input type="number" id="roi-max-x" step="1.0" value="0.0">
-            <input type="number" id="roi-max-y" step="1.0" value="0.0">
-            <input type="number" id="roi-max-z" step="1.0" value="0.0">
+            <input type="number" id="roi-max-x" step="1.0" value="200.0">
+            <input type="number" id="roi-max-y" step="1.0" value="149.0">
+            <input type="number" id="roi-max-z" step="1.0" value="-932.0">
           </div>
           <div class="row" style="margin-top:8px">
             <button id="ROI">截取</button>
@@ -683,7 +683,18 @@
         alert('ROI min must be less than max');
         return;
       }
-      gl_canvas.crop_volume(sx, sy, sz, lx, ly, lz);
+      const checkbox3d = byId('3d').checked;
+      if (checkbox3d){
+        state.mesh = true;
+        state.mesh_index = parseInt(byId('mesh_index').value, 10);
+      }else{
+        state.mesh = false;
+        state.mesh_index = null;
+      }
+      const iso_min = parseFloat(byId('iso-min').value);
+      const iso_max = parseFloat(byId('iso-max').value);
+
+      gl_canvas.crop_volume(sx, sy, sz, lx, ly, lz, state.mesh_index, iso_min, iso_max);
     })
 
     byId('mesh').addEventListener('click', () => {

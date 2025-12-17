@@ -443,15 +443,7 @@ impl App {
         self.load_data_from_ct_volume(&vol);
     }
 
-    pub fn crop_volume(&mut self, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32) {
-        // let vol = match self.app_model.volume() {
-        //     Ok(v) => v,
-        //     Err(e) => {
-        //         log::warn!("Cannot crop: {}", e);
-        //         return;
-        //     }
-        // };
-
+    pub fn crop_volume(&mut self, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32, mesh_index: usize, iso_min: f32, iso_max: f32) {
         let world_min = [sx, sy, sz];
         let world_max = [lx, ly, lz];
         // match vol.crop_by_world_bounds(world_min, world_max) {
@@ -462,6 +454,32 @@ impl App {
         //         log::error!("Crop operation failed: {}", e);
         //     }
         // }
+
+        let vol_option = self.app_model.volume().ok().map(|vol| vol.clone());
+        if let Some(vol) = vol_option {
+            let texture = self.load_data_from_ct_volume(&vol.clone());
+
+            let mesh_view = {
+                log::info!("mesh_mode_enabled: {}", self.enable_mesh);
+                
+                if !self.enable_mesh {
+                    let new_mesh = Mesh::new(&vol, iso_min, iso_max, Some(world_min), Some(world_max));
+                    self.cached_mesh = Some(new_mesh);
+                    self.enable_mesh = true;
+                }
+
+                let mesh_ref = self.cached_mesh.as_ref().expect("cached_mesh must exist after rebuild");
+                self.app_view.view_factory
+                    .create_mesh_view_with_content(
+                        texture,
+                        mesh_ref,
+                        (0, 0),
+                        (0, 0),
+                    )
+                    .unwrap()
+            };
+            self.app_view.layout.replace_view_at(mesh_index, mesh_view);
+        }
     }
     
     pub fn mesh_mode_enabled(&mut self, enable_mesh: bool) {
@@ -475,7 +493,7 @@ impl App {
         mip: Option<usize>, 
         change_mpr: bool, 
         index_1: usize, index_2: usize, index_3: usize, index_4: usize, 
-        iso_min: f32, iso_max: f32,
+        iso_min: f32, iso_max: f32
     ) {
         let mut change_index = false;
 
