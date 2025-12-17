@@ -1,7 +1,7 @@
 # rendering Specification
 
 ## Purpose
-TBD - created by archiving change refactor-mesh-rendering-cleanup. Update Purpose after archive.
+Defines the rendering subsystem architecture, ensuring a clean, streamlined mesh rendering pipeline with fully configurable lighting and minimal overhead.
 ## Requirements
 ### Requirement: Clean Architecture for Mesh Rendering
 The mesh rendering subsystem MUST provide a streamlined, single-context architecture without dead code or unused abstractions.

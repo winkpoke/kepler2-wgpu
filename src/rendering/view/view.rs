@@ -224,7 +224,7 @@ pub trait StatefulView: View {
 /// - **Coronal**: Vertical slices, looking from front to back
 /// - **Sagittal**: Vertical slices, looking from side to side
 /// - **Oblique**: Custom orientation, not aligned with standard anatomical planes
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Orientation {
     /// Custom orientation not aligned with standard anatomical planes
     Oblique,
