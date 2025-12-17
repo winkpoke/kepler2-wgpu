@@ -1,8 +1,10 @@
 #![allow(dead_code)]
 
+#[cfg(not(target_arch = "wasm32"))]
+use rayon::prelude::*;
 use crate::data::CTVolume;
 use super::mesh_processing::*;
-use ndarray::{Array3, s};
+use ndarray::{Array3, s, ArrayView3};
 
 
 /// Function-level comment: Minimal lighting uniform structure for basic mesh lighting MVP.
@@ -85,7 +87,6 @@ pub struct Mesh {
     pub vertices: Vec<MeshVertex>,
     pub indices: Vec<u32>,
 }
-
 struct Tissue {
     name: String,
     min: i16,
@@ -445,20 +446,23 @@ impl Mesh {
         ctvolume: &CTVolume,
         iso_min: f32,
         iso_max: f32,
+        world_min: Option<[f32; 3]>,
+        world_max: Option<[f32; 3]>,
     ) -> Self {
-        // Smoothing settings
+        // Settings
         let smooth_iterations = 5;
         let smooth_lambda = 0.5;
-        let downsample_grid_size = 2.0; // 2.0 mm grid cell size
+        let downsample_grid_size = 2.0;
 
         // Gaussian Filter settings
         let enable_gaussian = true;
         let gaussian_sigma = 0.5;
 
         // Chunk settings
-        let chunk_size = 100;
-        let overlap = 4; // Sufficient for Gaussian + Derivatives
+        let chunk_size = 500;
+        let overlap = 4;
 
+        // Tissue definitions
         let tissues = vec![
             Tissue {
                 name: "Bone_Cortical".to_string(),
@@ -467,15 +471,41 @@ impl Mesh {
                 color: [0.95, 0.90, 0.85],
             },
         ];
-        println!("Starting Marching Tetrahedra conversion...");
 
-        // Read DICOM
+        // Read DICOM dims
         let (rows, columns, depth) = ctvolume.dimensions;
         let spacing = (
-            ctvolume.voxel_spacing.2 as f64, // spacing_z
-            ctvolume.voxel_spacing.1 as f64, // spacing_y
-            ctvolume.voxel_spacing.0 as f64, // spacing_x
+            ctvolume.voxel_spacing.2 as f64,
+            ctvolume.voxel_spacing.1 as f64,
+            ctvolume.voxel_spacing.0 as f64,
         );
+        
+        // ROI definition - Use arguments if provided, else default
+        let roi_vertices = vec![
+            [-190.9629364013672, -91.0, -1257.0],
+            [200.0, 149.0, -932.0]
+        ];
+
+        // Compute ROI AABB
+        let (roi_min, roi_max) = {
+            let mut min = [f32::INFINITY; 3];
+            let mut max = [f32::NEG_INFINITY; 3];
+            for v in &roi_vertices {
+                for i in 0..3 {
+                    if v[i] < min[i] { min[i] = v[i]; }
+                    if v[i] > max[i] { max[i] = v[i]; }
+                }
+            }
+            (min, max)
+        };
+
+        // ROI Z Range
+        let origin_z = ctvolume.base.matrix.get_column(3)[2];
+        let z_min_idx = ((roi_min[2] - origin_z) / ctvolume.voxel_spacing.2).floor() as isize;
+        let z_max_idx = ((roi_max[2] - origin_z) / ctvolume.voxel_spacing.2).ceil() as isize;
+        
+        let process_z_start = z_min_idx.max(0) as usize;
+        let process_z_end = z_max_idx.min(depth as isize) as usize;
 
         // Downsampling logic
         let target_size = 256;
@@ -491,73 +521,114 @@ impl Mesh {
         let final_spacing_y = spacing.1 * scale_y;
         let final_spacing_x = spacing.2 * scale_x;
 
-        let mut accumulated_vertices = Vec::new();
-        let mut accumulated_indices = Vec::new();
-        let mut chunk_index = 0;
+        // Prepare chunks
+        let chunks: Vec<(usize, usize)> = (process_z_start..process_z_end)
+            .step_by(chunk_size)
+            .enumerate()
+            .map(|(i, z)| (i, z))
+            .collect();
 
-        for z_start in (0..depth).step_by(chunk_size) {
+        // Process chunk closure
+        let process_chunk = |chunk_idx: usize, z_start: usize| -> (Vec<MeshVertex>, Vec<u32>) {
             let z_end = (z_start + chunk_size).min(depth);
-            if z_end <= z_start { break; }
+            if z_end <= z_start {
+                return (Vec::new(), Vec::new());
+            }
 
-            println!("\n--- Processing Chunk {} (Slices {} to {}) ---", chunk_index, z_start, z_end);
+            log::info!("--- Processing Chunk {} (Slices {} to {}) ---", chunk_idx, z_start, z_end);
 
             // 1. Calculate Read Range (with Overlap)
             let read_start = z_start.saturating_sub(overlap);
             let read_end = (z_end + overlap).min(depth);
             
-            if read_end - read_start < 2 { break; }
+            if read_end - read_start < 2 {
+                return (Vec::new(), Vec::new());
+            }
             let chunk_depth = read_end - read_start;
 
-            // 2. Build Chunk Volume
+            // 2. Build Chunk Volume (Parallelized Slice Loading)
             let mut chunk_volume = Array3::<i16>::zeros((chunk_depth, new_rows, new_columns));
             let vol = &ctvolume.voxel_data;
 
-            for z in 0..chunk_depth {
+            #[cfg(not(target_arch = "wasm32"))]
+            let slice_iter = (0..chunk_depth).into_par_iter();
+            #[cfg(target_arch = "wasm32")]
+            let slice_iter = (0..chunk_depth).into_iter();
+
+            let slices: Vec<(usize, ndarray::Array2<i16>)> = slice_iter.map(|z| {
                 let global_z = read_start + z;
                 let start = global_z * columns * rows;
                 let end = start + columns * rows;
+                
+                if end > vol.len() {
+                    return (z, ndarray::Array2::zeros((new_rows, new_columns)));
+                }
+
                 let buf = &vol[start..end];
                 let slice_vec = buf.to_vec();
-                
-                // Use from_shape_vec which returns Result, so we unwrap
-                let slice_view = ndarray::Array2::from_shape_vec((rows, columns), slice_vec).unwrap();
+                let slice_view = ndarray::Array2::from_shape_vec((rows, columns), slice_vec).unwrap_or_else(|_| ndarray::Array2::zeros((rows, columns)));
 
                 let final_slice = if new_rows != rows || new_columns != columns {
                     resize_slice(&slice_view, (new_rows, new_columns))
                 } else {
                     slice_view
                 };
-                
-                chunk_volume.slice_mut(s![z, .., ..]).assign(&final_slice);
+                (z, final_slice)
+            }).collect();
+
+            for (z, slice) in slices {
+                chunk_volume.slice_mut(s![z, .., ..]).assign(&slice);
             }
 
-            // 3. Apply Gaussian Filter
+            // 3. Gaussian Filter
             if enable_gaussian {
                 chunk_volume = apply_gaussian_filter(chunk_volume, gaussian_sigma);
             }
 
-            // 4. Determine Pinned Z coordinates (Global Physical Units)
-            let mut pinned_zs = Vec::new();
-            let spacing_z_f32 = spacing.0 as f32;
-            if z_start > 0 {
-                pinned_zs.push(z_start as f32 * spacing_z_f32);
-            }
-            if z_end < depth {
-                pinned_zs.push(z_end as f32 * spacing_z_f32);
+            // ROI logic
+            let origin_x = ctvolume.base.matrix.get_column(3)[0];
+            let origin_y = ctvolume.base.matrix.get_column(3)[1];
+
+            let x_min_idx = ((roi_min[0] - origin_x) / final_spacing_x as f32).floor() as isize;
+            let x_max_idx = ((roi_max[0] - origin_x) / final_spacing_x as f32).ceil() as isize;
+            let x_dim = chunk_volume.len_of(ndarray::Axis(2)) as isize;
+            let crop_x_start = x_min_idx.max(0) as usize;
+            let crop_x_end = x_max_idx.min(x_dim) as usize;
+
+            let y_min_idx = ((roi_min[1] - origin_y) / final_spacing_y as f32).floor() as isize;
+            let y_max_idx = ((roi_max[1] - origin_y) / final_spacing_y as f32).ceil() as isize;
+            let y_dim = chunk_volume.len_of(ndarray::Axis(1)) as isize;
+            let crop_y_start = y_min_idx.max(0) as usize;
+            let crop_y_end = y_max_idx.min(y_dim) as usize;
+            
+            if crop_x_end <= crop_x_start || crop_y_end <= crop_y_start {
+                log::warn!("Chunk {} outside ROI in X/Y plane, skipping.", chunk_idx);
+                return (Vec::new(), Vec::new());
             }
 
-            // 5. Extract and Process
+            let cropped_volume = chunk_volume.slice(s![.., crop_y_start..crop_y_end, crop_x_start..crop_x_end]);
+
+            // 4. Pinning
+            let mut pinned_zs = Vec::new();
+            let spacing_z = spacing.0 as f32;
+            if z_start > 0 { pinned_zs.push(z_start as f32 * spacing_z); }
+            if z_end < depth { pinned_zs.push(z_end as f32 * spacing_z); }
+
+            // 5. Extract
             let local_start = z_start - read_start;
             let local_end = z_end - read_start;
             let extract_range = local_start..local_end;
-            let z_offset = read_start;
+
+            let mut local_vertices = Vec::new();
+            let mut local_indices = Vec::new();
 
             for tissue in &tissues {
-                let mt = MarchingTetrahedra::new(tissue.min);
+                let mt = MarchingTetrahedra::new(tissue.min, tissue.max);
+                let offset = [crop_x_start, crop_y_start, read_start];
                 let (vertices, faces) = mt.extract_surface(
-                    &chunk_volume, 
+                    &cropped_volume, 
                     (spacing.0, final_spacing_y, final_spacing_x),
-                    z_offset,
+                    offset,
                     extract_range.clone()
                 );
 
@@ -568,9 +639,9 @@ impl Mesh {
                     
                     let normals = compute_vertex_normals_local(&final_chunk_vertices, &final_chunk_faces);
                     
-                    let base_index = accumulated_vertices.len() as u32;
+                    let base_index = local_vertices.len() as u32;
                     for (i, p) in final_chunk_vertices.iter().enumerate() {
-                        accumulated_vertices.push(MeshVertex {
+                        local_vertices.push(MeshVertex {
                             position: *p,
                             normal: normals[i],
                             color: tissue.color,
@@ -578,21 +649,46 @@ impl Mesh {
                     }
                     
                     for tri in final_chunk_faces {
-                        accumulated_indices.push(tri[0] as u32 + base_index);
-                        accumulated_indices.push(tri[1] as u32 + base_index);
-                        accumulated_indices.push(tri[2] as u32 + base_index);
+                        local_indices.push(tri[0] as u32 + base_index);
+                        local_indices.push(tri[1] as u32 + base_index);
+                        local_indices.push(tri[2] as u32 + base_index);
                     }
                 }
             }
-            chunk_index += 1;
+            (local_vertices, local_indices)
+        };
+
+        // Execute Chunks (Parallel or Serial)
+        #[cfg(not(target_arch = "wasm32"))]
+        let chunk_results: Vec<_> = chunks.par_iter().map(|&(i, z)| process_chunk(i, z)).collect();
+
+        #[cfg(target_arch = "wasm32")]
+        let chunk_results: Vec<_> = chunks.iter().map(|&(i, z)| process_chunk(i, z)).collect();
+
+        // Merge Results
+        let mut accumulated_vertices = Vec::new();
+        let mut accumulated_indices = Vec::new();
+
+        for (verts, indices) in chunk_results {
+            let base = accumulated_vertices.len() as u32;
+            accumulated_vertices.extend(verts);
+            accumulated_indices.extend(indices.iter().map(|i| i + base));
         }
 
         if accumulated_vertices.is_empty() {
-            log::warn!("No mesh generated for any tissue.");
-            return Self { vertices: Vec::new(), indices: Vec::new() };
+            log::warn!("No mesh generated for any tissue. Returning degenerate mesh to prevent buffer errors.");
+            // Create a degenerate triangle (invisible) to avoid 0-sized buffers
+            // This prevents wgpu errors like "slice offset 0 is out of range for buffer of size 0"
+            let dummy_vertices = vec![
+                MeshVertex { position: [0.0, 0.0, 0.0], normal: [0.0, 1.0, 0.0], color: [0.0, 0.0, 0.0] },
+                MeshVertex { position: [0.0, 0.0, 0.0], normal: [0.0, 1.0, 0.0], color: [0.0, 0.0, 0.0] },
+                MeshVertex { position: [0.0, 0.0, 0.0], normal: [0.0, 1.0, 0.0], color: [0.0, 0.0, 0.0] },
+            ];
+            let dummy_indices = vec![0, 1, 2];
+            return Self { vertices: dummy_vertices, indices: dummy_indices };
         }
 
-        // 6. Post-Process: Normalize to Unit Cube
+        // Post-Process (Normalize)
         let mut min_mm = [f32::INFINITY; 3];
         let mut max_mm = [f32::NEG_INFINITY; 3];
         for v in &accumulated_vertices {

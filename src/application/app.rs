@@ -444,24 +444,24 @@ impl App {
     }
 
     pub fn crop_volume(&mut self, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32) {
-        let vol = match self.app_model.volume() {
-            Ok(v) => v,
-            Err(e) => {
-                log::warn!("Cannot crop: {}", e);
-                return;
-            }
-        };
+        // let vol = match self.app_model.volume() {
+        //     Ok(v) => v,
+        //     Err(e) => {
+        //         log::warn!("Cannot crop: {}", e);
+        //         return;
+        //     }
+        // };
 
         let world_min = [sx, sy, sz];
         let world_max = [lx, ly, lz];
-        match vol.crop_by_world_bounds(world_min, world_max) {
-            Ok(cropped_vol) => {
-                self.load_data_from_ct_volume(&cropped_vol);
-            },
-            Err(e) => {
-                log::error!("Crop operation failed: {}", e);
-            }
-        }
+        // match vol.crop_by_world_bounds(world_min, world_max) {
+        //     Ok(cropped_vol) => {
+        //         self.load_data_from_ct_volume(&cropped_vol);
+        //     },
+        //     Err(e) => {
+        //         log::error!("Crop operation failed: {}", e);
+        //     }
+        // }
     }
     
     pub fn mesh_mode_enabled(&mut self, enable_mesh: bool) {
@@ -527,7 +527,7 @@ impl App {
                         log::info!("mesh_mode_enabled: {}", self.enable_mesh);
                         
                         if !self.enable_mesh {
-                            let new_mesh = Mesh::new(&vol, iso_min, iso_max);
+                            let new_mesh = Mesh::new(&vol, iso_min, iso_max, None, None);
                             self.cached_mesh = Some(new_mesh);
                             self.enable_mesh = true;
                         }
@@ -590,7 +590,7 @@ impl App {
                 }
                 2 => {
                     if !self.enable_mesh {
-                        let new_mesh = Mesh::new(&vol, iso_min, iso_max);
+                        let new_mesh = Mesh::new(&vol, iso_min, iso_max, None, None);
                         self.cached_mesh = Some(new_mesh);
                         self.enable_mesh = true;
                     }

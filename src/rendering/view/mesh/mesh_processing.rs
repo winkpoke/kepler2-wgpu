@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use ndarray::{Array3, s};
+use ndarray::{Array3, s, ArrayView3};
 use std::f64::consts::PI;
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
@@ -243,19 +243,21 @@ pub fn downsample_mesh(
 
 
 pub struct MarchingTetrahedra {
-    threshold: i16,
+    min: i16,
+    max: i16,
 }
 
 impl MarchingTetrahedra {
-    pub fn new(threshold: i16) -> Self {
-        Self { threshold }
+    pub fn new(min: i16, max: i16) -> Self {
+        Self { min, max }
     }
 
     /// Interpolate along an edge and return f32 position.
-    fn interpolate_vertex(&self, p1: [f64; 3], p2: [f64; 3], v1: i16, v2: i16) -> [f32; 3] {
+    fn interpolate_vertex(&self, p1: [f64; 3], p2: [f64; 3], v1: i16, v2: i16, target_threshold: i16) -> [f32; 3] {
         let v1 = v1 as f64;
         let v2 = v2 as f64;
-        let t = self.threshold as f64;
+        let t = target_threshold as f64;
+
         let res = if (t - v1).abs() < 1e-5 {
             p1
         } else if (t - v2).abs() < 1e-5 {
@@ -274,7 +276,7 @@ impl MarchingTetrahedra {
     }
 
     /// Extract isosurface using marching tetrahedra, output f32 vertices.
-    pub fn extract_surface(&self, volume: &Array3<i16>, spacing: (f64, f64, f64), z_offset: usize, z_range: std::ops::Range<usize>) -> (Vec<[f32; 3]>, Vec<[usize; 3]>) {
+    pub fn extract_surface(&self, volume: &ndarray::ArrayView3<i16>, spacing: (f64, f64, f64), offset: [usize; 3], z_range: std::ops::Range<usize>) -> (Vec<[f32; 3]>, Vec<[usize; 3]>) {
         let (depth, height, width) = volume.dim();
         let (spacing_z, spacing_y, spacing_x) = spacing;
         
@@ -285,12 +287,12 @@ impl MarchingTetrahedra {
         // Parallelize over Z slices (native), fallback to sequential on WASM
         #[cfg(not(target_arch = "wasm32"))]
         let all_vertices: Vec<[f32; 3]> = (start_z..end_z).into_par_iter().flat_map(|z| {
-            self.process_slice(volume, z, width, height, spacing_x, spacing_y, spacing_z, z_offset)
+            self.process_slice(volume, z, width, height, spacing_x, spacing_y, spacing_z, offset)
         }).collect();
 
         #[cfg(target_arch = "wasm32")]
         let all_vertices: Vec<[f32; 3]> = (start_z..end_z).into_iter().flat_map(|z| {
-            self.process_slice(volume, z, width, height, spacing_x, spacing_y, spacing_z, z_offset)
+            self.process_slice(volume, z, width, height, spacing_x, spacing_y, spacing_z, offset)
         }).collect();
 
         log::debug!("Generated {} vertices", all_vertices.len());
@@ -307,14 +309,14 @@ impl MarchingTetrahedra {
 
     fn process_slice(
         &self,
-        volume: &Array3<i16>,
+        volume: &ArrayView3<i16>,
         z: usize,
         width: usize,
         height: usize,
         spacing_x: f64,
         spacing_y: f64,
         spacing_z: f64,
-        z_offset: usize,
+        offset: [usize; 3],
     ) -> Vec<[f32; 3]> {
         let mut local_vertices = Vec::new();
             
@@ -343,7 +345,7 @@ impl MarchingTetrahedra {
                     for (i, &idx) in tetra_indices.iter().enumerate() {
                         let val = cube_values[idx];
                         t_indices[i] = idx;
-                        if val > self.threshold {
+                        if val >= self.min && val <= self.max {
                             tetra_index |= 1 << i;
                         }
                     }
@@ -373,9 +375,9 @@ impl MarchingTetrahedra {
                                 let dy = if idx == 2 || idx == 3 || idx == 6 || idx == 7 { 1.0 } else { 0.0 };
                                 let dz = if idx >= 4 { 1.0 } else { 0.0 };
                                 [
-                                    (x as f64 + dx) * spacing_x,
-                                    (y as f64 + dy) * spacing_y,
-                                    (z as f64 + z_offset as f64 + dz) * spacing_z
+                                    (x as f64 + offset[0] as f64 + dx) * spacing_x,
+                                    (y as f64 + offset[1] as f64 + dy) * spacing_y,
+                                    (z as f64 + offset[2] as f64 + dz) * spacing_z
                                 ]
                             };
 
@@ -384,7 +386,18 @@ impl MarchingTetrahedra {
                             let val1 = cube_values[v1_cube_idx];
                             let val2 = cube_values[v2_cube_idx];
 
-                            local_vertices.push(self.interpolate_vertex(p1, p2, val1, val2));
+                            // Determine which threshold to use
+                            // We know one is inside and one is outside because we are processing an edge from TETRA_TABLE
+                            let is_v1_inside = val1 >= self.min && val1 <= self.max;
+                            let target_threshold = if is_v1_inside {
+                                // v1 inside, v2 outside
+                                if val2 < self.min { self.min } else { self.max }
+                            } else {
+                                // v2 inside, v1 outside
+                                if val1 < self.min { self.min } else { self.max }
+                            };
+
+                            local_vertices.push(self.interpolate_vertex(p1, p2, val1, val2, target_threshold));
                         }
                     }
                 }
@@ -549,6 +562,7 @@ fn convolve_1d(data: &[f32], kernel: &[f32]) -> Vec<f32> {
 mod tests {
     use super::*;
     use ndarray::arr3;
+    use ndarray::Array3;
 
     #[test]
     fn test_downsample_pinning() {
@@ -585,5 +599,50 @@ mod tests {
         // Sigma 0 should return original
         let filtered = apply_gaussian_filter(volume.clone(), 0.0);
         assert_eq!(filtered, volume);
+    }
+
+    #[test]
+    fn test_range_extraction() {
+        // Create 3x3x3 volume
+        let mut volume = Array3::<i16>::zeros((3, 3, 3));
+        
+        // Center voxel
+        volume[[1, 1, 1]] = 150;
+        
+        // Spacing
+        let spacing = (1.0, 1.0, 1.0);
+        
+        // Case 1: Range [100, 200]
+        // Center 150 is INSIDE.
+        // Neighbors 0 are OUTSIDE (Low).
+        // Should generate surface at threshold 100.
+        let mt = MarchingTetrahedra::new(100, 200);
+        let (verts, _faces) = mt.extract_surface(&volume.view(), spacing, [0, 0, 0], 0..3);
+        assert!(!verts.is_empty(), "Should generate vertices for [100, 200]");
+        
+        // Case 2: Range [160, 200]
+        // Center 150 is OUTSIDE (Low).
+        // Neighbors 0 are OUTSIDE (Low).
+        // Should be empty.
+        let mt_high = MarchingTetrahedra::new(160, 200);
+        let (verts_high, _faces_high) = mt_high.extract_surface(&volume.view(), spacing, [0, 0, 0], 0..3);
+        assert!(verts_high.is_empty(), "Should be empty for [160, 200], got {}", verts_high.len());
+
+        // Case 3: Range [0, 100]
+        // Center 150 is OUTSIDE (High).
+        // Neighbors 0 are INSIDE.
+        // Should generate surface.
+        // But 0 is exactly min. 0 >= 0 && 0 <= 100. So 0 is INSIDE.
+        let mt_low = MarchingTetrahedra::new(0, 100);
+        let (verts_low, _faces_low) = mt_low.extract_surface(&volume.view(), spacing, [0, 0, 0], 0..3);
+        assert!(!verts_low.is_empty(), "Should generate vertices for [0, 100]");
+        
+        // Case 4: Range [10, 140]
+        // Center 150 OUTSIDE (High).
+        // Neighbors 0 OUTSIDE (Low).
+        // Should be empty (double crossing issue/feature).
+        let mt_split = MarchingTetrahedra::new(10, 140);
+        let (verts_split, _faces_split) = mt_split.extract_surface(&volume.view(), spacing, [0, 0, 0], 0..3);
+        assert!(verts_split.is_empty(), "Should be empty for split range [10, 140]");
     }
 }
