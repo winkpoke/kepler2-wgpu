@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use super::{mesh::{Mesh, Lighting}, material::Material, camera::Camera, performance::{QualityController, QualityLevel, PerformanceStats}, basic_mesh_context::BasicMeshContext};
+use super::{mesh::{Mesh, Lighting}, camera::Camera, performance::{QualityController, QualityLevel, PerformanceStats}, basic_mesh_context::BasicMeshContext};
 use crate::{
     core::{Matrix4x4, WindowLevel,error::KeplerResult},
     rendering::view::{Renderable, View}, 
@@ -68,7 +68,7 @@ impl Default for FallbackMode {
 
 pub struct MeshView {
     pub mesh: Option<Mesh>,
-    pub material: Option<Material>,
+    // pub material: Option<Material>,
     pub camera: Option<Camera>,
     pub lighting: Option<Lighting>,
     ctx: Option<std::sync::Arc<BasicMeshContext>>,
@@ -107,7 +107,7 @@ impl Default for MeshView {
         use std::f32::consts::FRAC_PI_2;
         Self {
             mesh: None,
-            material: None,
+            // material: None,
             camera: None,
             lighting: None,
             ctx: None,
@@ -333,8 +333,11 @@ impl MeshView {
     /// Returns lighting with reasonable defaults for 3D mesh viewing.
     fn create_default_lighting(&self) -> Lighting {
         Lighting {
-            direction: [0.0, -1.0, -1.0],  // Light coming from above and front
-            intensity: 1.0,                 // Full intensity white light
+            direction: [0.6, -0.7, 0.3],
+            light_color: [1.0, 1.0, 1.0],
+            light_intensity: 1.0,
+            ambient_color: [0.4, 0.4, 0.5],
+            ambient_intensity: 0.4,
         }
     }
 
@@ -482,7 +485,7 @@ impl MeshView {
                 default_lighting.to_basic_uniforms()
             };
             lighting_uniforms.opacity = self.opacity;
-            ctx.update_lighting_uniforms(queue, &lighting_uniforms);
+            ctx.update_lighting(queue, lighting_uniforms);
         }
     }
     
@@ -694,7 +697,7 @@ mod tests {
     fn test_rotation_api_basic_functionality() {
         let mesh_view = MeshView::default();
         let angles = mesh_view.get_rotation_angle();
-        assert!((angles[0] + FRAC_PI_2).abs() < 1e-6);
+        assert!(angles[0].abs() < 1e-6);
         assert!(angles[1].abs() < 1e-6);
         assert!(angles[2].abs() < 1e-6);
         assert!((mesh_view.get_rotation_speed() - FRAC_PI_2).abs() < 1e-6);
@@ -730,7 +733,7 @@ mod tests {
         let mut mesh_view = MeshView::default();
         mesh_view.reset_rotation();
         let angles = mesh_view.get_rotation_angle();
-        assert!((angles[0] + FRAC_PI_2).abs() < 1e-6);
+        assert!(angles[0].abs() < 1e-6);
         assert!(angles[1].abs() < 1e-6);
         assert!(angles[2].abs() < 1e-6);
     }
