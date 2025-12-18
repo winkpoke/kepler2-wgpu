@@ -1,4 +1,5 @@
-use crate::{core::coord::{Base, Matrix4x4}, data::{dicom::{DicomRepo, CTImage}, ct_volume::CTVolume}};
+use crate::{core::coord::{Base, Matrix4x4, array_to_slice}, data::{dicom::{DicomRepo, CTImage}, ct_volume::CTVolume}};
+use glam::{Mat4, Vec3};
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -8,6 +9,19 @@ pub struct GeometryBuilder<'a> {
     repo: Option<&'a DicomRepo>,
     #[allow(dead_code)]
     sorted_image_series: Option<Vec<&'a CTImage>>, 
+}
+
+// Helper to convert custom Matrix4x4 (row-major) to glam::Mat4 (column-major)
+fn to_glam(m: &Matrix4x4<f32>) -> Mat4 {
+    // Matrix4x4 is row-major. Interpreting it as columns effectively transposes it.
+    // So we load it as columns and transpose to get the original matrix.
+    Mat4::from_cols_array(array_to_slice(&m.data)).transpose()
+}
+
+// Helper to convert glam::Mat4 to custom Matrix4x4
+fn from_glam(m: Mat4) -> Matrix4x4<f32> {
+    // Transpose to get row-major order, then flatten to array
+    Matrix4x4::from_array(m.transpose().to_cols_array())
 }
 
 // #[cfg(not(target_arch = "wasm32"))]
@@ -60,17 +74,16 @@ impl <'a> GeometryBuilder<'a> {
         let ny = vol.dimensions.1 as f32 - 1.0;
         let nz = vol.dimensions.2 as f32 - 1.0;
 
-        let scaling_matrix = Matrix4x4::from_array(
-            [nx,  0.0, 0.0, 0.0,
-             0.0,  ny, 0.0, 0.0,
-             0.0, 0.0,  nz, 0.0,
-             0.0, 0.0, 0.0, 1.0]);
+        let scaling_matrix = Mat4::from_scale(Vec3::new(nx, ny, nz));
+        
+        let vol_matrix = to_glam(&vol.base.matrix);
 
-        let base_uv_matrix = vol.base.matrix.multiply(&scaling_matrix);
+        // Matrix multiplication in glam: result = A * B
+        let base_uv_matrix_glam = vol_matrix * scaling_matrix;
 
         let base_uv = Base::<f32> {
             label: "CT Volume: UV".to_string(),
-            matrix: base_uv_matrix,
+            matrix: from_glam(base_uv_matrix_glam),
         };
         // println!("UV Base:\n{:?}", base_uv);
         return base_uv;
@@ -93,7 +106,7 @@ impl <'a> GeometryBuilder<'a> {
         // Isotropic 3D scaling - use average of in-plane and slice extents
         let d = (d_x + d_y + d_z) / 3.0;
 
-        let matrix_screen = Matrix4x4::<f32>::from_array([
+        let matrix_screen_glam = Mat4::from_cols_array(&[
             // Screen X → world X (LR)
               d,  0.0,  0.0, ox + d_x / 2.0 - d / 2.0,
             // Screen Y → world Y (AP) - no inversion needed for transverse
@@ -102,10 +115,11 @@ impl <'a> GeometryBuilder<'a> {
             0.0,  0.0,    d, oz + d_z / 2.0,
             // Homogeneous row
             0.0,  0.0,  0.0, 1.0
-        ]);
+        ]).transpose();
+
         let base_screen = Base::<f32> {
             label: "CT Volume: screen".to_string(),
-            matrix: matrix_screen,
+            matrix: from_glam(matrix_screen_glam),
         };
         base_screen
     }
@@ -125,7 +139,7 @@ impl <'a> GeometryBuilder<'a> {
         // Isotropic 3D scaling - use average of in-plane and slice extents
         let d = (d_x + d_y + d_z) / 3.0;
 
-        let matrix_screen = Matrix4x4::<f32>::from_array([
+        let matrix_screen_glam = Mat4::from_cols_array(&[
             // Screen X → world X (LR)
               d,  0.0,  0.0, ox + d_x / 2.0 - d / 2.0,
             // Screen Z (slice) → world Y (AP)
@@ -134,10 +148,11 @@ impl <'a> GeometryBuilder<'a> {
             0.0,   -d,  0.0, oz + d_z / 2.0 + d / 2.0,
             // Homogeneous row
             0.0,  0.0,  0.0, 1.0
-        ]);
+        ]).transpose();
+
         let base_screen = Base::<f32> {
             label: "CT Volume: screen".to_string(),
-            matrix: matrix_screen,
+            matrix: from_glam(matrix_screen_glam),
         };
         base_screen
     }
@@ -160,7 +175,7 @@ impl <'a> GeometryBuilder<'a> {
         // Screen X → world Y (AP)
         // Screen Y → world Z (SI), inverted for screen Y-down
         // Screen Z (slice) → world X (LR)
-        let matrix_screen = Matrix4x4::<f32>::from_array([
+        let matrix_screen_glam = Mat4::from_cols_array(&[
             // world X row
             0.0, 0.0,   d, ox + d_x / 2.0,
             // world Y row
@@ -169,10 +184,11 @@ impl <'a> GeometryBuilder<'a> {
             0.0,  -d, 0.0, oz + d_z / 2.0 + d / 2.0,
             // homogeneous row
             0.0, 0.0, 0.0, 1.0
-        ]);
+        ]).transpose();
+
         let base_screen = Base::<f32> {
             label: "CT Volume: screen".to_string(),
-            matrix: matrix_screen,
+            matrix: from_glam(matrix_screen_glam),
         };
         base_screen
     }
@@ -195,13 +211,16 @@ impl <'a> GeometryBuilder<'a> {
                         -0.1853,  0.9504,  0.2500, 0.0,     
                          0.3085, -0.1853,  0.9330, 0.0,
                             0.0,     0.0,     0.0, 1.0,]; 
-        let matrix_screen = Matrix4x4::<f32>::from_array(m_screen);
-        let matrix_rot = Matrix4x4::<f32>::from_array(rotation);
-        // let matrix_screen = matrix_screen * matrix_rot;
-        let matrix_screen = matrix_rot * matrix_screen;
+        
+        let matrix_screen_glam = Mat4::from_cols_array(&m_screen).transpose();
+        let matrix_rot_glam = Mat4::from_cols_array(&rotation).transpose();
+
+        // Original was: matrix_rot * matrix_screen
+        let final_matrix = matrix_rot_glam * matrix_screen_glam;
+
         let base_screen = Base::<f32> {
             label: "CT Volume: screen".to_string(),
-            matrix: matrix_screen,
+            matrix: from_glam(final_matrix),
         };
         base_screen
     }
