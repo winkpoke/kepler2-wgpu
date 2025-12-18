@@ -159,15 +159,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c95c10ba0b00a02636238b814946408b1322d5ac4760326e6fb8ec956d85775"
 
 [[package]]
-name = "approx"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f2a05fd1bd10b2527e20a2cd32d8873d115b8b39fe219ee25f42a8aca6ba278"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
 name = "arrayref"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -411,16 +402,6 @@ name = "cfg_aliases"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd16c4719339c4530435d38e511904438d07cce7950afa3718a84ac36c10e89e"
-
-[[package]]
-name = "cgmath"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a98d30140e3296250832bbaaff83b27dcd6fa3cc70fb6f1f3e5c9c0023b5317"
-dependencies = [
- "approx",
- "num-traits",
-]
 
 [[package]]
 name = "chrono"
@@ -1049,6 +1030,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "glam"
+version = "0.30.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd47b05dddf0005d850e5644cae7f2b14ac3df487979dbfff3b56f20b1a6ae46"
+
+[[package]]
 name = "glow"
 version = "0.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1499,7 +1486,7 @@ dependencies = [
 
 [[package]]
 name = "kepler-wgpu"
-version = "0.2.0"
+version = "0.5.0"
 dependencies = [
  "anyhow",
  "async-lock",
@@ -1507,7 +1494,6 @@ dependencies = [
  "bytemuck",
  "byteorder",
  "cfg-if",
- "cgmath",
  "chrono",
  "console_error_panic_hook",
  "console_log",
@@ -1517,6 +1503,7 @@ dependencies = [
  "env_logger",
  "futures",
  "getrandom 0.2.15",
+ "glam",
  "half",
  "image",
  "js-sys",

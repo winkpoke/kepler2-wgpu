@@ -42,7 +42,6 @@ pub struct App {
     /// Graphics context that encapsulates both hardware abstraction and rendering pipeline orchestration
     pub(crate) graphics_context: GraphicsContext,
     pub(crate) app_view: AppView,
-    pub(crate) enable_mesh: bool,
     pub(crate) app_model: AppModel,
     /// Cached mesh to avoid recomputation when creating Mesh views
     pub(crate) cached_mesh: Option<crate::mesh::mesh::Mesh>,
@@ -92,7 +91,6 @@ impl App {
         
         Ok(Self {
             graphics_context,
-            enable_mesh: false,
             app_view: AppView::new(layout, factory),
             app_model: AppModel::new(default_float),
             cached_mesh: None,
@@ -448,12 +446,12 @@ impl App {
             let texture = self.load_data_from_ct_volume(&vol.clone());
 
             let mesh_view = {
-                log::info!("mesh_mode_enabled: {}", self.enable_mesh);
+                log::info!("mesh_mode_enabled: {}", self.app_model.enable_mesh);
                 
-                if !self.enable_mesh {
+                if !self.app_model.enable_mesh {
+                    self.app_model.enable_mesh = true;
                     let new_mesh = Mesh::new(&vol, iso_min, iso_max, Some(world_min), Some(world_max));
                     self.cached_mesh = Some(new_mesh);
-                    self.enable_mesh = true;
                 }
 
                 let mesh_ref = self.cached_mesh.as_ref().expect("cached_mesh must exist after rebuild");
@@ -471,7 +469,7 @@ impl App {
     }
     
     pub fn mesh_mode_enabled(&mut self, enable_mesh: bool) {
-        self.enable_mesh = enable_mesh;
+        self.app_model.enable_mesh = enable_mesh;
     }
 
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
@@ -491,12 +489,8 @@ impl App {
         if let Some(_) = mip {
             change_index = true;
         }
-
         if let Some(_) = mesh_index {
             change_index = true;
-            if self.app_model.enable_mesh != change_index { 
-                self.app_model.enable_mesh = change_index;
-            }
         }
 
         if self.app_view.is_one_cell_layout() {
@@ -545,12 +539,12 @@ impl App {
 
                 if let Some(mesh_index) = mesh_index {
                     let mesh_view = {
-                        log::info!("mesh_mode_enabled: {}", self.enable_mesh);
+                        log::info!("mesh_mode_enabled: {}", self.app_model.enable_mesh);
                         
-                        if !self.enable_mesh {
+                        if !self.app_model.enable_mesh {
+                            self.app_model.enable_mesh = true;
                             let new_mesh = Mesh::new(&vol, iso_min, iso_max, None, None);
                             self.cached_mesh = Some(new_mesh);
-                            self.enable_mesh = true;
                         }
 
                         let mesh_ref = self.cached_mesh.as_ref().expect("cached_mesh must exist after rebuild");
@@ -625,10 +619,10 @@ impl App {
                     self.app_view.layout.add_view(mip_view);
                 }
                 2 => {
-                    if !self.enable_mesh {
+                    if !self.app_model.enable_mesh {
+                        self.app_model.enable_mesh = true;
                         let new_mesh = Mesh::new(&vol, iso_min, iso_max, None, None);
                         self.cached_mesh = Some(new_mesh);
-                        self.enable_mesh = true;
                     }
 
                     let mesh_ref = self.cached_mesh.as_ref().expect("cached_mesh must exist after rebuild");
