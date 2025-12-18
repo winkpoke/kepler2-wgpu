@@ -498,12 +498,24 @@ impl Mesh {
             ctvolume.voxel_spacing.1 as f64,
             ctvolume.voxel_spacing.0 as f64,
         );
-        
-        // ROI definition - Use arguments if provided, else default to full volume
-        let roi_min = world_min.unwrap_or([f32::NEG_INFINITY; 3]);
-        let roi_max = world_max.unwrap_or([f32::INFINITY; 3]);
 
-        log::info!("Mesh ROI: Min {:?}, Max {:?}", roi_min, roi_max);
+        let roi_vertices= vec![
+            world_min.unwrap(),    // Min Point
+            world_max.unwrap(),   // Max Point
+        ];
+        
+        // Compute ROI AABB
+        let (roi_min, roi_max) = {
+            let mut min = [f32::INFINITY; 3];
+            let mut max = [f32::NEG_INFINITY; 3];
+            for v in &roi_vertices {
+                for i in 0..3 {
+                    if v[i] < min[i] { min[i] = v[i]; }
+                    if v[i] > max[i] { max[i] = v[i]; }
+                }
+            }
+            (min, max)
+        };
 
         // ROI Z Range
         let (process_z_start, process_z_end) = if world_min.is_some() && world_max.is_some() {
@@ -539,7 +551,7 @@ impl Mesh {
 
         // Process chunk closure
         let process_chunk = |chunk_idx: usize, z_start: usize| -> (Vec<MeshVertex>, Vec<u32>) {
-            let z_end = (z_start + chunk_size).min(depth);
+            let z_end = (z_start + chunk_size).min(process_z_end);
             if z_end <= z_start {
                 return (Vec::new(), Vec::new());
             }
