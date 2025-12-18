@@ -14,14 +14,49 @@ use crate::data::ct_volume::CTVolume;
 #[derive(Debug)]
 pub struct AppModel {
     pub(crate) vol: Option<CTVolume>,
+    pub enable_float_volume_texture: bool,
+    pub enable_mesh: bool,
 }
 
 impl AppModel {
+    pub const HU_OFFSET: f32 = 1100.0;
+
     /// Create a new AppModel with no volume loaded.
     ///
     /// Function-level comment: Initializes the application data model to an empty state.
-    pub fn new() -> Self {
-        Self { vol: None }
+    pub fn new(enable_float_volume_texture: bool) -> Self {
+        Self {
+            vol: None,
+            enable_float_volume_texture,
+            enable_mesh: false,
+        }
+    }
+
+    /// Generates the byte buffer required for creating the GPU texture.
+    /// Handles the logic for R16Float vs Rg8Unorm conversion internally.
+    pub fn get_volume_render_data(&self) -> Result<(Vec<u8>, bool), KeplerError> {
+        let vol = self.volume()?;
+        
+        if self.enable_float_volume_texture {
+            // Convert voxel i16 values to half-float bytes
+            let bytes: Vec<u8> = {
+                let voxels_f16_bits: Vec<u16> = vol
+                    .voxel_data
+                    .iter()
+                    .map(|&x| half::f16::from_f32(x as f32).to_bits())
+                    .collect();
+                bytemuck::cast_slice(&voxels_f16_bits).to_vec()
+            };
+            Ok((bytes, true))
+        } else {
+            let voxel_data: Vec<u16> = vol
+                .voxel_data
+                .iter()
+                .map(|x| (*x + Self::HU_OFFSET as i16) as u16)
+                .collect();
+            let bytes: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
+            Ok((bytes, false))
+        }
     }
 
     /// Load a CTVolume into the model, replacing any previously loaded volume.

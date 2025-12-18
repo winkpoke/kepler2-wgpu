@@ -1,6 +1,6 @@
 [package]
 name = "kepler-wgpu"
-version = "0.2.0"
+version = "0.5.0"
 edition = "2021"
 
 [package.metadata.wasm-pack.profile.release]
@@ -19,8 +19,7 @@ pollster = "0.4.0"
 bytemuck = { version = "1.16", features = [ "derive" ] }
 cfg-if = "1"
 num = "0.4"
-
-cgmath = "0.18"
+glam = "0.30"
 anyhow = "1.0"
 dicom-object = "0.8.2"
 dicom-core = "0.8.2"

@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+﻿#![allow(dead_code)]
 
 use log::{trace, info, warn};
 
@@ -6,7 +6,7 @@ use log::{trace, info, warn};
 use std::path::PathBuf;
 use std::{fs, io};
 use std::sync::Arc;
-use crate::mesh::mesh::Mesh;
+use crate::rendering::view::mesh::mesh::Mesh;
 use crate::rendering::{view, Graphics, GraphicsContext};
 
 // use wgpu::util::DeviceExt;
@@ -23,7 +23,7 @@ use crate::data::dicom::*;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::*;
 use crate::core::{error::KeplerError, WindowLevel};
-use crate::rendering::mesh::mesh_texture_pool::MeshTexturePool;
+use crate::rendering::view::mesh::mesh_texture_pool::MeshTexturePool;
 
 
 // static STATE: Lazy<Arc<Mutex<Option<State>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
@@ -42,7 +42,6 @@ pub struct App {
     /// Graphics context that encapsulates both hardware abstraction and rendering pipeline orchestration
     pub(crate) graphics_context: GraphicsContext,
     pub(crate) app_view: AppView,
-    pub(crate) enable_float_volume_texture: bool,
     pub(crate) enable_mesh: bool,
     pub(crate) app_model: AppModel,
     /// Cached mesh to avoid recomputation when creating Mesh views
@@ -50,7 +49,6 @@ pub struct App {
 }
 
 impl App {
-    const HU_OFFSET: f32 = 1100.0;
     
     pub async fn new(window: Arc<Window>) -> Result<App, KeplerError> {
         App::initialize(window).await
@@ -94,10 +92,9 @@ impl App {
         
         Ok(Self {
             graphics_context,
-            enable_float_volume_texture: default_float,
             enable_mesh: false,
             app_view: AppView::new(layout, factory),
-            app_model: AppModel::new(),
+            app_model: AppModel::new(default_float),
             cached_mesh: None,
         })
     }
@@ -124,7 +121,7 @@ impl App {
             std::sync::Arc::clone(&self.graphics_context.graphics.device),
             std::sync::Arc::clone(&self.graphics_context.graphics.queue),
             self.graphics_context.graphics.surface_config.format,
-            self.enable_float_volume_texture,
+            self.app_model.enable_float_volume_texture,
         );
         log::info!("ViewFactory reinitialized after graphics swap.");
         
@@ -280,7 +277,7 @@ impl App {
         });
 
         // Function-level comment: Determine which rendering passes to enable based on view types present in layout
-        let has_mesh_view = self.enable_mesh;
+        let has_mesh_view = self.app_model.enable_mesh;
         let has_mip_view = self.has_mip_content();
         let has_mpr_view = self.has_mpr_view();
         
@@ -369,21 +366,17 @@ impl App {
     pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume)  -> Arc<RenderContent> {
         let _ = self.app_model.load_volume(vol.clone());
         let mut winlev;
-        let texture = if self.enable_float_volume_texture {
+        
+        // Delegate data preparation to AppModel
+        let (bytes, is_float) = self.app_model.get_volume_render_data().expect("Volume should be loaded");
+
+        let texture = if is_float {
             winlev = WindowLevel::new();
             if let Err(e) = winlev.apply_bone_preset() {
                 log::warn!("apply_bone_preset (float path) failed: {}", e);
             }
             info!("Using R16Float volume texture path");
-            // Convert voxel i16 values to half-float bytes
-            let bytes: Vec<u8> = {
-                let voxels_f16_bits: Vec<u16> = vol
-                    .voxel_data
-                    .iter()
-                    .map(|&x| half::f16::from_f32(x as f32).to_bits())
-                    .collect();
-                bytemuck::cast_slice(&voxels_f16_bits).to_vec()
-            };
+            
             Arc::new(RenderContent::from_bytes_r16f(
                 self.device(),
                 self.queue(),
@@ -395,23 +388,18 @@ impl App {
             ).unwrap())
         } else {
             winlev = WindowLevel::new();
-            if let Err(e) = winlev.set_bias(Self::HU_OFFSET) {
+            if let Err(e) = winlev.set_bias(AppModel::HU_OFFSET) {
                 log::warn!("set_bias (packed RG8 path) failed: {}", e);
             }
             if let Err(e) = winlev.apply_bone_preset() {
                 log::warn!("apply_bone_preset (packed RG8 path) failed: {}", e);
             }
             info!("Using Rg8Unorm volume texture path");
-            let voxel_data: Vec<u16> = vol
-                .voxel_data
-                .iter()
-                .map(|x| (*x + Self::HU_OFFSET as i16) as u16)
-                .collect();
-            let voxel_data: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
+            
             Arc::new(RenderContent::from_bytes(
                 self.device(),
                 self.queue(),
-                &voxel_data,
+                &bytes,
                 "CT Volume",
                 vol.dimensions.0 as u32,
                 vol.dimensions.1 as u32,
@@ -506,6 +494,9 @@ impl App {
 
         if let Some(_) = mesh_index {
             change_index = true;
+            if self.app_model.enable_mesh != change_index { 
+                self.app_model.enable_mesh = change_index;
+            }
         }
 
         if self.app_view.is_one_cell_layout() {
@@ -516,6 +507,19 @@ impl App {
     
         // Rebuild layout immediately if a volume is already loaded
         if let Some(vol) = vol_option {
+            // Capture state of existing MPR views
+            let saved_states: Vec<_> = self.app_view.layout.views().iter()
+                .filter_map(|v| v.as_any().downcast_ref::<MprView>())
+                .map(|v| (
+                    v.get_orientation().clone(),
+                    v.get_scale(),
+                    v.get_translate_in_screen_coord(),
+                    v.get_slice_mm(),
+                    v.get_window_level(),
+                    v.get_window_width()
+                ))
+                .collect();
+
             let texture = self.load_data_from_ct_volume(&vol.clone());
             if change_index {
                 self.app_view.layout.remove_all();
@@ -533,12 +537,11 @@ impl App {
                 }
 
                 if let Some(mip) = mip{
-                    // Add MIP view to slot 3 using factory
-                    let mip_view = self.app_view.view_factory
-                        .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))
-                        .unwrap();
-                    self.app_view.layout.replace_view_at(mip, mip_view);
-                }
+                        // Add MIP view to slot 3 using factory
+                        if let Ok(mip_view) = self.app_view.view_factory.create_mip_view_with_content(texture.clone(), (0, 0), (0, 0)) {
+                            self.app_view.layout.replace_view_at(3, mip_view);
+                        }
+                    }
 
                 if let Some(mesh_index) = mesh_index {
                     let mesh_view = {
@@ -565,6 +568,21 @@ impl App {
             }else {
                 self.load_data_from_ct_volume(&vol.clone());
             }
+
+            // Restore state to matching MPR views
+            for view in self.app_view.layout.views_mut() {
+                if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                    if let Some(state) = saved_states.iter().find(|s| s.0 == *mpr_view.get_orientation()) {
+                        let (_, scale, pan, slice, wl, ww) = state;
+                        let _ = mpr_view.set_scale(*scale);
+                        let _ = mpr_view.set_translate_in_screen_coord(*pan);
+                        let _ = mpr_view.set_slice_mm(*slice);
+                        let _ = mpr_view.set_window_level(*wl);
+                        let _ = mpr_view.set_window_width(*ww);
+                    }
+                }
+            }
+
             log::info!("Layout rebuilt for mode: {}", change_index);
         } else {
             log::info!("Mode set to {} without loaded volume; will apply on next data load.", change_index);
@@ -666,7 +684,7 @@ impl App {
         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
             if let Err(e) = mpr_view.set_window_level(window_level) {
                 log::warn!("set_window_level {} failed on view {}: {}", 
-                        if self.enable_float_volume_texture {"(float)"} else {"(packed RG8)"}, 
+                        if self.app_model.enable_float_volume_texture {"(float)"} else {"(packed RG8)"}, 
                         index, e);
             }
             log::info!("View {} set_window_level: {}", index, window_level);
@@ -985,7 +1003,7 @@ impl App {
     pub fn toggle_float_volume_texture(&mut self) {
         // Toggle feature always enabled - removed toggle_enabled field
         // If enabling float path, ensure hardware support
-        if !self.enable_float_volume_texture {
+        if !self.app_model.enable_float_volume_texture {
             if !Self::device_supports_r16float(self.adapter()) {
                 log::warn!(
                     "Hardware doesn't support R16Float filtered sampling; staying on RG8."
@@ -993,10 +1011,10 @@ impl App {
                 return;
             }
         }
-        self.enable_float_volume_texture = !self.enable_float_volume_texture;
+        self.app_model.enable_float_volume_texture = !self.app_model.enable_float_volume_texture;
         log::info!(
             "Toggled enable_float_volume_texture to {}",
-            self.enable_float_volume_texture
+            self.app_model.enable_float_volume_texture
         );
         let vol = {
             let vol = match self.app_model.volume() {
@@ -1010,14 +1028,13 @@ impl App {
         };
 
         self.load_data_from_ct_volume(&vol);
-        log::warn!("No cached CTVolume to reload after toggle.");
     }
 
     pub fn disable_volume_format_toggle(&mut self) {
 
         log::info!(
             "Volume format toggle feature disabled. Default format in use: {}",
-            if self.enable_float_volume_texture { "R16Float" } else { "Rg8Unorm" }
+            if self.app_model.enable_float_volume_texture { "R16Float" } else { "Rg8Unorm" }
         );
     }
 
