@@ -432,14 +432,6 @@ impl App {
     pub fn crop_volume(&mut self, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32, mesh_index: usize, iso_min: f32, iso_max: f32) {
         let world_min = [sx, sy, sz];
         let world_max = [lx, ly, lz];
-        // match vol.crop_by_world_bounds(world_min, world_max) {
-        //     Ok(cropped_vol) => {
-        //         self.load_data_from_ct_volume(&cropped_vol);
-        //     },
-        //     Err(e) => {
-        //         log::error!("Crop operation failed: {}", e);
-        //     }
-        // }
 
         let vol_option = self.app_model.volume().ok().map(|vol| vol.clone());
         if let Some(vol) = vol_option {
@@ -533,7 +525,7 @@ impl App {
                 if let Some(mip) = mip{
                         // Add MIP view to slot 3 using factory
                         if let Ok(mip_view) = self.app_view.view_factory.create_mip_view_with_content(texture.clone(), (0, 0), (0, 0)) {
-                            self.app_view.layout.replace_view_at(3, mip_view);
+                            self.app_view.layout.replace_view_at(mip, mip_view);
                         }
                     }
 
@@ -619,21 +611,25 @@ impl App {
                     self.app_view.layout.add_view(mip_view);
                 }
                 2 => {
-                    if !self.app_model.enable_mesh {
-                        self.app_model.enable_mesh = true;
-                        let new_mesh = Mesh::new(&vol, iso_min, iso_max, None, None);
-                        self.cached_mesh = Some(new_mesh);
-                    }
+                    let mesh_view = {
+                        log::info!("mesh_mode_enabled: {}", self.app_model.enable_mesh);
+                        
+                        if !self.app_model.enable_mesh {
+                            self.app_model.enable_mesh = true;
+                            let new_mesh = Mesh::new(&vol, iso_min, iso_max, None, None);
+                            self.cached_mesh = Some(new_mesh);
+                        }
 
-                    let mesh_ref = self.cached_mesh.as_ref().expect("cached_mesh must exist after rebuild");
-                    let mesh_view = self.app_view.view_factory
-                        .create_mesh_view_with_content(
-                            texture.clone(),
-                            mesh_ref,
-                            (0, 0),
-                            (0, 0),
-                        )
-                        .unwrap();
+                        let mesh_ref = self.cached_mesh.as_ref().expect("cached_mesh must exist after rebuild");
+                        self.app_view.view_factory
+                            .create_mesh_view_with_content(
+                                texture,
+                                mesh_ref,
+                                (0, 0),
+                                (0, 0),
+                            )
+                            .unwrap()
+                    };
                     self.app_view.layout.add_view(mesh_view);
                 }
                 _ => {
