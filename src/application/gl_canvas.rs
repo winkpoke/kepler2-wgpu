@@ -29,11 +29,9 @@ pub enum UserEvent {
     ReloadShaders,
     /// Manually trigger pipeline cache invalidation without any other action.
     InvalidatePipelines,
-    CropVolume(f32, f32, f32, f32, f32, f32, usize, f32, f32),
-    EnableMesh(bool),
-    /// Set mesh mode enabled/disabled for a specific mesh index.
-    SetEnableMesh(Option<usize>, Option<usize>, bool, usize, usize, usize, usize, f32, f32),
-    SetOneCellLayout(usize, usize, f32, f32),
+    SetMeshMode(bool, bool, f32, f32, f32, f32, f32, f32, bool, usize, f32, f32),
+    SetMprMip(Option<usize>, usize, usize, usize, usize),
+    SetOneCellLayout(usize, usize),
     #[cfg(target_arch = "wasm32")]
     GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     #[cfg(target_arch = "wasm32")]
@@ -147,35 +145,27 @@ impl GLCanvas {
         }
     }
 
-    pub fn crop_volume(&self, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32, mesh_index: usize, iso_min: f32, iso_max: f32) {
-        if let Err(e) = self.proxy.send_event(UserEvent::CropVolume(sx, sy, sz, lx, ly, lz, mesh_index, iso_min, iso_max)) {
-            log::error!("Failed to send CropVolume event: {:?}", e);
+    pub fn set_mesh_mode(&self, save_mesh: bool, crop: bool, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32, one_cell: bool, mesh_index: usize, iso_min: f32, iso_max: f32) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetMeshMode(save_mesh, crop, sx, sy, sz, lx, ly, lz, one_cell, mesh_index, iso_min, iso_max)) {
+            log::error!("Failed to send SetMeshMode event: {:?}", e);
         } else {
-            log::info!("Sent CropVolume event: world_min= [{sx:?},{sy:?},{sz:?}], world_max= [{lx:?},{ly:?},{lz:?}], mesh_index={}, iso_min={}, iso_max={}", mesh_index, iso_min, iso_max);
+            log::info!("Sent SetMeshMode event: save_mesh={}, crop={}, sx={}, sy={}, sz={}, lx={}, ly={}, lz={}, one_cell={}, mesh_index={}, iso_min={}, iso_max={}", save_mesh, crop, sx, sy, sz, lx, ly, lz, one_cell, mesh_index, iso_min, iso_max);
         }
     }
 
-    pub fn enable_save_mesh(&self, enable_mesh: bool) {
-        if let Err(e) = self.proxy.send_event(UserEvent::EnableMesh(enable_mesh)) {
-            log::error!("Failed to send EnableMesh event: {:?}", e);
+    pub fn set_mpr_or_mip(&self, mip: Option<usize>, index_1: usize, index_2: usize, index_3: usize, index_4: usize) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetMprMip(mip, index_1, index_2, index_3, index_4)) {
+            log::error!("Failed to send SetMprMip event: {:?}", e);
         } else {
-            log::info!("Sent EnableMesh event: {}", enable_mesh);
+            log::info!("Sent SetMprMip event: mip={:?}, index_1={}, index_2={}, index_3={}, index_4={}", mip, index_1, index_2, index_3, index_4);
         }
     }
 
-    pub fn enable_mesh(&self, mesh_index: Option<usize>, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, iso_min: f32, iso_max: f32) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetEnableMesh(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_min, iso_max)) {
-            log::error!("Failed to send SetEnableMesh event: {:?}", e);
-        } else {
-            log::info!("Sent SetEnableMesh event: mesh_index={:?}, mip={:?}, change_mpr={}, index_1={}, index_2={}, index_3={}, index_4={}, iso_min={}, iso_max={}", mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_min, iso_max);
-        }
-    }
-
-    pub fn set_one_cell_layout(&self, mode: usize, orientation_index: usize, iso_min: f32, iso_max: f32) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetOneCellLayout(mode, orientation_index, iso_min, iso_max)) {
+    pub fn set_one_cell_layout(&self, mode: usize, orientation_index: usize) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetOneCellLayout(mode, orientation_index)) {
             log::error!("Failed to send SetOneCellLayout event: {:?}", e);
         } else {
-            log::info!("Sent SetOneCellLayout event: mode={}, orientation_index={}, iso_min={}, iso_max={}", mode, orientation_index, iso_min, iso_max);
+            log::info!("Sent SetOneCellLayout event: mode={}, orientation_index={}", mode, orientation_index);
         }
     }
 

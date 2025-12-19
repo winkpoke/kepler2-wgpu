@@ -197,10 +197,10 @@
         </fieldset>
 
         <fieldset class="pill" style="margin-bottom:10px">
-          <legend>视图模式</legend>
+          <legend>单视图模式</legend>
           <div class="row">
             <span id="mode-label">模式:</span>
-            <input type="number" id="mode" step="1" value="0" min="0" max="2">
+            <input type="number" id="mode" step="1" value="0" min="0" max="1">
             <span id="orientation_index-label">方向索引:</span>
             <input type="number" id="orientation_index" step="1" value="0" min="0" max="2">
             <button id="one-cell-submit">应用</button>
@@ -210,23 +210,6 @@
         <fieldset class="pill" style="margin-bottom:10px">
           <legend>视图切换</legend>
           <div class="grid">
-            <div>
-              <span id="3d-label">3D:</span>
-              <input type="number" id="mesh_index" step="1.0" value="0.0">
-              <input type="checkbox" id="3d" />
-            </div>
-            <div>
-              <span id="iso-min-label">Iso Min:</span>
-              <input type="number" id="iso-min" step="1.0" value="0.0">
-            </div>
-            <div>
-              <span id="iso-max-label">Iso Max:</span>
-              <input type="number" id="iso-max" step="1.0" value="100.0">
-            </div>
-            <div>
-              <span id="change_mpr-label">change_mpr</span>
-              <input type="checkbox" id="change_mpr" />
-            </div>
             <div>
               <span id="index-1-label">index-1:</span>
               <input type="number" id="index-1" step="1.0" value="0.0">
@@ -255,18 +238,38 @@
         </fieldset>
 
         <fieldset class="pill" style="margin-bottom:10px">
-          <legend>ROI</legend>
-          <div>
-            <span id="roi-min-label">ROI Min:</span>
-            <input type="number" id="roi-min-x" step="1.0" value="-158.50882">
-            <input type="number" id="roi-min-y" step="1.0" value="-92.941345">
-            <input type="number" id="roi-min-z" step="1.0" value="-1160.3865">
-          </div>
-          <div>
-            <span id="roi-max-label">ROI Max:</span>
-            <input type="number" id="roi-max-x" step="1.0" value="134.81229">
-            <input type="number" id="roi-max-y" step="1.0" value="125.87259">
-            <input type="number" id="roi-max-z" step="1.0" value="-1035.0465">
+          <legend>三维视图</legend>
+          <div class="grid">
+            <div>
+              <span id="mesh_index-label">mesh_index:</span>
+              <input type="number" id="mesh_index" step="1.0" value="0.0">
+              <span id="one_cell_mesh-label">one_cell:</span>
+              <input type="checkbox" id="one_cell" />
+            </div>
+            <div>
+              <span id="iso-min-label">Iso Min:</span>
+              <input type="number" id="iso-min" step="1.0" value="100.0">
+              <span id="save_mesh-label">save_mesh:</span>
+              <input type="checkbox" id="save_mesh" />
+            </div>
+            <div>
+              <span id="iso-max-label">Iso Max:</span>
+              <input type="number" id="iso-max" step="1.0" value="400.0">
+              <span id="crop_mesh-label">crop_mesh:</span>
+              <input type="checkbox" id="crop_mesh" />
+            </div>
+            <div>
+              <span id="roi-min-label">ROI Min:</span>
+              <input type="number" id="roi-min-x" step="1.0" value="-158.50882">
+              <input type="number" id="roi-min-y" step="1.0" value="-92.941345">
+              <input type="number" id="roi-min-z" step="1.0" value="-1160.3865">
+            </div>
+            <div>
+              <span id="roi-max-label">ROI Max:</span>
+              <input type="number" id="roi-max-x" step="1.0" value="134.81229">
+              <input type="number" id="roi-max-y" step="1.0" value="125.87259">
+              <input type="number" id="roi-max-z" step="1.0" value="-1035.0465">
+            </div>
           </div>
           <div class="row" style="margin-top:8px">
             <button id="ROI">截取</button>
@@ -438,8 +441,6 @@
       spacing: [],
       dim:[],
       mip: null,
-      mesh: false,
-      mesh_index: null,
       enable_rotation: true,
     };
 
@@ -671,83 +672,60 @@
       const lx = parseInt(byId('roi-max-x').value);
       const ly = parseInt(byId('roi-max-y').value);
       const lz = parseInt(byId('roi-max-z').value);
+      const checkbox3d = byId('save_mesh').checked;
+      const checkbox1cell = byId('one_cell').checked;
+      const checkboxCrop = byId('crop_mesh').checked;
+      const mesh_index = parseInt(byId('mesh_index').value, 10);
+      const iso_min = parseFloat(byId('iso-min').value);
+      const iso_max = parseFloat(byId('iso-max').value);
+      console.log('ROI:', checkbox3d, checkboxCrop, sx, sy, sz, lx, ly, lz, checkbox1cell, mesh_index, iso_min, iso_max);
+
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
+
       if ([sx, sy, sz, lx, ly, lz].some(v => Number.isNaN(v))) {
         alert('Please enter a valid number');
         return;
       }
+
       if (sx >= lx || sy >= ly || sz >= lz) {
         alert('ROI min must be less than max');
         return;
       }
-      const checkbox3d = byId('3d').checked;
-      if (checkbox3d){
-        state.mesh = true;
-        state.mesh_index = parseInt(byId('mesh_index').value, 10);
-      }else{
-        state.mesh = false;
-        state.mesh_index = null;
-      }
-      const iso_min = parseFloat(byId('iso-min').value);
-      const iso_max = parseFloat(byId('iso-max').value);
 
-      gl_canvas.crop_volume(sx, sy, sz, lx, ly, lz, state.mesh_index, iso_min, iso_max);
+      gl_canvas.set_mesh_mode(checkbox3d, checkboxCrop, sx, sy, sz, lx, ly, lz, checkbox1cell, mesh_index, iso_min, iso_max);
     })
 
     byId('mesh').addEventListener('click', () => {
-      const checkbox3d = byId('3d').checked;
-      const checkboxChangeMpr = byId('change_mpr').checked;
       const checkboxChangeMip = byId('change_mip').checked;
-
-      if (checkbox3d){
-        state.mesh = true;
-        state.mesh_index = parseInt(byId('mesh_index').value, 10);
-      }else{
-        state.mesh = false;
-        state.mesh_index = null;
-      }
       
-      // Indices: convert to numbers for downstream logic
       if (checkboxChangeMip) {
         state.mip = parseInt(byId('mip').value, 10);
         console.log('meshclick_mip:',state.mip);
       }else{
         state.mip = null;
       }
+
       const index_1 = parseInt(byId('index-1').value, 10);
       const index_2 = parseInt(byId('index-2').value, 10);
       const index_3 = parseInt(byId('index-3').value, 10);
       const index_4 = parseInt(byId('index-4').value, 10);
-      const iso_min = parseFloat(byId('iso-min').value);
-      const iso_max = parseFloat(byId('iso-max').value);
-
-      console.log('meshclick:', state.mesh_index, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, iso_min, iso_max);
 
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
 
-      gl_canvas.enable_mesh(state.mesh_index, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, iso_min, iso_max);
+      gl_canvas.set_mpr_or_mip(state.mip, index_1, index_2, index_3, index_4);
     });
 
     byId('one-cell-submit').addEventListener('click', () => {
-      const mode = parseInt(byId('mode').value, 10); // Mode: 0=MPR, 1=MIP, 2=MESH
+      const mode = parseInt(byId('mode').value, 10); // Mode: 0=MPR, 1=MIP
       const orientation_index = parseInt(byId('orientation_index').value, 10);
-      const iso_min = parseFloat(byId('iso-min').value);
-      const iso_max = parseFloat(byId('iso-max').value);
-      console.log('meshclick:', mode, orientation_index, iso_min, iso_max);
 
-      if (mode === 2){
-        state.mesh = true;
-      }else{
-        state.mesh = false;
-      }
-
-      gl_canvas.set_one_cell_layout(mode, orientation_index, iso_min, iso_max);
+      gl_canvas.set_one_cell_layout(mode, orientation_index);
     });
     
     byId('3d-submit').addEventListener('click', () => {

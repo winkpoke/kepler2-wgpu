@@ -429,71 +429,102 @@ impl App {
         self.load_data_from_ct_volume(&vol);
     }
 
-    pub fn crop_volume(&mut self, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32, mesh_index: usize, iso_min: f32, iso_max: f32) {
-        let world_min = [sx, sy, sz];
-        let world_max = [lx, ly, lz];
-
-        let vol_option = self.app_model.volume().ok().map(|vol| vol.clone());
-        if let Some(vol) = vol_option {
-            let texture = self.load_data_from_ct_volume(&vol.clone());
-
-            let mesh_view = {
-                log::info!("mesh_mode_enabled: {}", self.app_model.enable_mesh);
-                
-                if !self.app_model.enable_mesh {
-                    self.app_model.enable_mesh = true;
-                    let new_mesh = Mesh::new(&vol, iso_min, iso_max, Some(world_min), Some(world_max));
-                    self.cached_mesh = Some(new_mesh);
-                }
-
-                let mesh_ref = self.cached_mesh.as_ref().expect("cached_mesh must exist after rebuild");
-                self.app_view.view_factory
-                    .create_mesh_view_with_content(
-                        texture,
-                        mesh_ref,
-                        (0, 0),
-                        (0, 0),
-                    )
-                    .unwrap()
-            };
-            self.app_view.layout.replace_view_at(mesh_index, mesh_view);
+    pub fn set_mesh_mode(
+        &mut self, 
+        save_mesh: bool,
+        crop: bool,
+        sx: f32, sy: f32, sz: f32, 
+        lx: f32, ly: f32, lz: f32, 
+        one_cell: bool, 
+        mesh_index: usize, 
+        iso_min: f32, iso_max: f32
+    ) {
+        let mut world_min = None;
+        let mut world_max = None;
+        if crop{
+            world_min = Some([sx, sy, sz]);
+            world_max = Some([lx, ly, lz]);
         }
-    }
-    
-    pub fn mesh_mode_enabled(&mut self, enable_mesh: bool) {
-        self.app_model.enable_mesh = enable_mesh;
+        
+        self.app_model.enable_mesh = true;
+
+        if !one_cell {
+            if self.app_view.is_one_cell_layout() {
+                self.app_view.set_grid_layout(2, 2, 2);
+            }
+        }
+
+        if let Some(vol) = self.app_model.volume().ok().map(|v| v.clone()) {
+            let texture = self.load_data_from_ct_volume(&vol);
+
+            if one_cell {
+                self.app_view.set_one_cell_layout();
+                self.app_view.layout.remove_all();
+            }
+
+            log::info!("save_mesh: {}, enable_mesh: {}, one_cell: {}", save_mesh, self.app_model.enable_mesh, one_cell);
+            
+            if !save_mesh || self.cached_mesh.is_none() {
+                let mut new_mesh = Mesh::new(&vol, iso_min, iso_max, world_min, world_max);
+                
+                // Function-level comment: Prevent WGPU panic "buffer size 0" by ensuring mesh is never empty.
+                // If Marching Cubes produces no triangles, inject a degenerate invisible triangle.
+                if new_mesh.vertices.is_empty() {
+                    log::warn!("Generated mesh is empty (ISO: {}-{}). Injecting dummy triangle to prevent crash.", iso_min, iso_max);
+                    // Add 3 vertices (one triangle) at origin
+                    let dummy_vertex = crate::rendering::view::mesh::mesh::MeshVertex {
+                        position: [0.0, 0.0, 0.0],
+                        normal: [0.0, 0.0, 1.0],
+                        color: [0.0, 0.0, 0.0],
+                    };
+                    new_mesh.vertices.push(dummy_vertex);
+                    new_mesh.vertices.push(dummy_vertex);
+                    new_mesh.vertices.push(dummy_vertex);
+                    
+                    // Add 3 indices
+                    new_mesh.indices.push(0); new_mesh.indices.push(1); new_mesh.indices.push(2);
+                }
+                
+                self.cached_mesh = Some(new_mesh);
+            }
+
+            let mesh_view = self.app_view.view_factory
+                .create_mesh_view_with_content(
+                    texture,
+                    self.cached_mesh.as_ref().expect("cached_mesh must exist"),
+                    (0, 0),
+                    (0, 0),
+                )
+                .unwrap();
+
+            if one_cell {
+                self.app_view.layout.add_view(mesh_view);
+            } else {
+                // Function-level comment: Safely replace view, handling invalid indices from frontend
+                let view_count = self.app_view.layout.views().len();
+                if mesh_index < view_count {
+                    self.app_view.layout.replace_view_at(mesh_index, mesh_view);
+                } else {
+                    log::warn!("Invalid mesh_index {} for layout with {} views. Defaulting to index 2 or appending.", mesh_index, view_count);
+                    if view_count > 2 {
+                         self.app_view.layout.replace_view_at(3, mesh_view);
+                    } else {
+                        self.app_view.layout.add_view(mesh_view);
+                    }
+                }
+            }
+        }
     }
 
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
-    pub fn set_mesh_mode_enabled(
-        &mut self, 
-        mesh_index: Option<usize>, 
-        mip: Option<usize>, 
-        change_mpr: bool, 
-        index_1: usize, index_2: usize, index_3: usize, index_4: usize, 
-        iso_min: f32, iso_max: f32
-    ) {
-        let mut change_index = false;
-
-        if change_mpr {
-            change_index = true;
-        }
-        if let Some(_) = mip {
-            change_index = true;
-        }
-        if let Some(_) = mesh_index {
-            change_index = true;
-        }
-
+    pub fn set_mpr_or_mip(&mut self, mip: Option<usize>, index_1: usize, index_2: usize, index_3: usize, index_4: usize) {
+        // Switch to grid layout if currently one-cell
         if self.app_view.is_one_cell_layout() {
             self.app_view.set_grid_layout(2, 2, 2);
         }
 
-        let vol_option = self.app_model.volume().ok().map(|vol| vol.clone());
-    
-        // Rebuild layout immediately if a volume is already loaded
-        if let Some(vol) = vol_option {
-            // Capture state of existing MPR views
+        if let Some(vol) = self.app_model.volume().ok().map(|v| v.clone()) {
+            // Capture state of existing MPR views to restore later
             let saved_states: Vec<_> = self.app_view.layout.views().iter()
                 .filter_map(|v| v.as_any().downcast_ref::<MprView>())
                 .map(|v| (
@@ -506,53 +537,25 @@ impl App {
                 ))
                 .collect();
 
+            // Create texture without resetting layout (optimized)
             let texture = self.load_data_from_ct_volume(&vol.clone());
-            if change_index {
-                self.app_view.layout.remove_all();
-                for orientation in [ALL_ORIENTATIONS[index_1], ALL_ORIENTATIONS[index_2], ALL_ORIENTATIONS[index_3], ALL_ORIENTATIONS[index_4]].iter() {
-                    let view = self.app_view.view_factory
-                        .create_mpr_view_with_content(
-                            texture.clone(),
-                            &vol,
-                            *orientation,
-                        (0, 0),
-                        (0, 0),
-                    )
-                    .unwrap();
+
+            self.app_view.layout.remove_all();
+            
+            // Add base MPR views
+            let indices = [index_1, index_2, index_3, index_4];
+            for &idx in &indices {
+                    let view = self.app_view.view_factory.create_mpr_view_with_content(
+                    texture.clone(), &vol, ALL_ORIENTATIONS[idx], (0, 0), (0, 0)
+                ).unwrap();
                 self.app_view.layout.add_view(view);
+            }
+
+            // Replace with MIP if requested
+            if let Some(mip_idx) = mip {
+                if let Ok(mip_view) = self.app_view.view_factory.create_mip_view_with_content(texture.clone(), (0, 0), (0, 0)) {
+                    self.app_view.layout.replace_view_at(mip_idx, mip_view);
                 }
-
-                if let Some(mip) = mip{
-                        // Add MIP view to slot 3 using factory
-                        if let Ok(mip_view) = self.app_view.view_factory.create_mip_view_with_content(texture.clone(), (0, 0), (0, 0)) {
-                            self.app_view.layout.replace_view_at(mip, mip_view);
-                        }
-                    }
-
-                if let Some(mesh_index) = mesh_index {
-                    let mesh_view = {
-                        log::info!("mesh_mode_enabled: {}", self.app_model.enable_mesh);
-                        
-                        if !self.app_model.enable_mesh {
-                            self.app_model.enable_mesh = true;
-                            let new_mesh = Mesh::new(&vol, iso_min, iso_max, None, None);
-                            self.cached_mesh = Some(new_mesh);
-                        }
-
-                        let mesh_ref = self.cached_mesh.as_ref().expect("cached_mesh must exist after rebuild");
-                        self.app_view.view_factory
-                            .create_mesh_view_with_content(
-                                texture.clone(),
-                                mesh_ref,
-                                (0, 0),
-                                (0, 0),
-                            )
-                            .unwrap()
-                    };
-                    self.app_view.layout.replace_view_at(mesh_index, mesh_view);
-                }
-            }else {
-                self.load_data_from_ct_volume(&vol.clone());
             }
 
             // Restore state to matching MPR views
@@ -568,72 +571,31 @@ impl App {
                     }
                 }
             }
-
-            log::info!("Layout rebuilt for mode: {}", change_index);
-        } else {
-            log::info!("Mode set to {} without loaded volume; will apply on next data load.", change_index);
         }
     }
 
     /// Switch to a single-cell layout and display the requested view type (MPR/MIP/MESH).
-    /// Mode: 0=MPR, 1=MIP, 2=MESH. For MPR, provide `orientation_index` to select orientation.
+    /// Mode: 0=MPR, 1=MIP. For MPR, provide `orientation_index` to select orientation.
     pub fn set_one_cell_layout(
         &mut self,
         mode: usize,
         orientation_index: usize,
-        iso_min: f32,
-        iso_max: f32,
     ) {
-        let vol_option = self.app_model.volume().ok().map(|vol| vol.clone());
-        if let Some(vol) = vol_option {
+        if let Some(vol) = self.app_model.volume().ok().map(|v| v.clone()) {
             let texture = self.load_data_from_ct_volume(&vol.clone());
+            
             self.app_view.set_one_cell_layout();
             self.app_view.layout.remove_all();
+
             let view_factory = &self.app_view.view_factory;
             match mode {
-                0 => {
-                    let orientation = ALL_ORIENTATIONS[orientation_index];
-                    let view = view_factory
-                        .create_mpr_view_with_content(
-                            texture.clone(),
-                            &vol,
-                            orientation,
-                            (0, 0),
-                            (0, 0),
-                        )
-                        .unwrap();
-                    self.app_view.layout.add_view(view);
-                }
                 1 => {
                     let mip_view = view_factory
                         .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))
                         .unwrap();
                     self.app_view.layout.add_view(mip_view);
                 }
-                2 => {
-                    let mesh_view = {
-                        log::info!("mesh_mode_enabled: {}", self.app_model.enable_mesh);
-                        
-                        if !self.app_model.enable_mesh {
-                            self.app_model.enable_mesh = true;
-                            let new_mesh = Mesh::new(&vol, iso_min, iso_max, None, None);
-                            self.cached_mesh = Some(new_mesh);
-                        }
-
-                        let mesh_ref = self.cached_mesh.as_ref().expect("cached_mesh must exist after rebuild");
-                        self.app_view.view_factory
-                            .create_mesh_view_with_content(
-                                texture,
-                                mesh_ref,
-                                (0, 0),
-                                (0, 0),
-                            )
-                            .unwrap()
-                    };
-                    self.app_view.layout.add_view(mesh_view);
-                }
                 _ => {
-                    log::warn!("Unsupported mode {} for one-cell layout; defaulting to MPR.", mode);
                     let orientation = ALL_ORIENTATIONS[orientation_index];
                     let view = view_factory
                         .create_mpr_view_with_content(

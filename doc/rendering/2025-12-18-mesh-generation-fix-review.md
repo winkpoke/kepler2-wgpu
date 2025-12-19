@@ -26,10 +26,9 @@ Removed hardcoded `roi_vertices` and replaced them with dynamic bounds derived f
 // ];
 
 // After (Fixed)
-let roi_vertices = vec![
-    world_min.unwrap(),
-    world_max.unwrap(),
-];
+// ROI definition - Use arguments if provided, else default to full volume
+let roi_min = world_min.unwrap_or([f32::NEG_INFINITY; 3]);
+let roi_max = world_max.unwrap_or([f32::INFINITY; 3]);
 ```
 
 **Review:**
