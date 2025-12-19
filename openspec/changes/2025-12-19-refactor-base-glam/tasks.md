@@ -1,7 +1,7 @@
 # Tasks
 
 - [ ] **Dependency Update**
-    - [ ] Update `Cargo.toml`: Enable `bytemuck` feature for `glam`.
+    - [x] Update `Cargo.toml`: Enable `bytemuck` feature for `glam`.
 
 - [ ] **Refactor `Base` Struct**
     - [ ] Modify `src/core/coord/base.rs` to use `glam::Mat4` and remove generic `<T>`.
