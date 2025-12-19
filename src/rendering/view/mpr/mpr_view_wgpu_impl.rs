@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
 use std::sync::Arc;
-use crate::core::coord::{array_to_slice, Matrix4x4};
 use crate::rendering::view::render_content::RenderContent;
 use super::mpr_render_context::MprRenderContext;
 
@@ -75,7 +74,7 @@ impl MprViewWgpuImpl {
         render_context: Arc<MprRenderContext>,
         device: &wgpu::Device,
         render_content: Arc<RenderContent>,
-        transform_matrix: Matrix4x4<f32>,
+        transform_matrix: glam::Mat4,
     ) -> Self {
         // Initialize uniform data
         let u_vert_data = UniformsVert {
@@ -89,7 +88,7 @@ impl MprViewWgpuImpl {
             slice: 0.0,
             is_packed_rg8: if is_packed { 1.0 } else { 0.0 },
             bias: if is_packed { 1100.0 } else { 0.0 },
-            mat: *array_to_slice(&transform_matrix.columns),
+            mat: transform_matrix.to_cols_array(),
             ..Default::default()
         };
         
