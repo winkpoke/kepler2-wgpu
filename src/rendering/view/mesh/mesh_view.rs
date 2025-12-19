@@ -463,17 +463,15 @@ impl MeshView {
             
             #[cfg(feature = "trace-logging")]
             log::trace!("[BASIC_MESH_MATRICES] Model matrix (scale {} with rotation {:?} rad, enabled={}): {:?}", 
-                        scale, angles, self.rotation_enabled, model_matrix.data);
-            log::trace!("[BASIC_MESH_MATRICES] View matrix (camera at -3): {:?}", view_matrix.data);
-            log::trace!("[BASIC_MESH_MATRICES] Projection matrix (orthogonal): {:?}", proj_matrix.data);
-            log::trace!("[BASIC_MESH_MATRICES] Combined MVP matrix: {:?}", mvp_matrix.data);
+                        scale, angles, self.rotation_enabled, model_matrix.columns);
+            log::trace!("[BASIC_MESH_MATRICES] View matrix (camera at -3): {:?}", view_matrix.columns);
+            log::trace!("[BASIC_MESH_MATRICES] Projection matrix (orthogonal): {:?}", proj_matrix.columns);
+            log::trace!("[BASIC_MESH_MATRICES] Combined MVP matrix: {:?}", mvp_matrix.columns);
             
             // Update uniforms in BasicMeshContext with combined MVP matrix
-            // Note: The shader expects column-major matrices, so we transpose the MVP matrix
-            let mvp_matrix_transposed = mvp_matrix.transpose();
-            log::trace!("[BASIC_MESH_MATRICES] Transposed MVP matrix for shader: {:?}", mvp_matrix_transposed.data);
+            // Note: The shader expects column-major matrices, and Matrix4x4 is now column-major.
             
-            ctx.update_uniforms(queue, &mvp_matrix_transposed.data);
+            ctx.update_uniforms(queue, &mvp_matrix.columns);
 
             // Update lighting uniforms to ensure lighting effects are applied
             let mut lighting_uniforms = if let Some(ref lighting) = self.lighting {

@@ -11,17 +11,16 @@ pub struct GeometryBuilder<'a> {
     sorted_image_series: Option<Vec<&'a CTImage>>, 
 }
 
-// Helper to convert custom Matrix4x4 (row-major) to glam::Mat4 (column-major)
+// Helper to convert custom Matrix4x4 (column-major) to glam::Mat4 (column-major)
 fn to_glam(m: &Matrix4x4<f32>) -> Mat4 {
-    // Matrix4x4 is row-major. Interpreting it as columns effectively transposes it.
-    // So we load it as columns and transpose to get the original matrix.
-    Mat4::from_cols_array(array_to_slice(&m.data)).transpose()
+    // Both are column-major, so we can load directly.
+    Mat4::from_cols_array(array_to_slice(&m.columns))
 }
 
 // Helper to convert glam::Mat4 to custom Matrix4x4
 fn from_glam(m: Mat4) -> Matrix4x4<f32> {
-    // Transpose to get row-major order, then flatten to array
-    Matrix4x4::from_array(m.transpose().to_cols_array())
+    // Both are column-major, so we can load directly.
+    Matrix4x4::from_cols(m.to_cols_array())
 }
 
 // #[cfg(not(target_arch = "wasm32"))]
@@ -246,9 +245,9 @@ mod tests {
 
         let result = GeometryBuilder::build_uv_base(&volume_1);
         assert!(result.label == "CT Volume: UV");
-        assert_eq!(result.matrix.data[0][0], 511.0);
-        assert_eq!(result.matrix.data[1][1], 511.0);
-        assert_eq!(result.matrix.data[2][2], 99.0);
+        assert_eq!(result.matrix.columns[0][0], 511.0);
+        assert_eq!(result.matrix.columns[1][1], 511.0);
+        assert_eq!(result.matrix.columns[2][2], 99.0);
     }
 
     #[test]
@@ -274,10 +273,10 @@ mod tests {
         let (nx, ny, nz) = (volume_1.dimensions.0 as f32, volume_1.dimensions.1 as f32, volume_1.dimensions.2 as f32);
         let (dx, dy, dz) = (nx * volume_1.voxel_spacing.0, ny * volume_1.voxel_spacing.1, nz * volume_1.voxel_spacing.2);
         let d = (dx + dy + dz) / 3.0;
-        assert!((result.matrix.data[0][0] - d).abs() < 1e-6);
+        assert!((result.matrix.columns[0][0] - d).abs() < 1e-6);
         // oy + dy/2 - d/2
         let expected_y = -507.8125 + dy / 2.0 - d / 2.0;
-        assert!((result.matrix.data[1][3] - expected_y).abs() < 1e-6);
+        assert!((result.matrix.columns[3][1] - expected_y).abs() < 1e-6);
     }
 
     #[test]
@@ -301,8 +300,8 @@ mod tests {
         let (nx, ny, nz) = (volume_1.dimensions.0 as f32, volume_1.dimensions.1 as f32, volume_1.dimensions.2 as f32);
         let (dx, dy, dz) = (nx * volume_1.voxel_spacing.0, ny * volume_1.voxel_spacing.1, nz * volume_1.voxel_spacing.2);
         let d = (dx + dy + dz) / 3.0;
-        assert!((result.matrix.data[2][1] + d).abs() < 1e-6);
-        assert_eq!(result.matrix.data[1][3], (5.0 + dy / 2.0));
+        assert!((result.matrix.columns[1][2] + d).abs() < 1e-6);
+        assert_eq!(result.matrix.columns[3][1], (5.0 + dy / 2.0));
     }
 
     #[test]
@@ -327,9 +326,9 @@ mod tests {
         let (nx, ny, nz) = (volume_1.dimensions.0 as f32, volume_1.dimensions.1 as f32, volume_1.dimensions.2 as f32);
         let (dx, dy, dz) = (nx * volume_1.voxel_spacing.0, ny * volume_1.voxel_spacing.1, nz * volume_1.voxel_spacing.2);
         let d = (dx + dy + dz) / 3.0;
-        assert!((result.matrix.data[1][0] - d).abs() < 1e-6);
+        assert!((result.matrix.columns[0][1] - d).abs() < 1e-6);
         let expected_z = 3.0 + dz / 2.0 + d / 2.0;
-        assert!((result.matrix.data[2][3] - expected_z).abs() < 1e-6);
+        assert!((result.matrix.columns[3][2] - expected_z).abs() < 1e-6);
     }
 
     #[test]
@@ -347,9 +346,10 @@ mod tests {
         };
 
         let result = GeometryBuilder::build_oblique_base(&volume_1);
-        assert_eq!(result.matrix.data[2][0], -47.4368);
-        assert_eq!(result.matrix.data[2][1], -238.848);
-        assert_eq!(result.matrix.data[2][2], 39.488);
-        assert_eq!(result.matrix.data[2][3], 166.074);
+        // data[row][col] -> columns[col][row]
+        assert_eq!(result.matrix.columns[0][2], -47.4368);
+        assert_eq!(result.matrix.columns[1][2], -238.848);
+        assert_eq!(result.matrix.columns[2][2], 39.488);
+        assert_eq!(result.matrix.columns[3][2], 166.074);
     }
 }
