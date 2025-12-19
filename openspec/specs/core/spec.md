@@ -1,7 +1,7 @@
 # core Specification
 
 ## Purpose
-TBD - created by archiving change refactor-geometry-glam. Update Purpose after archive.
+Provides fundamental building blocks for the application, including standardized error handling, mathematical primitives, coordinate system definitions, geometry transformations, timing utilities, and medical imaging specific value mapping (Window/Level).
 ## Requirements
 ### Requirement: Standardized Math Library
 The core geometry subsystem MUST use a standardized, SIMD-optimized linear algebra library (e.g., `glam`) for internal calculations to ensure performance and maintainability. The chosen library MUST be compatible with WebAssembly (WASM) targets.
