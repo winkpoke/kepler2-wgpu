@@ -22,8 +22,15 @@
     - [ ] Update `Geometry` struct in `src/data/ct_volume.rs` to use `glam::Mat4` (was `Matrix4x4<f32>`).
 
 - [ ] **Update Rendering Views**
-    - [ ] Update `MprView` in `src/rendering/view/mpr/mpr_view.rs` to handle `glam::Mat4`.
-    - [ ] Ensure uniform buffer updates (`queue.write_buffer`) correctly handle column-major layout (likely no transpose needed if shader expects standard WGSL matrix).
+    - [ ] **MprView** (`src/rendering/view/mpr/mpr_view.rs`)
+        - [ ] Replace `Base<f32>` fields with `glam::Mat4`.
+        - [ ] Replace `[f32; 3]` pan with `glam::Vec3`.
+        - [ ] Update `screen_coord_to_world` and `set_center_at_point_in_mm` to use `glam`.
+        - [ ] Ensure uniform buffer updates handle column-major layout correctly.
+    - [ ] **MeshView** (`src/rendering/view/mesh/mesh_view.rs`)
+        - [ ] Refactor `update_uniforms` to use `glam::Mat4`.
+        - [ ] Remove manual matrix construction and multiplication logic.
+        - [ ] Ensure consistent coordinate system handling (orthographic projection).
 
 - [ ] **Verification**
     - [ ] Run `cargo test` and fix compilation errors.

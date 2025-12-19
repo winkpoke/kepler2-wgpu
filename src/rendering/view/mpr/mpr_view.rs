@@ -62,10 +62,6 @@ pub struct MprView {
     padding_px: u32,
 }
 
-fn base_to_glam(base: &Base<f32>) -> Mat4 {
-    Mat4::from_cols_array_2d(&base.matrix.columns)
-}
-
 impl MprView {
     /// Medical imaging parameter bounds for validation
     const MIN_SCALE: f32 = 0.01;        // 1% zoom minimum
@@ -157,8 +153,8 @@ impl MprView {
         let base_screen_legacy = orientation.build_base(vol);
         let base_uv_legacy = GeometryBuilder::build_uv_base(vol);
 
-        let base_screen = base_to_glam(&base_screen_legacy);
-        let base_uv = base_to_glam(&base_uv_legacy);
+        let base_screen = base_screen_legacy.matrix;
+        let base_uv = base_uv_legacy.matrix;
 
         // Initialize view state with validated parameters
         let pan = validated_translate;

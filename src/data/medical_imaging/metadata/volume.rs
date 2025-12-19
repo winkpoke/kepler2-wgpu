@@ -6,7 +6,7 @@ use crate::data::medical_imaging::{
     validation::{ValidationResult, MedicalImageValidator},
 };
 use crate::data::CTVolume;
-use crate::core::coord::{Base, Matrix4x4};
+use crate::core::coord::{Base, Matrix4x4, GeometricScalar};
 
 /// Function-level comment: Standardized 3D medical volume representation
 /// Preserves all metadata and provides efficient access to pixel data
@@ -98,13 +98,13 @@ impl MedicalVolume {
             voxel_data,
             base: Base {
                 label: uid.to_string(),
-                matrix: base_matrix,
+                matrix: <f32 as GeometricScalar>::from_matrix4x4(&base_matrix),
             }
         };
 
         log::info!("{:?}", &ct_volume_mha.dimensions);
         log::info!("{:?}", &ct_volume_mha.voxel_spacing);
-        log::info!("{:?}", &ct_volume_mha.base.matrix.columns);
+        log::info!("{:?}", &ct_volume_mha.base.get_matrix().columns);
         for (index, &value) in ct_volume_mha.voxel_data.iter().enumerate() {
             if value < -1024 {
                 log::info!("索引 {}: 值 {}", index, value);

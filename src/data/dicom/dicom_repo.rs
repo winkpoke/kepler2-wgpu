@@ -4,7 +4,7 @@ use super::ct_image::CTImage;
 use super::image_series::ImageSeries;
 use super::patient::Patient;
 use super::studyset::StudySet;
-use crate::core::coord::{Base, Matrix4x4};
+use crate::core::coord::{Base, Matrix4x4, GeometricScalar};
 use crate::data::ct_volume::{CTVolume, CTVolumeGenerator};
 use crate::data::medical_imaging::image_info::PatientPosition;
 use anyhow::Result;
@@ -275,7 +275,7 @@ impl DicomRepo {
             voxel_data,
             base: Base {
                 label: series.uid.clone(),
-                matrix: base_matrix,
+                matrix: <f32 as GeometricScalar>::from_matrix4x4(&base_matrix),
             },
         })
     }

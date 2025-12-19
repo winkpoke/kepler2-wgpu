@@ -415,15 +415,16 @@ pub fn slice_to_array<T>(slice: &[T; 16]) -> &[[T; 4]; 4] {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use glam::{DMat4, Mat4};
 
     #[test]
     fn test_coordinate_system() {
         let base = Base::<f64> {
             label: "test".to_string(),
-            matrix: Matrix4x4::<f64>::eye(),
+            matrix: DMat4::IDENTITY,
         };
         assert!(base.label == "test");
-        let matrix = base.matrix;
+        let matrix = base.get_matrix();
         // matrix.columns[col][row]
         // Identity matrix: diagonals are 1.0
         assert_eq!(matrix.columns[0][0], 1.0);
@@ -442,11 +443,14 @@ mod tests {
         println!("{:?}", matrix.apply(&[3., 2., 1., 1.]));
         let base0 = Base::<f64> {
             label: "world coordinate".to_string(),
-            matrix: Matrix4x4::<f64>::eye(),
+            matrix: DMat4::IDENTITY,
         };
+        
+        let glam_matrix = DMat4::from_cols_array(&m).transpose();
+        
         let base1 = Base::<f64> {
             label: "system coordinate".to_string(),
-            matrix: matrix,
+            matrix: glam_matrix,
         };
         let transform_matrix = base0.to_base(&base1);
         println!("{:?}", transform_matrix);
@@ -470,11 +474,11 @@ mod tests {
         println!("{:?}", matrix1.apply(&[3., 2., 1., 1.]));
         let base0 = Base::<f32> {
             label: "world coordinate".to_string(),
-            matrix: matrix0,
+            matrix: <f32 as GeometricScalar>::from_matrix4x4(&matrix0),
         };
         let base1 = Base::<f32> {
             label: "system coordinate".to_string(),
-            matrix: matrix1,
+            matrix: <f32 as GeometricScalar>::from_matrix4x4(&matrix1),
         };
         let transform_matrix = base0.to_base(&base1);
         println!("{:?}", transform_matrix);
