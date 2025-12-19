@@ -362,13 +362,40 @@ impl App {
     }
 
     pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume)  -> Arc<RenderContent> {
+        // Invalidate cached mesh when loading new volume data
+        self.cached_mesh = None;
+        
+        let texture = self.create_texture_from_volume(vol);
+    
+        self.app_view.layout.remove_all();
+        let view_factory = &self.app_view.view_factory;
+        for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1], ALL_ORIENTATIONS[2], ALL_ORIENTATIONS[0]].iter() {
+            let view = view_factory
+                .create_mpr_view_with_content(
+                    texture.clone(),
+                    &vol,
+                    *orientation,
+                    (0, 0),
+                    (0, 0),
+                )
+                .unwrap();
+            self.app_view.layout.add_view(view);
+        }
+
+        // Return the shared render content for caller access
+        texture
+    }
+
+    /// Helper to create texture from volume without modifying layout.
+    /// Returns the shared render content.
+    fn create_texture_from_volume(&mut self, vol: &CTVolume) -> Arc<RenderContent> {
         let _ = self.app_model.load_volume(vol.clone());
         let mut winlev;
         
         // Delegate data preparation to AppModel
         let (bytes, is_float) = self.app_model.get_volume_render_data().expect("Volume should be loaded");
 
-        let texture = if is_float {
+        if is_float {
             winlev = WindowLevel::new();
             if let Err(e) = winlev.apply_bone_preset() {
                 log::warn!("apply_bone_preset (float path) failed: {}", e);
@@ -403,25 +430,7 @@ impl App {
                 vol.dimensions.1 as u32,
                 vol.dimensions.2 as u32,
             ).unwrap())
-        };
-    
-        self.app_view.layout.remove_all();
-        let view_factory = &self.app_view.view_factory;
-        for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1], ALL_ORIENTATIONS[2], ALL_ORIENTATIONS[0]].iter() {
-            let view = view_factory
-                .create_mpr_view_with_content(
-                    texture.clone(),
-                    &vol,
-                    *orientation,
-                    (0, 0),
-                    (0, 0),
-                )
-                .unwrap();
-            self.app_view.layout.add_view(view);
         }
-
-        // Return the shared render content for caller access
-        texture
     }
 
     pub fn load_data_from_repo(&mut self, repo: &DicomRepo, image_series_number: &str) {
@@ -455,7 +464,8 @@ impl App {
         }
 
         if let Some(vol) = self.app_model.volume().ok().map(|v| v.clone()) {
-            let texture = self.load_data_from_ct_volume(&vol);
+            // Use helper to avoid resetting layout unnecessarily, preserving existing views
+            let texture = self.create_texture_from_volume(&vol);
 
             if one_cell {
                 self.app_view.set_one_cell_layout();
@@ -517,9 +527,12 @@ impl App {
     }
 
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
-    pub fn set_mpr_or_mip(&mut self, mip: Option<usize>, index_1: usize, index_2: usize, index_3: usize, index_4: usize) {
+    pub fn set_mpr_or_mip(&mut self, mip: Option<usize>, index: Option<usize>, orientation_index: usize) {
+        let mut one_cell = false;
+
         // Switch to grid layout if currently one-cell
         if self.app_view.is_one_cell_layout() {
+            one_cell = true;
             self.app_view.set_grid_layout(2, 2, 2);
         }
 
@@ -538,17 +551,18 @@ impl App {
                 .collect();
 
             // Create texture without resetting layout (optimized)
-            let texture = self.load_data_from_ct_volume(&vol.clone());
-
-            self.app_view.layout.remove_all();
+            let texture = if !one_cell {
+                self.create_texture_from_volume(&vol)
+            }else{
+                self.load_data_from_ct_volume(&vol)
+            };
             
             // Add base MPR views
-            let indices = [index_1, index_2, index_3, index_4];
-            for &idx in &indices {
-                    let view = self.app_view.view_factory.create_mpr_view_with_content(
-                    texture.clone(), &vol, ALL_ORIENTATIONS[idx], (0, 0), (0, 0)
+            if let Some(index) = index{
+                let view = self.app_view.view_factory.create_mpr_view_with_content(
+                    texture.clone(), &vol, ALL_ORIENTATIONS[orientation_index], (0, 0), (0, 0)
                 ).unwrap();
-                self.app_view.layout.add_view(view);
+                self.app_view.layout.replace_view_at(index, view);
             }
 
             // Replace with MIP if requested
@@ -579,7 +593,7 @@ impl App {
     pub fn set_one_cell_layout(
         &mut self,
         mode: usize,
-        orientation_index: usize,
+        orientation_index: usize
     ) {
         if let Some(vol) = self.app_model.volume().ok().map(|v| v.clone()) {
             let texture = self.load_data_from_ct_volume(&vol.clone());

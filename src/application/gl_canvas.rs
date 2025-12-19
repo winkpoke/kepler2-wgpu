@@ -30,7 +30,7 @@ pub enum UserEvent {
     /// Manually trigger pipeline cache invalidation without any other action.
     InvalidatePipelines,
     SetMeshMode(bool, bool, f32, f32, f32, f32, f32, f32, bool, usize, f32, f32),
-    SetMprMip(Option<usize>, usize, usize, usize, usize),
+    SetMprMip(Option<usize>, Option<usize>, usize),
     SetOneCellLayout(usize, usize),
     #[cfg(target_arch = "wasm32")]
     GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
@@ -153,11 +153,11 @@ impl GLCanvas {
         }
     }
 
-    pub fn set_mpr_or_mip(&self, mip: Option<usize>, index_1: usize, index_2: usize, index_3: usize, index_4: usize) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetMprMip(mip, index_1, index_2, index_3, index_4)) {
+    pub fn set_mpr_or_mip(&self, mip: Option<usize>, index: Option<usize>, orientation_index: usize) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetMprMip(mip, index, orientation_index)) {
             log::error!("Failed to send SetMprMip event: {:?}", e);
         } else {
-            log::info!("Sent SetMprMip event: mip={:?}, index_1={}, index_2={}, index_3={}, index_4={}", mip, index_1, index_2, index_3, index_4);
+            log::info!("Sent SetMprMip event: mip={:?}, index={:?}, orientation_index={}", mip, index, orientation_index);
         }
     }
 

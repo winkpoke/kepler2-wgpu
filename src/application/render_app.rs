@@ -189,10 +189,10 @@ impl RenderApp {
                     state.set_mesh_mode(save_mesh, crop, sx, sy, sz, lx, ly, lz, one_cell, mesh_index, iso_min, iso_max);
                     log::info!("SetMeshMode event: world_min= [{sx:?},{sy:?},{sz:?}], world_max= [{lx:?},{ly:?},{lz:?}]");
                 }
-                Event::UserEvent(UserEvent::SetMprMip(mip, index_1, index_2, index_3, index_4)) => {
+                Event::UserEvent(UserEvent::SetMprMip(mip, index, orientation_index)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_mpr_or_mip(mip,index_1, index_2, index_3, index_4);
-                    log::info!("SetEnableMesh toggled at runtime: mip={:?}, index_1={index_1}, index_2={index_2}, index_3={index_3}, index_4={index_4}", mip);
+                    state.set_mpr_or_mip(mip,index, orientation_index);
+                    log::info!("SetEnableMesh toggled at runtime: mip={:?}, index={:?}, orientation_index={orientation_index}", mip, index);
                 }
                 Event::UserEvent(UserEvent::SetOneCellLayout(mode, orientation_index)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
@@ -341,7 +341,7 @@ impl RenderApp {
                                 ..
                             } => {
                                 // Function-level comment: Toggle mesh mode on 'M' key press at runtime.
-                                state.set_mpr_or_mip(Some(3),0, 1, 2, 0);
+                                state.set_mpr_or_mip(Some(3),Some(0), 1);
                                 log::info!("KeyM pressed: mpr_or_mip toggled to mip");
                             }
                             WindowEvent::KeyboardInput {

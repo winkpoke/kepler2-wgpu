@@ -211,12 +211,9 @@
           <legend>视图切换</legend>
           <div class="grid">
             <div>
-              <span id="index-1-label">index-1:</span>
-              <input type="number" id="index-1" step="1.0" value="0.0">
-            </div>
-            <div>
-              <span id="index-2-label">index-2:</span>
-              <input type="number" id="index-2" step="1.0" value="0.0">
+              <span id="index-label">index:</span>
+              <input type="number" id="index" step="1.0" value="0.0">
+              <input type="checkbox" id="change_index" />
             </div>
             <div>
               <span id="mipSpan">mip:</span>
@@ -224,12 +221,8 @@
               <input type="checkbox" id="change_mip" />
             </div>
             <div>
-              <span id="index-3-label">index-3:</span>
-              <input type="number" id="index-3" step="1.0" value="0.0">
-            </div>
-            <div>
-              <span id="index-4-label">index-4:</span>
-              <input type="number" id="index-4" step="1.0" value="0.0">
+              <span id="index-orientation-label">index-orientation:</span>
+              <input type="number" id="index-orientation" step="1.0" value="0.0">
             </div>
           </div>
           <div class="row" style="margin-top:8px">
@@ -441,7 +434,8 @@
       spacing: [],
       dim:[],
       mip: null,
-      enable_rotation: true,
+      index : null,
+      enable_rotation: false,
     };
 
     let gl_canvas = null;
@@ -700,6 +694,7 @@
 
     byId('mesh').addEventListener('click', () => {
       const checkboxChangeMip = byId('change_mip').checked;
+      const checkboxChangeIndex = byId('change_index').checked;
       
       if (checkboxChangeMip) {
         state.mip = parseInt(byId('mip').value, 10);
@@ -708,17 +703,20 @@
         state.mip = null;
       }
 
-      const index_1 = parseInt(byId('index-1').value, 10);
-      const index_2 = parseInt(byId('index-2').value, 10);
-      const index_3 = parseInt(byId('index-3').value, 10);
-      const index_4 = parseInt(byId('index-4').value, 10);
+      if (checkboxChangeIndex) {
+        state.index = parseInt(byId('index').value, 10);
+      }else{
+        state.index = null;
+      }
+      const index_orientation = parseInt(byId('index-orientation').value, 10);
+
 
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
 
-      gl_canvas.set_mpr_or_mip(state.mip, index_1, index_2, index_3, index_4);
+      gl_canvas.set_mpr_or_mip(state.mip, state.index, index_orientation);
     });
 
     byId('one-cell-submit').addEventListener('click', () => {
@@ -745,17 +743,15 @@
       const rotation_y = parseFloat(byId('3d-rotation-y').value);
       const rotation_z = parseFloat(byId('3d-rotation-z').value);
 
-      if (state.mesh){
-        console.log('3d-submit:', scale, pan_x, pan_y, opacity, rotation_x, rotation_y, rotation_z);
-        gl_canvas.set_mesh_scale(indexValue, scale);
-        gl_canvas.set_mesh_pan(indexValue, pan_x, pan_y);
-        if (typeof gl_canvas.set_mesh_opacity === 'function') {
-          gl_canvas.set_mesh_opacity(indexValue, Math.max(0, Math.min(1, opacity)));
-        } else {
-          log('mesh opacity 方法未导出，已跳过', 'warn');
-        }
-        gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
+      console.log('3d-submit:', scale, pan_x, pan_y, opacity, rotation_x, rotation_y, rotation_z);
+      gl_canvas.set_mesh_scale(indexValue, scale);
+      gl_canvas.set_mesh_pan(indexValue, pan_x, pan_y);
+      if (typeof gl_canvas.set_mesh_opacity === 'function') {
+        gl_canvas.set_mesh_opacity(indexValue, Math.max(0, Math.min(1, opacity)));
+      } else {
+        log('mesh opacity 方法未导出，已跳过', 'warn');
       }
+      gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
     });
 
     byId('3d-reset').addEventListener('click', () => {
