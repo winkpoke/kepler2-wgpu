@@ -1,0 +1,9 @@
+- [x] Add `glam` imports to `src/core/geometry.rs`
+- [x] Implement `to_glam` helper function (Matrix4x4 -> glam::Mat4)
+- [x] Implement `from_glam` helper function (glam::Mat4 -> Matrix4x4)
+- [x] Refactor `build_uv_base` to use `glam`
+- [x] Refactor `build_transverse_base` to use `glam`
+- [x] Refactor `build_coronal_base` to use `glam`
+- [x] Refactor `build_sagittal_base` to use `glam`
+- [x] Refactor `build_oblique_base` to use `glam`
+- [x] Verify unit tests pass

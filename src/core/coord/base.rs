@@ -83,7 +83,7 @@ where
         }
         let transformed = self.matrix.apply(&trans);
         for i in 0..3 {    
-            self.matrix.data[i][3] = transformed[i];
+            self.matrix.columns[3][i] = transformed[i];
         }
     }
 }

@@ -232,10 +232,10 @@ impl MprView {
 
         let base_screen = self.get_base();
         // Create final transformation matrix and update GPU uniforms
-        let transform_matrix = base_screen.to_base(&self.base_uv).transpose();
+        let transform_matrix = base_screen.to_base(&self.base_uv);
         
         // Set the transformation matrix using the new architecture
-        self.wgpu_impl.set_matrix(*array_to_slice(&transform_matrix.data));
+        self.wgpu_impl.set_matrix(*array_to_slice(&transform_matrix.columns));
     }
 }
 
@@ -798,7 +798,7 @@ impl MprView {
         
         // Clear translation components (set to zero)
         for i in 0..3 {
-            transform_matrix.data[i][3] = 0.0;
+            transform_matrix.columns[3][i] = 0.0;
         }
         
         // Attempt matrix inversion with proper error handling

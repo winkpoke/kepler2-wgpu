@@ -89,7 +89,7 @@ impl MprViewWgpuImpl {
             slice: 0.0,
             is_packed_rg8: if is_packed { 1.0 } else { 0.0 },
             bias: if is_packed { 1100.0 } else { 0.0 },
-            mat: *array_to_slice(&transform_matrix.data),
+            mat: *array_to_slice(&transform_matrix.columns),
             ..Default::default()
         };
         

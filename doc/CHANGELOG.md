@@ -1,5 +1,15 @@
 # Changelog
 
+## 2025-12-19T10-00-00
+- **Refactor Matrix4x4 to Column-Major Layout**
+  - Changed `Matrix4x4` internal storage from `data: [[T; 4]; 4]` (row-major) to `columns: [[T; 4]; 4]` (column-major).
+  - Added `#[repr(C)]` to `Matrix4x4` to guarantee memory layout for WGPU/FFI.
+  - Renamed `from_array` to `from_rows` (transposes input) and added `from_cols` (direct load).
+  - Updated `multiply`, `apply`, `inv`, `transpose` methods to support column-major logic.
+  - Refactored `GeometryBuilder` and `MprView` to use correct column-major indices.
+  - This change ensures compatibility with WGPU/GLSL shader matrix expectations (column-major) without manual transposition in uniforms update.
+  - **Breaking Change**: Direct access to `matrix.data` removed; use `matrix.columns` (index as `[col][row]`) or accessors.
+
 ## 2025-11-11T16-02-46
 - Fixed compilation errors in `src/rendering/view/mesh/mesh_3d.rs` by correcting DICOM and ndarray imports:
   - Replaced `use dicom::object::open_file;` with `use dicom_object::open_file;`.

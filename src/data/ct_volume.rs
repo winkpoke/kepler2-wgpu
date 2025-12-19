@@ -64,14 +64,14 @@ impl CTVolume {
 
         // Construct new base matrix
         // The orientation and scaling remain the same, only the translation (last column) changes.
-        let mut new_matrix_data = self.base.matrix.data;
+        let mut new_matrix_data = self.base.matrix.columns;
         new_matrix_data[0][3] = new_origin_world[0];
         new_matrix_data[1][3] = new_origin_world[1];
         new_matrix_data[2][3] = new_origin_world[2];
 
         let new_base = Base {
             label: format!("{}_cropped", self.base.label),
-            matrix: Matrix4x4 { data: new_matrix_data },
+            matrix: Matrix4x4 { columns: new_matrix_data },
         };
 
         Ok(CTVolume {

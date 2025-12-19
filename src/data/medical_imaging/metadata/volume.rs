@@ -104,7 +104,7 @@ impl MedicalVolume {
 
         log::info!("{:?}", &ct_volume_mha.dimensions);
         log::info!("{:?}", &ct_volume_mha.voxel_spacing);
-        log::info!("{:?}", &ct_volume_mha.base.matrix.data);
+        log::info!("{:?}", &ct_volume_mha.base.matrix.columns);
         for (index, &value) in ct_volume_mha.voxel_data.iter().enumerate() {
             if value < -1024 {
                 log::info!("索引 {}: 值 {}", index, value);

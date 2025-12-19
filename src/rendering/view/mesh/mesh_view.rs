@@ -2,10 +2,11 @@
 
 use super::{mesh::{Mesh, Lighting}, camera::Camera, performance::{QualityController, QualityLevel, PerformanceStats}, basic_mesh_context::BasicMeshContext};
 use crate::{
-    core::{Matrix4x4, WindowLevel,error::KeplerResult},
+    core::{error::KeplerResult},
     rendering::view::{Renderable, View}, 
     core::timing::Instant,
 };
+use glam::{Mat4, Vec3};
 
 /// Function-level comment: Error types specific to mesh rendering operations
 #[derive(Debug)]
@@ -375,23 +376,7 @@ impl MeshView {
                        self.dim.0, self.dim.1, aspect_ratio);
             
             // Model matrix - apply persistent rotation (if any) and uniform scale
-            let scale = self.scale_factor;
             
-            // Create scale matrix
-            let scale_matrix = Matrix4x4::from_array([
-                scale, 0.0,   0.0,   0.0,
-                0.0,   scale, 0.0,   0.0,
-                0.0,   0.0,   scale, 0.0,
-                0.0,   0.0,   0.0,   1.0,
-            ]);
-
-            let translation_matrix = Matrix4x4::from_array([
-                1.0, 0.0, 0.0, self.pan[0],
-                0.0, 1.0, 0.0, self.pan[1],
-                0.0, 0.0, 1.0, self.pan[2],
-                0.0, 0.0, 0.0, 1.0,
-            ]);
-
             // Use cached angles when rotation is disabled to preserve orientation
             let angles = if self.rotation_enabled { 
                 self.rotation_angle 
@@ -399,45 +384,23 @@ impl MeshView {
                 self.rotation_angle_cache 
             };
 
-            // Create X-axis rotation matrix
-            let ax = angles[0];
-            let rx = Matrix4x4::from_array([
-                1.0,    0.0,     0.0, 0.0,
-                0.0,  ax.cos(), -ax.sin(), 0.0,
-                0.0,  ax.sin(),  ax.cos(), 0.0,
-                0.0,    0.0,     0.0, 1.0,
-            ]);
+            // Calculate rotation (matches original rx * ry * rz order)
+            // Note: In column-major math, M * v applies operations Right-to-Left.
+            // Original: rx.multiply(&ry).multiply(&rz) -> Rx * Ry * Rz
+            // This applies Rz (Z-rot) first, then Ry, then Rx.
+            let rotation = Mat4::from_rotation_x(angles[0])
+                * Mat4::from_rotation_y(angles[1])
+                * Mat4::from_rotation_z(angles[2]);
 
-            // Create Y-axis rotation matrix
-            let ay = angles[1];
-            let ry = Matrix4x4::from_array([
-                ay.cos(), 0.0, ay.sin(), 0.0,
-                0.0,      1.0, 0.0,      0.0,
-                -ay.sin(), 0.0, ay.cos(), 0.0,
-                0.0,      0.0, 0.0,      1.0,
-            ]);
-
-            // Create Z-axis rotation matrix
-            let az = angles[2];
-            let rz = Matrix4x4::from_array([
-                az.cos(), -az.sin(), 0.0, 0.0,
-                az.sin(),  az.cos(), 0.0, 0.0,
-                0.0,       0.0,      1.0, 0.0,
-                0.0,       0.0,      0.0, 1.0,
-            ]);
-
-            let rotation_matrix = rx.multiply(&ry).multiply(&rz);
-
-            // Compose model: translation * rotation * scale
-            let model_matrix = translation_matrix.multiply(&rotation_matrix).multiply(&scale_matrix);
+            // Compose Model: Translation * Rotation * Scale
+            let model_matrix = Mat4::from_translation(Vec3::from(self.pan))
+                * rotation
+                * Mat4::from_scale(Vec3::splat(self.scale_factor));
             
             // View matrix - camera positioned for optimal viewing of smaller cube
-            let view_matrix = Matrix4x4::from_array([
-                1.0, 0.0, 0.0, 0.0,
-                0.0, 1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, -2.0, // Closer camera for smaller cube
-                0.0, 0.0, 0.0, 1.0,
-            ]);
+            // Camera at (0, 0, 3.0) looking at origin, but original matrix 
+            // had specific translation (0, 0, -2.0) hardcoded in the array.
+            let view_matrix = Mat4::from_translation(Vec3::new(0.0, 0.0, -2.0));
             
             // Dynamic orthographic range adjustment
             let base_extent = 2.0;
@@ -450,30 +413,23 @@ impl MeshView {
             let near = -view_extent * 2.0;
             let far = view_extent * 2.0;
             
-            let proj_matrix = Matrix4x4::from_array([
-                2.0 / (right - left), 0.0, 0.0, -(right + left) / (right - left),
-                0.0, 2.0 / (top - bottom), 0.0, -(top + bottom) / (top - bottom),
-                0.0, 0.0, -2.0 / (far - near), -(far + near) / (far - near),
-                0.0, 0.0, 0.0, 1.0,
-            ]);          
+            // Matches original OpenGL-style orthographic projection (-1 to 1 Z range)
+            let proj_matrix = Mat4::orthographic_rh(left, right, bottom, top, near, far);
             
             // Calculate MVP: projection * view * model
-            let view_model = view_matrix.multiply(&model_matrix);
-            let mvp_matrix = proj_matrix.multiply(&view_model);
+            let mvp_matrix = proj_matrix * view_matrix * model_matrix;
             
             #[cfg(feature = "trace-logging")]
             log::trace!("[BASIC_MESH_MATRICES] Model matrix (scale {} with rotation {:?} rad, enabled={}): {:?}", 
-                        scale, angles, self.rotation_enabled, model_matrix.data);
-            log::trace!("[BASIC_MESH_MATRICES] View matrix (camera at -3): {:?}", view_matrix.data);
-            log::trace!("[BASIC_MESH_MATRICES] Projection matrix (orthogonal): {:?}", proj_matrix.data);
-            log::trace!("[BASIC_MESH_MATRICES] Combined MVP matrix: {:?}", mvp_matrix.data);
+                        self.scale_factor, angles, self.rotation_enabled, model_matrix.to_cols_array());
+            log::trace!("[BASIC_MESH_MATRICES] View matrix (camera at -3): {:?}", view_matrix.to_cols_array());
+            log::trace!("[BASIC_MESH_MATRICES] Projection matrix (orthogonal): {:?}", proj_matrix.to_cols_array());
+            log::trace!("[BASIC_MESH_MATRICES] Combined MVP matrix: {:?}", mvp_matrix.to_cols_array());
             
             // Update uniforms in BasicMeshContext with combined MVP matrix
-            // Note: The shader expects column-major matrices, so we transpose the MVP matrix
-            let mvp_matrix_transposed = mvp_matrix.transpose();
-            log::trace!("[BASIC_MESH_MATRICES] Transposed MVP matrix for shader: {:?}", mvp_matrix_transposed.data);
+            // Note: The shader expects column-major matrices, and glam is column-major by default.
             
-            ctx.update_uniforms(queue, &mvp_matrix_transposed.data);
+            ctx.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
 
             // Update lighting uniforms to ensure lighting effects are applied
             let mut lighting_uniforms = if let Some(ref lighting) = self.lighting {
