@@ -103,7 +103,7 @@ pub fn laplacian_smooth(
     let mut current_vertices = vertices.to_vec();
     let mut next_vertices = current_vertices.clone();
 
-    for iter in 0..iterations {
+    for _iter in 0..iterations {
         for i in 0..current_vertices.len() {
             let neighbors = &adjacency[i];
             if neighbors.is_empty() {

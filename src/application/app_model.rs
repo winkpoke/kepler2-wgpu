@@ -4,8 +4,6 @@
 //! provides minimal APIs to manage it. It lives in the application layer to avoid
 //! coupling the data module to rendering-specific types.
 
-use std::{io, fs};
-use std::path::PathBuf;
 use std::sync::Arc;
 use crate::core::error::KeplerError;
 use crate::data::ct_volume::CTVolume;

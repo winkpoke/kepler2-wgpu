@@ -8,8 +8,11 @@ use winit::{
     event::*,
     event_loop::EventLoop,
     keyboard::{KeyCode, PhysicalKey},
-    window::{Window, WindowBuilder},
+    window::Window,
 };
+
+#[cfg(target_arch = "wasm32")]
+use winit::window::WindowBuilder;
 
 use crate::{application::App, rendering::LayoutContainer};
 use crate::rendering::core::Graphics;
@@ -105,8 +108,11 @@ impl RenderApp {
                     state.set_translate_in_screen_coord(index, translate);
                 }
                 Event::UserEvent(UserEvent::LoadDataFromCTVolume(volume)) => {
-                    state.load_data_from_ct_volume(&volume);
-                    log::info!("Loaded data from CTVolume");
+                    if let Err(e) = state.load_data_from_ct_volume(&volume) {
+                        log::error!("Failed to load data from CTVolume: {}", e);
+                    } else {
+                        log::info!("Loaded data from CTVolume");
+                    }
                 }
                 Event::UserEvent(UserEvent::Resize(width, height)) => {
                     log::info!("Resizing to width: {}, height: {}", width, height);
@@ -425,8 +431,8 @@ impl RenderApp {
                                     Err(
                                         wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
                                     ) => {
-                                        let width = state.graphics_context.graphics.surface_config.width;
-                                        let height = state.graphics_context.graphics.surface_config.height;
+                                        let width = state.graphics().surface_config.width;
+                                        let height = state.graphics().surface_config.height;
                                         let size = PhysicalSize::<u32> {width, height};
                                         // Function-level comment: Surface reconfiguration handled by individual render contexts.
                                         log::info!("Surface error {:?} - render contexts will rebuild pipelines as needed", "Lost/Outdated");

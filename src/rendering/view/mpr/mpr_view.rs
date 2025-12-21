@@ -4,7 +4,7 @@ use glam::{Mat4, Vec3};
 
 use crate::{
     Renderable, View,
-    core::{Base, GeometryBuilder, WindowLevel, error::{KeplerResult, MprError}}, 
+    core::{GeometryBuilder, WindowLevel, error::{KeplerResult, MprError}}, 
     data::CTVolume,
      rendering::{Orientation, RenderContent, StatefulView, ViewState}
 };

@@ -2,7 +2,6 @@
 
 use super::{mesh::{Mesh, Lighting}, camera::Camera, performance::{QualityController, QualityLevel, PerformanceStats}, basic_mesh_context::BasicMeshContext};
 use crate::{
-    core::{error::KeplerResult},
     rendering::view::{Renderable, View}, 
     core::timing::Instant,
 };

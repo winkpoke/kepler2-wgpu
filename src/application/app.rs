@@ -138,54 +138,14 @@ impl App {
     // Delegation methods for accessing Graphics through GraphicsContext
     // Function-level comment: These methods provide access to graphics resources through the GraphicsContext
     
-    /// Get a reference to the graphics device
-    pub fn device(&self) -> &wgpu::Device {
-        &self.graphics_context.graphics().device
+    /// Access the underlying Graphics object
+    pub fn graphics(&self) -> &Graphics {
+        self.graphics_context.graphics()
     }
 
-    /// Get a reference to the graphics queue
-    pub fn queue(&self) -> &wgpu::Queue {
-        &self.graphics_context.graphics().queue
-    }
-
-    /// Get a reference to the surface
-    pub fn surface(&self) -> &wgpu::Surface<'static> {
-        &self.graphics_context.graphics().surface
-    }
-
-    /// Get a reference to the surface configuration
-    pub fn surface_config(&self) -> &wgpu::SurfaceConfiguration {
-        &self.graphics_context.graphics().surface_config
-    }
-
-    /// Get a mutable reference to the surface configuration
-    pub fn surface_config_mut(&mut self) -> &mut wgpu::SurfaceConfiguration {
-        &mut self.graphics_context.graphics_mut().surface_config
-    }
-
-    /// Get a reference to the adapter
-    pub fn adapter(&self) -> &wgpu::Adapter {
-        &self.graphics_context.graphics().adapter
-    }
-
-    /// Get a mutable reference to the PassExecutor
-    pub fn pass_executor_mut(&mut self) -> &mut crate::rendering::core::PassExecutor {
-        self.graphics_context.pass_executor_mut()
-    }
-
-    /// Function-level comment: Check if PassExecutor is healthy.
-    pub fn pass_executor_is_healthy(&self) -> bool {
-        self.graphics_context.pass_executor.is_healthy()
-    }
-
-    /// Function-level comment: Reset PassExecutor error state.
-    pub fn pass_executor_reset_error_state(&mut self) {
-        self.graphics_context.pass_executor.reset_error_state();
-    }
-
-    /// Function-level comment: Update PassExecutor surface format.
-    pub fn pass_executor_update_surface_format(&mut self, format: wgpu::TextureFormat) {
-        self.graphics_context.pass_executor.update_surface_format(format);
+    /// Access the underlying Graphics object mutably
+    pub fn graphics_mut(&mut self) -> &mut Graphics {
+        self.graphics_context.graphics_mut()
     }
 
     /// Function-level comment: Resize the application window and update graphics resources.
@@ -193,8 +153,8 @@ impl App {
         println!("Resizing to: {}, {}", new_size.width, new_size.height);
         if new_size.width > 0 && new_size.height > 0 {
             // self.size = new_size;
-            self.surface_config_mut().width = new_size.width;
-            self.surface_config_mut().height = new_size.height;
+            self.graphics_mut().surface_config.width = new_size.width;
+            self.graphics_mut().surface_config.height = new_size.height;
 
             self.app_view.layout.resize((new_size.width, new_size.height));
 
@@ -203,17 +163,17 @@ impl App {
                 // sets the style width and height of the window canvas
                 let _ = self.window().request_inner_size(new_size); 
             }
-            self.surface().configure(self.device(), self.surface_config());
+            self.graphics().surface.configure(&self.graphics().device, &self.graphics().surface_config);
             
             // Update PassExecutor with new surface format
-            let surface_format = self.surface_config().format;
-            self.pass_executor_update_surface_format(surface_format);
+            let surface_format = self.graphics().surface_config.format;
+            self.graphics_context.pass_executor.update_surface_format(surface_format);
 
             // Recreate depth texture to match new surface size
             let depth_format = crate::rendering::core::pipeline::get_mesh_depth_format();
             let size = wgpu::Extent3d {
-                width: self.surface_config().width,
-                height: self.surface_config().height,
+                width: self.graphics().surface_config.width,
+                height: self.graphics().surface_config.height,
                 depth_or_array_layers: 1,
             };
             let desc = wgpu::TextureDescriptor {
@@ -226,7 +186,7 @@ impl App {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 view_formats: &[],
             };
-            let depth_tex = self.device().create_texture(&desc);
+            let depth_tex = self.graphics().device.create_texture(&desc);
             let _ = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
             // Texture pool is now created per-frame, so no persistent depth texture to update
         }
@@ -265,13 +225,13 @@ impl App {
     /// Function-level comment: Renders the frame using separate render passes for 3D mesh and 2D slice content.
     /// This architecture provides better performance and cleaner separation of concerns.
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let frame = self.surface().get_current_texture()?;
+        let frame = self.graphics().surface.get_current_texture()?;
         let frame_view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         // Create command encoder for render passes
-        let mut encoder = self.device().create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        let mut encoder = self.graphics().device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("Render Encoder"),
         });
 
@@ -286,9 +246,9 @@ impl App {
         
         // Reset mesh pass error state if mesh view is present and pass executor is unhealthy
         // Do this before borrowing texture_pool to avoid borrowing conflicts
-        if has_mesh_view && !self.pass_executor_is_healthy() {
+        if has_mesh_view && !self.graphics_context.pass_executor.is_healthy() {
             log::info!("Resetting mesh pass error state - mesh view present in layout");
-            self.pass_executor_reset_error_state();
+            self.graphics_context.pass_executor.reset_error_state();
         }
         
         // Execute frame using PassExecutor with separate render passes
@@ -356,20 +316,21 @@ impl App {
         })?;
 
         // Submit the command buffer
-        self.queue().submit(std::iter::once(encoder.finish()));
+        self.graphics().queue.submit(std::iter::once(encoder.finish()));
 
         frame.present();
         Ok(())
     }
 
-    pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume)  -> Arc<RenderContent> {
+    /// Internal helper to load volume and create RenderContent without modifying layout
+    fn load_render_content(&mut self, vol: &CTVolume) -> Result<Arc<RenderContent>, KeplerError> {
         let _ = self.app_model.load_volume(vol.clone());
         let mut winlev;
         
         // Delegate data preparation to AppModel
-        let (bytes, encoding) = self.app_model.get_volume_render_data().expect("Volume should be loaded");
+        let (bytes, encoding) = self.app_model.get_volume_render_data()?;
 
-        let texture = match encoding {
+        match encoding {
             VolumeEncoding::HuFloat => {
                 winlev = WindowLevel::new();
                 if let Err(e) = winlev.apply_bone_preset() {
@@ -377,16 +338,16 @@ impl App {
                 }
                 info!("Using R16Float volume texture path");
                 
-                Arc::new(RenderContent::from_bytes_r16f(
-                    self.device(),
-                    self.queue(),
+                Ok(Arc::new(RenderContent::from_bytes_r16f(
+                    &self.graphics().device,
+                    &self.graphics().queue,
                     &bytes,
                     "CT Volume",
                     vol.dimensions.0 as u32,
                     vol.dimensions.1 as u32,
                     vol.dimensions.2 as u32,
                     encoding,
-                ).unwrap())
+                )?))
             },
             VolumeEncoding::HuPackedRg8 { offset } => {
                 winlev = WindowLevel::new();
@@ -398,19 +359,22 @@ impl App {
                 }
                 info!("Using Rg8Unorm volume texture path");
                 
-                Arc::new(RenderContent::from_bytes(
-                    self.device(),
-                    self.queue(),
+                Ok(Arc::new(RenderContent::from_bytes(
+                    &self.graphics().device,
+                    &self.graphics().queue,
                     &bytes,
                     "CT Volume",
                     vol.dimensions.0 as u32,
                     vol.dimensions.1 as u32,
                     vol.dimensions.2 as u32,
                     encoding,
-                ).unwrap())
+                )?))
             }
-        };
-    
+        }
+    }
+
+    /// Helper to setup the default 4-MPR view layout
+    fn setup_default_layout(&mut self, texture: Arc<RenderContent>, vol: &CTVolume) -> Result<(), KeplerError> {
         self.app_view.layout.remove_all();
         let view_factory = &self.app_view.view_factory;
         for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1], ALL_ORIENTATIONS[2], ALL_ORIENTATIONS[0]].iter() {
@@ -422,17 +386,24 @@ impl App {
                     (0, 0),
                     (0, 0),
                 )
-                .unwrap();
+                .map_err(|e| KeplerError::Graphics(e.to_string()))?;
             self.app_view.layout.add_view(view);
         }
+        Ok(())
+    }
 
+    pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume)  -> Result<Arc<RenderContent>, KeplerError> {
+        let texture = self.load_render_content(vol)?;
+        self.setup_default_layout(texture.clone(), vol)?;
         // Return the shared render content for caller access
-        texture
+        Ok(texture)
     }
 
     pub fn load_data_from_repo(&mut self, repo: &DicomRepo, image_series_number: &str) {
         let vol = repo.generate_ct_volume(image_series_number).unwrap();
-        self.load_data_from_ct_volume(&vol);
+        if let Err(e) = self.load_data_from_ct_volume(&vol) {
+            log::error!("Failed to load data from repo: {}", e);
+        }
     }
 
     /// Function-level comment: Returns whether mesh mode is currently enabled.
@@ -440,8 +411,81 @@ impl App {
         self.app_model.enable_mesh
     }
 
+    /// Helper to capture MPR view states (scale, pan, etc.)
+    fn capture_mpr_states(&self) -> Vec<(Orientation, f32, [f32; 3], f32, f32, f32)> {
+        self.app_view.layout.views().iter()
+            .filter_map(|v| v.as_any().downcast_ref::<MprView>())
+            .map(|v| (
+                v.get_orientation().clone(),
+                v.get_scale(),
+                v.get_translate_in_screen_coord(),
+                v.get_slice_mm(),
+                v.get_window_level(),
+                v.get_window_width()
+            ))
+            .collect()
+    }
+
+    /// Helper to restore MPR view states
+    fn restore_mpr_states(&mut self, saved_states: &[(Orientation, f32, [f32; 3], f32, f32, f32)]) {
+        for view in self.app_view.layout.views_mut() {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                if let Some(state) = saved_states.iter().find(|s| s.0 == *mpr_view.get_orientation()) {
+                    let (_, scale, pan, slice, wl, ww) = state;
+                    let _ = mpr_view.set_scale(*scale);
+                    let _ = mpr_view.set_translate_in_screen_coord(*pan);
+                    let _ = mpr_view.set_slice_mm(*slice);
+                    let _ = mpr_view.set_window_level(*wl);
+                    let _ = mpr_view.set_window_width(*ww);
+                }
+            }
+        }
+    }
+
+    /// Helper to configure views for mesh mode (4 MPRs + optional MIP/Mesh)
+    fn configure_mesh_mode_views(
+        &mut self,
+        texture: Arc<RenderContent>,
+        vol: &CTVolume,
+        indices: [usize; 4],
+        mip: Option<usize>,
+        mesh_index: Option<usize>,
+        iso_value: f32,
+    ) -> Result<(), KeplerError> {
+        self.app_view.layout.remove_all();
+        let view_factory = &self.app_view.view_factory;
+        
+        // Add 4 MPR views
+        for orientation in [ALL_ORIENTATIONS[indices[0]], ALL_ORIENTATIONS[indices[1]], ALL_ORIENTATIONS[indices[2]], ALL_ORIENTATIONS[indices[3]]].iter() {
+            let view = view_factory
+                .create_mpr_view_with_content(
+                    texture.clone(),
+                    vol,
+                    *orientation,
+                    (0, 0),
+                    (0, 0),
+                )
+                .map_err(|e| KeplerError::Graphics(e.to_string()))?;
+            self.app_view.layout.add_view(view);
+        }
+
+        if mip.is_some() {
+            if let Ok(mip_view) = self.app_view.view_factory.create_mip_view_with_content(texture.clone(), (0, 0), (0, 0)) {
+                self.app_view.layout.replace_view_at(3, mip_view);
+            }
+        }
+
+        if mesh_index.is_some() {
+             let mesh = Mesh::new(vol, iso_value, None);
+             if let Ok(mesh_view) = self.app_view.view_factory.create_mesh_view(&mesh, (0, 0), (0, 0)) {
+                 self.app_view.layout.replace_view_at(1, mesh_view);
+             }
+        }
+        Ok(())
+    }
+
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
-    pub fn set_mesh_mode_enabled(&mut self, mesh_index: Option<usize>, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, iso_value: f32, wwwl: Option<Vec<f32>>) {
+    pub fn set_mesh_mode_enabled(&mut self, mesh_index: Option<usize>, mip: Option<usize>, change_mpr: bool, index_1: usize, index_2: usize, index_3: usize, index_4: usize, iso_value: f32, _wwwl: Option<Vec<f32>>) {
         let mut change_index =false;
         if change_mpr {
             change_index = true;
@@ -466,66 +510,37 @@ impl App {
         // Rebuild layout immediately if a volume is already loaded
         if let Some(vol) = vol_option {
             // Capture state of existing MPR views
-            let saved_states: Vec<_> = self.app_view.layout.views().iter()
-                .filter_map(|v| v.as_any().downcast_ref::<MprView>())
-                .map(|v| (
-                    v.get_orientation().clone(),
-                    v.get_scale(),
-                    v.get_translate_in_screen_coord(),
-                    v.get_slice_mm(),
-                    v.get_window_level(),
-                    v.get_window_width()
-                ))
-                .collect();
+            let saved_states = self.capture_mpr_states();
 
-            let texture = self.load_data_from_ct_volume(&vol.clone());
-            if change_index {
-                self.app_view.layout.remove_all();
-                for orientation in [ALL_ORIENTATIONS[index_1], ALL_ORIENTATIONS[index_2], ALL_ORIENTATIONS[index_3], ALL_ORIENTATIONS[index_4]].iter() {
-                    let view = self.app_view.view_factory
-                        .create_mpr_view_with_content(
-                            texture.clone(),
-                            &vol,
-                            *orientation,
-                        (0, 0),
-                        (0, 0),
-                    )
-                    .unwrap();
-                self.app_view.layout.add_view(view);
+            let texture = match self.load_render_content(&vol) {
+                Ok(t) => t,
+                Err(e) => {
+                    log::error!("Failed to reload volume for mesh mode: {}", e);
+                    return;
                 }
+            };
 
-                if let Some(mip) = mip{
-                        // Add MIP view to slot 3 using factory
-                        if let Ok(mip_view) = self.app_view.view_factory.create_mip_view_with_content(texture.clone(), (0, 0), (0, 0)) {
-                            self.app_view.layout.replace_view_at(3, mip_view);
-                        }
-                    }
-
-                    if let Some(mesh_index) = mesh_index {
-                         // Add Mesh view to slot 1 using factory
-                         // Use default iso_value (e.g. 500.0) or derive from UI
-                         let mesh = Mesh::new(&vol, iso_value, None);
-                         if let Ok(mesh_view) = self.app_view.view_factory.create_mesh_view(&mesh, (0, 0), (0, 0)) {
-                             self.app_view.layout.replace_view_at(1, mesh_view);
-                         }
-                    }
-            }else {
-                self.load_data_from_ct_volume(&vol.clone());
+            if change_index {
+                if let Err(e) = self.configure_mesh_mode_views(
+                    texture.clone(), 
+                    &vol, 
+                    [index_1, index_2, index_3, index_4], 
+                    mip, 
+                    mesh_index, 
+                    iso_value
+                ) {
+                    log::error!("Failed to configure mesh mode views: {}", e);
+                    return;
+                }
+            } else {
+                if let Err(e) = self.setup_default_layout(texture.clone(), &vol) {
+                    log::error!("Failed to setup default layout: {}", e);
+                    return;
+                }
             }
 
             // Restore state to matching MPR views
-            for view in self.app_view.layout.views_mut() {
-                if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                    if let Some(state) = saved_states.iter().find(|s| s.0 == *mpr_view.get_orientation()) {
-                        let (_, scale, pan, slice, wl, ww) = state;
-                        let _ = mpr_view.set_scale(*scale);
-                        let _ = mpr_view.set_translate_in_screen_coord(*pan);
-                        let _ = mpr_view.set_slice_mm(*slice);
-                        let _ = mpr_view.set_window_level(*wl);
-                        let _ = mpr_view.set_window_width(*ww);
-                    }
-                }
-            }
+            self.restore_mpr_states(&saved_states);
 
             log::info!("Layout rebuilt for mode: {}", change_index);
         } else {
@@ -545,7 +560,13 @@ impl App {
     ) {
         let vol_option = self.app_model.volume().ok().map(|vol| vol.clone());
         if let Some(vol) = vol_option {
-            let texture = self.load_data_from_ct_volume(&vol.clone());
+            let texture = match self.load_render_content(&vol) {
+                Ok(t) => t,
+                Err(e) => {
+                    log::error!("Failed to reload volume for one cell layout: {}", e);
+                    return;
+                }
+            };
             self.app_view.set_one_cell_layout();
             self.app_view.layout.remove_all();
             let view_factory = &self.app_view.view_factory;
@@ -619,7 +640,7 @@ impl App {
     /// Function-level comment: Calculate position and size for a view at the specified index.
     fn calculate_view_position_and_size(&self, index: usize) -> ((i32, i32), (u32, u32)) {
         let total_views = self.app_view.layout.views().len() as u32;
-        let parent_dim = (self.surface_config().width, self.surface_config().height);
+        let parent_dim = (self.graphics().surface_config.width, self.graphics().surface_config.height);
         self.app_view.layout.strategy().calculate_position_and_size(index as u32, total_views, parent_dim)
     }
 
@@ -836,55 +857,45 @@ impl App {
         }
     }
 
-    /// Function-level comment: Set the rotation speed for the mesh view.
-    /// Speed is specified in radians per second. Use set_mesh_rotation_speed_degrees for degree-based input.
-    pub fn set_mesh_rotation_speed(&mut self, speed_rad_per_sec: f32) {
-        if self.app_view.layout.views().len() > 0 {
-            for view in self.app_view.layout.views_mut().iter_mut() {
-                if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
-                    mesh_view.set_rotation_speed(speed_rad_per_sec);
-                    log::info!("Mesh rotation speed set to {:.3} rad/s ({:.1}°/s) via State control", 
-                            speed_rad_per_sec, speed_rad_per_sec.to_degrees());
-                    break;
-                }
-            }
+    /// Helper method to apply an operation to the first available MeshView.
+    fn apply_to_mesh_view<F>(&mut self, f: F) 
+    where F: FnOnce(&mut MeshView) {
+        if let Some(view) = self.app_view.layout.views_mut().iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) 
+        {
+            f(view);
         } else {
-            log::warn!("Cannot set mesh rotation speed: no MeshView in layout");
+            log::warn!("No MeshView found in layout");
         }
+    }
+
+    /// Set rotation speed (radians/sec) for the first MeshView.
+    pub fn set_mesh_rotation_speed(&mut self, speed_rad_per_sec: f32) {
+        self.apply_to_mesh_view(|mesh_view| {
+            mesh_view.set_rotation_speed(speed_rad_per_sec);
+            log::info!("Mesh rotation speed set to {:.3} rad/s ({:.1}°/s) via State control", 
+                    speed_rad_per_sec, speed_rad_per_sec.to_degrees());
+        });
     }
 
     /// Function-level comment: Reset the mesh rotation angle to zero.
     /// Useful for returning the mesh to its initial orientation.
     pub fn reset_mesh(&mut self) {
-        if self.app_view.layout.views().len() > 0 {
-            for view in self.app_view.layout.views_mut().iter_mut() {
-                if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
-                    mesh_view.reset_rotation();
-                    mesh_view.reset_scale_factor();
-                    mesh_view.reset_pan();
-                    mesh_view.reset_opacity();
-                    log::info!("Mesh reset via State control");
-                    break;
-                }
-            }
-        } else {
-            log::warn!("Cannot reset mesh rotation: no MeshView in layout");
-        }
+        self.apply_to_mesh_view(|mesh_view| {
+            mesh_view.reset_rotation();
+            mesh_view.reset_scale_factor();
+            mesh_view.reset_pan();
+            mesh_view.reset_opacity();
+            log::info!("Mesh reset via State control");
+        });
     }
 
     /// Set uniform mesh scale factor for the first MeshView present.
     pub fn set_mesh_scale(&mut self, scale: f32) {
-        if self.app_view.layout.views().len() > 0 {
-            for view in self.app_view.layout.views_mut().iter_mut() {
-                if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
-                    mesh_view.set_scale_factor(scale);
-                    log::info!("Mesh scale set to {:.3}", scale);
-                    break;
-                }
-            }
-        }else {
-            log::warn!("Cannot set mesh scale: no MeshView in layout");
-        }
+        self.apply_to_mesh_view(|mesh_view| {
+            mesh_view.set_scale_factor(scale);
+            log::info!("Mesh scale set to {:.3}", scale);
+        });
     }
 
     /// Get current mesh scale factor; returns 0.0 if no MeshView present.
@@ -900,46 +911,25 @@ impl App {
     /// Function-level comment: Set the pan offset for the mesh view.
     /// dx, dy: Pan offsets in normalized device coordinates (-1 to 1 range).
     pub fn set_mesh_pan(&mut self, dx: f32, dy: f32) {
-        if self.app_view.layout.views().len() > 0 {
-            for view in self.app_view.layout.views_mut().iter_mut() {
-                if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
-                    mesh_view.set_pan(dx, dy);
-                    log::info!("Mesh pan set to ({:.3}, {:.3})", dx, dy);
-                    break;
-                }
-            }
-        }else {
-            log::warn!("Cannot set mesh pan: no MeshView in layout");
-        }
+        self.apply_to_mesh_view(|mesh_view| {
+            mesh_view.set_pan(dx, dy);
+            log::info!("Mesh pan set to ({:.3}, {:.3})", dx, dy);
+        });
     }
 
     pub fn set_mesh_opacity(&mut self, alpha: f32) {
-        if self.app_view.layout.views().len() > 0 {
-            for view in self.app_view.layout.views_mut().iter_mut() {
-                if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
-                    mesh_view.set_opacity(alpha);
-                    log::info!("Mesh opacity set to {:.3}", alpha);
-                    break;
-                }
-            }
-        }else {
-            log::warn!("Cannot set mesh opacity: no MeshView in layout");
-        }
+        self.apply_to_mesh_view(|mesh_view| {
+            mesh_view.set_opacity(alpha);
+            log::info!("Mesh opacity set to {:.3}", alpha);
+        });
     }
     
     /// Set mesh rotation angle in degrees for the first MeshView.
     pub fn set_mesh_rotation_angle_degrees(&mut self, degrees_x: f32, degrees_y: f32, degrees_z: f32) {
-        if self.app_view.layout.views().len() > 0 {
-            for view in self.app_view.layout.views_mut().iter_mut() {
-                if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
-                    let degrees = [degrees_x, degrees_y, degrees_z];
-                    mesh_view.set_rotation_angle_degrees(degrees);
-                    break;
-                }
-            }
-        }else {
-            log::warn!("Cannot set mesh rotation angle: no MeshView in layout");
-        }
+        self.apply_to_mesh_view(|mesh_view| {
+            let degrees = [degrees_x, degrees_y, degrees_z];
+            mesh_view.set_rotation_angle_degrees(degrees);
+        });
     }
 
     /// Toggle the volume texture format (R16Float vs Rg8Unorm) and reload the CT volume.
@@ -948,7 +938,7 @@ impl App {
         // Toggle feature always enabled - removed toggle_enabled field
         // If enabling float path, ensure hardware support
         if !self.app_model.enable_float_volume_texture {
-            if !Self::device_supports_r16float(self.adapter()) {
+            if !Self::device_supports_r16float(&self.graphics().adapter) {
                 log::warn!(
                     "Hardware doesn't support R16Float filtered sampling; staying on RG8."
                 );
@@ -971,7 +961,9 @@ impl App {
             vol.clone()
         };
 
-        self.load_data_from_ct_volume(&vol);
+        if let Err(e) = self.load_data_from_ct_volume(&vol) {
+            log::error!("Failed to reload volume texture: {}", e);
+        }
     }
 
     pub fn disable_volume_format_toggle(&mut self) {

@@ -10,7 +10,6 @@ use crate::data::medical_imaging::image_info::PatientPosition;
 use anyhow::Result;
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use log::{info, warn, debug};
 use glam::{Mat4, Vec3, Vec4};
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]

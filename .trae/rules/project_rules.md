@@ -16,8 +16,5 @@
 18. GPU operations must remain efficient and non-blocking. Avoid excessive CPU-GPU synchronization in render loops.
 19. Use cfg(feature = "trace-logging") to conditionally include expensive diagnostics.
 20. Update doc/CHANGELOG.md for each user-visible change.
-21. In the medical imaging context, ensure accuracy, numerical stability, and performance for CT reconstruction and visualization.
 22. The codebase must remain buildable, testable, and inspectable at all times.
-23. Do not use perspective projection in medical imaging for accuracy reasons unless asked.
-24. Time stamp format shall be YYYY-MM-DDTHH-MM-SS which takes the local time zone into account. The current local time zone is Beijing. Use "Get-Date -Format "yyyy-MM-ddTHH-mm-ss" to check the system time to make sure the time is correctly handled.
-25. Add `no_run` directives to all code examples in the documentation to indicate they should not be executed during documentation generation. This ensures examples are displayed for reference purposes only while preventing accidental execution during build processes.
+23. Time stamp format shall be YYYY-MM-DDTHH-MM-SS which takes the local time zone into account. The current local time zone is Beijing. Use "Get-Date -Format "yyyy-MM-ddTHH-mm-ss" to check the system time to make sure the time is correctly handled.
