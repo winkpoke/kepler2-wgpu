@@ -1,4 +1,4 @@
-﻿#![allow(dead_code)]
+#![allow(dead_code)]
 
 use log::{trace, info, warn};
 
@@ -20,6 +20,7 @@ use winit::{
 
 use crate::data::{AppModel, ct_volume::*};
 use crate::data::dicom::*;
+use crate::data::volume_encoding::VolumeEncoding;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::*;
 use crate::core::{error::KeplerError, WindowLevel};
@@ -38,6 +39,7 @@ use wasm_bindgen::prelude::*;
 use crate::application::appview::AppView;
 
 // #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+/// Main application logic and state management
 pub struct App {
     /// Graphics context that encapsulates both hardware abstraction and rendering pipeline orchestration
     pub(crate) graphics_context: GraphicsContext,
@@ -365,43 +367,48 @@ impl App {
         let mut winlev;
         
         // Delegate data preparation to AppModel
-        let (bytes, is_float) = self.app_model.get_volume_render_data().expect("Volume should be loaded");
+        let (bytes, encoding) = self.app_model.get_volume_render_data().expect("Volume should be loaded");
 
-        let texture = if is_float {
-            winlev = WindowLevel::new();
-            if let Err(e) = winlev.apply_bone_preset() {
-                log::warn!("apply_bone_preset (float path) failed: {}", e);
+        let texture = match encoding {
+            VolumeEncoding::HuFloat => {
+                winlev = WindowLevel::new();
+                if let Err(e) = winlev.apply_bone_preset() {
+                    log::warn!("apply_bone_preset (float path) failed: {}", e);
+                }
+                info!("Using R16Float volume texture path");
+                
+                Arc::new(RenderContent::from_bytes_r16f(
+                    self.device(),
+                    self.queue(),
+                    &bytes,
+                    "CT Volume",
+                    vol.dimensions.0 as u32,
+                    vol.dimensions.1 as u32,
+                    vol.dimensions.2 as u32,
+                    encoding,
+                ).unwrap())
+            },
+            VolumeEncoding::HuPackedRg8 { offset } => {
+                winlev = WindowLevel::new();
+                if let Err(e) = winlev.set_bias(offset) {
+                    log::warn!("set_bias (packed RG8 path) failed: {}", e);
+                }
+                if let Err(e) = winlev.apply_bone_preset() {
+                    log::warn!("apply_bone_preset (packed RG8 path) failed: {}", e);
+                }
+                info!("Using Rg8Unorm volume texture path");
+                
+                Arc::new(RenderContent::from_bytes(
+                    self.device(),
+                    self.queue(),
+                    &bytes,
+                    "CT Volume",
+                    vol.dimensions.0 as u32,
+                    vol.dimensions.1 as u32,
+                    vol.dimensions.2 as u32,
+                    encoding,
+                ).unwrap())
             }
-            info!("Using R16Float volume texture path");
-            
-            Arc::new(RenderContent::from_bytes_r16f(
-                self.device(),
-                self.queue(),
-                &bytes,
-                "CT Volume",
-                vol.dimensions.0 as u32,
-                vol.dimensions.1 as u32,
-                vol.dimensions.2 as u32,
-            ).unwrap())
-        } else {
-            winlev = WindowLevel::new();
-            if let Err(e) = winlev.set_bias(AppModel::HU_OFFSET) {
-                log::warn!("set_bias (packed RG8 path) failed: {}", e);
-            }
-            if let Err(e) = winlev.apply_bone_preset() {
-                log::warn!("apply_bone_preset (packed RG8 path) failed: {}", e);
-            }
-            info!("Using Rg8Unorm volume texture path");
-            
-            Arc::new(RenderContent::from_bytes(
-                self.device(),
-                self.queue(),
-                &bytes,
-                "CT Volume",
-                vol.dimensions.0 as u32,
-                vol.dimensions.1 as u32,
-                vol.dimensions.2 as u32,
-            ).unwrap())
         };
     
         self.app_view.layout.remove_all();
