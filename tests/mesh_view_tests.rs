@@ -290,28 +290,22 @@ mod mesh_view_tests {
     
     #[test]
     fn test_trs_composition_translation_column() {
+        use glam::{Mat4, Vec3};
         let tx = 1.0f32;
         let ty = -2.0f32;
         let tz = 0.5f32;
         let scale = 2.0f32;
 
-        let translation = Matrix4x4::from_array([
-            1.0, 0.0, 0.0, tx,
-            0.0, 1.0, 0.0, ty,
-            0.0, 0.0, 1.0, tz,
-            0.0, 0.0, 0.0, 1.0,
-        ]);
-        let scale_m = Matrix4x4::from_array([
-            scale, 0.0, 0.0, 0.0,
-            0.0, scale, 0.0, 0.0,
-            0.0, 0.0, scale, 0.0,
-            0.0, 0.0, 0.0, 1.0,
-        ]);
+        let translation = Mat4::from_translation(Vec3::new(tx, ty, tz));
+        let scale_m = Mat4::from_scale(Vec3::splat(scale));
+        
         // Identity rotation for simplicity
-        let rotation = Matrix4x4::eye();
+        let rotation = Mat4::IDENTITY;
 
-        let m = translation.multiply(&rotation).multiply(&scale_m);
-        let col3 = m.get_column(3);
+        // Compose: Translation * Rotation * Scale
+        let m = translation * rotation * scale_m;
+        
+        let col3 = m.col(3);
         assert!((col3[0] - tx).abs() < 1e-6);
         assert!((col3[1] - ty).abs() < 1e-6);
         assert!((col3[2] - tz).abs() < 1e-6);
