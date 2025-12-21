@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use wgpu::{Device, Queue};
+use glam::Mat4;
 
 use crate::rendering::{get_or_create_mesh_pipeline_with_depth};
 
@@ -596,13 +597,13 @@ impl MeshRenderContext {
 
     /// Function-level comment: Update model uniform buffer with transformation and normal matrices.
     /// Normal matrix is the inverse transpose of the model matrix for correct normal transformation.
-    pub fn update_model_uniforms(&self, queue: &Queue, model_matrix: &crate::core::coord::Matrix4x4<f32>) {
+    pub fn update_model_uniforms(&self, queue: &Queue, model_matrix: Mat4) {
        // Calculate normal matrix (inverse transpose of upper-left 3x3 of model matrix)
-        let normal_matrix = model_matrix.inv().unwrap_or_else(|| crate::core::coord::Matrix4x4::eye()).transpose();
+        let normal_matrix = model_matrix.inverse().transpose();
         
         let model_uniforms = ModelUniforms {
-            model_matrix: model_matrix.data,
-            normal_matrix: normal_matrix.data,
+            model_matrix: model_matrix.to_cols_array_2d(),
+            normal_matrix: normal_matrix.to_cols_array_2d(),
         };
         
         queue.write_buffer(&self.model_uniform_buffer, 0, bytemuck::cast_slice(&[model_uniforms]));

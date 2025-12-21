@@ -9,7 +9,6 @@ mod mesh_view_tests {
         performance::QualityLevel,
     };
     use wgpu::{Instance, Backends, DeviceDescriptor, Features, Limits};
-    use kepler_wgpu::core::coord::Matrix4x4;
     use std::f32::consts::FRAC_PI_2;
 
 

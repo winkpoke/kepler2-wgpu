@@ -1,4 +1,4 @@
-use crate::{core::coord::{Base, Matrix4x4}, data::{dicom::{DicomRepo, CTImage}, ct_volume::CTVolume}};
+use crate::{core::coord::Base, data::{dicom::{DicomRepo, CTImage}, ct_volume::CTVolume}};
 use glam::{Mat4, Vec3};
 
 #[cfg(target_arch = "wasm32")]
@@ -39,7 +39,7 @@ impl <'a> GeometryBuilder<'a> {
     ///           and the transformation matrix mapping voxel indices to world space.
     ///
     /// # Returns
-    /// A `Base<f32>` struct representing the transformation from normalized UV space to
+    /// A `Base` struct representing the transformation from normalized UV space to
     /// world/patient coordinates.
     ///
     /// # Implementation Notes
@@ -56,20 +56,20 @@ impl <'a> GeometryBuilder<'a> {
     /// let uv_base = build_uv_base(&ct_volume);
     /// let world_pos = uv_base.matrix.transform_point3(Vec3::new(u, v, w));
     /// ```
-    pub fn build_uv_base(vol: &CTVolume) -> Base<f32> {       
+    pub fn build_uv_base(vol: &CTVolume) -> Base {       
         let nx = vol.dimensions.0 as f32 - 1.0;
         let ny = vol.dimensions.1 as f32 - 1.0;
         let nz = vol.dimensions.2 as f32 - 1.0;
 
         let scaling_matrix = Mat4::from_scale(Vec3::new(nx, ny, nz));
         
-        // vol.base.matrix is already Mat4 (since Base<f32>)
+        // vol.base.matrix is already Mat4 (since Base)
         let vol_matrix = vol.base.matrix;
 
         // Matrix multiplication in glam: result = A * B
         let base_uv_matrix_glam = vol_matrix * scaling_matrix;
 
-        let base_uv = Base::<f32> {
+        let base_uv = Base {
             label: "CT Volume: UV".to_string(),
             matrix: base_uv_matrix_glam,
         };
@@ -78,7 +78,7 @@ impl <'a> GeometryBuilder<'a> {
 
     }
 
-    pub fn build_transverse_base(vol: &CTVolume) -> Base<f32> {        
+    pub fn build_transverse_base(vol: &CTVolume) -> Base {        
         let (nx, ny, nz) = (
             vol.dimensions.0 as f32,
             vol.dimensions.1 as f32,
@@ -108,14 +108,14 @@ impl <'a> GeometryBuilder<'a> {
             0.0,  0.0,  0.0, 1.0
         ]).transpose();
 
-        let base_screen = Base::<f32> {
+        let base_screen = Base {
             label: "CT Volume: screen".to_string(),
             matrix: matrix_screen_glam,
         };
         base_screen
     }
 
-    pub fn build_coronal_base(vol: &CTVolume) -> Base<f32> {
+    pub fn build_coronal_base(vol: &CTVolume) -> Base {
         let (nx, ny, nz) = (
             vol.dimensions.0 as f32,
             vol.dimensions.1 as f32,
@@ -144,14 +144,14 @@ impl <'a> GeometryBuilder<'a> {
             0.0,  0.0,  0.0, 1.0
         ]).transpose();
 
-        let base_screen = Base::<f32> {
+        let base_screen = Base {
             label: "CT Volume: screen".to_string(),
             matrix: matrix_screen_glam,
         };
         base_screen
     }
 
-    pub fn build_sagittal_base(vol: &CTVolume) -> Base<f32> {   
+    pub fn build_sagittal_base(vol: &CTVolume) -> Base {   
         let (nx, ny, nz) = (
             vol.dimensions.0 as f32,
             vol.dimensions.1 as f32,
@@ -183,14 +183,14 @@ impl <'a> GeometryBuilder<'a> {
             0.0, 0.0, 0.0, 1.0
         ]).transpose();
 
-        let base_screen = Base::<f32> {
+        let base_screen = Base {
             label: "CT Volume: screen".to_string(),
             matrix: matrix_screen_glam,
         };
         base_screen
     }
 
-    pub fn build_oblique_base(vol: &CTVolume) -> Base<f32> { 
+    pub fn build_oblique_base(vol: &CTVolume) -> Base { 
         let (nx, ny, nz) = (
             vol.dimensions.0 as f32,
             vol.dimensions.1 as f32,
@@ -218,7 +218,7 @@ impl <'a> GeometryBuilder<'a> {
         // Original was: matrix_rot * matrix_screen
         let final_matrix = matrix_rot_glam * matrix_screen_glam;
 
-        let base_screen = Base::<f32> {
+        let base_screen = Base {
             label: "CT Volume: screen".to_string(),
             matrix: final_matrix,
         };
@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn test_uv_base() {
-        let base0 = Base::<f32> {
+        let base0 = Base {
             label: "world coordinate".to_string(),
             matrix: Mat4::IDENTITY,
         };
@@ -258,7 +258,7 @@ mod tests {
                 0., 0., 0.,  -507.8125, 
                 0., 0., 0.,  -923.5, 
                 0., 0., 0., 1.];
-        let base0 = Base::<f32> {
+        let base0 = Base {
             label: "world coordinate".to_string(),
             matrix: Mat4::from_cols_array(&m).transpose(), // from_cols_array reads as col-major, but m is row-major
         };
@@ -287,7 +287,7 @@ mod tests {
         let m = [
             0., 0., 0., 10., 0., 0., 0., 5., 0., 0., 0., 3., 0., 0., 0., 1.,
         ];
-        let base0 = Base::<f32> {
+        let base0 = Base {
             label: "world coordinate".to_string(),
             matrix: Mat4::from_cols_array(&m).transpose(),
         };
@@ -312,7 +312,7 @@ mod tests {
         let m = [
             0., 0., 0., 10., 0., 0., 0., 5., 0., 0., 0., 3., 0., 0., 0., 1.,
         ];
-        let base0 = Base::<f32> {
+        let base0 = Base {
             label: "world coordinate".to_string(),
             matrix: Mat4::from_cols_array(&m).transpose(),
         };
@@ -336,7 +336,7 @@ mod tests {
 
     #[test]
     fn test_oblique_base() {
-        let base0 = Base::<f32> {
+        let base0 = Base {
             label: "world coordinate".to_string(),
             matrix: Mat4::IDENTITY,
         };

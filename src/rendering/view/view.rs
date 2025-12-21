@@ -250,7 +250,7 @@ impl Orientation {
     /// Creates the appropriate coordinate transformation matrix for the given
     /// anatomical orientation, taking into account the volume's spatial properties
     /// and DICOM coordinate system conventions.
-    pub fn build_base(&self, vol: &CTVolume) -> Base<f32> {
+    pub fn build_base(&self, vol: &CTVolume) -> Base {
         match self {
             Orientation::Oblique => GeometryBuilder::build_oblique_base(vol),
             Orientation::Sagittal => GeometryBuilder::build_sagittal_base(vol),
