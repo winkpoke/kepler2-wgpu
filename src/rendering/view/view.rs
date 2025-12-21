@@ -1,35 +1,3 @@
-//! # Medical Imaging View System
-//! 
-//! This module provides the core view system for medical imaging visualization in the Kepler WGPU framework.
-//! It supports Multi-Planar Reconstruction (MPR) views with different anatomical orientations and provides
-//! state management capabilities for seamless view transitions.
-//! 
-//! ## Key Components
-//! 
-//! - **View Traits**: Core interfaces for renderable views with position and dimension management
-//! - **StatefulView**: Enhanced views that can save and restore their configuration state
-//! - **ViewFactory**: Factory pattern for consistent view creation
-//! - **MPRView**: Specialized interface for medical imaging views with window/level controls
-//! - **GenericMPRView**: Concrete implementation supporting all anatomical orientations
-//! - **ViewState**: State snapshot structure for preserving view configurations
-//! 
-//! ## Medical Imaging Context
-//! 
-//! The view system is designed specifically for medical imaging applications:
-//! - Supports standard anatomical orientations (Transverse, Coronal, Sagittal, Oblique)
-//! - Provides window/level controls for CT image display
-//! - Handles slice navigation in millimeter units
-//! - Maintains accurate spatial relationships and measurements
-//! 
-//! ## Usage Example
-//! 
-//! Creating an MPR view for medical imaging:
-//! - Use `GenericMPRView::new()` with appropriate parameters
-//! - Set orientation (Transverse, Coronal, Sagittal, or Oblique)
-//! - Configure scale, translation, position, and dimensions
-//! - Use `StatefulView` trait methods to save/restore view state
-//! - Use `MPRView` trait methods to control window/level and slice position
-
 #![allow(dead_code)]
 
 use std::any::Any;
@@ -97,12 +65,6 @@ impl ViewState {
 
     /// Create a WindowLevel instance from the state's window/level parameters.
     /// 
-    /// This method creates a properly configured WindowLevel struct using the
-    /// window_width, window_level, and bias values from the state. The resulting
-    /// WindowLevel will be marked as dirty to ensure GPU updates occur.
-    /// 
-    /// # Returns
-    /// * `KeplerResult<WindowLevel>` - Success with configured WindowLevel or validation error
     pub fn create_window_level(&self) -> KeplerResult<WindowLevel> {
         let mut window_level = WindowLevel::new();
         window_level.set_window_width(self.window_width)?;
@@ -166,16 +128,6 @@ pub trait View: Renderable + Any {
     
     /// Get a mutable reference to this view as Any for type introspection
     fn as_any_mut(&mut self) -> &mut dyn Any;
-
-    // Attempt to cast this view to an MPRView for medical imaging operations.
-    // Returns None if this view doesn't support MPR functionality.
-    // fn as_mpr(&mut self) -> Option<&mut Self::ViewType> {
-    //     if let Some(view) = self.as_any_mut().downcast_mut::<Self::ViewType>() {
-    //         Some(view)
-    //     } else {
-    //         None
-    //     }
-    // }
 }
 
 /// Enhanced View trait with state management capabilities.
@@ -215,15 +167,6 @@ pub trait StatefulView: View {
 
 /// Anatomical orientation for MPR views.
 /// 
-/// Defines the standard anatomical orientations used in medical imaging.
-/// Each orientation provides a different cross-sectional view of the patient's anatomy.
-/// 
-/// ## Medical Context
-/// 
-/// - **Transverse (Axial)**: Horizontal slices, looking from feet toward head
-/// - **Coronal**: Vertical slices, looking from front to back
-/// - **Sagittal**: Vertical slices, looking from side to side
-/// - **Oblique**: Custom orientation, not aligned with standard anatomical planes
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Orientation {
     /// Custom orientation not aligned with standard anatomical planes
