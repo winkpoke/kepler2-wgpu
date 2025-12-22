@@ -5,11 +5,19 @@
 
 use std::sync::Arc;
 use crate::rendering::{GridLayout, LayoutContainer, OneCellLayout};
-use crate::rendering::view::{DynamicLayout, DefaultViewFactory, View, Orientation, ALL_ORIENTATIONS};
+use crate::rendering::view::{DynamicLayout, DefaultViewFactory, View, Orientation, ALL_ORIENTATIONS, ViewState, MprView, MipView};
 use crate::rendering::view::ViewFactory;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::mesh::mesh::Mesh;
 use crate::CTVolume;
+use crate::rendering::StatefulView;
+
+/// Encapsulated state for a view, including its orientation and rendering parameters.
+#[derive(Debug, Clone)]
+pub struct CapturedViewState {
+    pub orientation: Orientation,
+    pub state: ViewState,
+}
 
 /// AppView holds layout and view factory for building and arranging views.
 pub struct AppView {
@@ -24,6 +32,40 @@ impl AppView {
     /// layout and factory with minimal changes to existing code.
     pub fn new(layout: DynamicLayout, view_factory: DefaultViewFactory) -> Self {
         Self { layout, view_factory }
+    }
+
+    /// Capture the state of all compatible views (currently MPR views).
+    ///
+    /// Function-level comment: Iterates over views, identifies MPR views, and saves their state
+    /// (orientation, window/level, scale, pan, slice) into a portable structure.
+    pub fn capture_view_states(&self) -> Vec<CapturedViewState> {
+        self.layout.views().iter()
+            .filter_map(|v| {
+                if let Some(mpr_view) = v.as_any().downcast_ref::<MprView>() {
+                    let orientation = mpr_view.get_orientation();
+                    mpr_view.save_state().map(|state| CapturedViewState { 
+                        orientation: *orientation, 
+                        state 
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Restore previously captured view states to matching views.
+    ///
+    /// Function-level comment: Matches saved states to current views by orientation and applies
+    /// the saved parameters.
+    pub fn restore_view_states(&mut self, states: &[CapturedViewState]) {
+        for view in self.layout.views_mut() {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                if let Some(saved) = states.iter().find(|s| s.orientation == *mpr_view.get_orientation()) {
+                    mpr_view.restore_state(&saved.state);
+                }
+            }
+        }
     }
 
     /// Resize the layout to match new parent dimensions.
@@ -313,5 +355,160 @@ impl AppView {
             }
         }
         Ok(())
+    }
+
+    /// Set the window level for a specific view.
+    pub fn set_window_level(&mut self, index: usize, window_level: f32) -> Result<(), String> {
+        if let Some(view) = self.layout.views_mut().get_mut(index) {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_window_level(window_level).map_err(|e| e.to_string())?;
+                Ok(())
+            } else {
+                Err(format!("View {} is not an MPR view", index))
+            }
+        } else {
+            Err(format!("View index {} out of bounds", index))
+        }
+    }
+
+    /// Set the window width for a specific view.
+    pub fn set_window_width(&mut self, index: usize, window_width: f32) -> Result<(), String> {
+        if let Some(view) = self.layout.views_mut().get_mut(index) {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_window_width(window_width).map_err(|e| e.to_string())?;
+                Ok(())
+            } else {
+                Err(format!("View {} is not an MPR view", index))
+            }
+        } else {
+            Err(format!("View index {} out of bounds", index))
+        }
+    }
+
+    /// Set the slice position (Z-coordinate) for a specific view.
+    pub fn set_slice_mm(&mut self, index: usize, z: f32) -> Result<(), String> {
+        if let Some(view) = self.layout.views_mut().get_mut(index) {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_slice_mm(z).map_err(|e| e.to_string())?;
+                Ok(())
+            } else {
+                Err(format!("View {} is not an MPR view", index))
+            }
+        } else {
+            Err(format!("View index {} out of bounds", index))
+        }
+    }
+
+    /// Set the scale (zoom level) for a specific view.
+    pub fn set_scale(&mut self, index: usize, scale: f32) -> Result<(), String> {
+        if let Some(view) = self.layout.views_mut().get_mut(index) {
+            let mut handled = false;
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_scale(scale).map_err(|e| e.to_string())?;
+                handled = true;
+            }
+            if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
+                mip_view.set_scale(scale); // MipView set_scale doesn't return Result currently?
+                handled = true;
+            }
+            if handled {
+                Ok(())
+            } else {
+                Err(format!("View {} does not support scaling", index))
+            }
+        } else {
+            Err(format!("View index {} out of bounds", index))
+        }
+    }
+
+    /// Set the translation in screen coordinates.
+    pub fn set_translate_in_screen_coord(&mut self, index: usize, translate: [f32; 3]) -> Result<(), String> {
+        if let Some(view) = self.layout.views_mut().get_mut(index) {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_translate_in_screen_coord(translate).map_err(|e| e.to_string())?;
+                Ok(())
+            } else {
+                Err(format!("View {} is not an MPR view", index))
+            }
+        } else {
+            Err(format!("View index {} out of bounds", index))
+        }
+    }
+
+    /// Set the pan (X, Y) for a specific view.
+    pub fn set_pan(&mut self, index: usize, x: f32, y: f32) -> Result<(), String> {
+        if let Some(view) = self.layout.views_mut().get_mut(index) {
+            let mut handled = false;
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_pan(x, y).map_err(|e| e.to_string())?;
+                handled = true;
+            }
+            if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
+                mip_view.set_pan(x, y);
+                handled = true;
+            }
+            if handled {
+                Ok(())
+            } else {
+                Err(format!("View {} does not support panning", index))
+            }
+        } else {
+            Err(format!("View index {} out of bounds", index))
+        }
+    }
+
+    /// Set the pan in millimeters.
+    pub fn set_pan_mm(&mut self, index: usize, x_mm: f32, y_mm: f32) -> Result<(), String> {
+        if let Some(view) = self.layout.views_mut().get_mut(index) {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_pan_mm(x_mm, y_mm).map_err(|e| e.to_string())?;
+                Ok(())
+            } else {
+                Err(format!("View {} is not an MPR view", index))
+            }
+        } else {
+            Err(format!("View index {} out of bounds", index))
+        }
+    }
+
+    /// Set the center point in millimeters.
+    pub fn set_center_at_point_in_mm(&mut self, index: usize, point: [f32; 3]) -> Result<[f32; 3], String> {
+        if let Some(view) = self.layout.views_mut().get_mut(index) {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_center_at_point_in_mm(point).map_err(|e| e.to_string())
+            } else {
+                Err(format!("View {} is not an MPR view", index))
+            }
+        } else {
+            Err(format!("View index {} out of bounds", index))
+        }
+    }
+
+    /// Set the slab thickness for a MIP view.
+    pub fn set_slab_thickness(&mut self, index: usize, thickness: f32) -> Result<(), String> {
+        if let Some(view) = self.layout.views_mut().get_mut(index) {
+            if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
+                mip_view.set_slab_thickness(thickness);
+                Ok(())
+            } else {
+                Err(format!("View {} is not a MIP view", index))
+            }
+        } else {
+            Err(format!("View index {} out of bounds", index))
+        }
+    }
+
+    /// Set the MIP mode (MIP vs MinIP).
+    pub fn set_mip_mode(&mut self, index: usize, mode: u32) -> Result<(), String> {
+        if let Some(view) = self.layout.views_mut().get_mut(index) {
+            if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
+                mip_view.set_mip_mode(mode);
+                Ok(())
+            } else {
+                Err(format!("View {} is not a MIP view", index))
+            }
+        } else {
+            Err(format!("View index {} out of bounds", index))
+        }
     }
 }

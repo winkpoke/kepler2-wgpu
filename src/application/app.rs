@@ -6,7 +6,6 @@ use log::{trace, info, warn};
 use std::path::PathBuf;
 use std::{fs, io};
 use std::sync::Arc;
-use crate::rendering::view::mesh::mesh::Mesh;
 use crate::rendering::{view, Graphics, GraphicsContext};
 
 // use wgpu::util::DeviceExt;
@@ -398,37 +397,6 @@ impl App {
         self.app_model.enable_mesh
     }
 
-    /// Helper to capture MPR view states (scale, pan, etc.)
-    fn capture_mpr_states(&self) -> Vec<(Orientation, f32, [f32; 3], f32, f32, f32)> {
-        self.app_view.layout.views().iter()
-            .filter_map(|v| v.as_any().downcast_ref::<MprView>())
-            .map(|v| (
-                v.get_orientation().clone(),
-                v.get_scale(),
-                v.get_translate_in_screen_coord(),
-                v.get_slice_mm(),
-                v.get_window_level(),
-                v.get_window_width()
-            ))
-            .collect()
-    }
-
-    /// Helper to restore MPR view states
-    fn restore_mpr_states(&mut self, saved_states: &[(Orientation, f32, [f32; 3], f32, f32, f32)]) {
-        for view in self.app_view.layout.views_mut() {
-            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                if let Some(state) = saved_states.iter().find(|s| s.0 == *mpr_view.get_orientation()) {
-                    let (_, scale, pan, slice, wl, ww) = state;
-                    let _ = mpr_view.set_scale(*scale);
-                    let _ = mpr_view.set_translate_in_screen_coord(*pan);
-                    let _ = mpr_view.set_slice_mm(*slice);
-                    let _ = mpr_view.set_window_level(*wl);
-                    let _ = mpr_view.set_window_width(*ww);
-                }
-            }
-        }
-    }
-
     /// Helper to configure views for mesh mode (4 MPRs + optional MIP/Mesh)
     fn configure_mesh_mode_views(
         &mut self,
@@ -475,7 +443,7 @@ impl App {
         // Rebuild layout immediately if a volume is already loaded
         if let Some(vol) = vol_option {
             // Capture state of existing MPR views
-            let saved_states = self.capture_mpr_states();
+            let saved_states = self.app_view.capture_view_states();
 
             let texture = match self.load_render_content(&vol) {
                 Ok(t) => t,
@@ -505,7 +473,7 @@ impl App {
             }
 
             // Restore state to matching MPR views
-            self.restore_mpr_states(&saved_states);
+            self.app_view.restore_view_states(&saved_states);
 
             log::info!("Layout rebuilt for mode: {}", change_index);
         } else {
@@ -558,23 +526,19 @@ impl App {
     }
 
     pub fn set_window_level(&mut self, index: usize, window_level: f32) {
-        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
-        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-            if let Err(e) = mpr_view.set_window_level(window_level) {
-                log::warn!("set_window_level {} failed on view {}: {}", 
-                        if self.app_model.enable_float_volume_texture {"(float)"} else {"(packed RG8)"}, 
-                        index, e);
-            }
+        if let Err(e) = self.app_view.set_window_level(index, window_level) {
+            log::warn!("set_window_level {} failed on view {}: {}", 
+                    if self.app_model.enable_float_volume_texture {"(float)"} else {"(packed RG8)"}, 
+                    index, e);
+        } else {
             log::info!("View {} set_window_level: {}", index, window_level);
         }
     }
 
     pub fn set_window_width(&mut self, index: usize, window_width: f32) {
-        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
-        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-            if let Err(e) = mpr_view.set_window_width(window_width) {
-                log::warn!("set_window_width failed on view {}: {}", index, e);
-            }
+        if let Err(e) = self.app_view.set_window_width(index, window_width) {
+            log::warn!("set_window_width failed on view {}: {}", index, e);
+        } else {
             log::info!("View {} set_window_width: {}", index, window_width);
         }
     }
@@ -589,72 +553,66 @@ impl App {
     }
 
     pub fn set_slice_mm(&mut self, index: usize, z: f32) {
-        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
-        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-            if let Err(e) = mpr_view.set_slice_mm(z) {
-                log::warn!("set_slice_mm failed on view {}: {}", index, e);
-            }
+        if let Err(e) = self.app_view.set_slice_mm(index, z) {
+            log::warn!("set_slice_mm failed on view {}: {}", index, e);
+        } else {
             log::info!("View {} set_slice: {}", index, z);
         }
     }
 
     pub fn set_scale(&mut self, index: usize, scale: f32) {
-        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
-        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-            if let Err(e) = mpr_view.set_scale(scale) {
-                log::warn!("set_scale failed on view {}: {}", index, e);
-            }
+        if let Err(e) = self.app_view.set_scale(index, scale) {
+            log::warn!("set_scale failed on view {}: {}", index, e);
+        } else {
             log::info!("View {} set_scale: {}", index, scale);
-        }
-        if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>(){
-            mip_view.set_scale(scale);
-            log::info!("Mip scale set to {:.3}", scale);
         }
     }
 
     pub fn set_translate_in_screen_coord(&mut self, index: usize, translate: [f32; 3]) {
-        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
-        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+        if let Err(e) = self.app_view.set_translate_in_screen_coord(index, translate) {
+            log::warn!("set_translate_in_screen_coord failed on view {}: {}", index, e);
+        } else {
             log::info!("View {} move to: {:#?}", index, translate);
-            // Handle potential error from translate operation to avoid unused Result warnings.
-            if let Err(e) = mpr_view.set_translate_in_screen_coord(translate) {
-                log::warn!("set_translate_in_screen_coord failed on view {}: {}", index, e);
-            }
         }
     }
 
     pub fn set_pan(&mut self, index: usize, x: f32, y: f32 ) {
-        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
-        log::info!("View {} pan to: {:#?}", index, (x, y));
-        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-            log::info!("View {} move to: {:#?}", index, (x, y));
-            if let Err(e) = mpr_view.set_pan(x, y) {
-                log::warn!("set_pan failed on view {}: {}", index, e);
-            }
-        }
-        if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>(){
-            mip_view.set_pan(x, y);
-            log::info!("Mip pan set to ({:.3}, {:.3})", x, y);
+        if let Err(e) = self.app_view.set_pan(index, x, y) {
+            log::warn!("set_pan failed on view {}: {}", index, e);
+        } else {
+            log::info!("View {} pan to: {:#?}", index, (x, y));
         }
     }
 
     pub fn set_pan_mm(&mut self, index: usize, x_mm: f32, y_mm: f32 ) {
-        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
-        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+        if let Err(e) = self.app_view.set_pan_mm(index, x_mm, y_mm) {
+            log::warn!("set_pan_mm failed on view {}: {}", index, e);
+        } else {
             log::info!("View {} move to mm: {:#?}", index, (x_mm, y_mm));
-            if let Err(e) = mpr_view.set_pan_mm(x_mm, y_mm) {
-                log::warn!("set_pan_mm failed on view {}: {}", index, e);
-            }
         }
     }
 
     pub fn set_center_at_point_in_mm(&mut self, index: usize, x_mm: f32, y_mm: f32, z_mm: f32) {
-        let view = self.app_view.layout.views_mut().get_mut(index).unwrap();
-        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+        if let Err(e) = self.app_view.set_center_at_point_in_mm(index, [x_mm, y_mm, z_mm]) {
+            log::warn!("set_center_at_point_in_mm failed on view {}: {}", index, e);
+        } else {
             log::info!("View {} set_center_at_point_in_mm: {:#?}", index, (x_mm, y_mm, z_mm));
-            if let Err(e) = mpr_view.set_center_at_point_in_mm([x_mm, y_mm, z_mm]) {
-                log::warn!("set_center_at_point_in_mm failed on view {}: {}", index, e);
-            }
+        }
+    }
+
+    pub fn set_slab_thickness(&mut self, index: usize, thickness: f32) {
+        if let Err(e) = self.app_view.set_slab_thickness(index, thickness) {
+            log::warn!("set_slab_thickness failed on view {}: {}", index, e);
+        } else {
+            log::info!("View {} set_slab_thickness: {}", index, thickness);
+        }
+    }
+
+    pub fn set_mip_mode(&mut self, index: usize, mode: u32) {
+        if let Err(e) = self.app_view.set_mip_mode(index, mode) {
+            log::warn!("set_mip_mode failed on view {}: {}", index, e);
+        } else {
+            log::info!("View {} set_mip_mode: {}", index, mode);
         }
     }
 

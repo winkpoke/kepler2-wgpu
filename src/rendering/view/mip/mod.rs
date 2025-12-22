@@ -16,6 +16,10 @@ pub struct MipConfig {
     pub ray_step_size: f32,
     /// Maximum number of ray marching steps (fixed for MVP)
     pub max_steps: u32,
+    /// Slab thickness for MIP rendering in mm
+    pub slab_thickness: f32,
+    /// MIP rendering mode (0: MIP, 1: MinIP, 2: AvgIP)
+    pub mode: u32,
 }
 
 impl Default for MipConfig {
@@ -25,6 +29,8 @@ impl Default for MipConfig {
         Self {
             ray_step_size: 0.01,  // Fixed: 0.01 for medium quality
             max_steps: 512,       // Fixed: 512 steps for reasonable quality
+            slab_thickness: 10.0, // Default 10mm slab
+            mode: 0,              // Default to Maximum Intensity Projection
         }
     }
 }
@@ -433,6 +439,18 @@ impl MipView {
         self.pan[0] = clamped_x;
         self.pan[1] = clamped_y;
         log::info!("MIP pan offset set to ({}, {})", clamped_x, clamped_y);
+    }
+
+    /// Function-level comment: Set slab thickness in mm.
+    pub fn set_slab_thickness(&mut self, thickness: f32) {
+        self.config.slab_thickness = thickness;
+        log::info!("MIP slab thickness set to {}", thickness);
+    }
+
+    /// Function-level comment: Set MIP rendering mode.
+    pub fn set_mip_mode(&mut self, mode: u32) {
+        self.config.mode = mode;
+        log::info!("MIP mode set to {}", mode);
     }
 }
 
