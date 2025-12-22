@@ -505,7 +505,7 @@ impl Mesh {
 
         // ROI Z Range
         let (process_z_start, process_z_end) = if world_min.is_some() && world_max.is_some() {
-            let origin_z = ctvolume.base.matrix.get_column(3)[2];
+            let origin_z = ctvolume.base.matrix.col(3)[2];
             let z_min_idx = ((roi_min[2] - origin_z) / ctvolume.voxel_spacing.2).floor() as isize;
             let z_max_idx = ((roi_max[2] - origin_z) / ctvolume.voxel_spacing.2).ceil() as isize;
             
@@ -581,8 +581,8 @@ impl Mesh {
 
             let (crop_x_start, crop_y_start, cropped_volume) = if let (Some(world_min), Some(world_max)) = (world_min, world_max) {
                 // ROI logic
-                let origin_x = ctvolume.base.matrix.get_column(3)[0];
-                let origin_y = ctvolume.base.matrix.get_column(3)[1];
+                let origin_x = ctvolume.base.matrix.col(3)[0];
+                let origin_y = ctvolume.base.matrix.col(3)[1];
 
                 let x_min_idx = ((roi_min[0] - origin_x) / final_spacing_x as f32).floor() as isize;
                 let x_max_idx = ((roi_max[0] - origin_x) / final_spacing_x as f32).ceil() as isize;
