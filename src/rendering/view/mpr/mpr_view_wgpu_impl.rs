@@ -81,13 +81,13 @@ impl MprViewWgpuImpl {
             ..Default::default()
         };
         
-        let is_packed = matches!(render_content.texture_format, wgpu::TextureFormat::Rg8Unorm);
+        let decode_params = render_content.decode_parameters();
         let u_frag_data = UniformsFrag {
             window_width: 350.,
             window_level: 40.0,
             slice: 0.0,
-            is_packed_rg8: if is_packed { 1.0 } else { 0.0 },
-            bias: if is_packed { 1100.0 } else { 0.0 },
+            is_packed_rg8: decode_params.is_packed_flag as f32,
+            bias: decode_params.bias,
             mat: transform_matrix.to_cols_array(),
             ..Default::default()
         };
@@ -96,7 +96,7 @@ impl MprViewWgpuImpl {
             "MprViewWgpuImpl defaults => window_width: {:.1}, window_level: {:.1}, is_packed_rg8: {}",
             u_frag_data.window_width,
             u_frag_data.window_level,
-            is_packed
+            decode_params.is_packed_flag
         );
         
         let uniforms = Uniforms {

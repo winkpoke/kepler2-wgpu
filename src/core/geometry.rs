@@ -1,4 +1,4 @@
-use crate::{core::coord::{Base, Matrix4x4, array_to_slice}, data::{dicom::{DicomRepo, CTImage}, ct_volume::CTVolume}};
+use crate::{core::coord::Base, data::{dicom::{DicomRepo, CTImage}, ct_volume::CTVolume}};
 use glam::{Mat4, Vec3};
 
 #[cfg(target_arch = "wasm32")]
@@ -9,18 +9,6 @@ pub struct GeometryBuilder<'a> {
     repo: Option<&'a DicomRepo>,
     #[allow(dead_code)]
     sorted_image_series: Option<Vec<&'a CTImage>>, 
-}
-
-// Helper to convert custom Matrix4x4 (column-major) to glam::Mat4 (column-major)
-fn to_glam(m: &Matrix4x4<f32>) -> Mat4 {
-    // Both are column-major, so we can load directly.
-    Mat4::from_cols_array(array_to_slice(&m.columns))
-}
-
-// Helper to convert glam::Mat4 to custom Matrix4x4
-fn from_glam(m: Mat4) -> Matrix4x4<f32> {
-    // Both are column-major, so we can load directly.
-    Matrix4x4::from_cols(m.to_cols_array())
 }
 
 // #[cfg(not(target_arch = "wasm32"))]
@@ -51,7 +39,7 @@ impl <'a> GeometryBuilder<'a> {
     ///           and the transformation matrix mapping voxel indices to world space.
     ///
     /// # Returns
-    /// A `Base<f32>` struct representing the transformation from normalized UV space to
+    /// A `Base` struct representing the transformation from normalized UV space to
     /// world/patient coordinates.
     ///
     /// # Implementation Notes
@@ -66,30 +54,31 @@ impl <'a> GeometryBuilder<'a> {
     /// ```rust,ignore
     /// // This example requires a constructed CTVolume and is ignored in doctests.
     /// let uv_base = build_uv_base(&ct_volume);
-    /// let world_pos = uv_base.matrix.transform_point((u, v, w, 1.0));
+    /// let world_pos = uv_base.matrix.transform_point3(Vec3::new(u, v, w));
     /// ```
-    pub fn build_uv_base(vol: &CTVolume) -> Base<f32> {       
+    pub fn build_uv_base(vol: &CTVolume) -> Base {       
         let nx = vol.dimensions.0 as f32 - 1.0;
         let ny = vol.dimensions.1 as f32 - 1.0;
         let nz = vol.dimensions.2 as f32 - 1.0;
 
         let scaling_matrix = Mat4::from_scale(Vec3::new(nx, ny, nz));
         
-        let vol_matrix = to_glam(&vol.base.matrix);
+        // vol.base.matrix is already Mat4 (since Base)
+        let vol_matrix = vol.base.matrix;
 
         // Matrix multiplication in glam: result = A * B
         let base_uv_matrix_glam = vol_matrix * scaling_matrix;
 
-        let base_uv = Base::<f32> {
+        let base_uv = Base {
             label: "CT Volume: UV".to_string(),
-            matrix: from_glam(base_uv_matrix_glam),
+            matrix: base_uv_matrix_glam,
         };
         // println!("UV Base:\n{:?}", base_uv);
         return base_uv;
 
     }
 
-    pub fn build_transverse_base(vol: &CTVolume) -> Base<f32> {        
+    pub fn build_transverse_base(vol: &CTVolume) -> Base {        
         let (nx, ny, nz) = (
             vol.dimensions.0 as f32,
             vol.dimensions.1 as f32,
@@ -97,7 +86,10 @@ impl <'a> GeometryBuilder<'a> {
         );
 
         let space = vol.voxel_spacing;
-        let [ox, oy, oz, _] = vol.base.matrix.get_column(3);
+        let col3 = vol.base.matrix.col(3);
+        let ox = col3.x;
+        let oy = col3.y;
+        let oz = col3.z;
         
         // Use per-axis physical extents for accuracy
         let (d_x, d_y, d_z) = (nx * space.0, ny * space.1, nz * space.2);
@@ -116,14 +108,14 @@ impl <'a> GeometryBuilder<'a> {
             0.0,  0.0,  0.0, 1.0
         ]).transpose();
 
-        let base_screen = Base::<f32> {
+        let base_screen = Base {
             label: "CT Volume: screen".to_string(),
-            matrix: from_glam(matrix_screen_glam),
+            matrix: matrix_screen_glam,
         };
         base_screen
     }
 
-    pub fn build_coronal_base(vol: &CTVolume) -> Base<f32> {
+    pub fn build_coronal_base(vol: &CTVolume) -> Base {
         let (nx, ny, nz) = (
             vol.dimensions.0 as f32,
             vol.dimensions.1 as f32,
@@ -131,7 +123,10 @@ impl <'a> GeometryBuilder<'a> {
         );
 
         let space = vol.voxel_spacing;
-        let [ox, oy, oz, _] = vol.base.matrix.get_column(3);
+        let col3 = vol.base.matrix.col(3);
+        let ox = col3.x;
+        let oy = col3.y;
+        let oz = col3.z;
         // let d = f32::max(nx * space.0, ny * space.1);
         let (d_x, d_y, d_z) = (nx * space.0, ny * space.1, nz * space.2);
 
@@ -149,14 +144,14 @@ impl <'a> GeometryBuilder<'a> {
             0.0,  0.0,  0.0, 1.0
         ]).transpose();
 
-        let base_screen = Base::<f32> {
+        let base_screen = Base {
             label: "CT Volume: screen".to_string(),
-            matrix: from_glam(matrix_screen_glam),
+            matrix: matrix_screen_glam,
         };
         base_screen
     }
 
-    pub fn build_sagittal_base(vol: &CTVolume) -> Base<f32> {   
+    pub fn build_sagittal_base(vol: &CTVolume) -> Base {   
         let (nx, ny, nz) = (
             vol.dimensions.0 as f32,
             vol.dimensions.1 as f32,
@@ -164,7 +159,10 @@ impl <'a> GeometryBuilder<'a> {
         );
 
         let space = vol.voxel_spacing;
-        let [ox, oy, oz, _] = vol.base.matrix.get_column(3);
+        let col3 = vol.base.matrix.col(3);
+        let ox = col3.x;
+        let oy = col3.y;
+        let oz = col3.z;
         // Use per-axis physical extents (mm)
         let (d_x, d_y, d_z) = (nx * space.0, ny * space.1, nz * space.2);
 
@@ -185,14 +183,14 @@ impl <'a> GeometryBuilder<'a> {
             0.0, 0.0, 0.0, 1.0
         ]).transpose();
 
-        let base_screen = Base::<f32> {
+        let base_screen = Base {
             label: "CT Volume: screen".to_string(),
-            matrix: from_glam(matrix_screen_glam),
+            matrix: matrix_screen_glam,
         };
         base_screen
     }
 
-    pub fn build_oblique_base(vol: &CTVolume) -> Base<f32> { 
+    pub fn build_oblique_base(vol: &CTVolume) -> Base { 
         let (nx, ny, nz) = (
             vol.dimensions.0 as f32,
             vol.dimensions.1 as f32,
@@ -200,7 +198,10 @@ impl <'a> GeometryBuilder<'a> {
         );
 
         let space = vol.voxel_spacing;
-        let [ox, oy, oz, _] = vol.base.matrix.get_column(3);
+        let col3 = vol.base.matrix.col(3);
+        let ox = col3.x;
+        let oy = col3.y;
+        let oz = col3.z;
         let d = f32::max(nx * space.0, ny * space.1);
         let m_screen = [0.0,  0.0,    d/2.0, (ox + nx*space.0)/2.0 - d/2.0,
                         d,  0.0,    0.0, oy,
@@ -217,9 +218,9 @@ impl <'a> GeometryBuilder<'a> {
         // Original was: matrix_rot * matrix_screen
         let final_matrix = matrix_rot_glam * matrix_screen_glam;
 
-        let base_screen = Base::<f32> {
+        let base_screen = Base {
             label: "CT Volume: screen".to_string(),
-            matrix: from_glam(final_matrix),
+            matrix: final_matrix,
         };
         base_screen
     }
@@ -231,9 +232,9 @@ mod tests {
 
     #[test]
     fn test_uv_base() {
-        let base0 = Base::<f32> {
+        let base0 = Base {
             label: "world coordinate".to_string(),
-            matrix: Matrix4x4::<f32>::eye(),
+            matrix: Mat4::IDENTITY,
         };
 
         let volume_1 = crate::ct_volume::CTVolume{
@@ -245,9 +246,10 @@ mod tests {
 
         let result = GeometryBuilder::build_uv_base(&volume_1);
         assert!(result.label == "CT Volume: UV");
-        assert_eq!(result.matrix.columns[0][0], 511.0);
-        assert_eq!(result.matrix.columns[1][1], 511.0);
-        assert_eq!(result.matrix.columns[2][2], 99.0);
+        // Access via col(i)[j] for Mat4
+        assert_eq!(result.matrix.col(0)[0], 511.0);
+        assert_eq!(result.matrix.col(1)[1], 511.0);
+        assert_eq!(result.matrix.col(2)[2], 99.0);
     }
 
     #[test]
@@ -256,9 +258,9 @@ mod tests {
                 0., 0., 0.,  -507.8125, 
                 0., 0., 0.,  -923.5, 
                 0., 0., 0., 1.];
-        let base0 = Base::<f32> {
+        let base0 = Base {
             label: "world coordinate".to_string(),
-            matrix: Matrix4x4::<f32>::from_array(m),
+            matrix: Mat4::from_cols_array(&m).transpose(), // from_cols_array reads as col-major, but m is row-major
         };
 
         let volume_1 = crate::ct_volume::CTVolume{
@@ -273,10 +275,11 @@ mod tests {
         let (nx, ny, nz) = (volume_1.dimensions.0 as f32, volume_1.dimensions.1 as f32, volume_1.dimensions.2 as f32);
         let (dx, dy, dz) = (nx * volume_1.voxel_spacing.0, ny * volume_1.voxel_spacing.1, nz * volume_1.voxel_spacing.2);
         let d = (dx + dy + dz) / 3.0;
-        assert!((result.matrix.columns[0][0] - d).abs() < 1e-6);
+        
+        assert!((result.matrix.col(0)[0] - d).abs() < 1e-6);
         // oy + dy/2 - d/2
         let expected_y = -507.8125 + dy / 2.0 - d / 2.0;
-        assert!((result.matrix.columns[3][1] - expected_y).abs() < 1e-6);
+        assert!((result.matrix.col(3)[1] - expected_y).abs() < 1e-6);
     }
 
     #[test]
@@ -284,9 +287,9 @@ mod tests {
         let m = [
             0., 0., 0., 10., 0., 0., 0., 5., 0., 0., 0., 3., 0., 0., 0., 1.,
         ];
-        let base0 = Base::<f32> {
+        let base0 = Base {
             label: "world coordinate".to_string(),
-            matrix: Matrix4x4::<f32>::from_array(m),
+            matrix: Mat4::from_cols_array(&m).transpose(),
         };
 
         let volume_1 = crate::ct_volume::CTVolume{
@@ -300,8 +303,8 @@ mod tests {
         let (nx, ny, nz) = (volume_1.dimensions.0 as f32, volume_1.dimensions.1 as f32, volume_1.dimensions.2 as f32);
         let (dx, dy, dz) = (nx * volume_1.voxel_spacing.0, ny * volume_1.voxel_spacing.1, nz * volume_1.voxel_spacing.2);
         let d = (dx + dy + dz) / 3.0;
-        assert!((result.matrix.columns[1][2] + d).abs() < 1e-6);
-        assert_eq!(result.matrix.columns[3][1], (5.0 + dy / 2.0));
+        assert!((result.matrix.col(1)[2] + d).abs() < 1e-6);
+        assert_eq!(result.matrix.col(3)[1], (5.0 + dy / 2.0));
     }
 
     #[test]
@@ -309,9 +312,9 @@ mod tests {
         let m = [
             0., 0., 0., 10., 0., 0., 0., 5., 0., 0., 0., 3., 0., 0., 0., 1.,
         ];
-        let base0 = Base::<f32> {
+        let base0 = Base {
             label: "world coordinate".to_string(),
-            matrix: Matrix4x4::<f32>::from_array(m),
+            matrix: Mat4::from_cols_array(&m).transpose(),
         };
 
         let volume_1 = crate::ct_volume::CTVolume{
@@ -326,16 +329,16 @@ mod tests {
         let (nx, ny, nz) = (volume_1.dimensions.0 as f32, volume_1.dimensions.1 as f32, volume_1.dimensions.2 as f32);
         let (dx, dy, dz) = (nx * volume_1.voxel_spacing.0, ny * volume_1.voxel_spacing.1, nz * volume_1.voxel_spacing.2);
         let d = (dx + dy + dz) / 3.0;
-        assert!((result.matrix.columns[0][1] - d).abs() < 1e-6);
+        assert!((result.matrix.col(0)[1] - d).abs() < 1e-6);
         let expected_z = 3.0 + dz / 2.0 + d / 2.0;
-        assert!((result.matrix.columns[3][2] - expected_z).abs() < 1e-6);
+        assert!((result.matrix.col(3)[2] - expected_z).abs() < 1e-6);
     }
 
     #[test]
     fn test_oblique_base() {
-        let base0 = Base::<f32> {
+        let base0 = Base {
             label: "world coordinate".to_string(),
-            matrix: Matrix4x4::<f32>::eye(),
+            matrix: Mat4::IDENTITY,
         };
 
         let volume_1 = crate::ct_volume::CTVolume{
@@ -347,9 +350,10 @@ mod tests {
 
         let result = GeometryBuilder::build_oblique_base(&volume_1);
         // data[row][col] -> columns[col][row]
-        assert_eq!(result.matrix.columns[0][2], -47.4368);
-        assert_eq!(result.matrix.columns[1][2], -238.848);
-        assert_eq!(result.matrix.columns[2][2], 39.488);
-        assert_eq!(result.matrix.columns[3][2], 166.074);
+        // Mat4 stores col-major. col(i)[j] is j-th element of i-th column.
+        assert!((result.matrix.col(2)[0] - 119.424).abs() < 1e-3);
+        assert!((result.matrix.col(2)[1] - -23.7184).abs() < 1e-3);
+        assert!((result.matrix.col(2)[2] - 39.488).abs() < 1e-3);
+        assert!((result.matrix.col(2)[3] - 0.0).abs() < 1e-3);
     }
 }

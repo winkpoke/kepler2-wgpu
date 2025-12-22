@@ -4,11 +4,10 @@
 //! provides minimal APIs to manage it. It lives in the application layer to avoid
 //! coupling the data module to rendering-specific types.
 
-use std::{io, fs};
-use std::path::PathBuf;
 use std::sync::Arc;
 use crate::core::error::KeplerError;
 use crate::data::ct_volume::CTVolume;
+use crate::data::volume_encoding::VolumeEncoding;
 
 /// AppModel encapsulates application data state like the loaded CT volume.
 #[derive(Debug)]
@@ -19,8 +18,6 @@ pub struct AppModel {
 }
 
 impl AppModel {
-    pub const HU_OFFSET: f32 = 1100.0;
-
     /// Create a new AppModel with no volume loaded.
     ///
     /// Function-level comment: Initializes the application data model to an empty state.
@@ -34,7 +31,7 @@ impl AppModel {
 
     /// Generates the byte buffer required for creating the GPU texture.
     /// Handles the logic for R16Float vs Rg8Unorm conversion internally.
-    pub fn get_volume_render_data(&self) -> Result<(Vec<u8>, bool), KeplerError> {
+    pub fn get_volume_render_data(&self) -> Result<(Vec<u8>, VolumeEncoding), KeplerError> {
         let vol = self.volume()?;
         
         if self.enable_float_volume_texture {
@@ -47,15 +44,16 @@ impl AppModel {
                     .collect();
                 bytemuck::cast_slice(&voxels_f16_bits).to_vec()
             };
-            Ok((bytes, true))
+            Ok((bytes, VolumeEncoding::HuFloat))
         } else {
+            let offset = VolumeEncoding::DEFAULT_HU_OFFSET;
             let voxel_data: Vec<u16> = vol
                 .voxel_data
                 .iter()
-                .map(|x| (*x + Self::HU_OFFSET as i16) as u16)
+                .map(|x| (*x + offset as i16) as u16)
                 .collect();
             let bytes: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
-            Ok((bytes, false))
+            Ok((bytes, VolumeEncoding::HuPackedRg8 { offset }))
         }
     }
 

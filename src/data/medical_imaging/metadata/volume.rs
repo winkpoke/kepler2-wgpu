@@ -6,7 +6,8 @@ use crate::data::medical_imaging::{
     validation::{ValidationResult, MedicalImageValidator},
 };
 use crate::data::CTVolume;
-use crate::core::coord::{Base, Matrix4x4};
+use crate::core::coord::Base;
+use glam::{Mat4, Vec3};
 
 /// Function-level comment: Standardized 3D medical volume representation
 /// Preserves all metadata and provides efficient access to pixel data
@@ -64,32 +65,24 @@ impl MedicalVolume {
         let uid = "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.365119";
 
         // scaling matrix
-        let scaling_matrix = Matrix4x4::from_array([
-            spacing[0], 0.0, 0.0, 0.0,
-            0.0, spacing[1], 0.0, 0.0,
-            0.0, 0.0, spacing[2], 0.0,
-            0.0, 0.0, 0.0, 1.0,
-        ]);
+        let scaling_matrix = Mat4::from_scale(Vec3::new(
+            spacing[0],
+            spacing[1],
+            spacing[2],
+        ));
 
         // translation matrix
-        let translation_matrix = Matrix4x4::from_array([
-            1.0, 0.0, 0.0, offset[0],
-            0.0, 1.0, 0.0, offset[1],
-            0.0, 0.0, 1.0, offset[2],
-            0.0, 0.0, 0.0, 1.0,
-        ]);
+        let translation_matrix = Mat4::from_translation(Vec3::new(
+            offset[0],
+            offset[1],
+            offset[2],
+        ));
 
-        let direction_matrix = Matrix4x4::from_array([
-            1.0, 0.0, 0.0, 0.0,
-            0.0, 1.0, 0.0, 0.0,
-            0.0, 0.0, 1.0, 0.0,
-            0.0, 0.0, 0.0, 1.0,
-        ]);
+        let direction_matrix = Mat4::IDENTITY;
 
         // Multiply the scaling, direction, and translation matrices
-        let base_matrix = direction_matrix
-            .multiply(&translation_matrix)
-            .multiply(&scaling_matrix);
+        // Order: Direction * Translation * Scaling (matches original logic)
+        let base_matrix = direction_matrix * translation_matrix * scaling_matrix;
 
         // Return the constructed CTVolume
         let ct_volume_mha = CTVolume {
@@ -104,7 +97,7 @@ impl MedicalVolume {
 
         log::info!("{:?}", &ct_volume_mha.dimensions);
         log::info!("{:?}", &ct_volume_mha.voxel_spacing);
-        log::info!("{:?}", &ct_volume_mha.base.matrix.columns);
+        log::info!("{:?}", &ct_volume_mha.base.matrix.to_cols_array_2d());
         for (index, &value) in ct_volume_mha.voxel_data.iter().enumerate() {
             if value < -1024 {
                 log::info!("索引 {}: 值 {}", index, value);

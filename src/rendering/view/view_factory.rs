@@ -7,6 +7,7 @@
 
 use super::{View, Orientation};
 use crate::CTVolume;
+use crate::data::volume_encoding::VolumeEncoding;
 
 use std::sync::Arc;
 use log::{info, debug};
@@ -209,8 +210,6 @@ impl DefaultViewFactory {
 
     /// Function-level comment: Build RenderContent from CTVolume using configured texture format path
     fn build_render_content(&self, vol: &CTVolume) -> Result<Arc<RenderContent>, Box<dyn std::error::Error>> {
-        const HU_OFFSET: f32 = 1100.0; // Keep consistent with State implementation
-
         if self.use_float_volume_texture {
             debug!("[DefaultViewFactory] Using R16Float volume texture path");
             // Convert voxel i16 to half-float (f16) bit pattern then cast to bytes
@@ -222,6 +221,7 @@ impl DefaultViewFactory {
                     .collect();
                 bytemuck::cast_slice(&voxels_f16_bits).to_vec()
             };
+            let encoding = VolumeEncoding::HuFloat;
             match RenderContent::from_bytes_r16f(
                 &self.device,
                 &self.queue,
@@ -230,18 +230,21 @@ impl DefaultViewFactory {
                 vol.dimensions.0 as u32,
                 vol.dimensions.1 as u32,
                 vol.dimensions.2 as u32,
+                encoding,
             ) {
                 Ok(rc) => Ok(Arc::new(rc)),
                 Err(e) => Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))),
             }
         } else {
             debug!("[DefaultViewFactory] Using Rg8Unorm volume texture path");
+            let offset = VolumeEncoding::DEFAULT_HU_OFFSET;
             let voxel_data: Vec<u16> = vol
                 .voxel_data
                 .iter()
-                .map(|x| (*x + HU_OFFSET as i16) as u16)
+                .map(|x| (*x + offset as i16) as u16)
                 .collect();
             let voxel_bytes: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
+            let encoding = VolumeEncoding::HuPackedRg8 { offset };
             match RenderContent::from_bytes(
                 &self.device,
                 &self.queue,
@@ -250,6 +253,7 @@ impl DefaultViewFactory {
                 vol.dimensions.0 as u32,
                 vol.dimensions.1 as u32,
                 vol.dimensions.2 as u32,
+                encoding,
             ) {
                 Ok(rc) => Ok(Arc::new(rc)),
                 Err(e) => Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))),
@@ -305,14 +309,11 @@ impl ViewFactory for DefaultViewFactory {
 
         // Configure WindowLevel defaults; mirror State logic where appropriate
         let mut winlev = WindowLevel::new();
-        if self.use_float_volume_texture {
-            // Native HU values for float texture path
-            let _ = winlev.apply_bone_preset();
-        } else {
-            // Packed RG8 path uses offset bias
-            let _ = winlev.set_bias(1100.0);
-            let _ = winlev.apply_bone_preset();
+        let decode_params = render_content.decode_parameters();
+        if decode_params.bias != 0.0 {
+            let _ = winlev.set_bias(decode_params.bias);
         }
+        let _ = winlev.apply_bone_preset();
 
         let view = MprView::new(
             render_context,
@@ -372,14 +373,11 @@ impl ViewFactory for DefaultViewFactory {
 
         // Configure WindowLevel defaults; mirror State logic where appropriate
         let mut winlev = WindowLevel::new();
-        if self.use_float_volume_texture {
-            // Native HU values for float texture path
-            let _ = winlev.apply_bone_preset();
-        } else {
-            // Packed RG8 path uses offset bias
-            let _ = winlev.set_bias(1100.0);
-            let _ = winlev.apply_bone_preset();
+        let decode_params = render_content.decode_parameters();
+        if decode_params.bias != 0.0 {
+            let _ = winlev.set_bias(decode_params.bias);
         }
+        let _ = winlev.apply_bone_preset();
 
         let view = MprView::new(
             render_context,

@@ -4,7 +4,7 @@ use glam::{Mat4, Vec3};
 
 use crate::{
     Renderable, View,
-    core::{Base, GeometryBuilder, WindowLevel, error::{KeplerResult, MprError}}, 
+    core::{GeometryBuilder, WindowLevel, error::{KeplerResult, MprError}}, 
     data::CTVolume,
      rendering::{Orientation, RenderContent, StatefulView, ViewState}
 };
@@ -60,10 +60,6 @@ pub struct MprView {
     content_h_mm: f32,
     /// Uniform viewport padding in pixels
     padding_px: u32,
-}
-
-fn base_to_glam(base: &Base<f32>) -> Mat4 {
-    Mat4::from_cols_array_2d(&base.matrix.columns)
 }
 
 impl MprView {
@@ -157,8 +153,8 @@ impl MprView {
         let base_screen_legacy = orientation.build_base(vol);
         let base_uv_legacy = GeometryBuilder::build_uv_base(vol);
 
-        let base_screen = base_to_glam(&base_screen_legacy);
-        let base_uv = base_to_glam(&base_uv_legacy);
+        let base_screen = base_screen_legacy.matrix;
+        let base_uv = base_uv_legacy.matrix;
 
         // Initialize view state with validated parameters
         let pan = validated_translate;

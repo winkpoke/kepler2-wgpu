@@ -5,6 +5,7 @@ use wgpu::{Device, Queue, RenderPipeline, BindGroupLayout, BindGroup, Buffer, Bu
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::layout::compute_aspect_fit;
 use crate::rendering::view::View;
+use crate::data::volume_encoding::VolumeEncoding;
 
 /// Function-level comment: Configuration for Maximum Intensity Projection (MIP) rendering.
 /// Provides fixed quality settings for the MVP implementation to minimize complexity
@@ -57,7 +58,7 @@ impl Default for MipUniforms {
             ray_step_size: 0.01,
             max_steps: 512.0,
             is_packed_rg8: 1.0,  // Default to packed format
-            bias: 1100.0,
+            bias: VolumeEncoding::DEFAULT_HU_OFFSET,
             window: 1500.0,
             level: 400.0,
             pan_x: 0.0,
@@ -347,10 +348,7 @@ impl MipView {
         log::trace!("[MIP_UPDATE] Starting MIP update");
         
         // Derive texture format flag for shader decoding
-        let is_packed_rg8 = match self.wgpu_impl.render_content().texture_format {
-            wgpu::TextureFormat::Rg8Unorm => 1.0,
-            _ => 0.0,
-        };
+        let decode_params = self.wgpu_impl.render_content().decode_parameters();
 
         // Fine-tune window/level for optimal contrast in medical data
         // Use bone defaults to match MPR initial expectations
@@ -360,8 +358,8 @@ impl MipView {
         let uniforms = MipUniforms {
             ray_step_size: 0.005,  // Smaller step size for better quality
             max_steps: 1000.0,     // More steps to ensure we traverse the volume
-            is_packed_rg8,
-            bias: if is_packed_rg8 > 0.5 { 1100.0 } else { 0.0 },
+            is_packed_rg8: decode_params.is_packed_flag as f32,
+            bias: decode_params.bias,
             window,
             level,
             pan_x: self.pan[0],
@@ -375,7 +373,7 @@ impl MipView {
 
         log::trace!(
             "[MIP_UPDATE] Uniforms set: is_packed_rg8={}, window={}, level={}, step={}, max_steps={}",
-            is_packed_rg8, window, level, uniforms.ray_step_size, uniforms.max_steps
+            decode_params.is_packed_flag, window, level, uniforms.ray_step_size, uniforms.max_steps
         );
     }
 

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2025-12-19T11-30-00
+- **Complete Removal of Matrix4x4 and Vector3**
+  - **Breaking Change**: Removed `Matrix4x4` and `Vector3` structs from `src/core/coord/mod.rs`. Use `glam::Mat4` and `glam::Vec3` instead.
+  - **Breaking Change**: Removed `GeometricScalar` trait and generic `Base<T>` struct. `Base` is now a non-generic struct using `glam::Mat4`.
+  - **Breaking Change**: Removed `get_matrix()` from `Base`. Access `base.matrix` directly.
+  - Deleted dead code `src/rendering/view/mpr/render_context.rs`.
+  - Updated `GeometryBuilder` and `DicomRepo` to construct `Base` using `glam::Mat4`.
+  - Updated `_mesh_render_context.rs` to accept `glam::Mat4` for model updates.
+  - This completes the transition to `glam` for all coordinate system and rendering operations.
+
 ## 2025-12-19T10-00-00
 - **Refactor Matrix4x4 to Column-Major Layout**
   - Changed `Matrix4x4` internal storage from `data: [[T; 4]; 4]` (row-major) to `columns: [[T; 4]; 4]` (column-major).
