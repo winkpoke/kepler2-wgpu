@@ -375,21 +375,8 @@ impl App {
 
     /// Helper to setup the default 4-MPR view layout
     fn setup_default_layout(&mut self, texture: Arc<RenderContent>, vol: &CTVolume) -> Result<(), KeplerError> {
-        self.app_view.layout.remove_all();
-        let view_factory = &self.app_view.view_factory;
-        for orientation in [ALL_ORIENTATIONS[0], ALL_ORIENTATIONS[1], ALL_ORIENTATIONS[2], ALL_ORIENTATIONS[0]].iter() {
-            let view = view_factory
-                .create_mpr_view_with_content(
-                    texture.clone(),
-                    &vol,
-                    *orientation,
-                    (0, 0),
-                    (0, 0),
-                )
-                .map_err(|e| KeplerError::Graphics(e.to_string()))?;
-            self.app_view.layout.add_view(view);
-        }
-        Ok(())
+        self.app_view.reset_to_default_mpr_layout(texture, vol)
+            .map_err(|e| KeplerError::Graphics(e.to_string()))
     }
 
     pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume)  -> Result<Arc<RenderContent>, KeplerError> {
@@ -452,36 +439,14 @@ impl App {
         mesh_index: Option<usize>,
         iso_value: f32,
     ) -> Result<(), KeplerError> {
-        self.app_view.layout.remove_all();
-        let view_factory = &self.app_view.view_factory;
-        
-        // Add 4 MPR views
-        for orientation in [ALL_ORIENTATIONS[indices[0]], ALL_ORIENTATIONS[indices[1]], ALL_ORIENTATIONS[indices[2]], ALL_ORIENTATIONS[indices[3]]].iter() {
-            let view = view_factory
-                .create_mpr_view_with_content(
-                    texture.clone(),
-                    vol,
-                    *orientation,
-                    (0, 0),
-                    (0, 0),
-                )
-                .map_err(|e| KeplerError::Graphics(e.to_string()))?;
-            self.app_view.layout.add_view(view);
-        }
-
-        if mip.is_some() {
-            if let Ok(mip_view) = self.app_view.view_factory.create_mip_view_with_content(texture.clone(), (0, 0), (0, 0)) {
-                self.app_view.layout.replace_view_at(3, mip_view);
-            }
-        }
-
-        if mesh_index.is_some() {
-             let mesh = Mesh::new(vol, iso_value, None);
-             if let Ok(mesh_view) = self.app_view.view_factory.create_mesh_view(&mesh, (0, 0), (0, 0)) {
-                 self.app_view.layout.replace_view_at(1, mesh_view);
-             }
-        }
-        Ok(())
+        self.app_view.configure_mesh_layout(
+            texture,
+            vol,
+            indices,
+            mip,
+            mesh_index,
+            iso_value
+        ).map_err(|e| KeplerError::Graphics(e.to_string()))
     }
 
     /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
@@ -567,60 +532,8 @@ impl App {
                     return;
                 }
             };
-            self.app_view.set_one_cell_layout();
-            self.app_view.layout.remove_all();
-            let view_factory = &self.app_view.view_factory;
-            match mode {
-                0 => {
-                    let orientation = ALL_ORIENTATIONS[orientation_index];
-                    let view = view_factory
-                        .create_mpr_view_with_content(
-                            texture.clone(),
-                            &vol,
-                            orientation,
-                            (0, 0),
-                            (0, 0),
-                        )
-                        .unwrap();
-                    self.app_view.layout.add_view(view);
-                }
-                1 => {
-                    let mip_view = view_factory
-                        .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))
-                        .unwrap();
-                    self.app_view.layout.add_view(mip_view);
-                }
-                2 => {
-                    let mesh_view = if let Some(ref wlww) = wwwl {
-                        let wl = *wlww.get(0).unwrap_or(&f32::NAN);
-                        let ww = *wlww.get(1).unwrap_or(&f32::NAN);
-                        let iso_from_wl = if wl.is_nan() || ww.is_nan() { iso_value } else { wl + ww * 0.5 };
-                        let mesh = Mesh::new(&vol, iso_from_wl, Some([wl, ww]));
-                        self.app_view.view_factory
-                            .create_mesh_view(&mesh, (0, 0), (0, 0))
-                            .unwrap()
-                    }else {
-                        let mesh = Mesh::new(&vol, iso_value, None);
-                        self.app_view.view_factory
-                            .create_mesh_view(&mesh, (0, 0), (0, 0))
-                            .unwrap()
-                    };
-                    self.app_view.layout.add_view(mesh_view);
-                }
-                _ => {
-                    log::warn!("Unsupported mode {} for one-cell layout; defaulting to MPR.", mode);
-                    let orientation = ALL_ORIENTATIONS[orientation_index];
-                    let view = view_factory
-                        .create_mpr_view_with_content(
-                            texture.clone(),
-                            &vol,
-                            orientation,
-                            (0, 0),
-                            (0, 0),
-                        )
-                        .unwrap();
-                    self.app_view.layout.add_view(view);
-                }
+            if let Err(e) = self.app_view.set_layout_mode_single(texture, &vol, mode, orientation_index, iso_value, wwwl) {
+                 log::error!("Failed to set layout mode single: {}", e);
             }
 
             log::info!(
