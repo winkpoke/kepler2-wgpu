@@ -45,20 +45,17 @@ pub struct App {
     pub(crate) graphics_context: GraphicsContext,
     pub(crate) app_view: AppView,
     pub(crate) app_model: AppModel,
-    /// Cached mesh to avoid recomputation when creating Mesh views
     pub(crate) cached_mesh: Option<crate::mesh::mesh::Mesh>,
+    pub(crate) saved_states: [usize; 4],
 }
 
 impl App {
-    
     pub async fn new(window: Arc<Window>) -> Result<App, KeplerError> {
         App::initialize(window).await
     }
 
     pub async fn initialize(window: Arc<Window>) -> Result<App, KeplerError> {
         let graphics = Graphics::new(window.clone()).await?;
-        // println!("supported texture formats: {:?}", surface_caps.formats);
-        // println!("format: {:?}", config.format);
 
         let layout = DynamicLayout::new(
             (graphics.surface_config.width, graphics.surface_config.height),
@@ -96,6 +93,7 @@ impl App {
             app_view: AppView::new(layout, factory),
             app_model: AppModel::new(default_float),
             cached_mesh: None,
+            saved_states: [0; 4],
         })
     }
 
@@ -124,11 +122,6 @@ impl App {
             self.app_model.enable_float_volume_texture,
         );
         log::info!("ViewFactory reinitialized after graphics swap.");
-        
-        // self.resize(winit::dpi::PhysicalSize {
-        //     width: self.surface_config().width,
-        //     height: self.surface_config().height,
-        // });
     }
 
     /// Get a reference to the window
@@ -138,7 +131,6 @@ impl App {
 
     // Delegation methods for accessing Graphics through GraphicsContext
     // Function-level comment: These methods provide access to graphics resources through the GraphicsContext
-    
     /// Access the underlying Graphics object
     pub fn graphics(&self) -> &Graphics {
         self.graphics_context.graphics()
@@ -237,7 +229,7 @@ impl App {
         });
 
         // Function-level comment: Determine which rendering passes to enable based on view types present in layout
-        let has_mesh_view = self.app_model.enable_mesh;
+        let has_mesh_view = self.has_mesh_view();
         let has_mip_view = self.has_mip_content();
         let has_mpr_view = self.has_mpr_view();
         
@@ -374,16 +366,11 @@ impl App {
         }
     }
 
-    /// Helper to setup the default 4-MPR view layout
-    fn setup_default_layout(&mut self, texture: Arc<RenderContent>, vol: &CTVolume) -> Result<(), KeplerError> {
-        self.app_view.reset_to_default_mpr_layout(texture, vol)
-            .map_err(|e| KeplerError::Graphics(e.to_string()))
-    }
-
     pub fn load_data_from_ct_volume(&mut self, vol: &CTVolume)  -> Result<Arc<RenderContent>, KeplerError> {
         let texture = self.load_render_content(vol)?;
-        self.setup_default_layout(texture.clone(), vol)?;
-        // Return the shared render content for caller access
+        let _ = self.app_view.reset_to_default_mpr_layout(texture.clone(), vol)
+            .map_err(|e| KeplerError::Graphics(e.to_string()));
+        self.saved_states = [0, 1, 2, 0];
         Ok(texture)
     }
 
@@ -392,57 +379,6 @@ impl App {
         if let Err(e) = self.load_data_from_ct_volume(&vol) {
             log::error!("Failed to load data from repo: {}", e);
         }
-    }
-
-    /// Helper to capture MPR view states (scale, pan, etc.)
-    fn capture_mpr_states(&self) -> Vec<(Orientation, f32, [f32; 3], f32, f32, f32)> {
-        self.app_view.layout.views().iter()
-            .filter_map(|v| v.as_any().downcast_ref::<MprView>())
-            .map(|v| (
-                v.get_orientation().clone(),
-                v.get_scale(),
-                v.get_translate_in_screen_coord(),
-                v.get_slice_mm(),
-                v.get_window_level(),
-                v.get_window_width()
-            ))
-            .collect()
-    }
-
-    /// Helper to restore MPR view states
-    fn restore_mpr_states(&mut self, saved_states: &[(Orientation, f32, [f32; 3], f32, f32, f32)]) {
-        for view in self.app_view.layout.views_mut() {
-            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                if let Some(state) = saved_states.iter().find(|s| s.0 == *mpr_view.get_orientation()) {
-                    let (_, scale, pan, slice, wl, ww) = state;
-                    let _ = mpr_view.set_scale(*scale);
-                    let _ = mpr_view.set_translate_in_screen_coord(*pan);
-                    let _ = mpr_view.set_slice_mm(*slice);
-                    let _ = mpr_view.set_window_level(*wl);
-                    let _ = mpr_view.set_window_width(*ww);
-                }
-            }
-        }
-    }
-
-    /// Helper to configure views for mesh mode (4 MPRs + optional MIP/Mesh)
-    fn configure_mesh_mode_views(
-        &mut self,
-        texture: Arc<RenderContent>,
-        vol: &CTVolume,
-        indices: [usize; 4],
-        mip: Option<usize>,
-        mesh_index: Option<usize>,
-        iso_value: f32,
-    ) -> Result<(), KeplerError> {
-        self.app_view.configure_mesh_layout(
-            texture,
-            vol,
-            indices,
-            mip,
-            mesh_index,
-            iso_value
-        ).map_err(|e| KeplerError::Graphics(e.to_string()))
     }
 
     pub fn set_mesh_mode(
@@ -517,72 +453,28 @@ impl App {
             if one_cell {
                 self.app_view.layout.add_view(mesh_view);
             } else {
-                // Function-level comment: Safely replace view, handling invalid indices from frontend
-                let view_count = self.app_view.layout.views().len();
-                if mesh_index < view_count {
-                    self.app_view.layout.replace_view_at(mesh_index, mesh_view);
-                } else {
-                    log::warn!("Invalid mesh_index {} for layout with {} views. Defaulting to index 2 or appending.", mesh_index, view_count);
-                    if view_count > 2 {
-                         self.app_view.layout.replace_view_at(3, mesh_view);
-                    } else {
-                        self.app_view.layout.add_view(mesh_view);
-                    }
-                }
+                self.app_view.layout.replace_view_at(mesh_index, mesh_view);
             }
         }
     }
 
-    /// Function-level comment: Enable or disable mesh mode at runtime by rebuilding the layout appropriately.
-    pub fn set_mpr_or_mip(&mut self, mip: Option<usize>, index: Option<usize>, orientation_index: usize) {
-        let mut one_cell = false;
-
+    /// Function-level comment: Set MPR or MIP layout, optionally cropping to specified world bounds.
+    /// Mode: 0= MPR, 1= MIP. For MPR, provide `orientation_index` to select orientation.
+    pub fn set_mpr_mip_mode(&mut self, mode: usize, mip: Option<usize>, mesh_index: Option<usize>, index: Option<usize>, orientation_index: usize) {
         // Switch to grid layout if currently one-cell
         if self.app_view.is_one_cell_layout() {
-            one_cell = true;
             self.app_view.set_grid_layout(2, 2, 2);
         }
 
-        if let Some(vol) = self.app_model.volume().ok().map(|v| v.clone()) {
-            // Capture state of existing MPR views to restore later
-            let saved_states = self.capture_mpr_states();
-
-            // Create texture without resetting layout (optimized)
-            let texture = if !one_cell {
-                self.load_render_content(&vol).unwrap()
-            }else{
-                self.load_data_from_ct_volume(&vol).unwrap()
-            };
-            
-            // Add base MPR views
-            if let Some(index) = index{
-                let view = self.app_view.view_factory.create_mpr_view_with_content(
-                    texture.clone(), &vol, ALL_ORIENTATIONS[orientation_index], (0, 0), (0, 0)
-                ).unwrap();
-                self.app_view.layout.replace_view_at(index, view);
-            }
-
-            // Replace with MIP if requested
-            if let Some(mip_idx) = mip {
-                if let Ok(mip_view) = self.app_view.view_factory.create_mip_view_with_content(texture.clone(), (0, 0), (0, 0)) {
-                    self.app_view.layout.replace_view_at(mip_idx, mip_view);
-                }
-            }
-
-            // Restore state to matching MPR views
-            self.restore_mpr_states(&saved_states);
+        if let Some(index) = index{
+            self.saved_states[index] = orientation_index;
         }
-    }
 
-    /// Switch to a single-cell layout and display the requested view type (MPR/MIP/MESH).
-    /// Mode: 0=MPR, 1=MIP. For MPR, provide `orientation_index` to select orientation.
-    pub fn set_one_cell_layout(
-        &mut self,
-        mode: usize,
-        orientation_index: usize
-    ) {
-        let vol_option = self.app_model.volume().ok().map(|vol| vol.clone());
-        if let Some(vol) = vol_option {
+        if let Some(vol) = self.app_model.volume().ok().map(|v| v.clone()) {
+            if self.saved_states.is_empty(){
+                self.load_data_from_ct_volume(&vol).unwrap();
+            }
+
             let texture = match self.load_render_content(&vol) {
                 Ok(t) => t,
                 Err(e) => {
@@ -590,42 +482,21 @@ impl App {
                     return;
                 }
             };
-            self.app_view.set_one_cell_layout();
-            self.app_view.layout.remove_all();
 
-            let view_factory = &self.app_view.view_factory;
             match mode {
+                0 => {
+                    let _ = self.app_view.set_layout_mode_single(texture.clone(), &vol, mode, orientation_index);
+                }
                 1 => {
-                    let mip_view = view_factory
-                        .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))
-                        .unwrap();
-                    self.app_view.layout.add_view(mip_view);
+                    let _ = self.app_view.set_layout_mode_single(texture.clone(), &vol, mode, orientation_index);
                 }
                 _ => {
-                    let orientation = ALL_ORIENTATIONS[orientation_index];
-                    let view = view_factory
-                        .create_mpr_view_with_content(
-                            texture.clone(),
-                            &vol,
-                            orientation,
-                            (0, 0),
-                            (0, 0),
-                        )
-                        .unwrap();
-                    self.app_view.layout.add_view(view);
+                    let _ = self.app_view.configure_mesh_layout(texture.clone(), &vol, self.saved_states, mip, mesh_index, self.cached_mesh.clone());
                 }
             }
-
+        }else {
             log::info!(
-                "Switched to one-cell layout: mode={}, orientation_index={}, one_cell={}",
-                mode,
-                orientation_index,
-                self.app_view.is_one_cell_layout(),
-            );
-        } else {
-            log::info!(
-                "One-cell layout requested (mode={}) without loaded volume; will apply on next data load.",
-                mode
+                "MPR/MIP layout requested without loaded volume; will apply on next data load."
             );
         }
     }

@@ -195,15 +195,10 @@ impl RenderApp {
                     state.set_mesh_mode(save_mesh, crop, sx, sy, sz, lx, ly, lz, one_cell, mesh_index, iso_min, iso_max);
                     log::info!("SetMeshMode event: world_min= [{sx:?},{sy:?},{sz:?}], world_max= [{lx:?},{ly:?},{lz:?}]");
                 }
-                Event::UserEvent(UserEvent::SetMprMip(mip, index, orientation_index)) => {
+                Event::UserEvent(UserEvent::SetMprMip(mode, mip, mesh_index, index, orientation_index)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_mpr_or_mip(mip,index, orientation_index);
-                    log::info!("SetEnableMesh toggled at runtime: mip={:?}, index={:?}, orientation_index={orientation_index}", mip, index);
-                }
-                Event::UserEvent(UserEvent::SetOneCellLayout(mode, orientation_index)) => {
-                    // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_one_cell_layout(mode, orientation_index);
-                    log::info!("OneCellLayout set to: mode={mode}, orientation_index={orientation_index}");
+                    state.set_mpr_mip_mode(mode, mip, mesh_index, index, orientation_index);
+                    log::info!("SetEnableMesh toggled at runtime: mode={mode}, mip={:?}, mesh_index={:?}, index={:?}, orientation_index={orientation_index}", mip, mesh_index, index);
                 }
                 Event::UserEvent(UserEvent::SetCenterAtPointInMM(index, x_mm, y_mm, z_mm)) => {
                     state.set_center_at_point_in_mm(index, x_mm, y_mm, z_mm);
@@ -347,7 +342,7 @@ impl RenderApp {
                                 ..
                             } => {
                                 // Function-level comment: Toggle mesh mode on 'M' key press at runtime.
-                                state.set_mpr_or_mip(Some(3),Some(0), 1);
+                                state.set_mpr_mip_mode(2, Some(3),None,Some(0), 1);
                                 log::info!("KeyM pressed: mpr_or_mip toggled to mip");
                             }
                             WindowEvent::KeyboardInput {

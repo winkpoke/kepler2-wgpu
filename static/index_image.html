@@ -197,19 +197,12 @@
         </fieldset>
 
         <fieldset class="pill" style="margin-bottom:10px">
-          <legend>单视图模式</legend>
-          <div class="row">
-            <span id="mode-label">模式:</span>
-            <input type="number" id="mode" step="1" value="0" min="0" max="1">
-            <span id="orientation_index-label">方向索引:</span>
-            <input type="number" id="orientation_index" step="1" value="0" min="0" max="2">
-            <button id="one-cell-submit">应用</button>
-          </div>
-        </fieldset>
-
-        <fieldset class="pill" style="margin-bottom:10px">
           <legend>视图切换</legend>
           <div class="grid">
+            <div>
+              <span id="mode-label">模式:</span>
+              <input type="number" id="mode" step="1" value="0" min="0" max="1">
+            </div>
             <div>
               <span id="index-label">index:</span>
               <input type="number" id="index" step="1.0" value="0.0">
@@ -236,6 +229,7 @@
             <div>
               <span id="mesh_index-label">mesh_index:</span>
               <input type="number" id="mesh_index" step="1.0" value="0.0">
+              <input type="checkbox" id="change_mesh_index" />
               <span id="one_cell_mesh-label">one_cell:</span>
               <input type="checkbox" id="one_cell" />
             </div>
@@ -434,6 +428,7 @@
       spacing: [],
       dim:[],
       mip: null,
+      mesh_index: null,
       index : null,
       enable_rotation: false,
     };
@@ -695,6 +690,15 @@
     byId('mesh').addEventListener('click', () => {
       const checkboxChangeMip = byId('change_mip').checked;
       const checkboxChangeIndex = byId('change_index').checked;
+      const checkboxChangeMeshIndex = byId('change_mesh_index').checked;
+      const mode = parseInt(byId('mode').value, 10); // Mode: 0=MPR, 1=MIP
+
+      if (checkboxChangeMeshIndex) {
+        state.mesh_index = parseInt(byId('mesh_index').value, 10);
+        console.log('meshclick_mesh_index:',state.mesh_index);
+      }else{
+        state.mesh_index = null;
+      }
       
       if (checkboxChangeMip) {
         state.mip = parseInt(byId('mip').value, 10);
@@ -716,14 +720,7 @@
         return;
       }
 
-      gl_canvas.set_mpr_or_mip(state.mip, state.index, index_orientation);
-    });
-
-    byId('one-cell-submit').addEventListener('click', () => {
-      const mode = parseInt(byId('mode').value, 10); // Mode: 0=MPR, 1=MIP
-      const orientation_index = parseInt(byId('orientation_index').value, 10);
-
-      gl_canvas.set_one_cell_layout(mode, orientation_index);
+      gl_canvas.set_mpr_mip_mode(mode, state.mip, state.mesh_index, state.index, index_orientation);
     });
     
     byId('3d-submit').addEventListener('click', () => {
