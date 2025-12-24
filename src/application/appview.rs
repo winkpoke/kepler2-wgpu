@@ -265,6 +265,7 @@ impl AppView {
         vol: &CTVolume,
         indices: [usize; 4],
         mip: Option<usize>,
+        orientation_index: usize,
         mesh_index: Option<usize>,
         cached_mesh: Option<crate::mesh::mesh::Mesh>,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -286,6 +287,7 @@ impl AppView {
         if mip.is_some() {
             let mip_view = self.view_factory.create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))?;
             LayoutContainer::replace_view_at(&mut self.layout, mip.unwrap(), mip_view);
+            let _ = self.set_mip_mode(mip.unwrap(), orientation_index as u32);
         }
         
         if mesh_index.is_some() {

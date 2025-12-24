@@ -490,7 +490,7 @@ impl App {
                     let _ = self.app_view.set_layout_mode_single(texture.clone(), &vol, mode, orientation_index);
                 }
                 _ => {
-                    let _ = self.app_view.configure_mesh_layout(texture.clone(), &vol, self.saved_states, mip, mesh_index, self.cached_mesh.clone());
+                    let _ = self.app_view.configure_mesh_layout(texture.clone(), &vol, self.saved_states, mip, orientation_index, mesh_index, self.cached_mesh.clone());
                 }
             }
         }else {

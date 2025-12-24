@@ -340,20 +340,23 @@ impl RenderApp {
                                 event:
                                     KeyEvent {
                                         state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyM),
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyT),
                                         ..
                                     },
                                 ..
                             } => {
                                 // Function-level comment: Toggle mesh mode on 'M' key press at runtime.
-                                state.set_mpr_mip_mode(2, Some(3),None,Some(0), 1);
-                                log::info!("KeyM pressed: mpr_or_mip toggled to mip");
+                                state.set_mpr_mip_mode(2, None, None, Some(3), 2);
+                                state.set_mpr_mip_mode(2, Some(0), None, None, 0);
+                                state.set_mip_mode(0, 1);
+                                state.set_slab_thickness(0, 25.0);
+                                log::info!("KeyT pressed: mpr_or_mip toggled to mip");
                             }
                             WindowEvent::KeyboardInput {
                                 event:
                                     KeyEvent {
                                         state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyN),
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyM),
                                         ..
                                     },
                                 ..
@@ -361,13 +364,13 @@ impl RenderApp {
                                 state.set_mesh_mode(false, true, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465,true,0, 300.0, 400.0);
                                 state.set_mesh_rotation_angle_degrees(-90.0, 0.0, 0.0);
                                 state.set_mesh_scale(3.0);
-                                log::info!("KeyN pressed: mesh mode toggled to {}", false);
+                                log::info!("KeyM pressed: mesh mode toggled to {}", false);
                             }
                             WindowEvent::KeyboardInput {
                                 event:
                                     KeyEvent {
                                         state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyB),
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyW),
                                         ..
                                     },
                                 ..
@@ -378,13 +381,13 @@ impl RenderApp {
                                 state.set_window_width(0, wl);
                                 state.set_window_level(1, wc);
                                 state.set_window_width(1, wl);
-                                log::info!("KeyB pressed: window level {} width {}", wc, wl);
+                                log::info!("KeyW pressed: window level {} width {}", wc, wl);
                             }
                             WindowEvent::KeyboardInput {
                                 event:
                                     KeyEvent {
                                         state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyV),
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyC),
                                         ..
                                     },
                                 ..
@@ -400,7 +403,7 @@ impl RenderApp {
                                 event:
                                     KeyEvent {
                                         state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyC),
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyS),
                                         ..
                                     },
                                 ..
@@ -412,7 +415,7 @@ impl RenderApp {
                                 event:
                                     KeyEvent {
                                         state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyX),
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyE),
                                         ..
                                     },
                                 ..

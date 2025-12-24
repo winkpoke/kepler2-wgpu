@@ -276,6 +276,11 @@
               <button id="slice-submit">应用</button>
             </div>
             <div>
+              <label for="slab-thickness-input">slab thickness</label>
+              <input type="number" id="slab-thickness" step="0.5" value="0.0">
+              <button id="slab-thickness-submit">应用</button>
+            </div>
+            <div>
               <label for="scale-input">Scale</label>
               <input type="number" id="scale-input" step="1.0" value="1.0">
               <button id="scale-submit">应用</button>
@@ -556,6 +561,22 @@
           return;
       }
         gl_canvas.set_slice_mm(indexValue, sliceValue);
+    })
+
+    byId('slab-thickness-submit').addEventListener('click', () => {
+      const thicknessValue = byId('slab-thickness').value;
+      const input_index = byId('index-input');
+
+      const indexValue = parseInt(input_index.value);
+      if (isNaN(thicknessValue)) {
+          alert('Please enter a valid number');
+          return;
+      }
+      if (!gl_canvas) {
+          alert('Please select a series first!');
+          return;
+      }
+        gl_canvas.set_slab_thickness(indexValue, thicknessValue);
     })
 
     byId('set-center').addEventListener('click', async () => {
