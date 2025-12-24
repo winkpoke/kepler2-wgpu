@@ -1,18 +1,4 @@
-# application Specification
-
-## Purpose
-Defines the application layer architecture, ensuring strict separation of concerns between data state management (`AppModel`) and UI/rendering orchestration (`App`).
-## Requirements
-### Requirement: Application Model Responsibility
-The `AppModel` SHALL be the single source of truth for application configuration state and data preparation logic.
-
-#### Scenario: Data Preparation for Rendering
-- **WHEN** the application needs to render a loaded volume
-- **THEN** `AppModel` provides the raw byte buffer and format metadata (e.g., is_float) without requiring the caller to perform voxel arithmetic.
-
-#### Scenario: State Management
-- **WHEN** the user toggles mesh mode or changes texture precision settings
-- **THEN** this state is updated in `AppModel`, not in the UI controller (`App`).
+## ADDED Requirements
 
 ### Requirement: View State Encapsulation
 The `AppView` SHALL be responsible for serializing and deserializing transient view state (such as orientation, scale, pan, and slice position) to support layout transitions without data loss.
@@ -27,4 +13,3 @@ The `AppView` SHALL provide type-safe interfaces for modifying view properties, 
 #### Scenario: Updating Window Level
 - **WHEN** the `App` receives a request to update window level for a specific view index
 - **THEN** it calls a single method on `AppView` (e.g., `set_window_level`), which handles the lookup, type check, and error logging internally.
-

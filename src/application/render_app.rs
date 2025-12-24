@@ -204,6 +204,10 @@ impl RenderApp {
                     state.set_center_at_point_in_mm(index, x_mm, y_mm, z_mm);
                     log::info!("CenterAtPointInMM set to: x_mm={x_mm}, y_mm={y_mm}, z_mm={z_mm}");
                 }
+                Event::UserEvent(UserEvent::SetSlabThickness(index, thickness)) => {
+                    state.set_slab_thickness(index, thickness);
+                    log::info!("SlabThickness set to: index={index}, thickness={thickness}");
+                }
                 // Mesh control events
                 Event::UserEvent(UserEvent::SetMeshRotationEnabled(_index, enabled)) => {
                     state.set_mesh_rotation_enabled(enabled);
