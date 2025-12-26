@@ -1006,11 +1006,10 @@
                   label: serie.uid,
                   images: []
                 };
-                byId("PatientPosition").textContent = serie.patient_position || "—";
-                log(`选择患者位置: ${serie.patient_position}`);
                 // 获取序列的图像（images）
                 let images_id = JSON.parse(repo.get_images_by_series(serie.uid));
                 serie_data.images = images_id; // 添加图像数据
+                byId("PatientPosition").textContent = images_id[0].patient_position || "—";
                 study_data.children.push(serie_data); // 添加序列数据
               }
               patient_data.children.push(study_data); // 添加研究数据
