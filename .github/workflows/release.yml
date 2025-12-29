@@ -1,4 +1,4 @@
-name: Release
+name: Publish to npm
 on:
   push:
     tags:
@@ -6,6 +6,9 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v3
       - name: Setup Node.js
@@ -13,10 +16,19 @@ jobs:
         with:
           node-version: '23'
           registry-url: 'https://registry.npmjs.org'
-      - name: Install dependencies
-        run: npm install
-      - name: Build
+      
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+      
+      - name: Build WebAssembly package
         run: npm run build
+      
       - name: Publish to npm
         run: npm publish
         env:
