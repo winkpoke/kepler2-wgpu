@@ -55,38 +55,3 @@ pub fn read_dicom() -> Result<()> {
     // warn!("{:?}", pixels);
     Ok(())
 }
-
-#[cfg(test)]
-mod tests {
-    use dicom_object::open_file;
-
-    use super::*;
-
-    #[test]
-    fn test_dicom() -> Result<()> {
-        let obj = open_file("C:\\share\\imrt\\CT.RT001921_1.dcm")?;
-        let patient_name = obj.element_by_name("PatientName")?.to_str()?;
-        let modality = obj.element_by_name("Modality")?.to_str()?;
-        let pixel_data_bytes = obj.element(Tag(0x7FE0, 0x0010))?.to_bytes()?;
-        let pixels: &[i16] = cast_slice(&pixel_data_bytes);
-        println!("{:?}", patient_name);
-        println!("{:?}", modality);
-        println!("num of pxiels: {:?}", pixels.len());
-        Ok(())
-    }
-
-    #[test]
-    fn test_dicom_reader() -> Result<()> {
-        let bytes = include_bytes!("C:\\share\\imrt\\CT.RT001921_1.dcm");
-        let mut f = std::io::Cursor::new(bytes);
-        let obj = from_reader(f)?;
-        let patient_name = obj.element_by_name("PatientName")?.to_str()?;
-        let modality = obj.element_by_name("Modality")?.to_str()?;
-        let pixel_data_bytes = obj.element(Tag(0x7FE0, 0x0010))?.to_bytes()?;
-        let pixels: &[i16] = cast_slice(&pixel_data_bytes);
-        println!("{:?}", patient_name);
-        println!("{:?}", modality);
-        println!("num of pxiels: {:?}", pixels.len());
-        Ok(())
-    }
-}
