@@ -1,0 +1,16 @@
+{
+  "name": "kepler2-wgpu",
+  "version": "0.5.0",
+  "description": "Kepler2-WGPU is a Rust-based project designed for processing and visualizing **DICOM** (Digital Imaging and Communications in Medicine) images using **WebGPU**. This project provides powerful tools for handling DICOM files, generating **CT volumes**, and rendering them both in **native** and **web environments**. It leverages modern technologies like **WebGPU** for high-performance rendering, and supports fast **asynchronous** I/O operations to optimize the workflow.",
+  "main": "index.js",
+  "directories": {
+    "doc": "doc",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
