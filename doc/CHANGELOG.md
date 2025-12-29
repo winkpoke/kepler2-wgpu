@@ -1,5 +1,14 @@
 # Changelog
 
+## 2025-12-29T10-30-00
+- **Fixed MPR Slice Count Off-by-One Error**
+  - **Critical Fix**: Modified `build_uv_base` in `src/core/geometry.rs` to use the full slice count (N) for the scaling matrix instead of N-1.
+  - This resolves the issue where MPR views displayed one less slice than the original DICOM volume (e.g., 130 instead of 131).
+  - Updated `core::geometry::tests::test_uv_base` to verify the correct scaling behavior.
+- **Fixed DICOM Tests**
+  - Resolved compilation errors in `tests/dicom_tests.rs` by adding missing imports (`anyhow::Result`, `dicom_core::Tag`, `bytemuck::cast_slice`, `dicom_object::from_reader`) and removing unused `mut`.
+  - Verified all DICOM tests pass.
+
 ## 2025-12-19T11-30-00
 - **Complete Removal of Matrix4x4 and Vector3**
   - **Breaking Change**: Removed `Matrix4x4` and `Vector3` structs from `src/core/coord/mod.rs`. Use `glam::Mat4` and `glam::Vec3` instead.
