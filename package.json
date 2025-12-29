@@ -1,16 +1,36 @@
 {
   "name": "kepler2-wgpu",
   "version": "0.5.0",
-  "description": "Kepler2-WGPU is a Rust-based project designed for processing and visualizing **DICOM** (Digital Imaging and Communications in Medicine) images using **WebGPU**. This project provides powerful tools for handling DICOM files, generating **CT volumes**, and rendering them both in **native** and **web environments**. It leverages modern technologies like **WebGPU** for high-performance rendering, and supports fast **asynchronous** I/O operations to optimize the workflow.",
-  "main": "index.js",
-  "directories": {
-    "doc": "doc",
-    "test": "tests"
-  },
+  "description": "Kepler2-WGPU is a Rust-based project designed for processing and visualizing DICOM images using WebGPU. It provides tools for handling DICOM files, generating CT volumes, and rendering them in native and web environments with high-performance WebGPU rendering and async I/O.",
+  "main": "pkg/kepler2_wgpu.js",
+  "files": [
+    "pkg/",
+    "README.md"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "wasm-pack build --target web --out-dir pkg --release",
+    "build:node": "wasm-pack build --target nodejs --out-dir pkg --release",
+    "build:dev": "wasm-pack build --target web --out-dir pkg",
+    "prepublishOnly": "npm run build"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC"
+  "keywords": [
+    "wasm",
+    "webassembly",
+    "rust",
+    "webgpu",
+    "dicom",
+    "ct",
+    "3d",
+    "visualization"
+  ],
+  "author": "fu ziwen",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/winkpoke/kepler2-wgpu.git"
+  },
+  "bugs": {
+    "url": "https://github.com/winkpoke/kepler2-wgpu/issues"
+  },
+  "homepage": "https://github.com/winkpoke/kepler2-wgpu#readme"
 }
