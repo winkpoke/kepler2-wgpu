@@ -481,15 +481,65 @@ impl Mesh {
         let chunk_size = 500;
         let overlap = 4;
 
-        // Tissue definitions
-        let tissues = vec![
+        // Tissue definitions (multi-color)
+        let mut tissues = vec![ 
+            Tissue {
+                name: "Air".to_string(),
+                min: -1000,
+                max: -500,
+                color: [0.6, 0.8, 1.0], // 淡蓝
+            },
+            Tissue {
+                name: "Fat".to_string(),
+                min: -200,
+                max: -50,
+                color: [0.9, 0.85, 0.75], // 浅棕/米色
+            },
+            Tissue {
+                name: "Muscle".to_string(),
+                min: 30,
+                max: 80,
+                color: [0.7, 0.55, 0.4], // 棕色（主肌肉色）
+            },
+            Tissue {
+                name: "Organ".to_string(),
+                min: 80,
+                max: 150,
+                color: [0.75, 0.6, 0.45], // 稍深的棕色（内脏，与肌肉有区分）
+            },
+            Tissue {
+                name: "Bone_Cancellous".to_string(),
+                min: 150,
+                max: 300,
+                color: [0.94, 0.90, 0.85], // 浅黄色（松质骨）
+            },
             Tissue {
                 name: "Bone_Cortical".to_string(),
+                min: 300,
+                max: 2000,
+                color: [0.95, 0.90, 0.85], // 白（皮质骨）
+            },
+        ];
+
+
+        // ✅ 根据 iso_min / iso_max 过滤组织
+        if !tissues.is_empty() {
+            tissues = tissues
+                .into_iter()
+                .filter(|t| {
+                    // 只保留 HU 区间与 iso_min–iso_max 有重叠的组织
+                    (t.max as f32) >= iso_min && (t.min as f32) <= iso_max
+                })
+                .collect();
+            log::info!("Loaded {} tissues (filtered by iso_min={}, iso_max={})", tissues.len(), iso_min, iso_max);
+        }else {
+            tissues = vec![Tissue {
+                name: "Generic".to_string(),
                 min: iso_min as i16,
                 max: iso_max as i16,
                 color: [0.95, 0.90, 0.85],
-            },
-        ];
+            }];
+        }
 
         // Read DICOM dims
         let (rows, columns, depth) = ctvolume.dimensions;
