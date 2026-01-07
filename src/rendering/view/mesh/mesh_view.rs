@@ -5,7 +5,7 @@ use crate::{
     rendering::view::{Renderable, View}, 
     core::timing::Instant,
 };
-use glam::{Mat4, Vec3, Quat};
+use glam::{Mat4, Vec3, Quat, Vec2};
 
 /// Function-level comment: Error types specific to mesh rendering operations
 #[derive(Debug)]
@@ -222,7 +222,7 @@ impl MeshView {
         log::debug!("Mesh rotation reset to identity");
     }
 
-    /// Function-level comment: Get the current rotation quaternion.
+    /// Function-level comment: Get the current rotation angle in degrees.
     pub fn get_rotation_quat(&self) -> Quat {
         self.rotation_quat
     }
@@ -243,16 +243,19 @@ impl MeshView {
     /// dx: horizontal mouse movement (rotates around Global Y)
     /// dy: vertical mouse movement (rotates around Local X)
     pub fn rotate_by_mouse(&mut self, dx: f32, dy: f32) {
-        let sensitivity = 0.005;
-        
-        // Horizontal move -> Yaw around Global Y
-        let rot_y = Quat::from_rotation_y(dx * sensitivity);
-        
-        // Vertical move -> Pitch around Local X
-        let rot_x = Quat::from_rotation_x(dy * sensitivity);
-        
-        // Apply rotations: Global Y * Current * Local X
-        self.rotation_quat = rot_y * self.rotation_quat * rot_x;
+        let sensitivity = 0.03;
+        let drag = Vec2::new(dx, dy);
+        let angle = drag.length() * sensitivity;
+
+        if angle.abs() < 1e-6 {
+            return;
+        }
+
+        // screen space direction to rotation axis (around Z vertical screen)
+        let axis = Vec3::new(-drag.x, -drag.y, 0.0).normalize();
+        let rot = Quat::from_axis_angle(axis, angle);
+
+        self.rotation_quat = rot * self.rotation_quat;
         self.rotation_quat = self.rotation_quat.normalize();
     }
 

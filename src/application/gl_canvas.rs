@@ -55,6 +55,8 @@ pub enum UserEvent {
     SetMeshScale(usize, f32),
     SetMeshRotationAngleDeg(usize, f32, f32, f32),
     SetMeshRotationDelta(usize, f32, f32),
+    #[cfg(target_arch = "wasm32")]
+    GetMeshRotationQuat(usize, oneshot::Sender<[f32; 4]>),
 }
 
 #[macro_export]
@@ -265,6 +267,23 @@ impl GLCanvas {
                 log::error!("Failed to receive WorldCoordToScreen result for window {}: {:?}", index, e);
                 Err(format!("Failed to receive result: {:?}", e))
             }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn get_mesh_rotation_quat(&self, index: usize) -> Result<Box<[f32]>, String> {
+        let (tx, rx) = oneshot::channel();
+        
+        if let Err(e) = self.proxy.send_event(UserEvent::GetMeshRotationQuat(index, tx)) {
+            log::error!("Failed to send GetMeshRotationQuat event for window {}: {:?}", index, e);
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+        
+        log::info!("Sent GetMeshRotationQuat event for window {}", index);
+        
+        match rx.await {
+            Ok(result) => Ok(result.into()),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
         }
     }
 }

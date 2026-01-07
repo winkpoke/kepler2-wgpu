@@ -771,6 +771,11 @@
       }
       // gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
       gl_canvas.set_mesh_rotation_delta(indexValue, rotation_x, rotation_y);
+      gl_canvas.get_mesh_rotation_quat(indexValue).then((result) => {
+        console.log('rotation_quat:', result[0], result[1], result[2], result[3]);
+      }).catch((err) => {
+        console.error('get_mesh_rotation_quat error:', err);
+      });
     });
 
     byId('3d-reset').addEventListener('click', () => {
