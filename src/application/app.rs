@@ -785,6 +785,13 @@ impl App {
         });
     }
 
+    /// Apply a rotation delta to the first MeshView using mouse movement (pixels).
+    pub fn set_mesh_rotation_delta(&mut self, dx: f32, dy: f32) {
+        self.apply_to_mesh_view(|mesh_view| {
+            mesh_view.rotate_by_mouse(dx, dy);
+        });
+    }
+
     /// Toggle the volume texture format (R16Float vs Rg8Unorm) and reload the CT volume.
     /// Ensures hardware support when enabling float textures and reinitializes views.
     pub fn toggle_float_volume_texture(&mut self) {

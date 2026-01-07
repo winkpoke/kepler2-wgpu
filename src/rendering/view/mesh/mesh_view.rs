@@ -5,7 +5,7 @@ use crate::{
     rendering::view::{Renderable, View}, 
     core::timing::Instant,
 };
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec3, Quat};
 
 /// Function-level comment: Error types specific to mesh rendering operations
 #[derive(Debug)]
@@ -86,10 +86,8 @@ pub struct MeshView {
     quality_controller: QualityController,
     /// rotation state
     rotation_enabled: bool,
-    /// Current rotation angle in radians
-    rotation_angle: [f32; 3],
-    /// Cached rotation angle used when rotation is disabled to preserve orientation
-    rotation_angle_cache: [f32; 3],
+    /// Current rotation state as a quaternion (supports free 3D rotation)
+    rotation_quat: Quat,
     /// Rotation speed in radians per second (default: π/2 = 90 degrees/second)
     rotation_speed: f32,
     /// Last frame time for rotation calculation
@@ -120,10 +118,7 @@ impl Default for MeshView {
             quality_controller: QualityController::default(),
             rotation_enabled: true,
             // Angles are stored in radians; 90°=FRAC_PI_2, 180°=PI
-            // rotation_angle: [-FRAC_PI_2 , 0.0, 0.0],
-            // rotation_angle_cache: [-FRAC_PI_2, 0.0, 0.0],
-            rotation_angle: [0.0 , 0.0, 0.0],
-            rotation_angle_cache: [0.0, 0.0, 0.0],
+            rotation_quat: Quat::IDENTITY,
             rotation_speed: FRAC_PI_2, // 90 degrees per second - reasonable default speed
             last_frame_time: Instant::now(),
             scale_factor: 1.0,
@@ -201,8 +196,6 @@ impl MeshView {
             self.last_frame_time = Instant::now();
             log::info!("Mesh rotation enabled at {:.1}°/s", self.rotation_speed.to_degrees());
         } else {
-            // Preserve current orientation when stopping rotation
-            self.rotation_angle_cache = self.rotation_angle;
             log::info!("Mesh rotation disabled");
         }
     }
@@ -224,27 +217,43 @@ impl MeshView {
     /// Function-level comment: Reset the rotation angle to zero.
     /// Useful for returning to a known orientation or synchronizing multiple objects.
     pub fn reset_rotation(&mut self) {
-        // Reset to default orientation: [90°, 180°, 0°] in radians
-        // use std::f32::consts::FRAC_PI_2;
-        // self.rotation_angle = [-FRAC_PI_2, 0.0, 0.0];
-        self.rotation_angle = [0.0, 0.0, 0.0];
-        self.rotation_angle_cache = self.rotation_angle;
+        self.rotation_quat = Quat::IDENTITY;
         self.last_frame_time = Instant::now();
-        log::debug!("Mesh rotation angle reset to default (90°, 180°, 0°)");
+        log::debug!("Mesh rotation reset to identity");
     }
 
-    /// Function-level comment: Get the current rotation angle in radians.
-    pub fn get_rotation_angle(&self) -> [f32; 3] {
-        self.rotation_angle
+    /// Function-level comment: Get the current rotation quaternion.
+    pub fn get_rotation_quat(&self) -> Quat {
+        self.rotation_quat
     }
     
     /// Function-level comment: Set the current rotation angle using degrees for convenience.
     /// This directly sets the orientation without affecting rotation speed.
     pub fn set_rotation_angle_degrees(&mut self, degrees: [f32; 3]) {
-        self.rotation_angle = degrees.map(|d| d.to_radians());
-        self.rotation_angle_cache = self.rotation_angle;
+        let rad = degrees.map(|d| d.to_radians());
+        // Map [x, y, z] to Pitch, Yaw, Roll.
+        // Using YXZ order: Yaw(Y), Pitch(X), Roll(Z)
+        self.rotation_quat = Quat::from_euler(glam::EulerRot::YXZ, rad[1], rad[0], rad[2]);
         self.last_frame_time = Instant::now();
-        log::info!("Mesh rotation angle set to {:?}°", degrees);
+        log::info!("Mesh rotation set to {:?}°", degrees);
+    }
+
+    /// Function-level comment: Rotate the mesh based on mouse movement (pixels).
+    /// Allows 3-axis rotation using only 2D input by accumulating rotations.
+    /// dx: horizontal mouse movement (rotates around Global Y)
+    /// dy: vertical mouse movement (rotates around Local X)
+    pub fn rotate_by_mouse(&mut self, dx: f32, dy: f32) {
+        let sensitivity = 0.005;
+        
+        // Horizontal move -> Yaw around Global Y
+        let rot_y = Quat::from_rotation_y(dx * sensitivity);
+        
+        // Vertical move -> Pitch around Local X
+        let rot_x = Quat::from_rotation_x(dy * sensitivity);
+        
+        // Apply rotations: Global Y * Current * Local X
+        self.rotation_quat = rot_y * self.rotation_quat * rot_x;
+        self.rotation_quat = self.rotation_quat.normalize();
     }
 
     /// Function-level comment: Set rotation speed using degrees per second for convenience.
@@ -345,22 +354,22 @@ impl MeshView {
     /// Includes rotation if enabled, using frame-rate independent timing
     pub fn update_uniforms(&mut self, queue: &wgpu::Queue) {
         // Keep angle in [0, 2π] range to prevent floating point precision issues
-        use std::f32::consts::TAU; // TAU = 2π
+        // use std::f32::consts::TAU; // TAU = 2π
 
         // Update rotation angle only when rotation is enabled; orientation should persist when disabled
         if self.rotation_enabled {
             let current_time = Instant::now();
             let delta_time = current_time.duration_since(self.last_frame_time).as_secs_f32();
-            for i in 0..3 {
-                self.rotation_angle[i] += self.rotation_speed * delta_time;
-                if self.rotation_angle[i] >= TAU {
-                    self.rotation_angle[i] -= TAU;
-                }
+            
+            // Auto-rotate around Global Y
+            let angle_delta = self.rotation_speed * delta_time;
+            let rot_delta = Quat::from_rotation_y(angle_delta);
+            self.rotation_quat = rot_delta * self.rotation_quat;
+            self.rotation_quat = self.rotation_quat.normalize();
 
-                #[cfg(feature = "trace-logging")]
-                log::trace!("[MESH_ROTATION] Angle: {:.3} rad ({:.1}°), Speed: {:.3} rad/s, Delta: {:.3}ms",
-                    self.rotation_angle[i], self.rotation_angle[i].to_degrees(), self.rotation_speed, delta_time * 1000.0);
-            }
+            #[cfg(feature = "trace-logging")]
+            log::trace!("[MESH_ROTATION] Auto-rotation delta: {:.3} rad", angle_delta);
+            
             self.last_frame_time = current_time;
         }
         
@@ -375,21 +384,7 @@ impl MeshView {
                        self.dim.0, self.dim.1, aspect_ratio);
             
             // Model matrix - apply persistent rotation (if any) and uniform scale
-            
-            // Use cached angles when rotation is disabled to preserve orientation
-            let angles = if self.rotation_enabled { 
-                self.rotation_angle 
-            } else { 
-                self.rotation_angle_cache 
-            };
-
-            // Calculate rotation (matches original rx * ry * rz order)
-            // Note: In column-major math, M * v applies operations Right-to-Left.
-            // Original: rx.multiply(&ry).multiply(&rz) -> Rx * Ry * Rz
-            // This applies Rz (Z-rot) first, then Ry, then Rx.
-            let rotation = Mat4::from_rotation_x(angles[0])
-                * Mat4::from_rotation_y(angles[1])
-                * Mat4::from_rotation_z(angles[2]);
+            let rotation = Mat4::from_quat(self.rotation_quat);
 
             // Compose Model: Translation * Rotation * Scale
             let model_matrix = Mat4::from_translation(Vec3::from(self.pan))
@@ -651,10 +646,11 @@ mod tests {
     #[test]
     fn test_rotation_api_basic_functionality() {
         let mesh_view = MeshView::default();
-        let angles = mesh_view.get_rotation_angle();
-        assert!(angles[0].abs() < 1e-6);
-        assert!(angles[1].abs() < 1e-6);
-        assert!(angles[2].abs() < 1e-6);
+        let quat = mesh_view.get_rotation_quat();
+        assert!(quat.x.abs() < 1e-6);
+        assert!(quat.y.abs() < 1e-6);
+        assert!(quat.z.abs() < 1e-6);
+        assert!((quat.w - 1.0).abs() < 1e-6);
         assert!((mesh_view.get_rotation_speed() - FRAC_PI_2).abs() < 1e-6);
     }
 
@@ -662,13 +658,22 @@ mod tests {
     #[test]
     fn test_rotation_enable_disable() {
         let mut mesh_view = MeshView::default();
-        let before = mesh_view.get_rotation_angle();
+        let before = mesh_view.get_rotation_quat();
         mesh_view.set_rotation_enabled(false);
-        let after_disable = mesh_view.get_rotation_angle();
+        let after_disable = mesh_view.get_rotation_quat();
         mesh_view.set_rotation_enabled(true);
-        let after_enable = mesh_view.get_rotation_angle();
-        assert!((before[0] - after_disable[0]).abs() < 1e-6);
-        assert!((before[0] - after_enable[0]).abs() < 1e-6);
+        let after_enable = mesh_view.get_rotation_quat();
+        
+        // Quaternions should be identical
+        assert!((before.x - after_disable.x).abs() < 1e-6);
+        assert!((before.y - after_disable.y).abs() < 1e-6);
+        assert!((before.z - after_disable.z).abs() < 1e-6);
+        assert!((before.w - after_disable.w).abs() < 1e-6);
+        
+        assert!((before.x - after_enable.x).abs() < 1e-6);
+        assert!((before.y - after_enable.y).abs() < 1e-6);
+        assert!((before.z - after_enable.z).abs() < 1e-6);
+        assert!((before.w - after_enable.w).abs() < 1e-6);
     }
 
     /// Function-level comment: Verify rotation speed setters
@@ -682,15 +687,16 @@ mod tests {
         assert!((mesh_view.get_rotation_speed() - PI).abs() < 1e-6);
     }
 
-    /// Function-level comment: Reset rotation and verify default orientation [-π/2, 0, 0]
+    /// Function-level comment: Reset rotation and verify default orientation (Identity)
     #[test]
     fn test_rotation_angle_reset() {
         let mut mesh_view = MeshView::default();
         mesh_view.reset_rotation();
-        let angles = mesh_view.get_rotation_angle();
-        assert!(angles[0].abs() < 1e-6);
-        assert!(angles[1].abs() < 1e-6);
-        assert!(angles[2].abs() < 1e-6);
+        let quat = mesh_view.get_rotation_quat();
+        assert!(quat.x.abs() < 1e-6);
+        assert!(quat.y.abs() < 1e-6);
+        assert!(quat.z.abs() < 1e-6);
+        assert!((quat.w - 1.0).abs() < 1e-6);
     }
 
     /// Function-level comment: Test that standard trigonometric values are correct for our rotation matrix

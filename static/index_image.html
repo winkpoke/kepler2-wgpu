@@ -759,9 +759,9 @@
       const opacity = parseFloat(byId('3d-opacity').value);
       const rotation_x = parseFloat(byId('3d-rotation-x').value);
       const rotation_y = parseFloat(byId('3d-rotation-y').value);
-      const rotation_z = parseFloat(byId('3d-rotation-z').value);
+      // const rotation_z = parseFloat(byId('3d-rotation-z').value);
 
-      console.log('3d-submit:', scale, pan_x, pan_y, opacity, rotation_x, rotation_y, rotation_z);
+      console.log('3d-submit:', scale, pan_x, pan_y, opacity, rotation_x, rotation_y);
       gl_canvas.set_mesh_scale(indexValue, scale);
       gl_canvas.set_mesh_pan(indexValue, pan_x, pan_y);
       if (typeof gl_canvas.set_mesh_opacity === 'function') {
@@ -769,7 +769,8 @@
       } else {
         log('mesh opacity 方法未导出，已跳过', 'warn');
       }
-      gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
+      // gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
+      gl_canvas.set_mesh_rotation_delta(indexValue, rotation_x, rotation_y);
     });
 
     byId('3d-reset').addEventListener('click', () => {
