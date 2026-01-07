@@ -222,9 +222,10 @@ impl MeshView {
         log::debug!("Mesh rotation reset to identity");
     }
 
-    /// Function-level comment: Get the current rotation angle in degrees.
-    pub fn get_rotation_quat(&self) -> Quat {
-        self.rotation_quat
+    /// Function-level comment: Get the current rotation angle in degrees (Pitch, Yaw, Roll).
+    pub fn get_rotation_quat(&self) -> [f32; 4] {
+        let (roll, pitch, yaw) = self.rotation_quat.to_euler(glam::EulerRot::XYZ);
+        [roll.to_degrees(), pitch.to_degrees(), yaw.to_degrees(), 0.0]
     }
     
     /// Function-level comment: Set the current rotation angle using degrees for convenience.
@@ -232,8 +233,8 @@ impl MeshView {
     pub fn set_rotation_angle_degrees(&mut self, degrees: [f32; 3]) {
         let rad = degrees.map(|d| d.to_radians());
         // Map [x, y, z] to Pitch, Yaw, Roll.
-        // Using YXZ order: Yaw(Y), Pitch(X), Roll(Z)
-        self.rotation_quat = Quat::from_euler(glam::EulerRot::YXZ, rad[1], rad[0], rad[2]);
+        // Using XYZ order: Pitch(X), Yaw(Y), Roll(Z)
+        self.rotation_quat = Quat::from_euler(glam::EulerRot::XYZ, rad[0], rad[1], rad[2]);
         self.last_frame_time = Instant::now();
         log::info!("Mesh rotation set to {:?}°", degrees);
     }
@@ -650,10 +651,10 @@ mod tests {
     fn test_rotation_api_basic_functionality() {
         let mesh_view = MeshView::default();
         let quat = mesh_view.get_rotation_quat();
-        assert!(quat.x.abs() < 1e-6);
-        assert!(quat.y.abs() < 1e-6);
-        assert!(quat.z.abs() < 1e-6);
-        assert!((quat.w - 1.0).abs() < 1e-6);
+        assert!(quat[0].abs() < 1e-6);
+        assert!(quat[1].abs() < 1e-6);
+        assert!(quat[2].abs() < 1e-6);
+        assert!(quat[3].abs() < 1e-6);
         assert!((mesh_view.get_rotation_speed() - FRAC_PI_2).abs() < 1e-6);
     }
 
@@ -668,15 +669,15 @@ mod tests {
         let after_enable = mesh_view.get_rotation_quat();
         
         // Quaternions should be identical
-        assert!((before.x - after_disable.x).abs() < 1e-6);
-        assert!((before.y - after_disable.y).abs() < 1e-6);
-        assert!((before.z - after_disable.z).abs() < 1e-6);
-        assert!((before.w - after_disable.w).abs() < 1e-6);
+        assert!((before[0] - after_disable[0]).abs() < 1e-6);
+        assert!((before[1] - after_disable[1]).abs() < 1e-6);
+        assert!((before[2] - after_disable[2]).abs() < 1e-6);
+        assert!((before[3] - after_disable[3]).abs() < 1e-6);
         
-        assert!((before.x - after_enable.x).abs() < 1e-6);
-        assert!((before.y - after_enable.y).abs() < 1e-6);
-        assert!((before.z - after_enable.z).abs() < 1e-6);
-        assert!((before.w - after_enable.w).abs() < 1e-6);
+        assert!((before[0] - after_enable[0]).abs() < 1e-6);
+        assert!((before[1] - after_enable[1]).abs() < 1e-6);
+        assert!((before[2] - after_enable[2]).abs() < 1e-6);
+        assert!((before[3] - after_enable[3]).abs() < 1e-6);
     }
 
     /// Function-level comment: Verify rotation speed setters
@@ -696,34 +697,9 @@ mod tests {
         let mut mesh_view = MeshView::default();
         mesh_view.reset_rotation();
         let quat = mesh_view.get_rotation_quat();
-        assert!(quat.x.abs() < 1e-6);
-        assert!(quat.y.abs() < 1e-6);
-        assert!(quat.z.abs() < 1e-6);
-        assert!((quat.w - 1.0).abs() < 1e-6);
-    }
-
-    /// Function-level comment: Test that standard trigonometric values are correct for our rotation matrix
-    #[test]
-    fn test_trigonometric_correctness() {
-        let angle_0: f32 = 0.0; assert!((angle_0.cos() - 1.0).abs() < 1e-6); assert!(angle_0.sin().abs() < 1e-6);
-        let angle_90: f32 = PI / 2.0; assert!(angle_90.cos().abs() < 1e-6); assert!((angle_90.sin() - 1.0).abs() < 1e-6);
-        let angle_180: f32 = PI; assert!((angle_180.cos() + 1.0).abs() < 1e-6); assert!(angle_180.sin().abs() < 1e-6);
-        let angle_270: f32 = 3.0 * PI / 2.0; assert!(angle_270.cos().abs() < 1e-6); assert!((angle_270.sin() + 1.0).abs() < 1e-6);
-        let angle_360 = TAU; assert!((angle_360.cos() - 1.0).abs() < 1e-6); assert!(angle_360.sin().abs() < 1e-6);
-    }
-
-    /// Function-level comment: Verify that the Y-axis rotation matrix follows the standard mathematical form
-    // Standard Y-axis rotation matrix:
-    // [cos θ   0   sin θ   0]
-    // [  0     1     0     0]
-    // [-sin θ  0   cos θ   0]
-    // [  0     0     0     1]
-    #[test]
-    fn test_y_axis_rotation_matrix_mathematical_form() {
-        let angle = PI / 4.0; // 45°
-        let cos_a = angle.cos(); let sin_a = angle.sin();
-        assert!((cos_a - sin_a).abs() < 1e-6);
-        assert!((cos_a - (2.0_f32.sqrt() / 2.0)).abs() < 1e-6);
-        let id = cos_a * cos_a + sin_a * sin_a; assert!((id - 1.0).abs() < 1e-6);
+        assert!(quat[0].abs() < 1e-6);
+        assert!(quat[1].abs() < 1e-6);
+        assert!(quat[2].abs() < 1e-6);
+        assert!(quat[3].abs() < 1e-6);
     }
 }

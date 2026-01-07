@@ -330,10 +330,10 @@ mod mesh_view_tests {
         // Check default orientation and speed align with implementation
         let view = MeshView::new();
         let quat = view.get_rotation_quat();
-        // Default rotation should be identity (0, 0, 0, 1)
-        assert!(quat.x.abs() < 1e-6);
-        assert!(quat.y.abs() < 1e-6);
-        assert!(quat.z.abs() < 1e-6);
-        assert!((quat.w - 1.0).abs() < 1e-6);
+        // Default rotation should be identity (0, 0, 0, 0) in Euler angles
+        assert!(quat[0].abs() < 1e-6);
+        assert!(quat[1].abs() < 1e-6);
+        assert!(quat[2].abs() < 1e-6);
+        assert!(quat[3].abs() < 1e-6);
     }
 }
