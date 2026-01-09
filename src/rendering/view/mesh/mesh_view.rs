@@ -72,6 +72,8 @@ pub struct MeshView {
     pub camera: Option<Camera>,
     pub lighting: Option<Lighting>,
     ctx: Option<std::sync::Arc<BasicMeshContext>>,
+    /// Context for the orientation cube (bottom-left gizmo)
+    orientation_cube_ctx: Option<std::sync::Arc<BasicMeshContext>>,
     pos: (i32, i32),
     dim: (u32, u32),
     /// Performance and error tracking
@@ -109,6 +111,7 @@ impl Default for MeshView {
             camera: None,
             lighting: None,
             ctx: None,
+            orientation_cube_ctx: None,
             pos: (0, 0),
             dim: (0, 0),
             stats: RenderStats::default(),
@@ -139,6 +142,12 @@ impl MeshView {
         log::debug!("MeshView::attach_context - Basic context attached successfully");
         // Reset error state when new context is attached
         self.reset_error_state();
+    }
+
+    /// Function-level comment: Attaches a basic mesh render context for the orientation cube
+    pub fn attach_orientation_cube_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
+        self.orientation_cube_ctx = Some(ctx);
+        log::debug!("MeshView::attach_orientation_cube_context - Orientation cube context attached");
     }
     
     /// Function-level comment: Get current rendering statistics for performance monitoring.
@@ -441,6 +450,39 @@ impl MeshView {
             lighting_uniforms.opacity = self.opacity;
             ctx.update_lighting(queue, lighting_uniforms);
         }
+
+        // Update Orientation Cube Uniforms
+        if let Some(cube_ctx) = &self.orientation_cube_ctx {
+            // Model: Only Rotation (no pan, no scale from main mesh)
+            let rotation = Mat4::from_quat(self.rotation_quat);
+            let model_matrix = rotation; // Scale 1.0, Trans 0.0
+            
+            // View: Standard fixed camera
+            // Place cube closer to camera (Z=5.0) than main mesh (Z=-2.0) to ensure it renders on top
+            // Orthographic range is -10 to 10, so 5.0 is well within range.
+            let view_matrix = Mat4::from_translation(Vec3::new(0.0, 0.0, 5.0));
+            
+            // Proj: Fixed Ortho to fit unit cube (-1..1) with padding
+            // Unit cube diagonal is 1.73. 1.5 might clip corners if rotating.
+            let extent = 2.0;
+            let proj_matrix = Mat4::orthographic_rh(-extent, extent, -extent, extent, -10.0, 10.0);
+            
+            let mvp_matrix = proj_matrix * view_matrix * model_matrix;
+            
+            cube_ctx.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
+            
+            // Also update lighting for cube (use same lighting)
+             let lighting_uniforms = if let Some(ref lighting) = self.lighting {
+                lighting.to_basic_uniforms()
+            } else {
+                let default_lighting = self.create_default_lighting();
+                default_lighting.to_basic_uniforms()
+            };
+            // Cube is always opaque
+            let mut cube_lighting = lighting_uniforms;
+            cube_lighting.opacity = 1.0;
+            cube_ctx.update_lighting(queue, cube_lighting);
+        }
     }
     
     /// Function-level comment: Start frame timing for performance monitoring.
@@ -555,6 +597,28 @@ impl MeshView {
         
         // Use the simplified BasicMeshContext render method
         ctx.render(render_pass);
+
+        // Render Orientation Cube (if available)
+        if let Some(cube_ctx) = &self.orientation_cube_ctx {
+            let cube_size = 120.0;
+            let padding = 10.0;
+            
+            // Calculate bottom-left position within the view
+            // Assuming (x, y) is top-left of the view
+            let view_x = self.pos.0 as f32;
+            let view_y = self.pos.1 as f32;
+            let view_h = self.dim.1 as f32;
+            
+            // Bottom-left relative to view
+            let cube_x = view_x + padding;
+            let cube_y = view_y + view_h - cube_size - padding;
+            
+            // Ensure we don't draw outside the view if view is too small
+            if self.dim.0 > (cube_size as u32 + 20) && self.dim.1 > (cube_size as u32 + 20) {
+                render_pass.set_viewport(cube_x, cube_y, cube_size, cube_size, 0.0, 1.0);
+                cube_ctx.render(render_pass);
+            }
+        }
         
         // Record successful render
         let render_time_ms = start_time.elapsed().as_millis_f32();
