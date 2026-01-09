@@ -358,6 +358,7 @@
               <input type="number" id="3d-rotation-x" step="15" value="-90" min="0" max="360">
               <input type="number" id="3d-rotation-y" step="15" value="0" min="0" max="360">
               <input type="number" id="3d-rotation-z" step="15" value="0" min="0" max="360">
+              <button id="3d-submit-rot">旋转</button>
             </div>
           </div>
           <div class="row" style="margin-top:8px">
@@ -743,6 +744,21 @@
 
       gl_canvas.set_mpr_mip_mode(mode, state.mip, state.mesh_index, state.index, index_orientation);
     });
+
+    byId('3d-submit-rot').addEventListener('click', () => {
+      const indexValue = parseInt(byId('index-input').value, 10);
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+
+      gl_canvas.set_mesh_rotation_enabled(indexValue, state.enable_rotation);
+
+      const rotation_x = parseFloat(byId('3d-rotation-x').value);
+      const rotation_y = parseFloat(byId('3d-rotation-y').value);
+      const rotation_z = parseFloat(byId('3d-rotation-z').value);
+      gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
+    })
     
     byId('3d-submit').addEventListener('click', () => {
       const indexValue = parseInt(byId('index-input').value, 10);
@@ -759,7 +775,6 @@
       const opacity = parseFloat(byId('3d-opacity').value);
       const rotation_x = parseFloat(byId('3d-rotation-x').value);
       const rotation_y = parseFloat(byId('3d-rotation-y').value);
-      // const rotation_z = parseFloat(byId('3d-rotation-z').value);
 
       console.log('3d-submit:', scale, pan_x, pan_y, opacity, rotation_x, rotation_y);
       gl_canvas.set_mesh_scale(indexValue, scale);
@@ -769,7 +784,7 @@
       } else {
         log('mesh opacity 方法未导出，已跳过', 'warn');
       }
-      // gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
+      
       gl_canvas.set_mesh_rotation_delta(indexValue, rotation_x, rotation_y);
       gl_canvas.get_mesh_rotation_quat(indexValue).then((result) => {
         console.log('rotation_quat:', result[0], result[1], result[2], result[3]);
