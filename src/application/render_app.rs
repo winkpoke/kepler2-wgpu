@@ -233,6 +233,20 @@ impl RenderApp {
                     state.set_mesh_rotation_angle_degrees(degrees_x, degrees_y, degrees_z);
                     log::info!("Mesh rotation angle set to {:?}°", [degrees_x, degrees_y, degrees_z]);
                 }
+                Event::UserEvent(UserEvent::SetMeshRotationDelta(_index, dx, dy)) => {
+                    state.set_mesh_rotation_delta(dx, dy);
+                    // Log at debug level to avoid flooding if called frequently
+                    log::debug!("Mesh rotation delta: dx={:.3}, dy={:.3}", dx, dy);
+                }
+                #[cfg(target_arch = "wasm32")]
+                Event::UserEvent(UserEvent::GetMeshRotationQuat(index, sender)) => {
+                    let quat = state.get_mesh_rotation_quat();
+                    if let Err(_) = sender.send(quat) {
+                        log::error!("Failed to send GetMeshRotationQuat result for window {}", index);
+                    } else {
+                        log::info!("Sent GetMeshRotationQuat result for window {}: {:?}", index, quat);
+                    }
+                }
                 Event::UserEvent(UserEvent::ViewClick(view_index, screen_x, screen_y, screen_z)) => {
                     state.handle_view_click(view_index, screen_x, screen_y, screen_z);
                     log::info!("ViewClick processed for view {}: screen_x={screen_x}, screen_y={screen_y}, screen_z={screen_z}", view_index);

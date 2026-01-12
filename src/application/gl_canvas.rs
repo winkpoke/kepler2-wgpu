@@ -54,6 +54,9 @@ pub enum UserEvent {
     ResetMesh(usize),
     SetMeshScale(usize, f32),
     SetMeshRotationAngleDeg(usize, f32, f32, f32),
+    SetMeshRotationDelta(usize, f32, f32),
+    #[cfg(target_arch = "wasm32")]
+    GetMeshRotationQuat(usize, oneshot::Sender<[f32; 4]>),
 }
 
 #[macro_export]
@@ -266,6 +269,23 @@ impl GLCanvas {
             }
         }
     }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn get_mesh_rotation_quat(&self, index: usize) -> Result<Box<[f32]>, String> {
+        let (tx, rx) = oneshot::channel();
+        
+        if let Err(e) = self.proxy.send_event(UserEvent::GetMeshRotationQuat(index, tx)) {
+            log::error!("Failed to send GetMeshRotationQuat event for window {}: {:?}", index, e);
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+        
+        log::info!("Sent GetMeshRotationQuat event for window {}", index);
+        
+        match rx.await {
+            Ok(result) => Ok(result.into()),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
+        }
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -292,4 +312,5 @@ impl_user_event_senders_for_glcanvas! {
     reset_mesh => ResetMesh(),
     set_mesh_scale => SetMeshScale(scale: f32),
     set_mesh_rotation_angle_degrees => SetMeshRotationAngleDeg(degrees_x: f32, degrees_y: f32, degrees_z: f32),
+    set_mesh_rotation_delta => SetMeshRotationDelta(dx: f32, dy: f32),
 }

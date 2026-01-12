@@ -444,6 +444,16 @@ impl ViewFactory for DefaultViewFactory {
         mesh_view.move_to(pos);
         mesh_view.resize(size);
 
+        // Initialize and attach orientation cube context (same as create_mesh_view)
+        let cube_mesh = crate::rendering::mesh::mesh::Mesh::unit_cube();
+        let cube_ctx = BasicMeshContext::new(
+            &self.device,
+            &self.queue,
+            &cube_mesh,
+            true,
+        );
+        mesh_view.attach_orientation_cube_context(Arc::new(cube_ctx));
+
         info!("[DefaultViewFactory] Created Mesh view (with_content) at {:?} size {:?}", pos, size);
         Ok(Box::new(mesh_view))
     }

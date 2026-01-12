@@ -118,12 +118,12 @@ impl Mesh {
     /// Returns a cube with 24 vertices (4 per face) and 12 triangles for colorful 3D rendering
     pub fn unit_cube() -> Self {
         // Define distinct colors for each face
-        let front_color = [1.0, 0.0, 0.0];  // Red
+        let front_color = [0.0, 1.0, 0.0];  // Green
         let back_color = [0.0, 1.0, 0.0];   // Green
-        let bottom_color = [0.0, 0.0, 1.0]; // Blue
-        let top_color = [1.0, 1.0, 0.0];    // Yellow
-        let left_color = [1.0, 0.0, 1.0];   // Magenta
-        let right_color = [0.0, 1.0, 1.0];  // Cyan
+        let bottom_color = [1.0, 0.0, 0.0]; // Red
+        let top_color = [1.0, 0.0, 0.0];    // Red
+        let left_color = [0.0, 0.0, 1.0];   // Blue
+        let right_color = [0.0, 0.0, 1.0];  // Blue
 
         // Define face normals for unit cube
         let front_normal = [0.0, 0.0, 1.0];   // +Z
