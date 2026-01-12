@@ -12,10 +12,10 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Setup Rust
+      - name: Setup Rust (nightly)
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
+          toolchain: nightly
           override: true
 
       - name: Build Project
