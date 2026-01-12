@@ -21,13 +21,9 @@ jobs:
       - name: Build Project
         run: cargo build --release
 
-      - name: Package Artifacts
+      - name: Build with wasm-pack
         run: |
+          cargo install wasm-pack
+          wasm-pack build --release --target web
           mkdir -p build/
-          cp target/release/*.wasm build/ || true
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: kepler2-wgpu-${{ github.ref_name }}
-          path: build/
+          cp pkg/*.wasm build/
