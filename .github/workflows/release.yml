@@ -1,35 +1,33 @@
-name: Publish to npm
+name: Release Build
+
 on:
   push:
     tags:
       - 'v*'
+
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
+
     steps:
       - uses: actions/checkout@v3
-      - name: Setup Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '23'
-          registry-url: 'https://registry.npmjs.org'
-      
-      - name: Install Rust
+
+      - name: Setup Rust
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
           override: true
 
-      - name: Install wasm-pack
-        run: cargo install wasm-pack
-      
-      - name: Build WebAssembly package
-        run: npm run build
-      
-      - name: Publish to npm
-        run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Build Project
+        run: cargo build --release
+
+      - name: Package Artifacts
+        run: |
+          mkdir -p build/
+          cp target/release/*.wasm build/ || true
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kepler2-wgpu-${{ github.ref_name }}
+          path: build/
