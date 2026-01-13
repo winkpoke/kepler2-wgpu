@@ -497,7 +497,8 @@ pub async fn build_ct_dicom_wasm(
     let intercept = info["intercept"].as_f64()
         .map(|v| v as f32)
         .ok_or(JsValue::from_str("Missing intercept in info"))?;
-    log::info!("dicom info: kv={}, mAs={}, slope = {:?}, intercept = {:?}", kv, m_as, slope, intercept);
+    let modality = info["modality"].as_str().unwrap_or("CT").to_string();
+    log::info!("dicom info: kv={}, mAs={}, slope = {:?}, intercept = {:?}, modality = {:?}", kv, m_as, slope, intercept, modality);
 
     // MHA bytes
     let mut buf = vec![0u8; mha_bytes.length() as usize];
@@ -520,6 +521,7 @@ pub async fn build_ct_dicom_wasm(
         &study,
         kv, m_as,
         slope, intercept,
+        modality,
         &mut sink
     ).map_err(|e| JsValue::from_str(&format!("build_ct_dicom failed: {}", e)))?;
 

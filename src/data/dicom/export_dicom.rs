@@ -79,6 +79,7 @@ pub fn build_ct_dicom<S: DicomSink>(
     m_as: f64,
     slope: f32,
     intercept: f32,
+    modality: &str,
     sink: &mut S,
 ) -> Result<()> {
     // generate series uid
@@ -101,7 +102,7 @@ pub fn build_ct_dicom<S: DicomSink>(
     // generate basic info
     obj.put(DataElement::new(tags::SPECIFIC_CHARACTER_SET, VR::CS, PrimitiveValue::from("ISO_IR 192")));
     obj.put(DataElement::new(tags::SOP_CLASS_UID, VR::UI, PrimitiveValue::from(sop_class_uid)));
-    obj.put(DataElement::new(tags::MODALITY, VR::CS, PrimitiveValue::from("CT")));
+    obj.put(DataElement::new(tags::MODALITY, VR::CS, PrimitiveValue::from(modality)));
     obj.put(DataElement::new(tags::PHOTOMETRIC_INTERPRETATION, VR::CS, PrimitiveValue::from("MONOCHROME2")));
     obj.put(DataElement::new(tags::KVP, VR::DS, PrimitiveValue::from(kv))); // kVp
     obj.put(DataElement::new(tags::	X_RAY_TUBE_CURRENT, VR::IS, PrimitiveValue::from(m_as))); // mA
