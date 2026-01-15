@@ -15,8 +15,9 @@ pub struct Graphics {
     pub(crate) surface: wgpu::Surface<'static>,
     pub(crate) surface_config: wgpu::SurfaceConfiguration,
     pub(crate) adapter: wgpu::Adapter,
-    pub(crate) device: wgpu::Device,
-    pub(crate) queue: wgpu::Queue,
+    // Function-level comment: Wrap device and queue in Arc for cheap cloning across subsystems
+    pub(crate) device: Arc<wgpu::Device>,
+    pub(crate) queue: Arc<wgpu::Queue>,
 }
 
 /// Graphics context that encapsulates both hardware abstraction and rendering pipeline orchestration
@@ -193,11 +194,20 @@ impl Graphics {
         );
 
         let surface_caps = surface.get_capabilities(&adapter);
+        // tests
+        info!("Surface supports {} formats:", surface_caps.formats.len());
+        for fmt in surface_caps.formats.iter().copied() {
+            let is_srgb = fmt.is_srgb();
+            info!("  - {:?}: sRGB={}",fmt, is_srgb);
+        }
+        // Prefer non-sRGB (linear) format for medical grayscale accuracy.
+        // sRGB applies gamma on present, which can alter perceived contrast of DICOM WL.
+        // Choose BGRA/RGBA Unorm if available; otherwise any non-sRGB; else fallback.
         let surface_format = surface_caps
             .formats
             .iter()
             .copied()
-            .find(|f| f.is_srgb())
+            .find(|f| !f.is_srgb())
             .unwrap_or(surface_caps.formats[0]);
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -215,6 +225,10 @@ impl Graphics {
             surface.configure(&device, &surface_config);
             crate::rendering::core::pipeline::set_swapchain_format(surface_config.format);
         }
+
+        // Wrap device and queue in Arc to enable sharing without cloning wgpu handles
+        let device = Arc::new(device);
+        let queue = Arc::new(queue);
 
         Ok(Self {
             surface,

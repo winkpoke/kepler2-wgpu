@@ -5,7 +5,7 @@
 
 use wgpu;
 use std::collections::HashMap;
-use crate::core::timing::{Instant, DurationExt};
+use crate::core::timing::Instant;
 
 use crate::rendering::mesh::mesh_texture_pool::MeshTexturePool;
 
@@ -562,7 +562,7 @@ impl PassExecutor {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         frame_view: &wgpu::TextureView,
-        texture_pool: &TexturePoolType,
+        _texture_pool: &TexturePoolType,
         descriptor: &PassDescriptor,
         render_fn: &mut F,
     ) -> Result<(), Box<dyn std::error::Error>>
@@ -620,7 +620,7 @@ impl PassExecutor {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         frame_view: &wgpu::TextureView,
-        texture_pool: &TexturePoolType,
+        _texture_pool: &TexturePoolType,
         descriptor: &PassDescriptor,
         render_fn: &mut F,
     ) -> Result<(), Box<dyn std::error::Error>>
@@ -671,5 +671,44 @@ impl PassExecutor {
         }
 
         render_result
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Function-level comment: 验证各 PassDescriptor 的关键字段初始化正确
+    #[test]
+    fn test_pass_descriptors() {
+        let fmt = wgpu::TextureFormat::Bgra8Unorm;
+        let mesh = PassDescriptor::mesh_pass(fmt, true);
+        assert_eq!(mesh.name, "MeshPass");
+        assert!(mesh.uses_depth);
+        assert!(mesh.clear_depth);
+        assert_eq!(mesh.color_format, fmt);
+
+        let mip = PassDescriptor::mip_pass(fmt);
+        assert_eq!(mip.name, "MipPass");
+        assert!(!mip.uses_depth);
+        assert_eq!(mip.clear_color, wgpu::Color{r:0.0,g:0.0,b:0.0,a:1.0});
+
+        let slice = PassDescriptor::slice_pass(fmt);
+        assert_eq!(slice.name, "SlicePass");
+        assert!(!slice.uses_depth);
+        assert_eq!(slice.color_format, fmt);
+    }
+
+    /// Function-level comment: 验证 PassRegistry 构建的执行计划包含正确的 Pass 顺序与描述
+    #[test]
+    fn test_pass_registry_build_plan() {
+        let fmt = wgpu::TextureFormat::Bgra8Unorm;
+        let registry = PassRegistry::new(fmt);
+        let plan = registry.build_pass_plan(true, true, true);
+        assert!(plan.has_pass(PassId::MeshPass));
+        assert!(plan.has_pass(PassId::MipPass));
+        assert!(plan.has_pass(PassId::SlicePass));
+        let mesh_desc = plan.get_descriptor(PassId::MeshPass).unwrap();
+        assert_eq!(mesh_desc.color_format, fmt);
+        assert!(mesh_desc.uses_depth);
     }
 }

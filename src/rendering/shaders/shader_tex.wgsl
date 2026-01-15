@@ -69,7 +69,8 @@ struct UniformsFrag {
     level: f32,
     slice: f32,
     is_packed_rg8: f32,
-	mat: mat4x4<f32>,
+    bias: f32,
+    	mat: mat4x4<f32>,
 }
 
 @group(2) @binding(0)
@@ -99,15 +100,30 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Conditionally decode depending on texture format
     var value: f32;
     if (u_uniform_frag.is_packed_rg8 > 0.5) {
-        // Packed RG8 path: decode to scalar value
-        value = (sampled_value.g * 256.0 + sampled_value.r) * 255.0;
+        // Packed RG8 path: decode little-endian u16 and convert back to HU
+        let low = sampled_value.r * 255.0;
+        let high = sampled_value.g * 255.0;
+        let u16_val = low + high * 256.0;
+        value = u16_val - u_uniform_frag.bias;
     } else {
         // Native float path (R16Float/R32Float): use the red channel
         value = sampled_value.r;
     }
 
     // Compute the final value with clamping based on window and level
-    let v: f32 = clamp((value - (u_uniform_frag.level - u_uniform_frag.window / 2.0)) / u_uniform_frag.window, 0.0, 1.0);
+    // let v: f32 = clamp((value - (u_uniform_frag.level - u_uniform_frag.window / 2.0)) / u_uniform_frag.window, 0.0, 1.0);
+    // DICOM PS3.3 C.11.2 Window/Level mapping
+    let center = u_uniform_frag.level;
+    let width = u_uniform_frag.window;
+    var v: f32;
+    if (value <= (center - 0.5 - (width - 1.0) / 2.0)) {
+        v = 0.0;    
+    } else if (value > (center - 0.5 + (width - 1.0) / 2.0)) {
+        v = 1.0;
+    } else {
+        v = ((value - (center - 0.5)) / (width - 1.0)) + 0.5;
+    }
+    v = clamp(v, 0.0, 1.0);
 
     // Return the final computed color
     return vec4<f32>(vec3<f32>(v), 1.0);

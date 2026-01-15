@@ -4,11 +4,13 @@ use super::ct_image::CTImage;
 use super::image_series::ImageSeries;
 use super::patient::Patient;
 use super::studyset::StudySet;
-use crate::core::coord::{Base, Matrix4x4};
+use crate::core::coord::Base;
 use crate::data::ct_volume::{CTVolume, CTVolumeGenerator};
+use crate::data::medical_imaging::image_info::PatientPosition;
 use anyhow::Result;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use glam::{Mat4, Vec3, Vec4};
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[derive(Debug, Clone)]
@@ -193,17 +195,37 @@ impl DicomRepo {
             .image_orientation_patient
             .ok_or_else(|| "ImageOrientationPatient is missing in the first CTImage".to_string())?;
 
+        let patient_position = match &ct_images[0].patient_position {
+            Some(pos_str) => PatientPosition::from_str(pos_str),
+            None => PatientPosition::HFS, // Default to HFS if no position specified
+        };
+        let (flip_x, flip_y, flip_z) = PatientPosition::get_coordinate_transform(&patient_position);
+
         // Row and column direction vectors
-        let row_direction = (
+        let mut row_direction = (
             image_orientation_patient.0,
             image_orientation_patient.1,
             image_orientation_patient.2,
         );
-        let column_direction = (
+        let mut column_direction = (
             image_orientation_patient.3,
             image_orientation_patient.4,
             image_orientation_patient.5,
         );
+
+        // Apply coordinate transformations based on patient position
+        if flip_x {
+            row_direction.0 = -row_direction.0;
+            column_direction.0 = -column_direction.0;
+        }
+        if flip_y {
+            row_direction.1 = -row_direction.1;
+            column_direction.1 = -column_direction.1;
+        }
+        if flip_z {
+            row_direction.2 = -row_direction.2;
+            column_direction.2 = -column_direction.2;
+        }
 
         // Slice direction (cross product of row and column directions)
         let slice_direction = (
@@ -218,37 +240,34 @@ impl DicomRepo {
         .ok_or_else(|| "ImagePositionPatient is missing in the first CTImage".to_string())?;
 
         // Define the scaling matrix (voxel spacings)
-        let scaling_matrix = Matrix4x4::from_array([
-            voxel_spacing.0, 0.0, 0.0, 0.0,
-            0.0, voxel_spacing.1, 0.0, 0.0,
-            0.0, 0.0, voxel_spacing.2, 0.0,
-            0.0, 0.0, 0.0, 1.0,
-        ]);
+        let scaling_matrix = Mat4::from_scale(Vec3::new(
+            voxel_spacing.0,
+            voxel_spacing.1,
+            voxel_spacing.2,
+        ));
 
         // Define the direction matrix (row, column, slice directions)
-        let direction_matrix = Matrix4x4::from_array([
-            row_direction.0, column_direction.0, slice_direction.0, 0.0,
-            row_direction.1, column_direction.1, slice_direction.1, 0.0,
-            row_direction.2, column_direction.2, slice_direction.2, 0.0,
-            0.0, 0.0, 0.0, 1.0,
-        ]);
+        let direction_matrix = Mat4::from_cols(
+            Vec4::new(row_direction.0, row_direction.1, row_direction.2, 0.0),
+            Vec4::new(column_direction.0, column_direction.1, column_direction.2, 0.0),
+            Vec4::new(slice_direction.0, slice_direction.1, slice_direction.2, 0.0),
+            Vec4::new(0.0, 0.0, 0.0, 1.0),
+        );
 
         // Define the translation matrix (image position)
-        let translation_matrix = Matrix4x4::from_array([
-            1.0, 0.0, 0.0, image_position_patient.0,
-            0.0, 1.0, 0.0, image_position_patient.1,
-            0.0, 0.0, 1.0, image_position_patient.2,
-            0.0, 0.0, 0.0, 1.0,
-        ]);
+        let translation_matrix = Mat4::from_translation(Vec3::new(
+            image_position_patient.0,
+            image_position_patient.1,
+            image_position_patient.2,
+        ));
 
         // Multiply the scaling, direction, and translation matrices
-        let base_matrix = direction_matrix
-            .multiply(&translation_matrix)
-            .multiply(&scaling_matrix);
+        // Order: Direction * Translation * Scaling (matches original logic)
+        let base_matrix = direction_matrix * translation_matrix * scaling_matrix;
 
         // Return the constructed CTVolume
         Ok(CTVolume {
-            dimensions: (columns as usize, rows as usize,ct_images.len()),
+            dimensions: (columns as usize, rows as usize, ct_images.len()),
             voxel_spacing,
             voxel_data,
             base: Base {

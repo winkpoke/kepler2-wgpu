@@ -31,7 +31,7 @@
 
     main {
       display: grid;
-      grid-template-columns: 320px 1fr;
+      grid-template-columns: 520px 1fr;
       gap: var(--gap);
       padding: var(--gap)
     }
@@ -59,6 +59,10 @@
       width: 100%
     }
 
+    input[type="number"] {
+      width: 120px;
+    }
+
     label {
       display: block;
       margin: 8px 0 6px;
@@ -81,7 +85,7 @@
       background: #5b74ff;
       border: 1px solid #6b82ff;
       color: white;
-      padding: 8px 12px;
+      padding: 4px 12px;
       border-radius: 10px;
       cursor: pointer
     }
@@ -177,47 +181,176 @@
     <section class="card">
       <h2>1) 选择文件</h2>
       <div class="content">
-        <label>输入DICOM文件：</label>
-        <input id="file" type="file" multiple accept=".dcm" />
-        <label>输入二维投影文件夹：</label>
-        <input id="FilesInput" type="file" multiple accept=".raw,.mhd,.dat" />
-        <label>输入重建文件：</label>
-        <input id="mhxInput" type="file" multiple accept=".mha,.mhd,.raw" />
-        <div class="row" style="margin-top:8px">
-          <button id="btn">运行重建</button>
-          <button id="analyzeBtn">分析文件</button>
-          <button id="rerender">视图显示</button>
-        </div>
-      <label for="index-input">操作视图窗口:</label>
-      <input type="number" id="index-input" step="1.0" value="0.0">
-      <div>
-        <label for="slice-input">slice:</label>
-        <input type="number" id="slice-input" step="0.5" value="0.0">
-        <button id="slice-submit">Submit</button>
-      </div>
-      <div>
-        <label for="scale-input">Scale:</label>
-        <input type="number" id="scale-input" step="10.0" value="1.0">
-        <button id="scale-submit">Submit</button>
-      </div>
-      <div>
-        <label for="translate-input">translate:</label>
-        <label for="trans-x">x:</label> <input type="number" id="trans-x" step="10.0" value="0.0" placeholder="x">
-        <label for="trans-y">y:</label><input type="number" id="trans-y" step="10.0" value="0.0" placeholder="y">
-        <label for="trans-z">z:</label><input type="number" id="trans-z" step="10.0" value="0.0" placeholder="z">
-        <button id="trans-submit">Submit</button>
-      </div>
-      <div>
-        <label for="window">window width:</label><input type="number" id="window" step="10.0" value="0.0">
-        <label for="level">window level:</label><input type="number" id="level" step="10.0" value="0.0">
-        <button id="winlev-submit">Submit</button>
-      </div>
-      <div>
-        <label for="resize-input">resize:</label>
-        <label for="width">width:</label><input type="number" id="width" step="10.0" value="0.0" placeholder="800">
-        <label for="height">height:</label><input type="number" id="height" step="10.0" value="0.0" placeholder="800">
-        <button id="resize-submit">Submit</button>
-      </div>
+        <fieldset class="pill" style="margin-bottom:10px">
+          <legend>文件输入</legend>
+          <label>输入DICOM文件：</label>
+          <input id="file" type="file" multiple accept=".dcm" />
+          <label>输入二维投影文件夹：</label>
+          <input id="FilesInput" type="file" multiple accept=".raw,.mhd,.dat" />
+          <label>输入重建文件：</label>
+          <input id="mhxInput" type="file" multiple accept=".mha,.mhd,.raw" />
+          <div class="row" style="margin-top:8px">
+            <button id="btn">运行重建</button>
+            <button id="analyzeBtn">分析文件</button>
+            <button id="rerender">视图显示</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="pill" style="margin-bottom:10px">
+          <legend>视图模式</legend>
+          <div class="row">
+            <span id="mode-label">模式:</span>
+            <input type="number" id="mode" step="1" value="0" min="0" max="2">
+            <span id="orientation_index-label">方向索引:</span>
+            <input type="number" id="orientation_index" step="1" value="0" min="0" max="2">
+            <button id="one-cell-submit">应用</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="pill" style="margin-bottom:10px">
+          <legend>视图切换</legend>
+          <div class="grid">
+            <div>
+              <span id="3d-label">3D:</span>
+              <input type="number" id="mesh_index" step="1.0" value="0.0">
+              <input type="checkbox" id="3d" />
+            </div>
+            <div>
+              <span id="downsample-label">Downsample:</span>
+              <input type="number" id="downsample" step="1.0" value="3.0">
+            </div>
+            <div>
+              <span id="iso-value-label">Iso Value:</span>
+              <input type="number" id="iso-value" step="1.0" value="100.0">
+            </div>
+            <div>
+              <span id="change_mpr-label">change_mpr</span>
+              <input type="checkbox" id="change_mpr" />
+            </div>
+            <div>
+              <span id="index-1-label">index-1:</span>
+              <input type="number" id="index-1" step="1.0" value="0.0">
+            </div>
+            <div>
+              <span id="index-2-label">index-2:</span>
+              <input type="number" id="index-2" step="1.0" value="0.0">
+            </div>
+            <div>
+              <span id="mipSpan">mip:</span>
+              <input type="number" id="mip" step="1.0" value="0.0">
+              <input type="checkbox" id="change_mip" />
+            </div>
+            <div>
+              <span id="index-3-label">index-3:</span>
+              <input type="number" id="index-3" step="1.0" value="0.0">
+            </div>
+            <div>
+              <span id="index-4-label">index-4:</span>
+              <input type="number" id="index-4" step="1.0" value="0.0">
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button id="mesh">应用视图</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="pill" style="margin-bottom:10px">
+          <legend>操作视图窗口</legend>
+          <div class="row">
+            <span id="index-input-label">窗口索引:</span>
+            <input type="number" id="index-input" step="1.0" value="0.0">
+          </div>
+          <div class="grid" style="margin-top:8px">
+            <div>
+              <label for="slice-input">slice</label>
+              <input type="number" id="slice-input" step="0.5" value="0.0">
+              <button id="slice-submit">应用</button>
+            </div>
+            <div>
+              <label for="scale-input">Scale</label>
+              <input type="number" id="scale-input" step="10.0" value="1.0">
+              <button id="scale-submit">应用</button>
+            </div>
+            <div>
+              <label for="translate-input">Translate</label>
+              <div class="row">
+                <span id="trans-x-label">x:</span>
+                <input type="number" id="trans-x" step="10.0" value="0.0">
+                <span id="trans-y-label">y:</span>
+                <input type="number" id="trans-y" step="10.0" value="0.0">
+              </div>
+              <button id="trans-submit">应用</button>
+              <button id="trans-get">获取</button>
+            </div>
+            <div>
+              <label>Window/Level</label>
+              <div class="row">
+                <span id="window-label">width:</span>
+                <input type="number" id="window" step="10.0" value="0.0">
+                <span id="level-label">level:</span>
+                <input type="number" id="level" step="10.0" value="0.0">
+              </div>
+              <div class="row" style="margin-top:6px">
+                <button id="winlev-submit">应用</button>
+                <button id="winlev-get">获取</button>
+              </div>
+            </div>
+            <div>
+              <label for="resize-input">Resize</label>
+              <div class="row">
+                <span id="width-label">width:</span>
+                <input type="number" id="width" step="10.0" value="0.0" placeholder="800">
+                <span id="height-label">height:</span>
+                <input type="number" id="height" step="10.0" value="0.0" placeholder="800">
+              </div>
+              <button id="resize-submit">应用</button>
+            </div>
+            <div>
+              <label>Center</label>
+              <div class="row">
+                <span id="center-x-label">x:</span>
+                <input type="number" id="center-x" step="0.1" value="0.0" placeholder="x">
+                <span id="center-y-label">y:</span>
+                <input type="number" id="center-y" step="0.1" value="0.0" placeholder="y">
+                <span id="center-z-label">z:</span>
+                <input type="number" id="center-z" step="0.1" value="0.0" placeholder="z">
+              </div>
+              <button id="set-center">应用</button>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="pill">
+          <legend>3D 网格</legend>
+          <div class="grid">
+            <div>
+              <span id="3d-scale-label">scale:</span>
+              <input type="number" id="3d-scale" step="0.1" value="1.0">
+            </div>
+            <div>
+              <span id="3d-pan-label">pan_x:</span>
+              <input type="number" id="3d-pan-x" step="0.1" value="0.0">
+            </div>
+            <div>
+              <span id="3d-pan-label">pan_y:</span>
+              <input type="number" id="3d-pan-y" step="0.1" value="0.0">
+            </div>
+            <div>
+              <span id="3d-opacity-label">opacity:</span>
+              <input type="number" id="3d-opacity" step="0.1" value="1.0" min="0" max="1">
+            </div>
+            <div>
+              <span id="3d-rotation-label">angle:</span>
+              <input type="number" id="3d-rotation-x" step="15" value="-90" min="0" max="360">
+              <input type="number" id="3d-rotation-y" step="15" value="0" min="0" max="360">
+              <input type="number" id="3d-rotation-z" step="15" value="0" min="0" max="360">
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button id="3d-submit">应用</button>
+            <button id="3d-reset">重置</button>
+          </div>
+        </fieldset>
       </div>
     </section>
 
@@ -283,6 +416,12 @@
       wasmModule: null,
       len: null,
       render_app: null,
+      spacing: [],
+      dim:[],
+      mip: null,
+      mesh: false,
+      mesh_index: null,
+      enable_rotation: false,
     };
 
     let gl_canvas = null;
@@ -407,14 +546,16 @@
           alert('Please select a series first!');
           return;
       }
-      gl_canvas.set_slice_mm(indexValue, sliceValue);
+        gl_canvas.set_slice_mm(indexValue, sliceValue);
     })
 
-    byId('resize-submit').addEventListener('click', () => {
-      const width = byId('width').value;
-      const height = byId('height').value;
+    byId('set-center').addEventListener('click', async () => {
+      const x = parseFloat(byId('center-x').value);
+      const y = parseFloat(byId('center-y').value);
+      const z = parseFloat(byId('center-z').value);
       const input_index = byId('index-input');
-      if (isNaN(width) || isNaN(height)) {
+      const indexValue = parseInt(input_index.value);
+      if ([x, y, z].some(v => Number.isNaN(v))) {
         alert('Please enter a valid number');
         return;
       }
@@ -422,8 +563,14 @@
         alert('Please select a series first!');
         return;
       }
-      gl_canvas.resize( width, height);
-    })
+      // Function-level comment: Request Rust to compute world/slice data and await the result Promise.
+      try {
+        const result = await gl_canvas.handle_view_click_get(indexValue, x, y, z);
+        console.log('handle_view_click:', result);
+      } catch (e) {
+        console.error('handle_view_click error:', e);
+      }
+    });
 
     byId('scale-submit').addEventListener('click', () => {
         const input = byId('scale-input');
@@ -442,21 +589,18 @@
     });
 
     byId('trans-submit').addEventListener('click', () => {
-      let x = document.querySelector('#trans-x').value;
-      let y = document.querySelector('#trans-y').value;
-      let z = document.querySelector('#trans-z').value;
+      let x = parseFloat(byId('trans-x').value);
+      let y = parseFloat(byId('trans-y').value);
       const input_index = byId('index-input');
       const indexValue = parseInt(input_index.value);
-      console.log('translate:', x, y, z);
-      if (isNaN(x) && isNaN(y) && isNaN(z)) {
-        alert('Please enter a valid number');
-        return;
-      }
+      console.log('translate:', x, y);
+
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
-      gl_canvas.set_translate_in_screen_coord(indexValue, x, y, z);
+
+      gl_canvas.set_pan(indexValue, x, y);
     });
 
     byId('winlev-submit').addEventListener('click', () => {
@@ -471,6 +615,124 @@
       }
         win && gl_canvas.set_window_width(indexValue, win);
         lev && gl_canvas.set_window_level(indexValue, lev);
+    });
+
+    byId('winlev-get').addEventListener('click', () => {
+      const input_index = byId('index-input');
+      const indexValue = parseInt(input_index.value);
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+      gl_canvas.get_window_level(indexValue).then((result) => {
+        console.log('window_level:', result[0], 'window_width:', result[1]);
+      }).catch((err) => {
+        console.error('get_window_level error:', err);
+      });
+    });
+
+    byId('trans-get').addEventListener('click', () => {
+      const input_index = byId('index-input');
+      const indexValue = parseInt(input_index.value);
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+      gl_canvas.get_pan(indexValue).then((result) => {
+        console.log('pan:', result[0], result[1], result[2]);
+      }).catch((err) => {
+        console.error('get_pan error:', err);
+      });
+    });
+
+    byId('mesh').addEventListener('click', () => {
+      const checkbox3d = byId('3d').checked;
+      const checkboxChangeMpr = byId('change_mpr').checked;
+      const checkboxChangeMip = byId('change_mip').checked;
+
+      if (checkbox3d){
+        state.mesh = true;
+        state.mesh_index = parseInt(byId('mesh_index').value, 10);
+      }else{
+        state.mesh = false;
+        state.mesh_index = null;
+      }
+      
+      // Indices: convert to numbers for downstream logic
+      if (checkboxChangeMip) {
+        state.mip = parseInt(byId('mip').value, 10);
+        console.log('meshclick_mip:',state.mip);
+      }else{
+        state.mip = null;
+      }
+      const index_1 = parseInt(byId('index-1').value, 10);
+      const index_2 = parseInt(byId('index-2').value, 10);
+      const index_3 = parseInt(byId('index-3').value, 10);
+      const index_4 = parseInt(byId('index-4').value, 10);
+      const downsample = parseInt(byId('downsample').value, 10);
+      const iso_value = parseFloat(byId('iso-value').value);
+
+      console.log('meshclick:', state.mesh_index, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, downsample, iso_value);
+
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+
+      gl_canvas.enable_mesh(state.mesh_index, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, iso_value, null);
+    });
+
+    byId('one-cell-submit').addEventListener('click', () => {
+      const mode = parseInt(byId('mode').value, 10); // Mode: 0=MPR, 1=MIP, 2=MESH
+      const orientation_index = parseInt(byId('orientation_index').value, 10);
+      const downsample = parseInt(byId('downsample').value, 10);
+      const iso_value = parseFloat(byId('iso-value').value);
+      console.log('meshclick:', mode, orientation_index, iso_value, null);
+
+      if (mode === 2){
+        state.mesh = true;
+      }else{
+        state.mesh = false;
+      }
+
+      gl_canvas.set_one_cell_layout(mode, orientation_index, iso_value, null);
+    });
+    
+    byId('3d-submit').addEventListener('click', () => {
+      const indexValue = parseInt(byId('index-input').value, 10);
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+
+      // state.enable_rotation = !state.enable_rotation;
+      // console.log('Mesh rotation', state.enable_rotation);
+      gl_canvas.set_mesh_rotation_enabled(indexValue, state.enable_rotation);
+
+      const scale = parseFloat(byId('3d-scale').value);
+      const pan_x = parseFloat(byId('3d-pan-x').value);
+      const pan_y = parseFloat(byId('3d-pan-y').value);
+      const opacity = parseFloat(byId('3d-opacity').value);
+      const rotation_x = parseFloat(byId('3d-rotation-x').value);
+      const rotation_y = parseFloat(byId('3d-rotation-y').value);
+      const rotation_z = parseFloat(byId('3d-rotation-z').value);
+
+      if (state.mesh){
+        console.log('3d-submit:', scale, pan_x, pan_y, opacity, rotation_x, rotation_y, rotation_z);
+        gl_canvas.set_mesh_scale(indexValue, scale);
+        gl_canvas.set_mesh_pan(indexValue, pan_x, pan_y);
+        if (typeof gl_canvas.set_mesh_opacity === 'function') {
+          gl_canvas.set_mesh_opacity(indexValue, Math.max(0, Math.min(1, opacity)));
+        } else {
+          log('mesh opacity 方法未导出，已跳过', 'warn');
+        }
+        gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
+      }
+    });
+
+    byId('3d-reset').addEventListener('click', () => {
+        const indexValue = parseInt(byId('index-input').value, 10);
+        gl_canvas.reset_mesh(indexValue);
     });
 
     // ========= MHX文件解析函数 =========
@@ -498,13 +760,13 @@
             header.element_type = value;
             break;
           case 'DimSize':
-            const dims = value.split(' ').map(Number);
-            [header.dim_x, header.dim_y, header.dim_z] = dims;
+            state.dims = value.split(' ').map(Number);
+            [header.dim_x, header.dim_y, header.dim_z] = state.dims;
             state.len = header.dim_x * header.dim_y * header.dim_z;
             break;
           case 'ElementSpacing':
-            const spacing = value.split(' ').map(Number);
-            [header.spacing_x, header.spacing_y, header.spacing_z] = spacing;
+            state.spacing = value.split(' ').map(Number);
+            [header.spacing_x, header.spacing_y, header.spacing_z] = state.spacing;
             break;
           case 'ElementDataFile':
             header.data_file = value;

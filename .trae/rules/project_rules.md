@@ -1,12 +1,7 @@
 1. Always chat in English.
-2. Add function-level comments when generating code directly without displaying "Function-level comment: " prefix.
 3. My system is Windows but the code shall work in Mac and Linux.
 4. The project is a Rust-based WGPU medical imaging framework for CT reconstruction, MPR (multi-planar reconstruction), MIP (maximum intensity projection), and 3D visualization.
 5. The project must build for both native and WebAssembly (wasm) targets.
-6. The wasm build command is: wasm-pack build -t web 
-   The native build and test commands are:
-        cargo build 
-        cargo test 
 7. Do not use npx, live-server, or any node-based tools for wasm testing. The wasm output will be manually tested in the browser.
 8. All documentation resides under the doc/ folder and its subfolders. Each feature or change must include a short explanation in this folder.
 9. Development must be incremental and minimal. Add features step by step, starting with the minimal viable product.
@@ -21,10 +16,5 @@
 18. GPU operations must remain efficient and non-blocking. Avoid excessive CPU-GPU synchronization in render loops.
 19. Use cfg(feature = "trace-logging") to conditionally include expensive diagnostics.
 20. Update doc/CHANGELOG.md for each user-visible change.
-21. In the medical imaging context, ensure accuracy, numerical stability, and performance for CT reconstruction and visualization.
-22. Manage GPU memory efficiently and minimize texture/data copies.
-23. The codebase must remain buildable, testable, and inspectable at all times.
-24. Do not use perspective projection in medical imaging for accuracy reasons unless asked.
-25. When working with Rust matrices (which are row-major) and shader matrices (which require column-major format), ensure you transpose the matrices before uploading them to maintain data consistency and correct mathematical operations.
-26. Time stamp format shall be YYYY-MM-DDTHH-MM-SS which takes the local time zone into account. The current local time zone is Beijing. Use "Get-Date -Format "yyyy-MM-ddTHH-mm-ss" to check the system time to make sure the time is correctly handled.
-27. Add `no_run` directives to all code examples in the documentation to indicate they should not be executed during documentation generation. This ensures examples are displayed for reference purposes only while preventing accidental execution during build processes.
+22. The codebase must remain buildable, testable, and inspectable at all times.
+23. Time stamp format shall be YYYY-MM-DDTHH-MM-SS which takes the local time zone into account. The current local time zone is Beijing. Use "Get-Date -Format "yyyy-MM-ddTHH-mm-ss" to check the system time to make sure the time is correctly handled.

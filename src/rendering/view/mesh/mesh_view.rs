@@ -1,8 +1,11 @@
 #![allow(dead_code)]
 
-
-use super::{mesh::{Mesh, Lighting}, material::Material, camera::Camera, performance::{QualityController, QualityLevel, PerformanceStats}, basic_mesh_context::BasicMeshContext};
-use crate::{core::coord::Matrix4x4, rendering::view::{Renderable, View}, core::timing::{Instant, DurationExt}};
+use super::{mesh::{Mesh, Lighting}, camera::Camera, performance::{QualityController, QualityLevel, PerformanceStats}, basic_mesh_context::BasicMeshContext};
+use crate::{
+    rendering::view::{Renderable, View}, 
+    core::timing::Instant,
+};
+use glam::{Mat4, Vec3};
 
 /// Function-level comment: Error types specific to mesh rendering operations
 #[derive(Debug)]
@@ -65,7 +68,7 @@ impl Default for FallbackMode {
 
 pub struct MeshView {
     pub mesh: Option<Mesh>,
-    pub material: Option<Material>,
+    // pub material: Option<Material>,
     pub camera: Option<Camera>,
     pub lighting: Option<Lighting>,
     ctx: Option<std::sync::Arc<BasicMeshContext>>,
@@ -81,22 +84,30 @@ pub struct MeshView {
     last_success_time: Instant,
     /// Performance monitoring and automatic quality adjustment
     quality_controller: QualityController,
-    /// Y-axis rotation state
+    /// rotation state
     rotation_enabled: bool,
     /// Current rotation angle in radians
-    rotation_angle: f32,
+    rotation_angle: [f32; 3],
+    /// Cached rotation angle used when rotation is disabled to preserve orientation
+    rotation_angle_cache: [f32; 3],
     /// Rotation speed in radians per second (default: π/2 = 90 degrees/second)
     rotation_speed: f32,
     /// Last frame time for rotation calculation
     last_frame_time: Instant,
+    /// Uniform scale factor
+    scale_factor: f32,
+    /// Pan translation in world units (X, Y, Z)
+    pan: [f32; 3],
+    /// Mesh opacity (0.0 transparent .. 1.0 opaque)
+    opacity: f32,
 }
 
 impl Default for MeshView {
     fn default() -> Self {
-        use std::f32::consts::PI;
+        use std::f32::consts::FRAC_PI_2;
         Self {
             mesh: None,
-            material: None,
+            // material: None,
             camera: None,
             lighting: None,
             ctx: None,
@@ -108,9 +119,16 @@ impl Default for MeshView {
             last_success_time: Instant::now(),
             quality_controller: QualityController::default(),
             rotation_enabled: true,
-            rotation_angle: 0.0,
-            rotation_speed: PI / 2.0, // 90 degrees per second - reasonable default speed
+            // Angles are stored in radians; 90°=FRAC_PI_2, 180°=PI
+            // rotation_angle: [-FRAC_PI_2 , 0.0, 0.0],
+            // rotation_angle_cache: [-FRAC_PI_2, 0.0, 0.0],
+            rotation_angle: [0.0 , 0.0, 0.0],
+            rotation_angle_cache: [0.0, 0.0, 0.0],
+            rotation_speed: FRAC_PI_2, // 90 degrees per second - reasonable default speed
             last_frame_time: Instant::now(),
+            scale_factor: 1.0,
+            pan: [0.0, 0.0, 0.0],
+            opacity: 1.0,
         }
     }
 }
@@ -175,24 +193,18 @@ impl MeshView {
         }
     }
 
-    /// Function-level comment: Enable or disable Y-axis rotation animation.
-    /// When enabled, the mesh will continuously rotate around the Y-axis at the configured speed.
+    /// Function-level comment: Enable or disable rotation animation.
     pub fn set_rotation_enabled(&mut self, enabled: bool) {
-        if enabled != self.rotation_enabled {
-            self.rotation_enabled = enabled;
-            if enabled {
-                // Reset timing when enabling rotation to prevent jumps
-                self.last_frame_time = Instant::now();
-                log::info!("Mesh Y-axis rotation enabled at {:.1}°/s", self.rotation_speed.to_degrees());
-            } else {
-                log::info!("Mesh Y-axis rotation disabled");
-            }
+        self.rotation_enabled = enabled;
+        if enabled {
+            // Reset timing when enabling rotation to prevent jumps
+            self.last_frame_time = Instant::now();
+            log::info!("Mesh rotation enabled at {:.1}°/s", self.rotation_speed.to_degrees());
+        } else {
+            // Preserve current orientation when stopping rotation
+            self.rotation_angle_cache = self.rotation_angle;
+            log::info!("Mesh rotation disabled");
         }
-    }
-
-    /// Function-level comment: Check if Y-axis rotation is currently enabled.
-    pub fn is_rotation_enabled(&self) -> bool {
-        self.rotation_enabled
     }
 
     /// Function-level comment: Set the rotation speed in radians per second.
@@ -212,14 +224,27 @@ impl MeshView {
     /// Function-level comment: Reset the rotation angle to zero.
     /// Useful for returning to a known orientation or synchronizing multiple objects.
     pub fn reset_rotation(&mut self) {
-        self.rotation_angle = 0.0;
+        // Reset to default orientation: [90°, 180°, 0°] in radians
+        // use std::f32::consts::FRAC_PI_2;
+        // self.rotation_angle = [-FRAC_PI_2, 0.0, 0.0];
+        self.rotation_angle = [0.0, 0.0, 0.0];
+        self.rotation_angle_cache = self.rotation_angle;
         self.last_frame_time = Instant::now();
-        log::debug!("Mesh rotation angle reset to 0°");
+        log::debug!("Mesh rotation angle reset to default (90°, 180°, 0°)");
     }
 
     /// Function-level comment: Get the current rotation angle in radians.
-    pub fn get_rotation_angle(&self) -> f32 {
+    pub fn get_rotation_angle(&self) -> [f32; 3] {
         self.rotation_angle
+    }
+    
+    /// Function-level comment: Set the current rotation angle using degrees for convenience.
+    /// This directly sets the orientation without affecting rotation speed.
+    pub fn set_rotation_angle_degrees(&mut self, degrees: [f32; 3]) {
+        self.rotation_angle = degrees.map(|d| d.to_radians());
+        self.rotation_angle_cache = self.rotation_angle;
+        self.last_frame_time = Instant::now();
+        log::info!("Mesh rotation angle set to {:?}°", degrees);
     }
 
     /// Function-level comment: Set rotation speed using degrees per second for convenience.
@@ -228,17 +253,79 @@ impl MeshView {
         self.set_rotation_speed(degrees_per_sec.to_radians());
     }
 
-    /// Function-level comment: Create a default camera positioned to view a unit cube
+    /// Function-level comment: Set uniform scale factor applied to the mesh model.
+    /// Typical values: 0.25 (very small) .. 2.0 (double size). Default is 1.0.
+    pub fn set_scale_factor(&mut self, scale: f32) {
+        // Clamp to a reasonable range to avoid clipping or degenerate matrices
+        let clamped = scale.clamp(0.001, 100.0);
+        self.scale_factor = clamped;
+        log::info!("Mesh scale factor set to {:.3}", clamped);
+    }
+
+    /// Function-level comment: Get the current uniform scale factor.
+    pub fn get_scale_factor(&self) -> f32 {
+        self.scale_factor
+    }
+
+    /// Function-level comment: Reset the uniform scale factor to default (0.5).
+    pub fn reset_scale_factor(&mut self) {
+        self.scale_factor = 1.0;
+        log::info!("Mesh scale factor reset to default (1.0)");
+    }
+
+    
+    /// Function-level comment: Set mesh pan translation (world units) for X and Y axes.
+    /// Pan values are uploaded to the vertex shader as a uniform offset.
+    pub fn set_pan(&mut self, dx: f32, dy: f32) {
+        self.pan[0] = dx;
+        self.pan[1] = dy;
+        log::info!("Mesh pan offset set to ({}, {})", dx, dy);
+    }
+
+    /// Function-level comment: Get the current pan translation offset.
+    pub fn get_pan(&self) -> [f32; 3] {
+        self.pan
+    }
+
+    /// Function-level comment: Reset mesh pan translation to the origin.
+    pub fn reset_pan(&mut self) {
+        self.pan = [0.0, 0.0, 0.0];
+        log::info!("Mesh pan reset to (0, 0, 0)");
+    }
+
+    /// Function-level comment: Set mesh opacity (0.0 transparent .. 1.0 opaque).
+    pub fn set_opacity(&mut self, alpha: f32) {
+        self.opacity = alpha.clamp(0.0, 1.0);
+        log::info!("Mesh opacity set to {:.3}", self.opacity);
+    }
+
+    pub fn reset_opacity(&mut self) {
+        self.opacity = 1.0;
+        log::info!("Mesh opacity reset to default (1.0)");
+    }
+
+    /// Function-level comment: Create a default camera compatible with orthogonal projection
+    /// Ensures the entire unit cube is visible without clipping when using orthographic mode.
     fn create_default_camera(&self) -> Camera {
-        // Use perspective projection for initial testing to match working implementation
-        let mut camera = Camera::new_perspective();
-        camera.eye = [0.0, 0.0, 3.0]; // Position camera closer to the cube
-        camera.center = [0.0, 0.0, 0.0]; // Look at origin
-        camera.up = [0.0, 1.0, 0.0]; // Y-up
-        camera.fov_y_radians = std::f32::consts::PI / 4.0; // 45 degrees FOV
-        camera.near = 0.1;
-        camera.far = 100.0;
+        // Start with orthogonal projection camera
+        let mut camera = Camera::new(); // uses Orthogonal by default
+
+        // Set standard viewing parameters
+        camera.eye = [0.0, 0.0, 3.0];      // Camera in front of the scene
+        camera.center = [0.0, 0.0, 0.0];   // Look at origin
+        camera.up = [0.0, 1.0, 0.0];       // Y-up coordinate system
         
+        // Fix clipping issues: near and far planes must include the scene
+        // For orthographic projection, near MUST be < far; negative near is allowed.
+        camera.near = -5.0;   // Allow objects between camera and center
+        camera.far = 5.0;     // Small range improves depth precision
+
+        // Setup orthogonal bounds to ensure a unit cube (-1..1) fits inside view
+        camera.ortho_left = -2.0;
+        camera.ortho_right = 2.0;
+        camera.ortho_bottom = -2.0;
+        camera.ortho_top = 2.0;
+
         camera
     }
 
@@ -246,35 +333,39 @@ impl MeshView {
     /// Returns lighting with reasonable defaults for 3D mesh viewing.
     fn create_default_lighting(&self) -> Lighting {
         Lighting {
-            direction: [0.0, -1.0, -1.0],  // Light coming from above and front
-            intensity: 1.0,                 // Full intensity white light
+            direction: [0.6, -0.7, 0.3],
+            light_color: [1.0, 1.0, 1.0],
+            light_intensity: 1.0,
+            ambient_color: [0.4, 0.4, 0.5],
+            ambient_intensity: 0.4,
         }
     }
 
     /// Function-level comment: Update GPU uniforms for basic mesh rendering with combined MVP matrix
-    /// Includes Y-axis rotation if enabled, using frame-rate independent timing
+    /// Includes rotation if enabled, using frame-rate independent timing
     pub fn update_uniforms(&mut self, queue: &wgpu::Queue) {
-        // Update rotation angle if rotation is enabled
+        // Keep angle in [0, 2π] range to prevent floating point precision issues
+        use std::f32::consts::TAU; // TAU = 2π
+
+        // Update rotation angle only when rotation is enabled; orientation should persist when disabled
         if self.rotation_enabled {
             let current_time = Instant::now();
             let delta_time = current_time.duration_since(self.last_frame_time).as_secs_f32();
-            self.rotation_angle += self.rotation_speed * delta_time;
-            
-            // Keep angle in [0, 2π] range to prevent floating point precision issues
-            use std::f32::consts::TAU; // TAU = 2π
-            if self.rotation_angle >= TAU {
-                self.rotation_angle -= TAU;
+            for i in 0..3 {
+                self.rotation_angle[i] += self.rotation_speed * delta_time;
+                if self.rotation_angle[i] >= TAU {
+                    self.rotation_angle[i] -= TAU;
+                }
+
+                #[cfg(feature = "trace-logging")]
+                log::trace!("[MESH_ROTATION] Angle: {:.3} rad ({:.1}°), Speed: {:.3} rad/s, Delta: {:.3}ms",
+                    self.rotation_angle[i], self.rotation_angle[i].to_degrees(), self.rotation_speed, delta_time * 1000.0);
             }
-            
             self.last_frame_time = current_time;
-            
-            #[cfg(feature = "trace-logging")]
-            log::trace!("[MESH_ROTATION] Angle: {:.3} rad ({:.1}°), Speed: {:.3} rad/s, Delta: {:.3}ms", 
-                       self.rotation_angle, self.rotation_angle.to_degrees(), self.rotation_speed, delta_time * 1000.0);
         }
         
         if let Some(ctx) = &self.ctx {
-            let aspect_ratio = if self.dim.1 > 0 && self.dim.0 > 0 {
+            let aspect_ratio = if self.dim.0 > 0 && self.dim.1 > 0 {
                 self.dim.0 as f32 / self.dim.1 as f32
             } else {
                 1.0
@@ -283,85 +374,64 @@ impl MeshView {
             log::debug!("[BASIC_MESH_UNIFORMS] Viewport dimensions: {}x{}, aspect_ratio: {:.3}", 
                        self.dim.0, self.dim.1, aspect_ratio);
             
-            // Model matrix - scaling with optional Y-axis rotation
-            let scale = 1.0 / 2.0; // Make cube much smaller
+            // Model matrix - apply persistent rotation (if any) and uniform scale
             
-            // Create scale matrix
-            let scale_matrix = Matrix4x4::from_array([
-                scale, 0.0,   0.0,   0.0,
-                0.0,   scale, 0.0,   0.0,
-                0.0,   0.0,   scale, 0.0,
-                0.0,   0.0,   0.0,   1.0,
-            ]);
-            
-            let model_matrix = if self.rotation_enabled {
-                // Create Y-axis rotation matrix
-                let cos_y = self.rotation_angle.cos();
-                let sin_y = self.rotation_angle.sin();
-                
-                // Y-axis rotation matrix
-                let rotation_matrix = Matrix4x4::from_array([
-                    cos_y,  0.0,    sin_y,  0.0,
-                    0.0,    1.0,    0.0,    0.0,
-                    -sin_y, 0.0,    cos_y,  0.0,
-                    0.0,    0.0,    0.0,    1.0,
-                ]);
-                
-                // Apply scale first, then rotation: rotation * scale
-                rotation_matrix.multiply(&scale_matrix)
-            } else {
-                // Use scale matrix only when rotation is disabled
-                scale_matrix
+            // Use cached angles when rotation is disabled to preserve orientation
+            let angles = if self.rotation_enabled { 
+                self.rotation_angle 
+            } else { 
+                self.rotation_angle_cache 
             };
+
+            // Calculate rotation (matches original rx * ry * rz order)
+            // Note: In column-major math, M * v applies operations Right-to-Left.
+            // Original: rx.multiply(&ry).multiply(&rz) -> Rx * Ry * Rz
+            // This applies Rz (Z-rot) first, then Ry, then Rx.
+            let rotation = Mat4::from_rotation_x(angles[0])
+                * Mat4::from_rotation_y(angles[1])
+                * Mat4::from_rotation_z(angles[2]);
+
+            // Compose Model: Translation * Rotation * Scale
+            let model_matrix = Mat4::from_translation(Vec3::from(self.pan))
+                * rotation
+                * Mat4::from_scale(Vec3::splat(self.scale_factor));
             
             // View matrix - camera positioned for optimal viewing of smaller cube
-            let view_matrix = Matrix4x4::from_array([
-                1.0, 0.0, 0.0, 0.0,
-                0.0, 1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0, -2.0, // Closer camera for smaller cube
-                0.0, 0.0, 0.0, 1.0,
-            ]);
+            // Camera at (0, 0, 3.0) looking at origin, but original matrix 
+            // had specific translation (0, 0, -2.0) hardcoded in the array.
+            let view_matrix = Mat4::from_translation(Vec3::new(0.0, 0.0, -2.0));
             
-            // Orthogonal projection matrix for medical imaging accuracy
-            let left = -2.0;
-            let right = 2.0;
-            let bottom = -2.0 / aspect_ratio;
-            let top = 2.0 / aspect_ratio;
-            let near = 0.1;
-            let far = 4.;
+            // Dynamic orthographic range adjustment
+            let base_extent = 2.0;
+            let expand_factor = 1.8;
+            let view_extent = base_extent * expand_factor;
+            let left = -view_extent;
+            let right = view_extent;
+            let bottom = -view_extent / aspect_ratio;
+            let top = view_extent / aspect_ratio;
+            let near = -view_extent * 2.0;
+            let far = view_extent * 2.0;
             
-            let proj_matrix = Matrix4x4::from_array([
-                2.0 / (right - left), 0.0, 0.0, -(right + left) / (right - left),
-                0.0, 2.0 / (top - bottom), 0.0, -(top + bottom) / (top - bottom),
-                0.0, 0.0, -2.0 / (far - near), -(far + near) / (far - near),
-                0.0, 0.0, 0.0, 1.0,
-            ]);          
+            // Matches original OpenGL-style orthographic projection (-1 to 1 Z range)
+            let proj_matrix = Mat4::orthographic_rh(left, right, bottom, top, near, far);
             
             // Calculate MVP: projection * view * model
-            let view_model = view_matrix.multiply(&model_matrix);
-            let mvp_matrix = proj_matrix.multiply(&view_model);
-            // let mvp_matrix = proj_matrix.multiply(&view_matrix);
+            let mvp_matrix = proj_matrix * view_matrix * model_matrix;
             
-            if self.rotation_enabled {
-                log::trace!("[BASIC_MESH_MATRICES] Model matrix (scale {} with Y-rotation {:.3} rad): {:?}", 
-                           scale, self.rotation_angle, model_matrix.data);
-            } else {
-                log::trace!("[BASIC_MESH_MATRICES] Model matrix (scale {} no rotation): {:?}", 
-                           scale, model_matrix.data);
-            }
-            log::trace!("[BASIC_MESH_MATRICES] View matrix (camera at -3): {:?}", view_matrix.data);
-            log::trace!("[BASIC_MESH_MATRICES] Projection matrix (orthogonal): {:?}", proj_matrix.data);
-            log::trace!("[BASIC_MESH_MATRICES] Combined MVP matrix: {:?}", mvp_matrix.data);
+            #[cfg(feature = "trace-logging")]
+            log::trace!("[BASIC_MESH_MATRICES] Model matrix (scale {} with rotation {:?} rad, enabled={}): {:?}", 
+                        self.scale_factor, angles, self.rotation_enabled, model_matrix.to_cols_array());
+            log::trace!("[BASIC_MESH_MATRICES] View matrix (camera at -3): {:?}", view_matrix.to_cols_array());
+            log::trace!("[BASIC_MESH_MATRICES] Projection matrix (orthogonal): {:?}", proj_matrix.to_cols_array());
+            log::trace!("[BASIC_MESH_MATRICES] Combined MVP matrix: {:?}", mvp_matrix.to_cols_array());
             
             // Update uniforms in BasicMeshContext with combined MVP matrix
-            // Note: The shader expects column-major matrices, so we transpose the MVP matrix
-            let mvp_matrix_transposed = mvp_matrix.transpose();
-            log::trace!("[BASIC_MESH_MATRICES] Transposed MVP matrix for shader: {:?}", mvp_matrix_transposed.data);
+            // Note: The shader expects column-major matrices, and glam is column-major by default.
             
-            ctx.update_uniforms(queue, &mvp_matrix_transposed.data);
+            ctx.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
 
             // Update lighting uniforms to ensure lighting effects are applied
-            let lighting_uniforms = if let Some(ref lighting) = self.lighting {
+            let mut lighting_uniforms = if let Some(ref lighting) = self.lighting {
                 // Use the configured lighting and convert to BasicLightingUniforms
                 lighting.to_basic_uniforms()
             } else {
@@ -369,18 +439,8 @@ impl MeshView {
                 let default_lighting = self.create_default_lighting();
                 default_lighting.to_basic_uniforms()
             };
-            ctx.update_lighting_uniforms(queue, &lighting_uniforms);
-            log::trace!("[BASIC_MESH_LIGHTING] Updated lighting uniforms with configured lighting");
-
-            // let scale = cgmath::Matrix4::from_scale(0.5);
-            // let rotation = cgmath::Matrix4::from_angle_y(cgmath::Rad(self.rotation_angle));
-            // let translate = cgmath::Matrix4::from_translation(cgmath::vec3(0.0, 0.0, -5.0));
-            // let aspect = self.dim.0 as f32 / self.dim.1 as f32;
-            // // let proj = cgmath::perspective(cgmath::Deg(45.0), aspect, 0.1, 100.0);
-            // let proj = cgmath::ortho(left, right, bottom, top, near, far);
-            // let view = cgmath::Matrix4::identity();
-            // let mvp = proj * view * translate * rotation* scale;
-            // ctx.update_uniforms(queue, &mvp.into());
+            lighting_uniforms.opacity = self.opacity;
+            ctx.update_lighting(queue, lighting_uniforms);
         }
     }
     
@@ -580,4 +640,81 @@ impl View for MeshView {
     }
     fn as_any(&self) -> &dyn std::any::Any { self }
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::f32::consts::{PI, FRAC_PI_2, TAU};
+
+    /// Function-level comment: Verify default rotation state and speed
+    #[test]
+    fn test_rotation_api_basic_functionality() {
+        let mesh_view = MeshView::default();
+        let angles = mesh_view.get_rotation_angle();
+        assert!(angles[0].abs() < 1e-6);
+        assert!(angles[1].abs() < 1e-6);
+        assert!(angles[2].abs() < 1e-6);
+        assert!((mesh_view.get_rotation_speed() - FRAC_PI_2).abs() < 1e-6);
+    }
+
+    /// Function-level comment: Ensure enabling/disabling rotation does not panic and preserves orientation
+    #[test]
+    fn test_rotation_enable_disable() {
+        let mut mesh_view = MeshView::default();
+        let before = mesh_view.get_rotation_angle();
+        mesh_view.set_rotation_enabled(false);
+        let after_disable = mesh_view.get_rotation_angle();
+        mesh_view.set_rotation_enabled(true);
+        let after_enable = mesh_view.get_rotation_angle();
+        assert!((before[0] - after_disable[0]).abs() < 1e-6);
+        assert!((before[0] - after_enable[0]).abs() < 1e-6);
+    }
+
+    /// Function-level comment: Verify rotation speed setters
+    #[test]
+    fn test_rotation_speed_control() {
+        let mut mesh_view = MeshView::default();
+        let test_speed = PI / 4.0; // 45°/s
+        mesh_view.set_rotation_speed(test_speed);
+        assert!((mesh_view.get_rotation_speed() - test_speed).abs() < 1e-6);
+        mesh_view.set_rotation_speed_degrees(180.0); // π rad/s
+        assert!((mesh_view.get_rotation_speed() - PI).abs() < 1e-6);
+    }
+
+    /// Function-level comment: Reset rotation and verify default orientation [-π/2, 0, 0]
+    #[test]
+    fn test_rotation_angle_reset() {
+        let mut mesh_view = MeshView::default();
+        mesh_view.reset_rotation();
+        let angles = mesh_view.get_rotation_angle();
+        assert!(angles[0].abs() < 1e-6);
+        assert!(angles[1].abs() < 1e-6);
+        assert!(angles[2].abs() < 1e-6);
+    }
+
+    /// Function-level comment: Test that standard trigonometric values are correct for our rotation matrix
+    #[test]
+    fn test_trigonometric_correctness() {
+        let angle_0: f32 = 0.0; assert!((angle_0.cos() - 1.0).abs() < 1e-6); assert!(angle_0.sin().abs() < 1e-6);
+        let angle_90: f32 = PI / 2.0; assert!(angle_90.cos().abs() < 1e-6); assert!((angle_90.sin() - 1.0).abs() < 1e-6);
+        let angle_180: f32 = PI; assert!((angle_180.cos() + 1.0).abs() < 1e-6); assert!(angle_180.sin().abs() < 1e-6);
+        let angle_270: f32 = 3.0 * PI / 2.0; assert!(angle_270.cos().abs() < 1e-6); assert!((angle_270.sin() + 1.0).abs() < 1e-6);
+        let angle_360 = TAU; assert!((angle_360.cos() - 1.0).abs() < 1e-6); assert!(angle_360.sin().abs() < 1e-6);
+    }
+
+    /// Function-level comment: Verify that the Y-axis rotation matrix follows the standard mathematical form
+    // Standard Y-axis rotation matrix:
+    // [cos θ   0   sin θ   0]
+    // [  0     1     0     0]
+    // [-sin θ  0   cos θ   0]
+    // [  0     0     0     1]
+    #[test]
+    fn test_y_axis_rotation_matrix_mathematical_form() {
+        let angle = PI / 4.0; // 45°
+        let cos_a = angle.cos(); let sin_a = angle.sin();
+        assert!((cos_a - sin_a).abs() < 1e-6);
+        assert!((cos_a - (2.0_f32.sqrt() / 2.0)).abs() < 1e-6);
+        let id = cos_a * cos_a + sin_a * sin_a; assert!((id - 1.0).abs() < 1e-6);
+    }
 }

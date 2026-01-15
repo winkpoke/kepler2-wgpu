@@ -163,14 +163,8 @@ impl BasicMeshContext {
         log::trace!("Updated basic mesh uniforms with MVP matrix");
     }
 
-    /// Function-level comment: Update lighting uniforms with current lighting parameters
-    pub fn update_lighting_uniforms(
-        &self,
-        queue: &Queue,
-        lighting_uniforms: &BasicLightingUniforms,
-    ) {
-        queue.write_buffer(&self.lighting_uniform_buffer, 0, bytemuck::cast_slice(&[*lighting_uniforms]));
-        log::trace!("Updated basic mesh lighting uniforms");
+    pub fn update_lighting(&self, queue: &Queue, uniforms: BasicLightingUniforms) {
+        queue.write_buffer(&self.lighting_uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
     }
 
     /// Function-level comment: Render the mesh using the basic pipeline with lighting
@@ -183,7 +177,7 @@ impl BasicMeshContext {
         render_pass.set_bind_group(0, &self.bind_group, &[]);
         render_pass.set_bind_group(1, &self.lighting_bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
         render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
 
         log::trace!("BasicMeshContext::render - Draw call completed");
@@ -195,15 +189,5 @@ impl BasicMeshContext {
         let vertex_size = self.vertex_buffer.size();
         let index_size = self.index_buffer.size();
         (vertex_size, index_size, 0.0, 0.0)
-    }
-}
-
-/// Function-level comment: Explicit cleanup implementation for BasicMeshContext
-/// Ensures proper buffer destruction to prevent "Buffer does not exist" errors in WASM
-impl Drop for BasicMeshContext {
-    fn drop(&mut self) {
-        log::debug!("[BASIC_MESH_CONTEXT] Dropping BasicMeshContext - GPU buffers will be automatically cleaned up");
-        // Note: wgpu::Buffer doesn't have a destroy() method - buffers are automatically 
-        // cleaned up when dropped. The explicit Drop implementation here is mainly for logging.
     }
 }

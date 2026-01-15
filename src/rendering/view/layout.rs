@@ -15,6 +15,73 @@
 
 
 use super::{Renderable, View};
+use log;
+
+/// Result of aspect-preserving fit computation
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AspectFitResult {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub scale: f32,
+}
+
+/// Compute a letterboxed/pillarboxed inner rectangle that preserves content aspect ratio
+/// within a container with optional uniform padding on all sides.
+/// Returns None if inputs are invalid. Width/height are guaranteed to be > 0 when Some.
+pub fn compute_aspect_fit(
+    container_w: u32,
+    container_h: u32,
+    content_w: f32,
+    content_h: f32,
+    padding: u32,
+) -> Option<AspectFitResult> {
+    if container_w == 0 || container_h == 0 { return None; }
+    if !content_w.is_finite() || !content_h.is_finite() { return None; }
+    if content_w <= 0.0 || content_h <= 0.0 { return None; }
+
+    let mut inner_w = container_w as i32 - 2 * (padding as i32);
+    let mut inner_h = container_h as i32 - 2 * (padding as i32);
+    if inner_w < 1 { inner_w = 1; }
+    if inner_h < 1 { inner_h = 1; }
+
+    let inner_wf = inner_w as f32;
+    let inner_hf = inner_h as f32;
+
+    // Clamp extreme content aspect ratios to avoid precision issues
+    let mut c_aspect = content_w / content_h;
+    if !c_aspect.is_finite() || c_aspect <= 0.0 {
+        return None;
+    }
+    const MIN_AR: f32 = 1.0 / 10_000.0;
+    const MAX_AR: f32 = 10_000.0;
+    if c_aspect < MIN_AR { log::debug!("AspectFit: content aspect {} capped to {}", c_aspect, MIN_AR); c_aspect = MIN_AR; }
+    if c_aspect > MAX_AR { log::debug!("AspectFit: content aspect {} capped to {}", c_aspect, MAX_AR); c_aspect = MAX_AR; }
+
+    let container_aspect = inner_wf / inner_hf;
+
+    let (fit_w, fit_h) = if c_aspect > container_aspect {
+        // pillarbox: match width, reduce height
+        let w = inner_wf;
+        let h = (w / c_aspect).max(1.0);
+        (w, h)
+    } else {
+        // letterbox: match height, reduce width
+        let h = inner_hf;
+        let w = (h * c_aspect).max(1.0);
+        (w, h)
+    };
+
+    // center within inner rect
+    let x = padding as f32 + (inner_wf - fit_w) * 0.5;
+    let y = padding as f32 + (inner_hf - fit_h) * 0.5;
+
+    // scale relative to content height (arbitrary; useful for downstream zoom math)
+    let scale = fit_h / (content_h.max(1e-6));
+
+    Some(AspectFitResult { x, y, w: fit_w, h: fit_h, scale })
+}
 
 /// A strategy that computes per-view position and size within a parent dimension.
 ///
@@ -25,7 +92,10 @@ use super::{Renderable, View};
 /// Notes:
 /// - Implementations should avoid panics and handle edge cases like small parent sizes.
 /// - `_total_views` may be unused by some strategies, but can help for dynamic spacing.
-pub trait LayoutStrategy {
+pub trait LayoutStrategy: Send + Sync {
+    /// 返回策略的静态标识，用于运行时判断
+    fn id(&self) -> &str;
+
     // fn layout(&self, views: &mut Vec<Box<dyn View>>, dim: (u32, u32));
     /// Calculate position and size for a single view.
     ///
@@ -36,6 +106,20 @@ pub trait LayoutStrategy {
         _total_views: u32,
         parent_dim: (u32, u32),
     ) -> ((i32, i32), (u32, u32));
+}
+
+pub trait LayoutContainer: Renderable {
+    fn add_view(&mut self, view: Box<dyn View>);
+    fn remove_all(&mut self);
+    fn get_view_by_index(&self, index: usize) -> Option<&Box<dyn View>>;
+    fn replace_view_at(&mut self, index: usize, new_view: Box<dyn View>) -> Option<Box<dyn View>>;
+    fn get_view_mut(&mut self, index: usize) -> Option<&mut Box<dyn View>>;
+    fn is_view_type<V: View + 'static>(&self, index: usize) -> bool;
+    fn view_count(&self) -> usize;
+    fn resize(&mut self, dim: (u32, u32));
+    fn views(&self) -> &Vec<Box<dyn View>>;
+    fn views_mut(&mut self) -> &mut Vec<Box<dyn View>>;
+    fn strategy(&self) -> &dyn LayoutStrategy;
 }
 
 /// Grid layout strategy.
@@ -52,6 +136,8 @@ pub struct GridLayout {
 }
 
 impl LayoutStrategy for GridLayout {
+    fn id(&self) -> &str { "GridLayout" }
+
     /// Compute the origin and size for the cell corresponding to `index`.
     ///
     /// Notes:
@@ -60,7 +146,7 @@ impl LayoutStrategy for GridLayout {
     fn calculate_position_and_size(
         &self,
         index: u32,
-        total_views: u32,
+        _total_views: u32,
         parent_dim: (u32, u32),
     ) -> ((i32, i32), (u32, u32)) {
         // TODO: Use `saturating_sub` and guard zero divisions to prevent underflow/overflow.
@@ -91,6 +177,8 @@ pub struct OneCellLayout {
 }
 
 impl LayoutStrategy for OneCellLayout {
+    fn id(&self) -> &str { "OneCellLayout" }
+
     /// Compute position and size where only index 0 occupies the parent; others are hidden.
     /// Function-level comment: Displays the first view (index 0) in full screen, which is now the mesh view.
     fn calculate_position_and_size(
@@ -113,7 +201,7 @@ impl LayoutStrategy for OneCellLayout {
 ///
 /// Manages a collection of `View` instances and delegates placement to `strategy` on view addition
 /// and when the parent dimensions change. Also forwards update and render calls to each child view.
-pub struct Layout <T: LayoutStrategy> {
+pub struct StaticLayout <T: LayoutStrategy> {
     /// Parent dimensions `(width, height)` in pixels.
     dim: (u32, u32),
     /// The layout strategy used to compute positions and sizes.
@@ -122,7 +210,7 @@ pub struct Layout <T: LayoutStrategy> {
     pub(crate) views: Vec<Box<dyn View>>, // A collection of views
 }
 
-impl<T: LayoutStrategy> Layout<T> {
+impl<T: LayoutStrategy> StaticLayout<T> {
     /// Create a new layout with the given parent dimensions and strategy.
     pub fn new(dim: (u32, u32), strategy: T) -> Self {
         Self {
@@ -131,14 +219,16 @@ impl<T: LayoutStrategy> Layout<T> {
             views: Vec::new(),
         }
     }
+}
 
+impl<T: LayoutStrategy> LayoutContainer for StaticLayout<T> {
     /// Add a view to the container and immediately place and size it via the strategy.
     ///
     /// Notes:
     /// - Index used for placement is derived from the current number of views.
     /// - Logs at `info` level; consider `debug` to reduce noise in hot paths.
     /// - For grid-like strategies, consider caching cell size and recomputing only on resize.
-    pub fn add_view(&mut self, mut view: Box<dyn View>) {
+    fn add_view(&mut self, mut view: Box<dyn View>) {
         let idx = self.views.len() as u32;
         let total_views = (self.views.len() + 1) as u32;
         let (pos, size) = self.strategy.calculate_position_and_size(idx, total_views, self.dim);
@@ -151,7 +241,7 @@ impl<T: LayoutStrategy> Layout<T> {
     /// Get a reference to a view by index, or `None` if out of bounds.
     ///
     /// TODO: Return `Option<&dyn View>` (and a mutable variant) to avoid exposing `Box`.
-    pub fn get_view_by_index(&self, index: usize) -> Option<&Box<dyn View>> {
+    fn get_view_by_index(&self, index: usize) -> Option<&Box<dyn View>> {
         // check if the index is within bounds
         if index >= self.views.len() {
             return None;
@@ -160,7 +250,7 @@ impl<T: LayoutStrategy> Layout<T> {
     }
 
     /// Remove all views from the container.
-    pub fn remove_all(&mut self) {
+    fn remove_all(&mut self) {
         self.views.clear();
     }
 
@@ -168,7 +258,7 @@ impl<T: LayoutStrategy> Layout<T> {
     /// 
     /// Returns the old view if the index is valid, or None if out of bounds.
     /// The new view is automatically positioned and sized according to the layout strategy.
-    pub fn replace_view_at(&mut self, index: usize, mut new_view: Box<dyn View>) -> Option<Box<dyn View>> {
+    fn replace_view_at(&mut self, index: usize, mut new_view: Box<dyn View>) -> Option<Box<dyn View>> {
         if index >= self.views.len() {
             log::warn!("Attempted to replace view at invalid index: {}", index);
             return None;
@@ -187,7 +277,7 @@ impl<T: LayoutStrategy> Layout<T> {
     /// Get a mutable reference to a view by index.
     /// 
     /// Returns None if the index is out of bounds.
-    pub fn get_view_mut(&mut self, index: usize) -> Option<&mut Box<dyn View>> {
+    fn get_view_mut(&mut self, index: usize) -> Option<&mut Box<dyn View>> {
         if index >= self.views.len() {
             return None;
         }
@@ -198,7 +288,7 @@ impl<T: LayoutStrategy> Layout<T> {
     /// 
     /// This method uses type name comparison to determine view type.
     /// Returns false if the index is out of bounds.
-    pub fn is_view_type<V: View + 'static>(&self, index: usize) -> bool {
+    fn is_view_type<V: View + 'static>(&self, index: usize) -> bool {
         if let Some(view) = self.get_view_by_index(index) {
             // Use type_name for type checking
             let target_type = std::any::type_name::<V>();
@@ -213,7 +303,7 @@ impl<T: LayoutStrategy> Layout<T> {
     }
 
     /// Get the total number of views in the layout.
-    pub fn view_count(&self) -> usize {
+    fn view_count(&self) -> usize {
         self.views.len()
     }
 
@@ -221,7 +311,7 @@ impl<T: LayoutStrategy> Layout<T> {
     ///
     /// TODO: Cache per-cell dimensions for strategies like `GridLayout` to minimize repeated math.
     /// TODO: Consider center alignment and remainder distribution for better visual balance.
-    pub fn resize(&mut self, dim: (u32, u32)) {
+    fn resize(&mut self, dim: (u32, u32)) {
         self.dim = dim;
         let total_views = self.views.len() as u32;
         for (i, view) in self.views.iter_mut().enumerate() {
@@ -230,9 +320,187 @@ impl<T: LayoutStrategy> Layout<T> {
             view.resize(size);
         }
     }
+
+    fn views(&self) -> &Vec<Box<dyn View>> {
+        &self.views
+    }
+
+    fn views_mut(&mut self) -> &mut Vec<Box<dyn View>> {
+        &mut self.views
+    }
+
+    fn strategy(&self) -> &dyn LayoutStrategy {
+        &self.strategy
+    }
 }
 
-impl<T: LayoutStrategy> Renderable for Layout<T> {
+impl<T: LayoutStrategy> Renderable for StaticLayout<T> {
+    /// Update all child views. Typically called per-frame before rendering.
+    fn update(&mut self, queue: &wgpu::Queue) {
+        for v in &mut self.views {
+            v.update(queue);
+        }
+    }
+
+    /// Render all child views sequentially.
+    ///
+    /// Error handling: Propagates `wgpu::SurfaceError` from child views and stops on first failure.
+    fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
+        for v in &mut self.views {
+            v.render(render_pass)?;
+        }
+        Ok(())
+    }
+}
+
+pub struct DynamicLayout {
+    dim: (u32, u32),
+    strategy: Box<dyn LayoutStrategy>,
+    views: Vec<Box<dyn View>>,
+}
+
+impl DynamicLayout {
+    /// 返回当前布局策略的静态标识
+    pub fn strategy_id(&self) -> &str {
+        self.strategy.id()
+    }
+
+    pub fn new(dim: (u32, u32), strategy: Box<dyn LayoutStrategy>) -> Self {
+        Self {
+            dim,
+            strategy,
+            views: Vec::new(),
+        }
+    }
+}
+
+impl DynamicLayout {
+    pub fn set_strategy(&mut self, new_strategy: Box<dyn LayoutStrategy>) {
+        self.strategy = new_strategy;
+        // Recalculate all view positions and sizes
+        self.relayout();
+    }
+    
+    fn relayout(&mut self) {
+        let total_views = self.views.len() as u32;
+        for (i, view) in self.views.iter_mut().enumerate() {
+            let (pos, size) = self.strategy.calculate_position_and_size(
+                i as u32, total_views, self.dim
+            );
+            view.move_to(pos);
+            view.resize(size);
+        }
+    }
+}
+
+impl LayoutContainer for DynamicLayout {
+    fn add_view(&mut self, mut view: Box<dyn View>) {
+        let idx = self.views.len() as u32;
+        let total_views = (self.views.len() + 1) as u32;
+        let (pos, size) = self.strategy.calculate_position_and_size(idx, total_views, self.dim);
+        log::info!("Adding view at position: {:?} with size: {:?}", pos, size);
+        view.move_to(pos);
+        view.resize(size);
+        self.views.push(view);
+    }
+
+    /// Get a reference to a view by index, or `None` if out of bounds.
+    ///
+    /// TODO: Return `Option<&dyn View>` (and a mutable variant) to avoid exposing `Box`.
+    fn get_view_by_index(&self, index: usize) -> Option<&Box<dyn View>> {
+        // check if the index is within bounds
+        if index >= self.views.len() {
+            return None;
+        }
+        self.views.get(index)
+    }
+
+    /// Remove all views from the container.
+    fn remove_all(&mut self) {
+        self.views.clear();
+    }
+
+    /// Replace a view at the specified index with a new view.
+    /// 
+    /// Returns the old view if the index is valid, or None if out of bounds.
+    /// The new view is automatically positioned and sized according to the layout strategy.
+    fn replace_view_at(&mut self, index: usize, mut new_view: Box<dyn View>) -> Option<Box<dyn View>> {
+        if index >= self.views.len() {
+            log::warn!("Attempted to replace view at invalid index: {}", index);
+            return None;
+        }
+
+        let total_views = self.views.len() as u32;
+        let (pos, size) = self.strategy.calculate_position_and_size(index as u32, total_views, self.dim);
+        
+        log::info!("Replacing view at index {} with position: {:?} and size: {:?}", index, pos, size);
+        new_view.move_to(pos);
+        new_view.resize(size);
+        
+        Some(std::mem::replace(&mut self.views[index], new_view))
+    }
+
+    /// Get a mutable reference to a view by index.
+    /// 
+    /// Returns None if the index is out of bounds.
+    fn get_view_mut(&mut self, index: usize) -> Option<&mut Box<dyn View>> {
+        if index >= self.views.len() {
+            return None;
+        }
+        self.views.get_mut(index)
+    }
+
+    /// Check if a view at the specified index is of a specific type.
+    /// 
+    /// This method uses type name comparison to determine view type.
+    /// Returns false if the index is out of bounds.
+    fn is_view_type<V: View + 'static>(&self, index: usize) -> bool {
+        if let Some(view) = self.get_view_by_index(index) {
+            // Use type_name for type checking
+            let target_type = std::any::type_name::<V>();
+            let actual_type = std::any::type_name_of_val(view.as_ref());
+            
+            // For more robust type checking, we can also check if the type names contain
+            // the expected view type (e.g., "MeshView" or "GenericMPRView")
+            actual_type.contains(&target_type.split("::").last().unwrap_or(target_type))
+        } else {
+            false
+        }
+    }
+
+    /// Get the total number of views in the layout.
+    fn view_count(&self) -> usize {
+        self.views.len()
+    }
+
+    /// Resize the parent dimensions and recompute each view's position and size.
+    ///
+    /// TODO: Cache per-cell dimensions for strategies like `GridLayout` to minimize repeated math.
+    /// TODO: Consider center alignment and remainder distribution for better visual balance.
+    fn resize(&mut self, dim: (u32, u32)) {
+        self.dim = dim;
+        let total_views = self.views.len() as u32;
+        for (i, view) in self.views.iter_mut().enumerate() {
+            let (pos, size) = self.strategy.calculate_position_and_size(i as u32, total_views, self.dim);
+            view.move_to(pos);
+            view.resize(size);
+        }
+    }
+
+    fn views(&self) -> &Vec<Box<dyn View>> {
+        &self.views
+    }
+
+    fn views_mut(&mut self) -> &mut Vec<Box<dyn View>> {
+        &mut self.views
+    }
+
+    fn strategy(&self) -> &dyn LayoutStrategy {
+        self.strategy.as_ref()
+    }
+}
+
+impl Renderable for DynamicLayout {
     /// Update all child views. Typically called per-frame before rendering.
     fn update(&mut self, queue: &wgpu::Queue) {
         for v in &mut self.views {

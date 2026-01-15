@@ -8,10 +8,13 @@ use winit::{
     event::*,
     event_loop::EventLoop,
     keyboard::{KeyCode, PhysicalKey},
-    window::{Window, WindowBuilder},
+    window::Window,
 };
 
-use crate::rendering::core::state::State;
+#[cfg(target_arch = "wasm32")]
+use winit::window::WindowBuilder;
+
+use crate::{application::App, rendering::LayoutContainer};
 use crate::rendering::core::Graphics;
 use crate::application::gl_canvas::{GLCanvas, UserEvent};
 use winit::event_loop::EventLoopProxy;
@@ -28,13 +31,13 @@ pub async fn create_graphics(window: Arc<Window>) -> Result<Graphics, crate::cor
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct RenderApp {
-    pub(crate) state: Option<State>,
+    pub(crate) state: Option<App>,
     pub(crate) event_loop: Option<EventLoop<UserEvent>>,
     pub(crate) proxy: Option<EventLoopProxy<UserEvent>>,
 }
 
 impl RenderApp {
-    pub fn new(state: State, event_loop: EventLoop<UserEvent>) -> Self {
+    pub fn new(state: App, event_loop: EventLoop<UserEvent>) -> Self {
         let proxy = event_loop.create_proxy();
         RenderApp {
             state: Some(state),
@@ -105,8 +108,11 @@ impl RenderApp {
                     state.set_translate_in_screen_coord(index, translate);
                 }
                 Event::UserEvent(UserEvent::LoadDataFromCTVolume(volume)) => {
-                    state.load_data_from_ct_volume(&volume);
-                    log::info!("Loaded data from CTVolume");
+                    if let Err(e) = state.load_data_from_ct_volume(&volume) {
+                        log::error!("Failed to load data from CTVolume: {}", e);
+                    } else {
+                        log::info!("Loaded data from CTVolume");
+                    }
                 }
                 Event::UserEvent(UserEvent::Resize(width, height)) => {
                     log::info!("Resizing to width: {}, height: {}", width, height);
@@ -123,15 +129,19 @@ impl RenderApp {
                 }
                 Event::UserEvent(UserEvent::Quit) => {
                     log::info!("Quit event received. Exiting event loop.");
-                    state.layout.remove_all();
+                    state.app_view.layout.remove_all();
                     target.exit();
                 }
                 Event::UserEvent(UserEvent::SetWindowByDivId(div_id, volume)) => {
                     log::info!("SetWindowByDivId event received for div_id: {div_id}");
-
-                    let window = Arc::new(WindowBuilder::new().build(target).unwrap());
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        // Silence unused variable in native builds; volume is used on web.
+                        let _ = &volume;
+                    }
                     #[cfg(target_arch = "wasm32")]
                     {
+                        let window = Arc::new(WindowBuilder::new().build(target).unwrap());
                         // Winit prevents sizing with CSS, so we have to set
                         // the size manually when on web.
                         use winit::dpi::PhysicalSize;
@@ -147,7 +157,7 @@ impl RenderApp {
                             .expect("Couldn't append canvas to document body.");
                         let _ = window.request_inner_size(PhysicalSize::new(800, 800)); 
                         let proxy = proxy.clone();
-                        state.layout.remove_all();
+                        state.app_view.layout.remove_all();
                         spawn_local(async move {
                             match Graphics::new(window.clone()).await {
                                 Ok(graphics) => {
@@ -170,7 +180,7 @@ impl RenderApp {
                 }
                 Event::UserEvent(UserEvent::ClearLayout) => {
                     log::info!("ClearLayout event received.");
-                    state.layout.remove_all();
+                    state.app_view.layout.remove_all();
                 }
                 Event::UserEvent(UserEvent::ReloadShaders) => {
                     // Function-level comment: Shader reload is now handled by individual render contexts that recreate their pipelines as needed.
@@ -180,14 +190,58 @@ impl RenderApp {
                     // Function-level comment: Pipeline invalidation is now handled by individual render contexts.
                     log::info!("InvalidatePipelines event: render contexts will rebuild pipelines as needed.");
                 }
-                Event::UserEvent(UserEvent::SetEnableMesh(enabled)) => {
+                Event::UserEvent(UserEvent::SetEnableMesh(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_value, wwwl)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_mesh_mode_enabled(enabled);
-                    log::info!("EnableMesh toggled at runtime: {}", enabled);
+                    state.set_mesh_mode_enabled(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_value, wwwl.clone());
+                    log::info!("EnableMesh toggled at runtime: mesh_index={:?}, mip={:?}, change_mpr={change_mpr}, index_1={index_1}, index_2={index_2}, index_3={index_3}, index_4={index_4}, iso_value={iso_value}, wwwl={:?}", mesh_index, mip, wwwl);
+                }
+                Event::UserEvent(UserEvent::SetOneCellLayout(mode, orientation_index, iso_value, wwwl)) => {
+                    // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
+                    state.set_one_cell_layout(mode, orientation_index, iso_value, wwwl.clone());
+                    log::info!("OneCellLayout set to: mode={mode}, orientation_index={orientation_index}, iso_value={iso_value}, wwwl={:?}", wwwl);
                 }
                 Event::UserEvent(UserEvent::SetCenterAtPointInMM(index, x_mm, y_mm, z_mm)) => {
                     state.set_center_at_point_in_mm(index, x_mm, y_mm, z_mm);
                     log::info!("CenterAtPointInMM set to: x_mm={x_mm}, y_mm={y_mm}, z_mm={z_mm}");
+                }
+                // Mesh control events
+                Event::UserEvent(UserEvent::SetMeshRotationEnabled(_index, enabled)) => {
+                    state.set_mesh_rotation_enabled(enabled);
+                    log::info!("Mesh rotation enabled={}", enabled);
+                }
+                Event::UserEvent(UserEvent::SetMeshPan(_index, dx, dy)) => {
+                    state.set_mesh_pan(dx, dy);
+                    log::info!("Mesh pan set to dx={:.3}, dy={:.3}", dx, dy);
+                }
+                Event::UserEvent(UserEvent::ResetMesh(_index)) => {
+                    state.reset_mesh();
+                    log::info!("Mesh rotation reset");
+                }
+                Event::UserEvent(UserEvent::SetMeshScale(_index, scale)) => {
+                    state.set_mesh_scale(scale);
+                    log::info!("Mesh scale set to {:.3}", scale);
+                }
+                Event::UserEvent(UserEvent::SetMeshOpacity(_index, alpha)) => {
+                    state.set_mesh_opacity(alpha);
+                    log::info!("Mesh opacity set to {:.3}", alpha);
+                }
+                Event::UserEvent(UserEvent::SetMeshRotationAngleDeg(_index, degrees_x, degrees_y, degrees_z)) => {
+                    state.set_mesh_rotation_angle_degrees(degrees_x, degrees_y, degrees_z);
+                    log::info!("Mesh rotation angle set to {:?}°", [degrees_x, degrees_y, degrees_z]);
+                }
+                Event::UserEvent(UserEvent::ViewClick(view_index, screen_x, screen_y, screen_z)) => {
+                    state.handle_view_click(view_index, screen_x, screen_y, screen_z);
+                    log::info!("ViewClick processed for view {}: screen_x={screen_x}, screen_y={screen_y}, screen_z={screen_z}", view_index);
+                }
+                #[cfg(target_arch = "wasm32")]
+                Event::UserEvent(UserEvent::ViewClickGet(view_index, screen_x, screen_y, screen_z, sender)) => {
+                    // Function-level comment: Compute view click result and send it back to JS via oneshot channel.
+                    let result = state.handle_view_click(view_index, screen_x, screen_y, screen_z);
+                    if let Err(_) = sender.send(result) {
+                        log::error!("Failed to send ViewClickGet result for view {}", view_index);
+                    } else {
+                        log::info!("Sent ViewClickGet result for view {}: {:?}", view_index, result);
+                    }
                 }
                 #[cfg(target_arch = "wasm32")]
                 Event::UserEvent(UserEvent::GetScreenCoordInMM(index, coord, sender)) => {
@@ -197,6 +251,24 @@ impl RenderApp {
                         log::error!("Failed to send GetScreenCoordInMM result for window {}", index);
                     } else {
                         log::info!("Sent GetScreenCoordInMM result for window {}: {:?}", index, result);
+                    }
+                }
+                #[cfg(target_arch = "wasm32")]
+                Event::UserEvent(UserEvent::GetWindowLevel(index, sender)) => {
+                    let result = state.get_window_level(index);
+                    if let Err(_) = sender.send(result) {
+                        log::error!("Failed to send GetWindowLevel result for window {}", index);
+                    } else {
+                        log::info!("Sent GetWindowLevel result for window {}: {:?}", index, result);
+                    }
+                }
+                #[cfg(target_arch = "wasm32")]
+                Event::UserEvent(UserEvent::GetPan(index, sender)) => {
+                    let result = state.get_translate_in_screen_coord(index);
+                    if let Err(_) = sender.send(result) {
+                        log::error!("Failed to send GetPan result for window {}", index);
+                    } else {
+                        log::info!("Sent GetPan result for window {}: {:?}", index, result);
                     }
                 }
                 #[cfg(target_arch = "wasm32")]
@@ -271,8 +343,79 @@ impl RenderApp {
                             } => {
                                 // Function-level comment: Toggle mesh mode on 'M' key press at runtime.
                                 let new_enabled = !state.mesh_mode_enabled();
-                                state.set_mesh_mode_enabled(new_enabled);
+                                state.set_mesh_mode_enabled(Some(3), Some(2), false, 0, 1, 0, 0, 400.0, None);
                                 log::info!("KeyM pressed: mesh mode toggled to {}", new_enabled);
+                            }
+                            WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyN),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                let mode =  2 as usize;
+                                state.set_one_cell_layout(mode, 0, 400.0, None);
+                                state.set_mesh_rotation_angle_degrees(-90.0, 0.0, 0.0);
+                                state.set_mesh_scale(3.0);
+                                log::info!("KeyN pressed: one_cell layout mode toggled to {}", mode);
+                            }
+                            WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyB),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                let wc = 40.0;
+                                let wl = 350.0 as f32;
+                                state.set_window_level(0, wc);
+                                state.set_window_width(0, wl);
+                                state.set_window_level(1, wc);
+                                state.set_window_width(1, wl);
+                                log::info!("KeyB pressed: window level {} width {}", wc, wl);
+                            }
+                            WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyV),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                state.set_slice_mm(0, 100.0);
+                                state.set_scale(0, 2.0);
+                                state.set_pan(1, 0.09, 0.09);
+                                state.set_mesh_scale(2.0);
+                                state.set_mesh_pan(-1.0, 1.0);
+                                state.set_mesh_rotation_angle_degrees(0.0, 0.0, 0.0);
+                            }
+                            WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyC),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                state.set_scale(0, 1.0);
+                                state.set_mesh_scale(1.0);
+                            }
+                            WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyX),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                state.reset_mesh();
                             }
                             WindowEvent::RedrawRequested => {
                                 // This tells winit that we want another frame after this one
@@ -288,8 +431,8 @@ impl RenderApp {
                                     Err(
                                         wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
                                     ) => {
-                                        let width = state.graphics_context.graphics.surface_config.width;
-                                        let height = state.graphics_context.graphics.surface_config.height;
+                                        let width = state.graphics().surface_config.width;
+                                        let height = state.graphics().surface_config.height;
                                         let size = PhysicalSize::<u32> {width, height};
                                         // Function-level comment: Surface reconfiguration handled by individual render contexts.
                                         log::info!("Surface error {:?} - render contexts will rebuild pipelines as needed", "Lost/Outdated");

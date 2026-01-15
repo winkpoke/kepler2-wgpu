@@ -22,10 +22,9 @@ pub mod application;
 pub use core::{coord, error::KeplerError, timing};
 pub use data::{ct_volume, dicom};
 pub use rendering::{
-    view::{View, Renderable, Layout},
-    core::state::State,
+    view::{View, Renderable, StaticLayout},
 };
-pub use application::{render_app::RenderApp, gl_canvas::GLCanvas};
+pub use application::{render_app::RenderApp, gl_canvas::GLCanvas, App};
 
 // Mesh functionality is now always available
 pub use rendering::mesh;
@@ -60,7 +59,7 @@ impl log::Log for WasmLogger {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
         let t = metadata.target();
         let is_wgpu = t.starts_with("wgpu") || t.starts_with("naga");
-        if is_wgpu { metadata.level() >= log::Level::Warn } else {true} 
+        if is_wgpu { metadata.level() >= log::Level::Warn } else { true }
     }
     fn log(&self, record: &log::Record) {
         if !self.enabled(record.metadata()) { return; }
@@ -164,7 +163,7 @@ pub async fn get_render_app() -> Result<RenderApp, KeplerError> {
 
     // this sets the style width and height of the canvas
     let _ = window.request_inner_size(PhysicalSize::new(800, 800)); 
-    let state = State::new(window.clone()).await?;
+    let state = App::new(window.clone()).await?;
     Ok(RenderApp::new(state, event_loop))
 }
 

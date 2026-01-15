@@ -12,9 +12,6 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 
 use super::*;
-use crate::data::ct_volume::CTVolume;
-use crate::data::medical_imaging::formats::*;
-use crate::data::medical_imaging::metadata::{volume::MedicalVolume, PixelData};
 
 /// Parses DICOM files from a list of directories and constructs a `DicomRepo`.
 ///
@@ -171,6 +168,12 @@ use wasm_bindgen::JsValue;
 use wasm_bindgen::JsCast;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::JsFuture;
+#[cfg(target_arch = "wasm32")]
+use crate::data::ct_volume::CTVolume;
+#[cfg(target_arch = "wasm32")]
+use crate::data::medical_imaging::formats::*;
+#[cfg(target_arch = "wasm32")]
+use crate::data::medical_imaging::metadata::{volume::MedicalVolume, PixelData};
 
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -460,7 +463,7 @@ pub async fn build_ct_dicom_wasm(
         patient_id: patient["patient_id"].as_str().unwrap_or("").to_string(),
         name: patient["name"].as_str().unwrap_or("").to_string(),
         birthdate: patient["birthdate"].as_str().map(|s| s.to_string()),
-        sex: patient["sex"].as_str().map(|s|s.to_string())
+        sex: patient["sex"].as_str().map(|s|s.to_string()),
     };
 
     //study JSON

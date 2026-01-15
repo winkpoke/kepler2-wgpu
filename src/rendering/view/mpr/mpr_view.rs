@@ -1,13 +1,16 @@
 use std::sync::Arc;
 
+use glam::{Mat4, Vec3};
+
 use crate::{
-    core::{array_to_slice, error::{KeplerResult, MprError}, window_level, Base, GeometryBuilder, WindowLevel},
-    data::CTVolume,
-    rendering::{Orientation, RenderContent, StatefulView, ViewState},
     Renderable, View,
+    core::{GeometryBuilder, WindowLevel, error::{KeplerResult, MprError}}, 
+    data::CTVolume,
+     rendering::{Orientation, RenderContent, StatefulView, ViewState}
 };
 
 use super::{MprRenderContext, MprViewWgpuImpl};
+use crate::rendering::view::layout::compute_aspect_fit;
 
 /// Generic Multi-Planar Reconstruction (MPR) view implementation.
 ///
@@ -36,19 +39,27 @@ pub struct MprView {
     /// Current slice position (internal units)
     slice: f32,
     /// Screen-space coordinate system base
-    base_screen: Base<f32>,
+    base_screen: Mat4,
     /// UV texture coordinate system base
-    base_uv: Base<f32>,
+    base_uv: Mat4,
     /// Current zoom scale factor
     scale: f32,
     /// Pan translation in screen coordinates
-    pan: [f32; 3],
+    pan: Vec3,
     /// View position on screen (top-left corner)
     pos: (i32, i32),
     /// View dimensions (width, height)
     dim: (u32, u32),
     /// Window/level parameters for CT display
     window_level: WindowLevel,
+    /// Anatomical orientation for this view (Axial, Coronal, Sagittal)
+    orientation: Orientation,
+    /// Physical in-plane content width in millimeters
+    content_w_mm: f32,
+    /// Physical in-plane content height in millimeters
+    content_h_mm: f32,
+    /// Uniform viewport padding in pixels
+    padding_px: u32,
 }
 
 impl MprView {
@@ -60,10 +71,10 @@ impl MprView {
     /// Validate and clamp medical imaging parameters for safety and correctness
     fn validate_and_clamp_params(
         scale: f32,
-        translate: [f32; 3],
+        translate: Vec3,
         pos: (i32, i32),
         dim: (u32, u32),
-    ) -> ((f32, [f32; 3]), (i32, i32), (u32, u32)) {
+    ) -> ((f32, Vec3), (i32, i32), (u32, u32)) {
         // Validate and clamp scale
         let validated_scale = if !scale.is_finite() || scale <= 0.0 {
             log::warn!("Invalid scale {} replaced with default 1.0", scale);
@@ -77,15 +88,12 @@ impl MprView {
         };
         
         // Validate and clamp translation
-         let mut validated_translate = translate;
-         for (i, &val) in translate.iter().enumerate() {
-             if !val.is_finite() {
-                 log::warn!("Invalid translate coordinate {} at index {} replaced with 0.0", val, i);
-                 validated_translate[i] = 0.0;
-             } else {
-                 validated_translate[i] = val.clamp(-Self::MAX_PAN_DISTANCE, Self::MAX_PAN_DISTANCE);
-             }
-         }
+        let validated_translate = if !translate.is_finite() {
+             log::warn!("Invalid translate coordinate {} replaced with 0.0", translate);
+             Vec3::ZERO
+        } else {
+             translate.clamp(Vec3::splat(-Self::MAX_PAN_DISTANCE), Vec3::splat(Self::MAX_PAN_DISTANCE))
+        };
         
         // Validate position bounds
         const MAX_POSITION: i32 = 100_000;
@@ -136,27 +144,34 @@ impl MprView {
         pos: (i32, i32),
         dim: (u32, u32),
     ) -> Self {
+        let translate_vec = Vec3::from_array(translate);
+
         // Validate and clamp all input parameters
         let ((validated_scale, validated_translate), validated_pos, validated_dim) = 
-            Self::validate_and_clamp_params(scale, translate, pos, dim);
+            Self::validate_and_clamp_params(scale, translate_vec, pos, dim);
         // Build coordinate system bases for this orientation
-        let base_screen = orientation.build_base(vol);
-        let base_uv = GeometryBuilder::build_uv_base(vol);
+        let base_screen_legacy = orientation.build_base(vol);
+        let base_uv_legacy = GeometryBuilder::build_uv_base(vol);
+
+        let base_screen = base_screen_legacy.matrix;
+        let base_uv = base_uv_legacy.matrix;
 
         // Initialize view state with validated parameters
         let pan = validated_translate;
         let slice = 0.0; // Start at center slice
 
         // Create screen-space transformation matrix
-        let mut base_screen_cloned = base_screen.clone();
         // Apply transformations in reverse order (matrix multiplication)
-        base_screen_cloned.translate([-pan[0], -pan[1], -pan[2]]);
-        base_screen_cloned.translate([0.5, 0.5, 0.0]); // Move back to origin
-        base_screen_cloned.scale([validated_scale, validated_scale, 1.0]); // Apply zoom
-        base_screen_cloned.translate([-0.5, -0.5, 0.0]); // Center the transformation
+        // M_final = M_initial * T_pan * T_center * S_scale * T_uncenter
+        let t_pan = Mat4::from_translation(-pan);
+        let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
+        let s_scale = Mat4::from_scale(Vec3::splat(validated_scale).with_z(1.0));
+        let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
+        
+        let transform_matrix_screen = base_screen * t_pan * t_center * s_scale * t_uncenter;
 
         // Create final transformation matrix from screen to UV coordinates
-        let transform_matrix = base_screen_cloned.to_base(&base_uv).transpose();
+        let transform_matrix = base_uv.inverse() * transform_matrix_screen;
 
         // Create WGPU implementation with shared context
         let wgpu_impl = MprViewWgpuImpl::new(
@@ -169,6 +184,19 @@ impl MprView {
         log::info!("Created MprView with orientation: {:?}, scale: {:?}, translate: {:?}, pos: {:?}, dim: {:?}",
             orientation, validated_scale, validated_translate, validated_pos, validated_dim);
 
+        // Compute physical in-plane content size in millimeters for aspect fitting
+        let (nx, ny, nz) = (vol.dimensions.0 as f32, vol.dimensions.1 as f32, vol.dimensions.2 as f32);
+        let (nx, ny, nz) = (nx * vol.voxel_spacing.0, ny * vol.voxel_spacing.1, nz * vol.voxel_spacing.2);
+        let d = (nx + ny + nz) / 3.0;
+        // Use voxel counts to match isotropic in-plane scaling of current geometry bases
+        let (content_w_mm, content_h_mm) = match orientation {
+            Orientation::Transverse => (d, d),
+            Orientation::Coronal => (d, d),
+            Orientation::Sagittal => (d, d),
+            Orientation::Oblique => (d, d),
+        };
+        log::info!("[{:?}]: Content size in mm: {:?}", orientation, (content_w_mm, content_h_mm));
+
         Self {
             wgpu_impl,
             slice,
@@ -179,6 +207,10 @@ impl MprView {
             pos: validated_pos,
             dim: validated_dim,
             window_level,  // Use provided WindowLevel with configured bias
+            orientation,   // Store orientation for cross-sectional linking
+            content_w_mm,
+            content_h_mm,
+            padding_px: 0,
         }
     }
 
@@ -196,20 +228,40 @@ impl MprView {
     /// 4. **Pan**: Apply screen-space translation
     /// 5. **Project**: Transform to UV texture coordinates
     fn update_transform_matrix(&mut self) {
-        // let mut base_screen_cloned = self.base_screen.clone();
-
-        // // Apply transformations in reverse order due to matrix multiplication
-        // base_screen_cloned.translate([-self.pan[0], -self.pan[1], -self.pan[2]]);
-        // base_screen_cloned.translate([0.5, 0.5, 0.0]); // Move back to origin
-        // base_screen_cloned.scale([self.scale, self.scale, 1.0]); // Apply current zoom
-        // base_screen_cloned.translate([-0.5, -0.5, 0.0]); // Center the transformation
-
-        let base_screen = self.get_base();
+        // M_final = M_initial * T_pan * T_center * S_scale * T_uncenter
+        let t_pan = Mat4::from_translation(-self.pan);
+        let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
+        let s_scale = Mat4::from_scale(Vec3::splat(self.scale).with_z(1.0));
+        let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
+        
+        let transform_matrix_screen = self.base_screen * t_pan * t_center * s_scale * t_uncenter;
+        
         // Create final transformation matrix and update GPU uniforms
-        let transform_matrix = base_screen.to_base(&self.base_uv).transpose();
+        let transform_matrix = self.base_uv.inverse() * transform_matrix_screen;
         
         // Set the transformation matrix using the new architecture
-        self.wgpu_impl.set_matrix(*array_to_slice(&transform_matrix.data));
+        self.wgpu_impl.set_matrix(transform_matrix.to_cols_array());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Function-level comment: 验证参数校验与钳制逻辑在异常与边界输入下的行为
+    #[test]
+    fn test_validate_and_clamp_params() {
+        let scale = -5.0; // 非法，需替换为默认并钳制
+        let translate = Vec3::new(f32::INFINITY, -20_000.0, 0.0);
+        let pos = (200_000, -200_000);
+        let dim = (0, 200_000);
+        let ((s, t), p, d) = MprView::validate_and_clamp_params(scale, translate, pos, dim);
+        assert!(s >= MprView::MIN_SCALE && s <= MprView::MAX_SCALE);
+        assert!(t.x.is_finite() && t.x.abs() <= MprView::MAX_PAN_DISTANCE);
+        assert!(t.y.abs() <= MprView::MAX_PAN_DISTANCE);
+        assert_eq!(p.0, 100_000);
+        assert_eq!(p.1, -100_000);
+        assert!(d.0 >= 1 && d.1 >= 1);
     }
 }
 
@@ -232,9 +284,9 @@ impl Renderable for MprView {
     fn update(&mut self, queue: &wgpu::Queue) {
         // Synchronize window/level settings with WGPU implementation only if dirty
         if self.window_level.is_dirty() {
-            // let (window_width, effective_level) = self.window_level.shader_uniforms();
+            // Upload raw window/level (HU); bias handled in shader for RG8 path
             let window_width = self.window_level.window_width();
-            let window_level = self.window_level.effective_level();
+            let window_level = self.window_level.window_level();
             self.wgpu_impl.set_window_level(window_level);
             self.wgpu_impl.set_window_width(window_width);
             self.window_level.mark_clean();
@@ -268,9 +320,15 @@ impl Renderable for MprView {
         render_pass.set_pipeline(&self.wgpu_impl.render_context.render_pipeline);
 
         // Configure viewport to this view's screen region
-        let (x, y) = (self.pos.0 as f32, self.pos.1 as f32);
-        let (width, height) = (self.dim.0, self.dim.1);
-        render_pass.set_viewport(x, y, width as f32, height as f32, 0.0, 1.0);
+        // Compute fitted viewport to preserve in-plane aspect ratio
+        let (x0, y0) = (self.pos.0 as f32, self.pos.1 as f32);
+        let (w, h) = (self.dim.0, self.dim.1);
+        if let Some(fit) = compute_aspect_fit(w, h, self.content_w_mm, self.content_h_mm, self.padding_px) {
+            render_pass.set_viewport(x0 + fit.x, y0 + fit.y, fit.w, fit.h, 0.0, 1.0);
+        } else {
+            // Fallback safe viewport
+            render_pass.set_viewport(x0, y0, 1.0, 1.0, 0.0, 1.0);
+        }
 
         // Bind GPU resources
         // Volume texture (from per-view implementation)
@@ -401,7 +459,7 @@ impl MprView {
             return Err(MprError::InvalidSlicePosition(z).into());
         }
         
-        let [_, _, scale_z] = self.base_screen.get_scale_factors();
+        let scale_z = self.base_screen.col(2).length();
         
         // Validate scale factor
         if !scale_z.is_finite() || scale_z == 0.0 {
@@ -418,7 +476,7 @@ impl MprView {
         }
         
         log::debug!("Setting slice position to: {} mm (pan_z: {})", z, new_pan_z);
-        self.pan[2] = new_pan_z;
+        self.pan.z = new_pan_z;
         Ok(())
     }
 
@@ -427,7 +485,7 @@ impl MprView {
             log::error!("Invalid slice position: {} (must be finite)", z);
             return Err(MprError::InvalidSlicePosition(z).into());
         }
-        self.pan[2] = z;
+        self.pan.z = z;
         Ok(())
     }
 
@@ -468,24 +526,18 @@ impl MprView {
     /// * `Ok(())` - If all coordinates are valid
     /// * `Err(MprError::InvalidPanCoordinates)` - If any coordinate is NaN or infinite
     pub fn set_translate_in_screen_coord(&mut self, pan: [f32; 3]) -> KeplerResult<()> {
-        // Validate all pan coordinates
-        for (i, &coord) in pan.iter().enumerate() {
-            if !coord.is_finite() {
-                log::error!("Invalid pan coordinate at index {}: {} (must be finite)", i, coord);
-                return Err(MprError::InvalidPanCoordinates(pan).into());
-            }
+        let pan_vec = Vec3::from_array(pan);
+        if !pan_vec.is_finite() {
+             log::error!("Invalid pan coordinates: {} (must be finite)", pan_vec);
+             return Err(MprError::InvalidPanCoordinates(pan).into());
         }
         
-        let mut clamped_pan = pan;
-        for (i, &coord) in pan.iter().enumerate() {
-            let clamped_coord = coord.clamp(-Self::MAX_PAN_DISTANCE, Self::MAX_PAN_DISTANCE);
-            if (clamped_coord - coord).abs() > f32::EPSILON {
-                log::warn!("Pan coordinate {} at index {} clamped to {}", coord, i, clamped_coord);
-            }
-            clamped_pan[i] = clamped_coord;
+        let clamped_pan = pan_vec.clamp(Vec3::splat(-Self::MAX_PAN_DISTANCE), Vec3::splat(Self::MAX_PAN_DISTANCE));
+        if (clamped_pan - pan_vec).length_squared() > f32::EPSILON {
+             log::warn!("Pan coordinates {} clamped to {}", pan_vec, clamped_pan);
         }
         
-        log::debug!("Setting pan coordinates to: {:?}", clamped_pan);
+        log::debug!("Setting pan coordinates to: {}", clamped_pan);
         self.pan = clamped_pan;
         Ok(())
     }
@@ -504,12 +556,12 @@ impl MprView {
     pub fn set_pan(&mut self, x: f32, y: f32) -> KeplerResult<()> {
         if !x.is_finite() {
             log::error!("Invalid pan X coordinate: {} (must be finite)", x);
-            return Err(MprError::InvalidPanCoordinates([x, y, self.pan[2]]).into());
+            return Err(MprError::InvalidPanCoordinates([x, y, self.pan.z]).into());
         }
         
         if !y.is_finite() {
             log::error!("Invalid pan Y coordinate: {} (must be finite)", y);
-            return Err(MprError::InvalidPanCoordinates([x, y, self.pan[2]]).into());
+            return Err(MprError::InvalidPanCoordinates([x, y, self.pan.z]).into());
         }
         
         let clamped_x = x.clamp(-Self::MAX_PAN_DISTANCE, Self::MAX_PAN_DISTANCE);
@@ -523,8 +575,8 @@ impl MprView {
         }
         
         log::debug!("Setting pan to: ({}, {})", clamped_x, clamped_y);
-        self.pan[0] = clamped_x;
-        self.pan[1] = clamped_y;
+        self.pan.x = clamped_x;
+        self.pan.y = clamped_y;
         Ok(())
     }
 
@@ -554,7 +606,8 @@ impl MprView {
             return Err(MprError::InvalidPanCoordinates([x_mm, y_mm, 0.0]).into());
         }
         
-        let [scale_x, scale_y, _] = self.base_screen.get_scale_factors();
+        let scale_x = self.base_screen.col(0).length();
+        let scale_y = self.base_screen.col(1).length();
         
         // Validate scale factors
         if !scale_x.is_finite() || scale_x == 0.0 {
@@ -573,12 +626,12 @@ impl MprView {
         // Validate results
         if !new_pan_x.is_finite() || !new_pan_y.is_finite() {
             log::error!("Invalid pan calculation results: ({}, {})", new_pan_x, new_pan_y);
-            return Err(MprError::InvalidPanCoordinates([new_pan_x, new_pan_y, self.pan[2]]).into());
+            return Err(MprError::InvalidPanCoordinates([new_pan_x, new_pan_y, self.pan.z]).into());
         }
         
         log::debug!("Setting pan to: ({} mm, {} mm) -> ({}, {})", x_mm, y_mm, new_pan_x, new_pan_y);
-        self.pan[0] = new_pan_x;
-        self.pan[1] = new_pan_y;
+        self.pan.x = new_pan_x;
+        self.pan.y = new_pan_y;
         Ok(())
     }
 
@@ -594,8 +647,8 @@ impl MprView {
 
     /// Convert internal pan.z (in screen units) back to millimeters using base scale factors.
     pub fn get_slice_mm(&self) -> f32 {
-        let [_, _, scale_z] = self.base_screen.get_scale_factors();
-        self.pan[2] * scale_z
+        let scale_z = self.base_screen.col(2).length();
+        self.pan.z * scale_z
     }
 
     /// Return current screen-space scale factor.
@@ -605,21 +658,27 @@ impl MprView {
 
     /// Return current screen-space translation vector.
     pub fn get_translate_in_screen_coord(&self) -> [f32; 3] {
-        self.pan
+        self.pan.to_array()
     }
 
-    pub fn get_base(&self) -> Base<f32> {
-                // Clone the base screen matrix to apply transformations
-        let mut base_screen_cloned = self.base_screen.clone();
+    /// Get the anatomical orientation of this MPR view.
+    /// 
+    /// Returns the orientation (Axial, Coronal, Sagittal) that determines
+    /// which anatomical plane this view displays. This is essential for
+    /// cross-sectional view linking functionality.
+    pub fn get_orientation(&self) -> &Orientation {
+        &self.orientation
+    }
 
+    pub fn get_base(&self) -> Mat4 {
         // Apply the same transformation chain as update_transform_matrix
         // Note: Transformations are applied in reverse order due to matrix multiplication
-        base_screen_cloned.translate([-self.pan[0], -self.pan[1], -self.pan[2]]);
-        base_screen_cloned.translate([0.5, 0.5, 0.0]); // Move back to origin
-        base_screen_cloned.scale([self.scale, self.scale, 1.0]); // Apply current zoom
-        base_screen_cloned.translate([-0.5, -0.5, 0.0]); // Center the transformation
+        let t_pan = Mat4::from_translation(-self.pan);
+        let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
+        let s_scale = Mat4::from_scale(Vec3::splat(self.scale).with_z(1.0));
+        let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
         
-        base_screen_cloned
+        self.base_screen * t_pan * t_center * s_scale * t_uncenter
     }
 
     /// Convert logical screen coordinates [0,1] to millimeters using the complete transform chain.
@@ -648,18 +707,17 @@ impl MprView {
         let current_base = self.get_base();
 
         // Convert to millimeters using the transformed matrix
-        let transform_matrix = current_base.get_matrix();
-        let result = transform_matrix.multiply_point3(coord);
+        let result = current_base.transform_point3(Vec3::from_array(coord));
         
-        log::debug!("Converted coord {:?} to mm: {:?}", coord, result);
-        result
+        log::debug!("Converted coord {:?} to mm: {}", coord, result);
+        result.to_array()
     }
 
     pub fn world_coord_to_screen(&self, world_coord: [f32; 3]) -> [f32; 3] {
         let current_base = self.get_base();
-        let transform_matrix = current_base.get_matrix().inv().unwrap();
-        let result = transform_matrix.multiply_point3(world_coord);
-        result
+        let transform_matrix = current_base.inverse();
+        let result = transform_matrix.transform_point3(Vec3::from_array(world_coord));
+        result.to_array()
     }
 
     /// set Center of the view at point [x, y, z]
@@ -682,7 +740,7 @@ impl MprView {
     /// 
     /// This method validates all inputs and handles matrix inversion failures gracefully.
     /// It will not panic on invalid coordinates or singular matrices.
-    pub fn set_center_at_point_in_mm(&mut self, p_mm: [f32; 3]) -> KeplerResult<()> {
+    pub fn set_center_at_point_in_mm(&mut self, p_mm: [f32; 3]) -> KeplerResult<[f32; 3]> {
         // Input validation: check for NaN and infinite values
         for (i, &coord) in p_mm.iter().enumerate() {
             if !coord.is_finite() {
@@ -692,10 +750,12 @@ impl MprView {
         }
 
         log::debug!("set_center_at_point_in_mm: target point={:?}", p_mm);
-        log::debug!("set_center_at_point_in_mm: current pan={:?}", self.pan);
+        log::debug!("set_center_at_point_in_mm: current pan={}", self.pan);
         
-        let z = -self.pan[2];
-        let center = [0.5, 0.5, z];
+        self.pan = Vec3::ZERO;
+        // let z = -self.pan[2];
+        // let center = [0.5, 0.5, z];
+        let center = [0.5, 0.5, 0.0];
         let center_mm = self.screen_coord_to_world(center);
         
         log::debug!("set_center_at_point_in_mm: center_mm={:?}", center_mm);
@@ -720,52 +780,55 @@ impl MprView {
         let current_base = self.get_base();
         
         // Safe matrix operations with proper error handling
-        let mut transform_matrix = current_base.get_matrix();
+        let mut transform_matrix = current_base;
         
         // Clear translation components (set to zero)
-        for i in 0..3 {
-            transform_matrix.data[i][3] = 0.0;
-        }
+        transform_matrix.w_axis.x = 0.0;
+        transform_matrix.w_axis.y = 0.0;
+        transform_matrix.w_axis.z = 0.0;
         
         // Attempt matrix inversion with proper error handling
-        let inverse_matrix = transform_matrix.inv()
-            .ok_or_else(|| {
-                log::error!("Failed to invert transformation matrix - matrix is singular");
-                MprError::InvalidTransformation
-            })?;
-        
-        // Apply transformation
-        let result = inverse_matrix.multiply_point3(shift);
-        
-        // Validate transformation result
-        for (i, &r) in result.iter().enumerate() {
-            if !r.is_finite() {
-                log::error!("Invalid transformation result at index {}: {}", i, r);
-                return Err(MprError::InvalidTransformation.into());
-            }
+        let inverse_matrix = transform_matrix.inverse();
+        if !inverse_matrix.is_finite() {
+            log::error!("Failed to invert transformation matrix - matrix is singular");
+            return Err(MprError::InvalidTransformation.into());
         }
         
-        log::debug!("set_center_at_point_in_mm: transformation result={:?}", result);
+        // Apply transformation
+        let shift_vec = Vec3::from_array(shift);
+        let result = inverse_matrix.transform_point3(shift_vec);
+        
+        // Validate transformation result
+        if !result.is_finite() {
+             log::error!("Invalid transformation result: {}", result);
+             return Err(MprError::InvalidTransformation.into());
+        }
+        
+        log::debug!("set_center_at_point_in_mm: transformation result={}", result);
         
         // Update pan values with bounds checking
-        let new_pan = [
-            self.pan[0] + result[0],
-            self.pan[1] + result[1],
-            self.pan[2] + result[2],
-        ];
+        // let new_pan = [
+        //     self.pan[0] + result[0],
+        //     self.pan[1] + result[1],
+        //     self.pan[2] + result[2],
+        // ];
+
+        let new_pan = Vec3::new(
+            result.x / self.scale,
+            result.y / self.scale,
+            result.z,
+        );
         
         // Validate new pan values
-        for (i, &p) in new_pan.iter().enumerate() {
-            if !p.is_finite() {
-                log::error!("Invalid pan value at index {}: {}", i, p);
-                return Err(MprError::InvalidPanCoordinates(new_pan).into());
-            }
+        if !new_pan.is_finite() {
+            log::error!("Invalid pan value: {}", new_pan);
+            return Err(MprError::InvalidPanCoordinates(new_pan.to_array()).into());
         }
         
         self.pan = new_pan;
-        log::debug!("set_center_at_point_in_mm: updated pan={:?}", self.pan);
+        log::debug!("set_center_at_point_in_mm: updated pan={}", self.pan);
         
-        Ok(())
+        Ok(shift)
     }
 }
 

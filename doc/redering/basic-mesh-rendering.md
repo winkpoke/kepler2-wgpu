@@ -4,16 +4,74 @@
 
 This document describes the implementation of basic mesh rendering functionality in the kepler-wgpu medical imaging framework. The implementation is based on the analysis of temporary reference files and provides fundamental 3D triangle rendering capabilities.
 
+## WGPU Code Organization (Current)
+
+The codebase organizes WGPU code in three layers:
+
+### 1) Device/Surface Bootstrap (Graphics)
+
+- `src/rendering/core/graphics.rs` owns the global WGPU handles:
+  - `Graphics` holds `wgpu::Surface`, `wgpu::SurfaceConfiguration`, `wgpu::Adapter`, plus `Arc<wgpu::Device>` and `Arc<wgpu::Queue>`.
+  - `GraphicsContext` wraps `Graphics` together with the render-pass executor.
+- Swapchain format is set after `surface.configure` and also exposed through `src/rendering/core/pipeline.rs`:
+  - `set_swapchain_format` stores the surface format for pipeline creation helpers.
+
+### 2) Frame Orchestration (Render Passes)
+
+- `src/application/app.rs` drives the frame:
+  - acquires the surface frame,
+  - creates a `wgpu::CommandEncoder`,
+  - delegates pass execution to `PassExecutor`,
+  - submits and presents.
+- `src/rendering/core/render_pass.rs` defines:
+  - `PassRegistry` to decide which passes run (Mesh / MIP / Slice),
+  - `PassExecutor` to begin `wgpu::RenderPass` objects and dispatch rendering to views.
+
+### 3) Feature Rendering (Views)
+
+Each view type typically splits WGPU resources into:
+
+- **RenderContext**: shared GPU resources for that feature (pipeline, bind group layouts, shared geometry buffers).
+- **RenderContent**: shared textures and samplers (e.g., the 3D CT volume texture).
+- **Per-view WGPU impl**: per-view bind groups and uniform buffers.
+- **View**: CPU-side state, per-frame uniform updates, and issuing draw calls.
+
+#### MPR (slice views)
+
+- Shared context: `src/rendering/view/mpr/mpr_render_context.rs`
+  - owns the texture-quad pipeline, bind group layouts, and a shared quad vertex/index buffer.
+- Per-view GPU state: `src/rendering/view/mpr/mpr_view_wgpu_impl.rs`
+  - creates per-view bind groups using the shared layouts,
+  - owns per-view uniform buffers (vertex + fragment).
+- Draw call: `src/rendering/view/mpr/mpr_view.rs`
+  - binds pipeline,
+  - sets bind groups (0: volume texture, 1: vertex uniforms, 2: fragment uniforms),
+  - binds shared quad buffers,
+  - `draw_indexed`.
+
+#### MIP (volume projection)
+
+- Context + per-view impl live in `src/rendering/view/mip/mod.rs`:
+  - pipeline bind group order is (0: volume texture, 1: MIP uniforms),
+  - draw call uses a fullscreen primitive generated from `vertex_index` (no vertex buffer).
+
+#### Mesh (3D geometry)
+
+- Per-mesh context: `src/rendering/view/mesh/basic_mesh_context.rs`
+  - owns pipeline, vertex/index buffers, and uniform bind groups.
+- CPU-side view state: `src/rendering/view/mesh/mesh_view.rs`
+  - computes matrices, transposes for WGSL, uploads via `queue.write_buffer`, then draws.
+
 ## Architecture
 
 ### Core Components
 
-1. **BasicMeshContext** (`src/rendering/mesh/basic_mesh_context.rs`)
+1. **BasicMeshContext** (`src/rendering/view/mesh/basic_mesh_context.rs`)
    - Manages vertex and index buffers for simple mesh data
    - Handles uniform buffer for MVP (Model-View-Projection) matrix
    - Uses the simplified `mesh_basic.wgsl` shader
 
-2. **MeshView** (`src/rendering/mesh/mesh_view.rs`)
+2. **MeshView** (`src/rendering/view/mesh/mesh_view.rs`)
    - Calculates MVP matrices with proper camera positioning
    - Integrates with the existing camera system
    - Handles uniform updates for rendering
@@ -29,7 +87,7 @@ This document describes the implementation of basic mesh rendering functionality
 
 The implementation correctly calculates the Model-View-Projection matrix:
 
-```rust
+```rust,no_run
 // Model matrix with Z-translation to position triangle in front of camera
 let model_matrix = Matrix4x4::from_array([
     1.0, 0.0, 0.0, 0.0,
@@ -51,7 +109,7 @@ let mvp_matrix = view_proj_matrix.multiply(&model_matrix);
 
 ### Vertex Data Structure
 
-```rust
+```rust,no_run
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Vertex {

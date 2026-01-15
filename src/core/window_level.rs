@@ -31,8 +31,8 @@ impl WindowLevel {
     pub const MAX_WINDOW_WIDTH: f32 = 4096.0;     // Maximum contrast range for CT
     pub const MIN_WINDOW_LEVEL: f32 = -2048.0;    // Minimum brightness for CT
     pub const MAX_WINDOW_LEVEL: f32 = 2048.0;     // Maximum brightness for CT
-    pub const MIN_BIAS: f32 = -1024.0;            // Minimum bias offset
-    pub const MAX_BIAS: f32 = 1024.0;             // Maximum bias offset
+    pub const MIN_BIAS: f32 = -2048.0;            // Minimum bias offset
+    pub const MAX_BIAS: f32 = 2048.0;             // Maximum bias offset
     
     /// Default window/level for soft tissue
     pub const DEFAULT_SOFT_TISSUE: (f32, f32) = (400.0, 40.0);

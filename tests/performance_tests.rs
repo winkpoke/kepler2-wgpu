@@ -5,13 +5,13 @@
 
 mod performance_tests {
     use kepler_wgpu::mesh::performance::{
-        QualityLevel, PerformanceTargets, QualityController, FrameTimer, PerformanceStats
+        QualityLevel, PerformanceTargets, QualityController, FrameTimer
     };
     use std::time::Duration;
 
     #[test]
     fn test_quality_controller_creation() {
-        /// Test QualityController creation and initialization
+        // Test QualityController creation and initialization
         let controller = QualityController::new();
         
         assert_eq!(controller.get_quality_level(), QualityLevel::Medium);
@@ -23,7 +23,7 @@ mod performance_tests {
 
     #[test]
     fn test_frame_timer_functionality() {
-        /// Test FrameTimer basic functionality
+        // Test FrameTimer basic functionality
         let mut timer = FrameTimer::new(60);
         
         // Test single frame timing
@@ -41,7 +41,7 @@ mod performance_tests {
 
     #[test]
     fn test_multiple_frame_timing() {
-        /// Test multiple frame timing and statistics
+        // Test multiple frame timing and statistics
         let mut timer = FrameTimer::new(10);
         
         // Record multiple frames
@@ -62,7 +62,7 @@ mod performance_tests {
 
     #[test]
     fn test_quality_adjustment_based_on_performance() {
-        /// Test automatic quality adjustment based on performance
+        // Test automatic quality adjustment based on performance
         let targets = PerformanceTargets {
             target_frame_time_ms: 16.67,
             max_frame_time_ms: 20.0,
@@ -89,7 +89,7 @@ mod performance_tests {
 
     #[test]
     fn test_quality_level_transitions() {
-        /// Test quality level increase and decrease
+        // Test quality level increase and decrease
         let mut level = QualityLevel::Medium;
         
         // Test decrease
@@ -123,7 +123,7 @@ mod performance_tests {
 
     #[test]
     fn test_performance_targets_configuration() {
-        /// Test PerformanceTargets configuration
+        // Test PerformanceTargets configuration
         let targets = PerformanceTargets {
             target_frame_time_ms: 16.67,
             max_frame_time_ms: 20.0,
@@ -147,7 +147,7 @@ mod performance_tests {
 
     #[test]
     fn test_quality_controller() {
-        /// Test QualityController functionality
+        // Test QualityController functionality
         let mut controller = QualityController::new();
         
         // Test initial state
@@ -169,7 +169,7 @@ mod performance_tests {
 
     #[test]
     fn test_frame_timer() {
-        /// Test FrameTimer functionality
+        // Test FrameTimer functionality
         let mut timer = FrameTimer::new(60);
         
         // Test initial state
@@ -186,7 +186,7 @@ mod performance_tests {
 
     #[test]
     fn test_quality_controller_functionality() {
-        /// Test QualityController behavior
+        // Test QualityController behavior
         let targets = PerformanceTargets {
             target_frame_time_ms: 16.67,
             max_frame_time_ms: 33.33,
@@ -210,7 +210,7 @@ mod performance_tests {
 
     #[test]
     fn test_frame_timer_advanced() {
-        /// Test advanced FrameTimer functionality
+        // Test advanced FrameTimer functionality
         let mut timer = FrameTimer::new(60);
         
         // Test initial state
@@ -231,7 +231,7 @@ mod performance_tests {
 
     #[test]
     fn test_performance_stats_structure() {
-        /// Test PerformanceStats structure and functionality
+        // Test PerformanceStats structure and functionality
         let targets = PerformanceTargets {
             target_frame_time_ms: 16.67,
             max_frame_time_ms: 33.33,
@@ -256,7 +256,7 @@ mod performance_tests {
 
     #[test]
     fn test_quality_controller_reset() {
-        /// Test quality controller state management
+        // Test quality controller state management
         let targets = PerformanceTargets {
             target_frame_time_ms: 16.67,
             max_frame_time_ms: 33.33,
@@ -323,7 +323,7 @@ mod performance_tests {
 
     #[test]
     fn test_performance_stats() {
-        /// Test PerformanceStats structure and methods
+        // Test PerformanceStats structure and methods
         let targets = PerformanceTargets {
             target_frame_time_ms: 16.67,
             max_frame_time_ms: 33.33,
@@ -348,7 +348,7 @@ mod performance_tests {
 
     #[test]
     fn test_performance_monitoring_reset() {
-        /// Test performance monitoring reset functionality
+        // Test performance monitoring reset functionality
         let targets = PerformanceTargets {
             target_frame_time_ms: 16.67,
             max_frame_time_ms: 33.33,
@@ -420,7 +420,7 @@ mod performance_tests {
 
     #[test]
     fn test_quality_settings_application() {
-        /// Test quality settings application
+        // Test quality settings application
         let quality_low = QualityLevel::Low;
         let settings_low = quality_low.get_settings();
         
@@ -438,7 +438,7 @@ mod performance_tests {
 
     #[test]
     fn test_frame_timer_edge_cases() {
-        /// Test edge cases for frame timer
+        // Test edge cases for frame timer
         let mut timer = FrameTimer::new(1); // Very small buffer
         
         // Test single frame
@@ -460,7 +460,7 @@ mod performance_tests {
 
     #[test]
     fn test_performance_targets_validation() {
-        /// Test performance targets validation
+        // Test performance targets validation
         let targets = PerformanceTargets::default();
         
         assert!(targets.target_frame_time_ms > 0.0);
@@ -472,7 +472,7 @@ mod performance_tests {
 
     #[test]
     fn test_quality_controller_edge_cases() {
-        /// Test edge cases for quality controller
+        // Test edge cases for quality controller
         let targets = PerformanceTargets {
             target_frame_time_ms: 16.67,
             max_frame_time_ms: 33.33,
@@ -500,7 +500,7 @@ mod performance_tests {
 
     #[test]
     fn test_performance_edge_cases() {
-        /// Test edge cases in performance monitoring
+        // Test edge cases in performance monitoring
         let targets = PerformanceTargets {
             target_frame_time_ms: 16.67,
             max_frame_time_ms: 33.33,

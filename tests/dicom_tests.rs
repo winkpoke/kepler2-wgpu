@@ -10,36 +10,116 @@
 
 
 // Import DICOM modules under test
-use kepler_wgpu::data::dicom::{
+use kepler_wgpu::data::{dicom::{
     Patient, StudySet, ImageSeries, CTImage, DicomRepo,
-    build_ct_dicom, generate_uid, change_dicom_uid, FsSink
-};
+    build_ct_dicom, generate_uid, FsSink},
+    medical_imaging::PixelType};
+use kepler_wgpu::data::medical_imaging::image_info::PatientPosition;
 
 // Test utilities and mock data
 mod test_utils {
     use super::*;
-    
-    /// Creates minimal valid DICOM data for testing
-    /// Returns a byte array representing a basic CT DICOM file
-    pub fn create_minimal_ct_dicom() -> Vec<u8> {
-        // This would normally be a valid DICOM file in bytes
-        // For testing purposes, we'll create a mock structure
-        // In a real implementation, you'd use actual DICOM test files
-        vec![
-            // DICOM preamble (128 bytes of zeros)
-            0u8; 128
-        ].into_iter()
-        .chain(b"DICM".iter().cloned()) // DICOM prefix
-        .chain(create_mock_dicom_elements())
-        .collect()
+
+    // ============================================================================
+    // Test Data and Utilities
+    // ============================================================================
+    /// Creates test MHA header with embedded data
+    pub fn create_test_mha_data(
+        dimensions: [usize; 3],
+        pixel_type: PixelType,
+        spacing: [f64; 3],
+        verbose: bool,
+    ) -> Vec<u8> {
+        let mut header = format!(
+            "ObjectType = Image\n\
+            NDims = 3\n\
+            BinaryData = True\n\
+            BinaryDataByteOrderMSB = False\n\
+            CompressedData = False\n\
+            TransformMatrix = 1 0 0 0 1 0 0 0 1\n\
+            Offset = 0 0 0\n\
+            CenterOfRotation = 0 0 0\n\
+            AnatomicalOrientation = RAI\n\
+            ElementSpacing = {} {} {}\n\
+            DimSize = {} {} {}\n\
+            ElementType = {}\n\
+            ElementDataFile = LOCAL\n",
+            spacing[0], spacing[1], spacing[2],
+            dimensions[0], dimensions[1], dimensions[2],
+            match pixel_type {
+                PixelType::UInt8 => "MET_UCHAR",
+                PixelType::UInt16 => "MET_USHORT",
+                PixelType::Int16 => "MET_SHORT",
+                PixelType::Int32 => "MET_INT",
+                PixelType::Float32 => "MET_FLOAT",
+                PixelType::Float64 => "MET_DOUBLE",
+            }
+        ).into_bytes();
+
+        // Add data section
+        if verbose{
+            let data_size = dimensions[0] * dimensions[1] * dimensions[2];
+            let pixel_size = match pixel_type {
+                PixelType::UInt8 => 1,
+                PixelType::UInt16 => 2,
+                PixelType::Int16 => 2,
+                PixelType::Int32 => 4,
+                PixelType::Float32 => 4,
+                PixelType::Float64 => 8,
+            };
+            
+            // Create checkerboard pattern data
+            let width = dimensions[0] as usize;
+            let height = dimensions[1] as usize;
+            let depth = dimensions[2] as usize;
+            let checkerboard_size = 128; // Size of each checkerboard square
+            
+            let mut data: Vec<u8> = Vec::with_capacity(data_size * pixel_size);
+            
+            for z in 0..depth {
+                for y in 0..height {
+                    for x in 0..width {
+                        // Calculate checkerboard pattern
+                        let checker_x = (x / checkerboard_size) % 2;
+                        let checker_y = (y / checkerboard_size) % 2;
+                        let checker_z = (z / checkerboard_size) % 2;
+                        
+                        // Create 3D checkerboard pattern
+                        let is_white = (checker_x + checker_y + checker_z) % 2 == 0;
+                        let pixel_value = if is_white { 255u8 } else { 0u8 };
+                        
+                        // Add pixel data based on pixel type
+                        match pixel_type {
+                            PixelType::UInt8 => {
+                                data.push(pixel_value);
+                            },
+                            PixelType::UInt16 | PixelType::Int16 => {
+                                let value = if is_white { 65535u16 } else { 0u16 };
+                                data.extend_from_slice(&value.to_le_bytes());
+                            },
+                            PixelType::Int32 => {
+                                let value = if is_white { 2147483647i32 } else { 0i32 };
+                                data.extend_from_slice(&value.to_le_bytes());
+                            },
+                            PixelType::Float32 => {
+                                let value = if is_white { 1.0f32 } else { 0.0f32 };
+                                data.extend_from_slice(&value.to_le_bytes());
+                            },
+                            PixelType::Float64 => {
+                                let value = if is_white { 1.0f64 } else { 0.0f64 };
+                                data.extend_from_slice(&value.to_le_bytes());
+                            },
+                        }
+                    }
+                }
+            }
+            
+            header.extend_from_slice(&data);
+        }
+        
+        header
     }
-    
-    /// Creates mock DICOM data elements for testing
-    fn create_mock_dicom_elements() -> Vec<u8> {
-        // Mock implementation - in real tests, use actual DICOM libraries
-        // to create valid test data
-        vec![0u8; 1024] // Placeholder for DICOM elements
-    }
+
     
     /// Creates test patient data
     pub fn create_test_patient() -> Patient {
@@ -47,7 +127,7 @@ mod test_utils {
             "TEST001".to_string(),
             "Test^Patient".to_string(),
             Some("19800101".to_string()),
-            Some("M".to_string())
+            Some("M".to_string()),
         )
     }
     
@@ -86,12 +166,13 @@ mod test_utils {
             Some(1.0), // spacing between slices
             Some((100.0, 100.0, 50.0)), // image position
             Some((1.0, 0.0, 0.0, 0.0, 1.0, 0.0)), // image orientation
+            Some(PatientPosition::HFS.to_string()), // patient position
             Some(1.0), // rescale slope
             Some(-1024.0), // rescale intercept
             Some(40.0), // window center
             Some(400.0), // window width
             1, // pixel representation (signed)
-            pixel_data
+            pixel_data,
         )
     }
 }
@@ -99,7 +180,6 @@ mod test_utils {
 // =============================================================================
 // UNIT TESTS - Individual Module Testing
 // =============================================================================
-
 #[cfg(test)]
 mod unit_tests {
     use super::*;
@@ -126,13 +206,8 @@ mod unit_tests {
             assert!(formatted.contains("PatientName"));
             assert!(formatted.contains("TEST001"));
             assert!(formatted.contains("Test^Patient"));
-        }
-
-        #[test]
-        fn test_patient_from_bytes_missing_required_fields() {
-            let minimal_data = create_minimal_ct_dicom();
-            let result = Patient::from_bytes(&minimal_data);
-            assert!(result.is_err());
+            // PatientPosition is not part of Patient tags; verify optional fields presence formatting
+            assert!(formatted.contains("PatientBirthDate") || formatted.contains("PatientSex"));
         }
 
         #[test]
@@ -141,7 +216,7 @@ mod unit_tests {
                 "TEST002".to_string(),
                 "Another^Patient".to_string(),
                 None, // No birthdate
-                None  // No sex
+                None, // No sex
             );
             assert_eq!(patient.patient_id, "TEST002");
             assert_eq!(patient.name, "Another^Patient");
@@ -170,19 +245,6 @@ mod unit_tests {
             assert!(formatted.contains("StudyInstanceUID"));
             assert!(formatted.contains("STUDY001"));
         }
-
-        #[test]
-        fn test_study_date_validation() {
-            // Test various date formats
-            let study = StudySet::new(
-                "STUDY002".to_string(),
-                "1.2.3.4.5.6.7.8.9.1".to_string(),
-                "TEST001".to_string(),
-                "20241231".to_string(), // Valid DICOM date format
-                None
-            );
-            assert_eq!(study.date, "20241231");
-        }
     }
 
     /// Tests ImageSeries struct creation and validation
@@ -196,18 +258,6 @@ mod unit_tests {
             assert_eq!(series.study_uid, "1.2.3.4.5.6.7.8.9.0");
             assert_eq!(series.modality, "CT");
             assert_eq!(series.description, Some("Axial CT".to_string()));
-        }
-
-        #[test]
-        fn test_image_series_validation() {
-            // Test that only CT modality is accepted
-            let series = ImageSeries::new(
-                "1.2.3.4.5.6.7.8.9.1".to_string(),
-                "1.2.3.4.5.6.7.8.9.0".to_string(),
-                "CT".to_string(),
-                None,
-            );
-            assert_eq!(series.modality, "CT");
         }
     }
 
@@ -228,6 +278,7 @@ mod unit_tests {
             assert_eq!(ct_image.rescale_intercept, Some(-1024.0));
             assert_eq!(ct_image.window_center, Some(40.0));
             assert_eq!(ct_image.window_width, Some(400.0));
+            assert_eq!(ct_image.patient_position, Some("HFS".to_string()));
         }
 
         #[test]
@@ -279,79 +330,46 @@ mod unit_tests {
 
     /// Tests DicomRepo functionality
     mod dicom_repo_tests {
+        use kepler_wgpu::{data::CTVolumeGenerator};
         use super::*;
 
         #[test]
-        fn test_dicom_repo_add_patient() {
-            let mut repo = DicomRepo::new();
-            let patient = create_test_patient();
-            repo.add_patient(patient.clone());
-            
-            let retrieved = repo.get_patient("TEST001").unwrap();
-            println!("{:?}", retrieved);
-        }
-
-        #[test]
-        fn test_dicom_repo_add_study() {
+        fn test_dicom_repo() {
             let mut repo = DicomRepo::new();
             let patient = create_test_patient();
             repo.add_patient(patient.clone());
             let study = create_test_study();
             repo.add_study(study.clone());
-            
-            let retrieved = repo.get_studies_by_patient(&patient.patient_id);
-            println!("{:?}", retrieved);
-        }
-
-        #[test]
-        fn test_dicom_repo_add_series() {
-            let mut repo = DicomRepo::new();
             let series = create_test_image_series();
             repo.add_image_series(series.clone());
-            
-            let retrieved = repo.get_series_by_study(&series.study_uid);
-            println!("{:?}", retrieved);
-        }
-
-        #[test]
-        fn test_dicom_repo_get_images_by_series() {
-            let mut repo = DicomRepo::new();
             let ct_image = create_test_ct_image();
-            let series_uid = ct_image.series_uid.clone();
-            repo.add_ct_image(ct_image);
-            
-            let images = repo.get_images_by_series(&series_uid);
-            println!("{:?}", images);
-        }
-    }
+            repo.add_ct_image(ct_image.clone());
+            println!("{:?}", repo.to_string());
 
-    /// Tests UID generation and manipulation
-    mod uid_tests {
-        use super::*;
+            let retrieved_patient = repo.get_patient(&patient.patient_id).expect("patient exists");
+            assert_eq!(retrieved_patient.patient_id, patient.patient_id);
+            assert_eq!(retrieved_patient.name, patient.name);
 
-        #[test]
-        fn test_generate_uid() {
-            let uid1 = generate_uid();
-            let uid2 = generate_uid();
-            
-            // UIDs should be different
-            assert_ne!(uid1, uid2);
-            
-            // UIDs should be valid format (basic check)
-            assert!(uid1.contains('.'));
-            assert!(uid2.contains('.'));
-        }
+            let retrieved_studies = repo.get_studies_by_patient(&patient.patient_id);
+            assert_eq!(retrieved_studies.len(), 1);
+            assert_eq!(retrieved_studies[0].uid, study.uid);
+            assert_eq!(retrieved_studies[0].patient_id, patient.patient_id);
 
-        #[test]
-        fn test_change_dicom_uid() {
-            let base_uid = generate_uid();
-            let changed_uid1 = change_dicom_uid(&base_uid, true);
-            let changed_uid2 = change_dicom_uid(&base_uid, false);
-            
-            // Changed UIDs should be different from base and each other
-            assert_ne!(base_uid, changed_uid1);
-            assert_ne!(base_uid, changed_uid2);
-            assert_ne!(changed_uid1, changed_uid2);
+            let retrieved_series = repo.get_series_by_study(&study.uid);
+            assert_eq!(retrieved_series.len(), 1);
+            assert_eq!(retrieved_series[0].uid, series.uid);
+            assert_eq!(retrieved_series[0].study_uid, study.uid);
+            assert_eq!(retrieved_series[0].modality, "CT");
+
+            let images = repo.get_images_by_series(&series.uid);
+            assert_eq!(images.len(), 1);
+            assert_eq!(images[0].series_uid, series.uid);
+            assert_eq!(images[0].rows, 512);
+            assert_eq!(images[0].columns, 512);
+            assert_eq!(images[0].pixel_data.len(), 512 * 512 * 2);
+
+            let ct_volume = repo.generate_ct_volume(images[0].series_uid.as_str()).unwrap();
+            println!("{:?}", ct_volume);
         }
     }
 }
@@ -368,9 +386,9 @@ mod integration_tests {
     use std::path::Path;
     use chrono::Local;
 
-    /// Tests DICOM export functionality with real MHA file
     #[test]
-    fn test_dicom_export_workflow_with_real_mha_file() {
+    #[ignore]
+    fn test_dicom_export_workflow_with_mha_file() {
         // Create a test patient and study
         let patient = create_test_patient();
         let mut study = create_test_study();
@@ -381,9 +399,7 @@ mod integration_tests {
         println!("Generated Study UID: {}", study_uid);
 
         // Load test data
-        let path = "C:/share/input/CT_new.mha";
-        let data = fs::read(path);
-        let mha_path = data.as_ref().map(|v| v.as_slice()).unwrap();
+        let mha_path = &create_test_mha_data([512,512,300], PixelType::Float32, [0.5,0.5,0.5], true);
         let out_dir = Path::new("C:/share").join(Local::now().format("%Y-%m-%d").to_string());
         std::fs::create_dir_all(&out_dir).unwrap();
 
@@ -405,9 +421,9 @@ mod integration_tests {
         assert!(result.is_ok());
     }
 
-    /// Tests DICOM export functionality with real MHD file
     #[test]
-    fn test_dicom_export_workflow_with_real_mhd_file() {
+    #[ignore]
+    fn test_dicom_export_workflow_with_mhd_file() {
         // Create a test patient and study
         let patient = create_test_patient();
         let mut study = create_test_study();

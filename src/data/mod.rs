@@ -8,6 +8,11 @@ pub mod ct_volume;
 pub mod dicom;
 pub mod dicom_;
 pub mod medical_imaging;
+pub mod volume_encoding;
 
 // Re-exports for convenience
 pub use ct_volume::*;
+// Transitional re-export to preserve existing imports while AppModel lives in application layer
+pub use crate::application::app_model::AppModel;
+
+// AppModel moved to src/application/app_model.rs

@@ -1,6 +1,6 @@
 /// Performance monitoring and automatic quality adjustment for mesh rendering
 use std::time::Duration;
-use crate::core::timing::{Instant, DurationExt};
+use crate::core::timing::Instant;
 
 /// Function-level comment: Performance targets and thresholds for automatic quality adjustment
 #[derive(Debug, Clone)]

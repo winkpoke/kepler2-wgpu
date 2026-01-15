@@ -2,6 +2,7 @@ use super::dicom_helper::get_value;
 use crate::define_dicom_struct;
 use anyhow::{anyhow, Result, Context};
 use dicom_object::{FileDicomObject, InMemDicomObject};
+use crate::data::medical_imaging::metadata::PatientPosition;
 
 define_dicom_struct!(CTImage, {
     (uid, String, "(0008,0018) SOPInstanceUID", false),              // Unique identifier for the image
@@ -13,6 +14,7 @@ define_dicom_struct!(CTImage, {
     (spacing_between_slices, f32, "(0018,0088) SpacingBetweenSlices", true), // SpacingBetweenSlices (Optional)
     (image_position_patient, (f32, f32, f32), "(0020,0032) ImagePositionPatient", true), // ImagePositionPatient (Optional)
     (image_orientation_patient, (f32, f32, f32, f32, f32, f32), "(0020,0037) ImageOrientationPatient", true), // ImageOrientationPatient (Optional)
+    (patient_position, String, "(0018,5100) PatientPosition", true), // PatientPosition is optional
     (rescale_slope, f32, "(0028,1053) RescaleSlope", true),          // RescaleSlope (Optional)
     (rescale_intercept, f32, "(0028,1052) RescaleIntercept", true),  // RescaleIntercept (Optional)
     (window_center, f32, "(0028,1050) WindowCenter", true),          // WindowCenter (Optional)
@@ -78,6 +80,10 @@ impl CTImage {
                         None
                     }
                 })
+            },
+            patient_position: {
+                let pos = get_value::<String>(&obj, "PatientPosition");
+                pos.map(|v| PatientPosition::from_str(&v).to_string())
             },
             rescale_slope: get_value::<f32>(&obj, "RescaleSlope"),
             rescale_intercept: get_value::<f32>(&obj, "RescaleIntercept"),

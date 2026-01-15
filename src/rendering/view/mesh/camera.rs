@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::core::coord::{Matrix4x4, Vector3};
+use glam::{Mat4, Vec3};
 
 /// Function-level comment: Projection type enumeration for camera configuration
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -44,8 +44,8 @@ impl Camera {
             center: [0.0, 0.0, 0.0],
             up: [0.0, 1.0, 0.0],
             fov_y_radians: std::f32::consts::PI / 4.0, // 45 degrees (used for perspective mode)
-            near: -5.0, // Allow objects in front of the camera (negative Z values)
-            far: 10.0, // Reduce far plane to focus on nearby objects
+            near: 0.1, // Adjusted near plane to be positive for perspective
+            far: 100.0, // Adjusted far plane
             projection_type: ProjectionType::Orthogonal, // Default to orthogonal for medical accuracy
             // Orthogonal bounds - defines viewing volume to make cube prominent
             // Unit cube spans from -1 to +1, smaller bounds = larger cube on screen
@@ -76,28 +76,17 @@ impl Camera {
     }
 
     /// Function-level comment: Generate view matrix using look-at transformation
-    pub fn view_matrix(&self) -> Matrix4x4<f32> {
-        let eye = Vector3::new(self.eye);
-        let center = Vector3::new(self.center);
-        let up = Vector3::new(self.up);
-
-        // Calculate camera coordinate system
-        let forward = (center - eye).normalize();
-        let right = forward.cross(up).normalize();
-        let camera_up = right.cross(forward);
-
-        // Create view matrix (inverse of camera transform)
-        Matrix4x4::from_array([
-            right.x(), camera_up.x(), -forward.x(), 0.0,
-            right.y(), camera_up.y(), -forward.y(), 0.0,
-            right.z(), camera_up.z(), -forward.z(), 0.0,
-            -right.dot(eye), -camera_up.dot(eye), forward.dot(eye), 1.0,
-        ])
+    pub fn view_matrix(&self) -> Mat4 {
+        let eye = Vec3::from(self.eye);
+        let center = Vec3::from(self.center);
+        let up = Vec3::from(self.up);
+        
+        Mat4::look_at_rh(eye, center, up)
     }
 
     /// Function-level comment: Generate projection matrix based on camera projection type
     /// For medical visualization, orthogonal projection maintains accurate dimensional representation
-    pub fn projection_matrix(&self, aspect_ratio: f32) -> Matrix4x4<f32> {
+    pub fn projection_matrix(&self, aspect_ratio: f32) -> Mat4 {
         match self.projection_type {
             ProjectionType::Perspective => self.perspective_projection_matrix(aspect_ratio),
             ProjectionType::Orthogonal => self.orthogonal_projection_matrix(aspect_ratio),
@@ -105,21 +94,13 @@ impl Camera {
     }
 
     /// Function-level comment: Generate perspective projection matrix for traditional 3D viewing
-    fn perspective_projection_matrix(&self, aspect_ratio: f32) -> Matrix4x4<f32> {
-        let f = 1.0 / (self.fov_y_radians / 2.0).tan();
-        let range_inv = 1.0 / (self.near - self.far);
-
-        Matrix4x4::from_array([
-            f / aspect_ratio, 0.0, 0.0, 0.0,
-            0.0, f, 0.0, 0.0,
-            0.0, 0.0, (self.near + self.far) * range_inv, -1.0,
-            0.0, 0.0, 2.0 * self.near * self.far * range_inv, 0.0,
-        ])
+    fn perspective_projection_matrix(&self, aspect_ratio: f32) -> Mat4 {
+        Mat4::perspective_rh_gl(self.fov_y_radians, aspect_ratio, self.near, self.far)
     }
 
     /// Function-level comment: Generate orthogonal projection matrix for medical visualization
     /// Maintains object size regardless of distance, ensuring accurate dimensional representation
-    fn orthogonal_projection_matrix(&self, aspect_ratio: f32) -> Matrix4x4<f32> {
+    fn orthogonal_projection_matrix(&self, aspect_ratio: f32) -> Mat4 {
         // Adjust orthogonal bounds to maintain aspect ratio
         let width = self.ortho_right - self.ortho_left;
         let height = self.ortho_top - self.ortho_bottom;
@@ -138,23 +119,14 @@ impl Camera {
             (center_x - half_width, center_x + half_width, self.ortho_bottom, self.ortho_top)
         };
 
-        let width_inv = 1.0 / (right - left);
-        let height_inv = 1.0 / (top - bottom);
-        let depth_inv = 1.0 / (self.near - self.far);
-
-        Matrix4x4::from_array([
-            2.0 * width_inv, 0.0, 0.0, 0.0,
-            0.0, 2.0 * height_inv, 0.0, 0.0,
-            0.0, 0.0, 2.0 * depth_inv, 0.0,
-            -(right + left) * width_inv, -(top + bottom) * height_inv, (self.far + self.near) * depth_inv, 1.0,
-        ])
+        Mat4::orthographic_rh_gl(left, right, bottom, top, self.near, self.far)
     }
 
     /// Function-level comment: Generate combined view-projection matrix for efficiency
-    pub fn view_projection_matrix(&self, aspect_ratio: f32) -> Matrix4x4<f32> {
+    pub fn view_projection_matrix(&self, aspect_ratio: f32) -> Mat4 {
         let view = self.view_matrix();
         let projection = self.projection_matrix(aspect_ratio);
-        projection.multiply(&view)
+        projection * view
     }
 
     /// Function-level comment: Set camera to orbit around a target point

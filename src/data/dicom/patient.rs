@@ -9,7 +9,7 @@ define_dicom_struct!(Patient, {
     (patient_id, String, "(0010,0020) PatientID", false),           // PatientID is required
     (name, String, "(0010,0010) PatientName", false),       // PatientName is required
     (birthdate, String, "(0010,0030) PatientBirthDate", true),  // PatientBirthDate is optional
-    (sex, String, "(0010,0040) PatientSex", true)              // Sex is optional
+    (sex, String, "(0010,0040) PatientSex", true),              // Sex is optional
 });
 
 // Native version for reading DICOM from a file directly (e.g., from the file system)

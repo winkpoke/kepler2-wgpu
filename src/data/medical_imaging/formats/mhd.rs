@@ -6,17 +6,18 @@ use crate::data::medical_imaging::{
 };
 use std::{collections::HashMap, io::Read};
 use std::fs::File;
-use std::io::{BufRead,BufReader};
 use std::path::PathBuf;
 
 /// Function-level comment: Parses MHD (MetaIO) files with separate data files
 /// Handles header files that reference external raw or compressed data
 pub struct MhdParser {
     /// Validates MHD header format
+    #[allow(dead_code)]
     validator: MedicalImageValidator,
     /// Resolves data file paths relative to header
     path_resolver: PathBuf,
     /// Handles various data file formats
+    #[allow(dead_code)]
     data_loader: PathBuf,
 }
 
@@ -37,12 +38,20 @@ impl MhdParser {
     /// Parses MHD header file and loads associated data file
     #[cfg(not(target_arch = "wasm32"))]
     pub async fn parse_file(path: PathBuf) -> MedicalImagingResult<MedicalVolume> {
-        let mut mhd = MhdParser::new(MedicalImageValidator::new(), PathBuf::new(), path.clone());
+        let mhd = MhdParser::new(MedicalImageValidator::new(), PathBuf::new(), path.clone());
         let mhd_path = mhd.data_loader.clone().join("CT.mhd");
-        let bytes_mhd = tokio::fs::read(mhd_path).await?;
+        let bytes_mhd = tokio::fs::read(mhd_path.clone()).await?;
         let metadata = Self::parse_metadata_only(&bytes_mhd)?;
         let pixel_data = mhd.load_data_file(&metadata)?;
-        MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
+        let mut mhd_clone = MhdParser::new(MedicalImageValidator::new(), PathBuf::new(), mhd_path);
+        let result = mhd_clone.validator.add_format_validator(ImageFormat::MHD, &metadata, &pixel_data);
+        if result.is_valid{
+            MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
+        }else{
+            Err(MedicalImagingError::InvalidPath { path: (
+                path.to_string_lossy().to_string()
+            ) })
+        }
     }
         
     /// Parses MHD header file from raw bytes and loads pixel data

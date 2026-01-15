@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
 use std::sync::Arc;
-use crate::core::coord::{array_to_slice, Matrix4x4};
 use crate::rendering::view::render_content::RenderContent;
 use super::mpr_render_context::MprRenderContext;
 
@@ -19,6 +18,8 @@ pub struct UniformsFrag {
     pub window_level: f32,
     pub slice: f32,
     pub is_packed_rg8: f32,
+    pub bias: f32,
+    pub _pad0: [f32; 3],
     pub mat: [f32; 16],
 }
 
@@ -73,20 +74,21 @@ impl MprViewWgpuImpl {
         render_context: Arc<MprRenderContext>,
         device: &wgpu::Device,
         render_content: Arc<RenderContent>,
-        transform_matrix: Matrix4x4<f32>,
+        transform_matrix: glam::Mat4,
     ) -> Self {
         // Initialize uniform data
         let u_vert_data = UniformsVert {
             ..Default::default()
         };
         
-        let is_packed = matches!(render_content.texture_format, wgpu::TextureFormat::Rg8Unorm);
+        let decode_params = render_content.decode_parameters();
         let u_frag_data = UniformsFrag {
             window_width: 350.,
-            window_level: if is_packed { 1140.0 } else { 40.0 },
+            window_level: 40.0,
             slice: 0.0,
-            is_packed_rg8: if is_packed { 1.0 } else { 0.0 },
-            mat: *array_to_slice(&transform_matrix.data),
+            is_packed_rg8: decode_params.is_packed_flag as f32,
+            bias: decode_params.bias,
+            mat: transform_matrix.to_cols_array(),
             ..Default::default()
         };
         
@@ -94,7 +96,7 @@ impl MprViewWgpuImpl {
             "MprViewWgpuImpl defaults => window_width: {:.1}, window_level: {:.1}, is_packed_rg8: {}",
             u_frag_data.window_width,
             u_frag_data.window_level,
-            is_packed
+            decode_params.is_packed_flag
         );
         
         let uniforms = Uniforms {
@@ -295,5 +297,21 @@ impl MprViewWgpuImpl {
         });
 
         (buffer, bind_group)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Function-level comment: 验证片段统一缓冲结构体的尺寸与对齐（含专用填充字段）
+    #[test]
+    fn test_uniforms_frag_size_alignment() {
+        let size = std::mem::size_of::<UniformsFrag>();
+        assert_eq!(size, 96);
+        let vert_size = std::mem::size_of::<UniformsVert>();
+        assert_eq!(vert_size, 16);
+        let uniforms_size = std::mem::size_of::<Uniforms>();
+        assert_eq!(uniforms_size, vert_size + size);
     }
 }

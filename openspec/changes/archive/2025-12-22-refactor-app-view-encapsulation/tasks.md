@@ -1,0 +1,13 @@
+## 1. Implementation
+- [x] 1.1 Implement `AppView::capture_view_states` to return a structured state object/collection.
+- [x] 1.2 Implement `AppView::restore_view_states` to accept the state collection and apply it to matching views.
+- [x] 1.3 Refactor `App::capture_mpr_states` and `App::restore_mpr_states` to use the new `AppView` methods.
+- [x] 1.4 Implement wrapper methods in `AppView` for view interaction:
+    - `set_window_level(index, value)`
+    - `set_window_width(index, value)`
+    - `set_slice_mm(index, value)`
+    - `set_scale(index, value)`
+    - `set_pan_mm(index, x, y)`
+    - `set_center_at_point_in_mm(index, x, y, z)`
+- [x] 1.5 Refactor `App` methods to delegate to these new `AppView` wrappers.
+- [x] 1.6 Verify that all view interactions (MPR, layout changes) still work correctly.
