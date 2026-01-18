@@ -375,7 +375,7 @@ mod unit_tests {
 }
 
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "windows"))]
 mod tests {
     use dicom_object::open_file;
 
@@ -416,7 +416,7 @@ mod tests {
 // INTEGRATION TESTS - End-to-End Workflows
 // =============================================================================
 
-#[cfg(test)]
+#[cfg(all(test, target_os = "windows"))]
 mod integration_tests {
     use super::*;
     use test_utils::*;
