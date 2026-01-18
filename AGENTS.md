@@ -1,87 +1,72 @@
-<!-- OPENSPEC:START -->
-# OpenSpec Instructions
+# AI Agent Instructions for Kepler2-WGPU
 
-These instructions are for AI assistants working in this project.
+This is the main entry point for AI assistants. See `doc/agents/` for detailed guidance.
 
-Always open `@/openspec/AGENTS.md` when the request:
-- Mentions planning or proposals (words like proposal, spec, change, plan)
-- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
-- Sounds ambiguous and you need the authoritative spec before coding
+## Quick Links
 
-Use `@/openspec/AGENTS.md` to learn:
-- How to create and apply change proposals
-- Spec format and conventions
-- Project structure and guidelines
+### Core Documentation
+- **Architecture**: `doc/agents/ARCHITECTURE.md` - Module structure and dependencies
+- **Conventions**: `doc/agents/CONVENTIONS.md` - Coding standards and patterns
+- **Build & Test**: `doc/agents/BUILD.md` - Development workflow
+- **Rendering**: `doc/agents/RENDERING.md` - GPU and rendering patterns
+- **Common Pitfalls**: `doc/agents/PITFALLS.md` - Anti-patterns to avoid
+- **PR Guidelines**: `doc/agents/PR_GUIDELINES.md` - Contribution workflow
+- **OpenSpec**: `doc/agents/OPENSPEC.md` - Spec-driven development
 
-Keep this managed block so 'openspec update' can refresh the instructions.
+### Quick Reference
+- **One-page cheat sheet**: `doc/agents/QUICK_REFERENCE.md` - Common commands at a glance
+- **Full documentation**: `doc/agents/README.md` - Complete navigation guide
 
-<!-- OPENSPEC:END -->
+## TL;DR
 
-# Repository Guidelines
+### Quick Commands
+```bash
+# Native
+cargo run                                    # Run application
+cargo build --release                         # Build release
+RUST_LOG=info cargo run                       # Run with logging
+cargo test                                   # Run tests
 
-## Project Structure & Module Organization
+# WASM
+wasm-pack build --target web                  # Build for web
+npx live-server ./static                      # Serve static files
 
-`src/` contains the main source code organized into four subsystems:
-- `application/` - UI orchestration, event handling, and app lifecycle
-- `core/` - Utilities, error types, and mathematical helpers
-- `data/` - DICOM parsing, CT volume generation, and file I/O
-- `rendering/` - WebGPU pipelines, views, mesh processing
-
-`tests/` holds unit and integration tests. `static/` contains web assets for WASM builds. `pkg/` stores pre-built JS/WASM artifacts.
-
-## Build, Test, and Development Commands
-
-### Native Development
-```sh
-cargo build --release    # Build optimized native binary
-cargo run               # Run native application
-cargo test              # Run all tests
+# Code Quality
+cargo fmt                                    # Format code
+cargo clippy                                 # Lint
+cargo check                                   # Type check
 ```
 
-### WebAssembly Development
-```sh
-wasm-pack build -t web        # Build for web
-npx live-server ./static # Serve web interface
-```
+### Essential Patterns
+- Never use `tokio` in WASM modules
+- Use `KeplerResult<T>` for error handling
+- Use crate-level `log` macros (info/warn/error/debug)
+- Coordinate systems: World, Screen, Voxel, Base (use `glam` for math)
+- Recreate pipelines when surface format changes
 
-### Testing
-```sh
-cargo test              # Run all unit and integration tests
-cargo test --release     # Run tests in release mode
-```
+### Key Locations
+- Entry points: `src/main.rs` (native), `src/lib.rs` (WASM, library)
+- Error types: `src/core/error.rs`
+- CT volumes: `src/data/ct_volume.rs`
+- App state: `src/application/app.rs`
+- GPU init: `src/rendering/core/graphics.rs`
 
-## Coding Style & Naming Conventions
+## Getting Started
 
-- Use `rustfmt` for code formatting
-- 4-space indentation
-- Follow Rust naming conventions: `PascalCase` for types, `snake_case` for functions and variables
-- Platform-specific code uses `cfg(target_arch = "wasm32")` attributes
-- Cross-platform async patterns: `async_lock::Mutex` for WASM, `tokio::sync::Mutex` for native
+### New to Kepler2-WGPU?
+1. Read `doc/agents/QUICK_REFERENCE.md` for quick overview
+2. Read `doc/agents/ARCHITECTURE.md` to understand project structure
+3. Read `doc/agents/CONVENTIONS.md` for coding standards
 
-## Testing Guidelines
+### Ready to code?
+- **Bug fix**: Check `doc/agents/PITFALLS.md` for common issues
+- **New feature**: See `doc/agents/OPENSPEC.md` for proposal workflow
+- **GPU work**: See `doc/agents/RENDERING.md` for rendering patterns
 
-- Test files in `tests/` with `*_tests.rs` naming pattern
-- Use `#[cfg(not(target_arch = "wasm32"))]` for native-only tests
-- Integration tests should verify cross-platform behavior
-- Run `cargo test` before submitting changes
+### Need more detail?
+See `doc/agents/README.md` for complete documentation guide and workflows.
 
-## Commit & Pull Request Guidelines
+---
 
-### Commit Message Format
-Follow the pattern: `type(scope): description`
-Examples: `feat(rendering): add view factory pattern`, `fix(mesh): resolve WASM panic`
-
-Types: `feat`, `fix`, `refactor`, `docs`, `style`, `test`, `chore`
-
-### Pull Request Requirements
-- Keep changes minimal and well-scoped
-- Update relevant re-exports in `src/lib.rs` when changing public API
-- Include tests for new functionality
-- Ensure both native and WASM builds pass
-- Reference related issues in PR description
-
-### Platform Considerations
-- Never import `tokio` in WASM-targeted modules
-- Preserve platform-gated dependencies from `Cargo.toml`
-- Test GPU pipeline changes across both targets
-- DOM canvas element must maintain id `wasm-example` for web compatibility
+**Last Updated**: 2025-01-15
+**Maintained By**: Sisyphus (AI Agent)
