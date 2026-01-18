@@ -105,6 +105,16 @@ pub trait ViewFactory {
         pos: (i32, i32),
         size: (u32, u32)
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>>;
+
+    /// Create a Mesh view using a prebuilt RenderContent for API consistency
+    /// RenderContent is not used by mesh rendering but allows unified factory usage.
+    fn create_mesh_view_with_content(
+        &self,
+        render_content: Arc<RenderContent>,
+        mesh: &Mesh,
+        pos: (i32, i32),
+        size: (u32, u32)
+    ) -> Result<Box<dyn View>, Box<dyn std::error::Error>>;
 }
 
 pub struct MockViewFactory;
@@ -159,6 +169,16 @@ impl ViewFactory for MockViewFactory {
         _render_content: Arc<RenderContent>,
         _pos: (i32, i32),
         _size: (u32, u32),
+    ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
+        Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented")))
+    }
+
+    fn create_mesh_view_with_content(
+        &self,
+        _render_content: Arc<RenderContent>,
+        _mesh: &Mesh,
+        _pos: (i32, i32),
+        _size: (u32, u32)
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
         Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented")))
     }
@@ -397,5 +417,44 @@ impl ViewFactory for DefaultViewFactory {
 
         info!("[DefaultViewFactory] Created MIP view (with_content) at {:?} size {:?}", pos, size);
         Ok(Box::new(mip_view))
+    }
+
+    fn create_mesh_view_with_content(
+        &self,
+        _render_content: Arc<RenderContent>,
+        mesh: &Mesh,
+        pos: (i32, i32),
+        size: (u32, u32)
+    ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
+        use crate::rendering::view::View as _;
+
+        let mut mesh_view = MeshView::new();
+        mesh_view.set_rotation_enabled(false);
+        info!("[DefaultViewFactory] Mesh rotation disabled for consistent inspection");
+
+        let ctx = BasicMeshContext::new(
+            &self.device,
+            &self.queue,
+            mesh,
+            true,
+        );
+        let ctx_arc = Arc::new(ctx);
+
+        mesh_view.attach_context(ctx_arc);
+        mesh_view.move_to(pos);
+        mesh_view.resize(size);
+
+        // Initialize and attach orientation cube context (same as create_mesh_view)
+        let cube_mesh = crate::rendering::mesh::mesh::Mesh::unit_cube();
+        let cube_ctx = BasicMeshContext::new(
+            &self.device,
+            &self.queue,
+            &cube_mesh,
+            true,
+        );
+        mesh_view.attach_orientation_cube_context(Arc::new(cube_ctx));
+
+        info!("[DefaultViewFactory] Created Mesh view (with_content) at {:?} size {:?}", pos, size);
+        Ok(Box::new(mesh_view))
     }
 }

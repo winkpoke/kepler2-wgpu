@@ -197,43 +197,16 @@
         </fieldset>
 
         <fieldset class="pill" style="margin-bottom:10px">
-          <legend>视图模式</legend>
-          <div class="row">
-            <span id="mode-label">模式:</span>
-            <input type="number" id="mode" step="1" value="0" min="0" max="2">
-            <span id="orientation_index-label">方向索引:</span>
-            <input type="number" id="orientation_index" step="1" value="0" min="0" max="2">
-            <button id="one-cell-submit">应用</button>
-          </div>
-        </fieldset>
-
-        <fieldset class="pill" style="margin-bottom:10px">
           <legend>视图切换</legend>
           <div class="grid">
             <div>
-              <span id="3d-label">3D:</span>
-              <input type="number" id="mesh_index" step="1.0" value="0.0">
-              <input type="checkbox" id="3d" />
+              <span id="mode-label">模式:</span>
+              <input type="number" id="mode" step="1" value="0" min="0" max="1">
             </div>
             <div>
-              <span id="downsample-label">Downsample:</span>
-              <input type="number" id="downsample" step="1.0" value="3.0">
-            </div>
-            <div>
-              <span id="iso-value-label">Iso Value:</span>
-              <input type="number" id="iso-value" step="1.0" value="100.0">
-            </div>
-            <div>
-              <span id="change_mpr-label">change_mpr</span>
-              <input type="checkbox" id="change_mpr" />
-            </div>
-            <div>
-              <span id="index-1-label">index-1:</span>
-              <input type="number" id="index-1" step="1.0" value="0.0">
-            </div>
-            <div>
-              <span id="index-2-label">index-2:</span>
-              <input type="number" id="index-2" step="1.0" value="0.0">
+              <span id="index-label">index:</span>
+              <input type="number" id="index" step="1.0" value="0.0">
+              <input type="checkbox" id="change_index" />
             </div>
             <div>
               <span id="mipSpan">mip:</span>
@@ -241,16 +214,52 @@
               <input type="checkbox" id="change_mip" />
             </div>
             <div>
-              <span id="index-3-label">index-3:</span>
-              <input type="number" id="index-3" step="1.0" value="0.0">
-            </div>
-            <div>
-              <span id="index-4-label">index-4:</span>
-              <input type="number" id="index-4" step="1.0" value="0.0">
+              <span id="index-orientation-label">index-orientation:</span>
+              <input type="number" id="index-orientation" step="1.0" value="0.0">
             </div>
           </div>
           <div class="row" style="margin-top:8px">
             <button id="mesh">应用视图</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="pill" style="margin-bottom:10px">
+          <legend>三维视图</legend>
+          <div class="grid">
+            <div>
+              <span id="mesh_index-label">mesh_index:</span>
+              <input type="number" id="mesh_index" step="1.0" value="0.0">
+              <input type="checkbox" id="change_mesh_index" />
+              <span id="one_cell_mesh-label">one_cell:</span>
+              <input type="checkbox" id="one_cell" />
+            </div>
+            <div>
+              <span id="iso-min-label">Iso Min:</span>
+              <input type="number" id="iso-min" step="1.0" value="100.0">
+              <span id="save_mesh-label">save_mesh:</span>
+              <input type="checkbox" id="save_mesh" />
+            </div>
+            <div>
+              <span id="iso-max-label">Iso Max:</span>
+              <input type="number" id="iso-max" step="1.0" value="400.0">
+              <span id="crop_mesh-label">crop_mesh:</span>
+              <input type="checkbox" id="crop_mesh" />
+            </div>
+            <div>
+              <span id="roi-min-label">ROI Min:</span>
+              <input type="number" id="roi-min-x" step="1.0" value="-158.50882">
+              <input type="number" id="roi-min-y" step="1.0" value="-92.941345">
+              <input type="number" id="roi-min-z" step="1.0" value="-1160.3865">
+            </div>
+            <div>
+              <span id="roi-max-label">ROI Max:</span>
+              <input type="number" id="roi-max-x" step="1.0" value="134.81229">
+              <input type="number" id="roi-max-y" step="1.0" value="125.87259">
+              <input type="number" id="roi-max-z" step="1.0" value="-1035.0465">
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button id="ROI">截取</button>
           </div>
         </fieldset>
 
@@ -267,8 +276,13 @@
               <button id="slice-submit">应用</button>
             </div>
             <div>
+              <label for="slab-thickness-input">slab thickness</label>
+              <input type="number" id="slab-thickness" step="0.5" value="0.0">
+              <button id="slab-thickness-submit">应用</button>
+            </div>
+            <div>
               <label for="scale-input">Scale</label>
-              <input type="number" id="scale-input" step="10.0" value="1.0">
+              <input type="number" id="scale-input" step="1.0" value="1.0">
               <button id="scale-submit">应用</button>
             </div>
             <div>
@@ -344,6 +358,7 @@
               <input type="number" id="3d-rotation-x" step="15" value="-90" min="0" max="360">
               <input type="number" id="3d-rotation-y" step="15" value="0" min="0" max="360">
               <input type="number" id="3d-rotation-z" step="15" value="0" min="0" max="360">
+              <button id="3d-submit-rot">旋转</button>
             </div>
           </div>
           <div class="row" style="margin-top:8px">
@@ -419,8 +434,8 @@
       spacing: [],
       dim:[],
       mip: null,
-      mesh: false,
       mesh_index: null,
+      index : null,
       enable_rotation: false,
     };
 
@@ -549,6 +564,22 @@
         gl_canvas.set_slice_mm(indexValue, sliceValue);
     })
 
+    byId('slab-thickness-submit').addEventListener('click', () => {
+      const thicknessValue = byId('slab-thickness').value;
+      const input_index = byId('index-input');
+
+      const indexValue = parseInt(input_index.value);
+      if (isNaN(thicknessValue)) {
+          alert('Please enter a valid number');
+          return;
+      }
+      if (!gl_canvas) {
+          alert('Please select a series first!');
+          return;
+      }
+        gl_canvas.set_slab_thickness(indexValue, thicknessValue);
+    })
+
     byId('set-center').addEventListener('click', async () => {
       const x = parseFloat(byId('center-x').value);
       const y = parseFloat(byId('center-y').value);
@@ -645,58 +676,89 @@
       });
     });
 
-    byId('mesh').addEventListener('click', () => {
-      const checkbox3d = byId('3d').checked;
-      const checkboxChangeMpr = byId('change_mpr').checked;
-      const checkboxChangeMip = byId('change_mip').checked;
-
-      if (checkbox3d){
-        state.mesh = true;
-        state.mesh_index = parseInt(byId('mesh_index').value, 10);
-      }else{
-        state.mesh = false;
-        state.mesh_index = null;
-      }
-      
-      // Indices: convert to numbers for downstream logic
-      if (checkboxChangeMip) {
-        state.mip = parseInt(byId('mip').value, 10);
-        console.log('meshclick_mip:',state.mip);
-      }else{
-        state.mip = null;
-      }
-      const index_1 = parseInt(byId('index-1').value, 10);
-      const index_2 = parseInt(byId('index-2').value, 10);
-      const index_3 = parseInt(byId('index-3').value, 10);
-      const index_4 = parseInt(byId('index-4').value, 10);
-      const downsample = parseInt(byId('downsample').value, 10);
-      const iso_value = parseFloat(byId('iso-value').value);
-
-      console.log('meshclick:', state.mesh_index, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, downsample, iso_value);
+    byId('ROI').addEventListener('click', () => {
+      const sx = parseInt(byId('roi-min-x').value);
+      const sy = parseInt(byId('roi-min-y').value);
+      const sz = parseInt(byId('roi-min-z').value);
+      const lx = parseInt(byId('roi-max-x').value);
+      const ly = parseInt(byId('roi-max-y').value);
+      const lz = parseInt(byId('roi-max-z').value);
+      const checkbox3d = byId('save_mesh').checked;
+      const checkbox1cell = byId('one_cell').checked;
+      const checkboxCrop = byId('crop_mesh').checked;
+      const mesh_index = parseInt(byId('mesh_index').value, 10);
+      const iso_min = parseFloat(byId('iso-min').value);
+      const iso_max = parseFloat(byId('iso-max').value);
+      console.log('ROI:', checkbox3d, checkboxCrop, sx, sy, sz, lx, ly, lz, checkbox1cell, mesh_index, iso_min, iso_max);
 
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
 
-      gl_canvas.enable_mesh(state.mesh_index, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, iso_value, null);
-    });
-
-    byId('one-cell-submit').addEventListener('click', () => {
-      const mode = parseInt(byId('mode').value, 10); // Mode: 0=MPR, 1=MIP, 2=MESH
-      const orientation_index = parseInt(byId('orientation_index').value, 10);
-      const downsample = parseInt(byId('downsample').value, 10);
-      const iso_value = parseFloat(byId('iso-value').value);
-      console.log('meshclick:', mode, orientation_index, iso_value, null);
-
-      if (mode === 2){
-        state.mesh = true;
-      }else{
-        state.mesh = false;
+      if ([sx, sy, sz, lx, ly, lz].some(v => Number.isNaN(v))) {
+        alert('Please enter a valid number');
+        return;
       }
 
-      gl_canvas.set_one_cell_layout(mode, orientation_index, iso_value, null);
+      if (sx >= lx || sy >= ly || sz >= lz) {
+        alert('ROI min must be less than max');
+        return;
+      }
+
+      gl_canvas.set_mesh_mode(checkbox3d, checkboxCrop, sx, sy, sz, lx, ly, lz, checkbox1cell, mesh_index, iso_min, iso_max);
+    })
+
+    byId('mesh').addEventListener('click', () => {
+      const checkboxChangeMip = byId('change_mip').checked;
+      const checkboxChangeIndex = byId('change_index').checked;
+      const checkboxChangeMeshIndex = byId('change_mesh_index').checked;
+      const mode = parseInt(byId('mode').value, 10); // Mode: 0=MPR, 1=MIP
+
+      if (checkboxChangeMeshIndex) {
+        state.mesh_index = parseInt(byId('mesh_index').value, 10);
+        console.log('meshclick_mesh_index:',state.mesh_index);
+      }else{
+        state.mesh_index = null;
+      }
+      
+      if (checkboxChangeMip) {
+        state.mip = parseInt(byId('mip').value, 10);
+        console.log('meshclick_mip:',state.mip);
+      }else{
+        state.mip = null;
+      }
+
+      if (checkboxChangeIndex) {
+        state.index = parseInt(byId('index').value, 10);
+      }else{
+        state.index = null;
+      }
+      const index_orientation = parseInt(byId('index-orientation').value, 10);
+
+
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+
+      gl_canvas.set_mpr_mip_mode(mode, state.mip, state.mesh_index, state.index, index_orientation);
     });
+
+    byId('3d-submit-rot').addEventListener('click', () => {
+      const indexValue = parseInt(byId('index-input').value, 10);
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+
+      gl_canvas.set_mesh_rotation_enabled(indexValue, state.enable_rotation);
+
+      const rotation_x = parseFloat(byId('3d-rotation-x').value);
+      const rotation_y = parseFloat(byId('3d-rotation-y').value);
+      const rotation_z = parseFloat(byId('3d-rotation-z').value);
+      gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
+    })
     
     byId('3d-submit').addEventListener('click', () => {
       const indexValue = parseInt(byId('index-input').value, 10);
@@ -705,8 +767,6 @@
         return;
       }
 
-      // state.enable_rotation = !state.enable_rotation;
-      // console.log('Mesh rotation', state.enable_rotation);
       gl_canvas.set_mesh_rotation_enabled(indexValue, state.enable_rotation);
 
       const scale = parseFloat(byId('3d-scale').value);
@@ -715,19 +775,22 @@
       const opacity = parseFloat(byId('3d-opacity').value);
       const rotation_x = parseFloat(byId('3d-rotation-x').value);
       const rotation_y = parseFloat(byId('3d-rotation-y').value);
-      const rotation_z = parseFloat(byId('3d-rotation-z').value);
 
-      if (state.mesh){
-        console.log('3d-submit:', scale, pan_x, pan_y, opacity, rotation_x, rotation_y, rotation_z);
-        gl_canvas.set_mesh_scale(indexValue, scale);
-        gl_canvas.set_mesh_pan(indexValue, pan_x, pan_y);
-        if (typeof gl_canvas.set_mesh_opacity === 'function') {
-          gl_canvas.set_mesh_opacity(indexValue, Math.max(0, Math.min(1, opacity)));
-        } else {
-          log('mesh opacity 方法未导出，已跳过', 'warn');
-        }
-        gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
+      console.log('3d-submit:', scale, pan_x, pan_y, opacity, rotation_x, rotation_y);
+      gl_canvas.set_mesh_scale(indexValue, scale);
+      gl_canvas.set_mesh_pan(indexValue, pan_x, pan_y);
+      if (typeof gl_canvas.set_mesh_opacity === 'function') {
+        gl_canvas.set_mesh_opacity(indexValue, Math.max(0, Math.min(1, opacity)));
+      } else {
+        log('mesh opacity 方法未导出，已跳过', 'warn');
       }
+      
+      gl_canvas.set_mesh_rotation_delta(indexValue, rotation_x, rotation_y);
+      gl_canvas.get_mesh_rotation_quat(indexValue).then((result) => {
+        console.log('rotation_quat:', result[0], result[1], result[2], result[3]);
+      }).catch((err) => {
+        console.error('get_mesh_rotation_quat error:', err);
+      });
     });
 
     byId('3d-reset').addEventListener('click', () => {
@@ -964,11 +1027,10 @@
                   label: serie.uid,
                   images: []
                 };
-                byId("PatientPosition").textContent = serie.patient_position || "—";
-                log(`选择患者位置: ${serie.patient_position}`);
                 // 获取序列的图像（images）
                 let images_id = JSON.parse(repo.get_images_by_series(serie.uid));
                 serie_data.images = images_id; // 添加图像数据
+                byId("PatientPosition").textContent = images_id[0].patient_position || "—";
                 study_data.children.push(serie_data); // 添加序列数据
               }
               patient_data.children.push(study_data); // 添加研究数据

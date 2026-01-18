@@ -256,7 +256,7 @@ impl AppView {
         Ok(())
     }
 
-    /// Configure the layout for mesh mode (4 MPR views + optional MIP/Mesh).
+    /// Configure the layout (4 MPR views + optional MIP/Mesh).
     ///
     /// Function-level comment: Sets up a 2x2 layout with 3 MPR views and one special view (MIP or Mesh) in the 4th slot.
     pub fn configure_mesh_layout(
@@ -265,8 +265,9 @@ impl AppView {
         vol: &CTVolume,
         indices: [usize; 4],
         mip: Option<usize>,
+        orientation_index: usize,
         mesh_index: Option<usize>,
-        iso_value: f32,
+        cached_mesh: Option<crate::mesh::mesh::Mesh>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.remove_all();
         
@@ -285,13 +286,13 @@ impl AppView {
 
         if mip.is_some() {
             let mip_view = self.view_factory.create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))?;
-            LayoutContainer::replace_view_at(&mut self.layout, 3, mip_view);
+            LayoutContainer::replace_view_at(&mut self.layout, mip.unwrap(), mip_view);
+            let _ = self.set_mip_mode(mip.unwrap(), orientation_index as u32);
         }
         
         if mesh_index.is_some() {
-             let mesh = Mesh::new(vol, iso_value, None);
-             let mesh_view = self.view_factory.create_mesh_view(&mesh, (0, 0), (0, 0))?;
-             LayoutContainer::replace_view_at(&mut self.layout, 1, mesh_view);
+            let mesh_view = self.view_factory.create_mesh_view_with_content(texture.clone(),&cached_mesh.unwrap(), (0, 0), (0, 0))?;
+            LayoutContainer::replace_view_at(&mut self.layout, mesh_index.unwrap(), mesh_view);
         }
 
         Ok(())
@@ -299,15 +300,13 @@ impl AppView {
 
     /// Switch to a single-cell layout and display the requested view type.
     ///
-    /// Function-level comment: Configures a single large view for detailed inspection (MPR, MIP, or Mesh).
+    /// Function-level comment: Configures a single large view for detailed inspection (MPR, MIP).
     pub fn set_layout_mode_single(
         &mut self,
         texture: Arc<RenderContent>,
         vol: &CTVolume,
         mode: usize,
-        orientation_index: usize,
-        iso_value: f32,
-        wwwl: Option<Vec<f32>>,
+        orientation_index: usize
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.set_one_cell_layout();
         self.remove_all();
@@ -327,31 +326,19 @@ impl AppView {
             1 => { // MIP
                 let mip_view = self.view_factory.create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))?;
                 LayoutContainer::add_view(&mut self.layout, mip_view);
-            }
-            2 => { // MESH
-                let mesh_view = if let Some(ref wlww) = wwwl {
-                     let wl = *wlww.get(0).unwrap_or(&f32::NAN);
-                     let ww = *wlww.get(1).unwrap_or(&f32::NAN);
-                     let iso_from_wl = if wl.is_nan() || ww.is_nan() { iso_value } else { wl + ww * 0.5 };
-                     let mesh = Mesh::new(vol, iso_from_wl, Some([wl, ww]));
-                     self.view_factory.create_mesh_view(&mesh, (0, 0), (0, 0))?
-                } else {
-                     let mesh = Mesh::new(vol, iso_value, None);
-                     self.view_factory.create_mesh_view(&mesh, (0, 0), (0, 0))?
-                };
-                LayoutContainer::add_view(&mut self.layout, mesh_view);
+                let _ = self.set_mip_mode(0, orientation_index as u32);
             }
             _ => {
                 // Default to MPR for unsupported modes
-                 let orientation = ALL_ORIENTATIONS[orientation_index];
-                 let view = self.view_factory.create_mpr_view_with_content(
-                     texture.clone(),
-                     vol,
-                     orientation,
-                     (0, 0),
-                     (0, 0),
-                 )?;
-                 LayoutContainer::add_view(&mut self.layout, view);
+                let orientation = ALL_ORIENTATIONS[orientation_index];
+                let view = self.view_factory.create_mpr_view_with_content(
+                    texture.clone(),
+                    vol,
+                    orientation,
+                    (0, 0),
+                    (0, 0),
+                )?;
+                LayoutContainer::add_view(&mut self.layout, view);
             }
         }
         Ok(())

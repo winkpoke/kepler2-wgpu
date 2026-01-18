@@ -5,7 +5,7 @@ use crate::{
     rendering::view::{Renderable, View}, 
     core::timing::Instant,
 };
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec3, Quat, Vec2};
 
 /// Function-level comment: Error types specific to mesh rendering operations
 #[derive(Debug)]
@@ -72,6 +72,8 @@ pub struct MeshView {
     pub camera: Option<Camera>,
     pub lighting: Option<Lighting>,
     ctx: Option<std::sync::Arc<BasicMeshContext>>,
+    /// Context for the orientation cube (bottom-left gizmo)
+    orientation_cube_ctx: Option<std::sync::Arc<BasicMeshContext>>,
     pos: (i32, i32),
     dim: (u32, u32),
     /// Performance and error tracking
@@ -86,10 +88,8 @@ pub struct MeshView {
     quality_controller: QualityController,
     /// rotation state
     rotation_enabled: bool,
-    /// Current rotation angle in radians
-    rotation_angle: [f32; 3],
-    /// Cached rotation angle used when rotation is disabled to preserve orientation
-    rotation_angle_cache: [f32; 3],
+    /// Current rotation state as a quaternion (supports free 3D rotation)
+    rotation_quat: Quat,
     /// Rotation speed in radians per second (default: π/2 = 90 degrees/second)
     rotation_speed: f32,
     /// Last frame time for rotation calculation
@@ -111,6 +111,7 @@ impl Default for MeshView {
             camera: None,
             lighting: None,
             ctx: None,
+            orientation_cube_ctx: None,
             pos: (0, 0),
             dim: (0, 0),
             stats: RenderStats::default(),
@@ -120,10 +121,7 @@ impl Default for MeshView {
             quality_controller: QualityController::default(),
             rotation_enabled: true,
             // Angles are stored in radians; 90°=FRAC_PI_2, 180°=PI
-            // rotation_angle: [-FRAC_PI_2 , 0.0, 0.0],
-            // rotation_angle_cache: [-FRAC_PI_2, 0.0, 0.0],
-            rotation_angle: [0.0 , 0.0, 0.0],
-            rotation_angle_cache: [0.0, 0.0, 0.0],
+            rotation_quat: Quat::IDENTITY,
             rotation_speed: FRAC_PI_2, // 90 degrees per second - reasonable default speed
             last_frame_time: Instant::now(),
             scale_factor: 1.0,
@@ -144,6 +142,12 @@ impl MeshView {
         log::debug!("MeshView::attach_context - Basic context attached successfully");
         // Reset error state when new context is attached
         self.reset_error_state();
+    }
+
+    /// Function-level comment: Attaches a basic mesh render context for the orientation cube
+    pub fn attach_orientation_cube_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
+        self.orientation_cube_ctx = Some(ctx);
+        log::debug!("MeshView::attach_orientation_cube_context - Orientation cube context attached");
     }
     
     /// Function-level comment: Get current rendering statistics for performance monitoring.
@@ -201,8 +205,6 @@ impl MeshView {
             self.last_frame_time = Instant::now();
             log::info!("Mesh rotation enabled at {:.1}°/s", self.rotation_speed.to_degrees());
         } else {
-            // Preserve current orientation when stopping rotation
-            self.rotation_angle_cache = self.rotation_angle;
             log::info!("Mesh rotation disabled");
         }
     }
@@ -224,27 +226,47 @@ impl MeshView {
     /// Function-level comment: Reset the rotation angle to zero.
     /// Useful for returning to a known orientation or synchronizing multiple objects.
     pub fn reset_rotation(&mut self) {
-        // Reset to default orientation: [90°, 180°, 0°] in radians
-        // use std::f32::consts::FRAC_PI_2;
-        // self.rotation_angle = [-FRAC_PI_2, 0.0, 0.0];
-        self.rotation_angle = [0.0, 0.0, 0.0];
-        self.rotation_angle_cache = self.rotation_angle;
+        self.rotation_quat = Quat::IDENTITY;
         self.last_frame_time = Instant::now();
-        log::debug!("Mesh rotation angle reset to default (90°, 180°, 0°)");
+        log::debug!("Mesh rotation reset to identity");
     }
 
-    /// Function-level comment: Get the current rotation angle in radians.
-    pub fn get_rotation_angle(&self) -> [f32; 3] {
-        self.rotation_angle
+    /// Function-level comment: Get the current rotation angle in degrees (Pitch, Yaw, Roll).
+    pub fn get_rotation_quat(&self) -> [f32; 4] {
+        let (roll, pitch, yaw) = self.rotation_quat.to_euler(glam::EulerRot::XYZ);
+        [roll.to_degrees(), pitch.to_degrees(), yaw.to_degrees(), 0.0]
     }
     
     /// Function-level comment: Set the current rotation angle using degrees for convenience.
     /// This directly sets the orientation without affecting rotation speed.
     pub fn set_rotation_angle_degrees(&mut self, degrees: [f32; 3]) {
-        self.rotation_angle = degrees.map(|d| d.to_radians());
-        self.rotation_angle_cache = self.rotation_angle;
+        let rad = degrees.map(|d| d.to_radians());
+        // Map [x, y, z] to Pitch, Yaw, Roll.
+        // Using XYZ order: Pitch(X), Yaw(Y), Roll(Z)
+        self.rotation_quat = Quat::from_euler(glam::EulerRot::XYZ, rad[0], rad[1], rad[2]);
         self.last_frame_time = Instant::now();
-        log::info!("Mesh rotation angle set to {:?}°", degrees);
+        log::info!("Mesh rotation set to {:?}°", degrees);
+    }
+
+    /// Function-level comment: Rotate the mesh based on mouse movement (pixels).
+    /// Allows 3-axis rotation using only 2D input by accumulating rotations.
+    /// dx: horizontal mouse movement (rotates around Global Y)
+    /// dy: vertical mouse movement (rotates around Local X)
+    pub fn rotate_by_mouse(&mut self, dx: f32, dy: f32) {
+        let sensitivity = 0.03;
+        let drag = Vec2::new(dx, dy);
+        let angle = drag.length() * sensitivity;
+
+        if angle.abs() < 1e-6 {
+            return;
+        }
+
+        // screen space direction to rotation axis (around Z vertical screen)
+        let axis = Vec3::new(-drag.x, -drag.y, 0.0).normalize();
+        let rot = Quat::from_axis_angle(axis, angle);
+
+        self.rotation_quat = rot * self.rotation_quat;
+        self.rotation_quat = self.rotation_quat.normalize();
     }
 
     /// Function-level comment: Set rotation speed using degrees per second for convenience.
@@ -345,22 +367,22 @@ impl MeshView {
     /// Includes rotation if enabled, using frame-rate independent timing
     pub fn update_uniforms(&mut self, queue: &wgpu::Queue) {
         // Keep angle in [0, 2π] range to prevent floating point precision issues
-        use std::f32::consts::TAU; // TAU = 2π
+        // use std::f32::consts::TAU; // TAU = 2π
 
         // Update rotation angle only when rotation is enabled; orientation should persist when disabled
         if self.rotation_enabled {
             let current_time = Instant::now();
             let delta_time = current_time.duration_since(self.last_frame_time).as_secs_f32();
-            for i in 0..3 {
-                self.rotation_angle[i] += self.rotation_speed * delta_time;
-                if self.rotation_angle[i] >= TAU {
-                    self.rotation_angle[i] -= TAU;
-                }
+            
+            // Auto-rotate around Global Y
+            let angle_delta = self.rotation_speed * delta_time;
+            let rot_delta = Quat::from_rotation_y(angle_delta);
+            self.rotation_quat = rot_delta * self.rotation_quat;
+            self.rotation_quat = self.rotation_quat.normalize();
 
-                #[cfg(feature = "trace-logging")]
-                log::trace!("[MESH_ROTATION] Angle: {:.3} rad ({:.1}°), Speed: {:.3} rad/s, Delta: {:.3}ms",
-                    self.rotation_angle[i], self.rotation_angle[i].to_degrees(), self.rotation_speed, delta_time * 1000.0);
-            }
+            #[cfg(feature = "trace-logging")]
+            log::trace!("[MESH_ROTATION] Auto-rotation delta: {:.3} rad", angle_delta);
+            
             self.last_frame_time = current_time;
         }
         
@@ -375,21 +397,7 @@ impl MeshView {
                        self.dim.0, self.dim.1, aspect_ratio);
             
             // Model matrix - apply persistent rotation (if any) and uniform scale
-            
-            // Use cached angles when rotation is disabled to preserve orientation
-            let angles = if self.rotation_enabled { 
-                self.rotation_angle 
-            } else { 
-                self.rotation_angle_cache 
-            };
-
-            // Calculate rotation (matches original rx * ry * rz order)
-            // Note: In column-major math, M * v applies operations Right-to-Left.
-            // Original: rx.multiply(&ry).multiply(&rz) -> Rx * Ry * Rz
-            // This applies Rz (Z-rot) first, then Ry, then Rx.
-            let rotation = Mat4::from_rotation_x(angles[0])
-                * Mat4::from_rotation_y(angles[1])
-                * Mat4::from_rotation_z(angles[2]);
+            let rotation = Mat4::from_quat(self.rotation_quat);
 
             // Compose Model: Translation * Rotation * Scale
             let model_matrix = Mat4::from_translation(Vec3::from(self.pan))
@@ -441,6 +449,39 @@ impl MeshView {
             };
             lighting_uniforms.opacity = self.opacity;
             ctx.update_lighting(queue, lighting_uniforms);
+        }
+
+        // Update Orientation Cube Uniforms
+        if let Some(cube_ctx) = &self.orientation_cube_ctx {
+            // Model: Only Rotation (no pan, no scale from main mesh)
+            let rotation = Mat4::from_quat(self.rotation_quat);
+            let model_matrix = rotation; // Scale 1.0, Trans 0.0
+            
+            // View: Standard fixed camera
+            // Place cube closer to camera (Z=5.0) than main mesh (Z=-2.0) to ensure it renders on top
+            // Orthographic range is -10 to 10, so 5.0 is well within range.
+            let view_matrix = Mat4::from_translation(Vec3::new(0.0, 0.0, 5.0));
+            
+            // Proj: Fixed Ortho to fit unit cube (-1..1) with padding
+            // Unit cube diagonal is 1.73. 1.5 might clip corners if rotating.
+            let extent = 2.0;
+            let proj_matrix = Mat4::orthographic_rh(-extent, extent, -extent, extent, -10.0, 10.0);
+            
+            let mvp_matrix = proj_matrix * view_matrix * model_matrix;
+            
+            cube_ctx.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
+            
+            // Also update lighting for cube (use same lighting)
+             let lighting_uniforms = if let Some(ref lighting) = self.lighting {
+                lighting.to_basic_uniforms()
+            } else {
+                let default_lighting = self.create_default_lighting();
+                default_lighting.to_basic_uniforms()
+            };
+            // Cube is always opaque
+            let mut cube_lighting = lighting_uniforms;
+            cube_lighting.opacity = 1.0;
+            cube_ctx.update_lighting(queue, cube_lighting);
         }
     }
     
@@ -556,6 +597,28 @@ impl MeshView {
         
         // Use the simplified BasicMeshContext render method
         ctx.render(render_pass);
+
+        // Render Orientation Cube (if available)
+        if let Some(cube_ctx) = &self.orientation_cube_ctx {
+            let cube_size = 120.0;
+            let padding = 10.0;
+            
+            // Calculate bottom-left position within the view
+            // Assuming (x, y) is top-left of the view
+            let view_x = self.pos.0 as f32;
+            let view_y = self.pos.1 as f32;
+            let view_h = self.dim.1 as f32;
+            
+            // Bottom-left relative to view
+            let cube_x = view_x + padding;
+            let cube_y = view_y + view_h - cube_size - padding;
+            
+            // Ensure we don't draw outside the view if view is too small
+            if self.dim.0 > (cube_size as u32 + 20) && self.dim.1 > (cube_size as u32 + 20) {
+                render_pass.set_viewport(cube_x, cube_y, cube_size, cube_size, 0.0, 1.0);
+                cube_ctx.render(render_pass);
+            }
+        }
         
         // Record successful render
         let render_time_ms = start_time.elapsed().as_millis_f32();
@@ -651,10 +714,11 @@ mod tests {
     #[test]
     fn test_rotation_api_basic_functionality() {
         let mesh_view = MeshView::default();
-        let angles = mesh_view.get_rotation_angle();
-        assert!(angles[0].abs() < 1e-6);
-        assert!(angles[1].abs() < 1e-6);
-        assert!(angles[2].abs() < 1e-6);
+        let quat = mesh_view.get_rotation_quat();
+        assert!(quat[0].abs() < 1e-6);
+        assert!(quat[1].abs() < 1e-6);
+        assert!(quat[2].abs() < 1e-6);
+        assert!(quat[3].abs() < 1e-6);
         assert!((mesh_view.get_rotation_speed() - FRAC_PI_2).abs() < 1e-6);
     }
 
@@ -662,13 +726,22 @@ mod tests {
     #[test]
     fn test_rotation_enable_disable() {
         let mut mesh_view = MeshView::default();
-        let before = mesh_view.get_rotation_angle();
+        let before = mesh_view.get_rotation_quat();
         mesh_view.set_rotation_enabled(false);
-        let after_disable = mesh_view.get_rotation_angle();
+        let after_disable = mesh_view.get_rotation_quat();
         mesh_view.set_rotation_enabled(true);
-        let after_enable = mesh_view.get_rotation_angle();
+        let after_enable = mesh_view.get_rotation_quat();
+        
+        // Quaternions should be identical
         assert!((before[0] - after_disable[0]).abs() < 1e-6);
+        assert!((before[1] - after_disable[1]).abs() < 1e-6);
+        assert!((before[2] - after_disable[2]).abs() < 1e-6);
+        assert!((before[3] - after_disable[3]).abs() < 1e-6);
+        
         assert!((before[0] - after_enable[0]).abs() < 1e-6);
+        assert!((before[1] - after_enable[1]).abs() < 1e-6);
+        assert!((before[2] - after_enable[2]).abs() < 1e-6);
+        assert!((before[3] - after_enable[3]).abs() < 1e-6);
     }
 
     /// Function-level comment: Verify rotation speed setters
@@ -682,39 +755,15 @@ mod tests {
         assert!((mesh_view.get_rotation_speed() - PI).abs() < 1e-6);
     }
 
-    /// Function-level comment: Reset rotation and verify default orientation [-π/2, 0, 0]
+    /// Function-level comment: Reset rotation and verify default orientation (Identity)
     #[test]
     fn test_rotation_angle_reset() {
         let mut mesh_view = MeshView::default();
         mesh_view.reset_rotation();
-        let angles = mesh_view.get_rotation_angle();
-        assert!(angles[0].abs() < 1e-6);
-        assert!(angles[1].abs() < 1e-6);
-        assert!(angles[2].abs() < 1e-6);
-    }
-
-    /// Function-level comment: Test that standard trigonometric values are correct for our rotation matrix
-    #[test]
-    fn test_trigonometric_correctness() {
-        let angle_0: f32 = 0.0; assert!((angle_0.cos() - 1.0).abs() < 1e-6); assert!(angle_0.sin().abs() < 1e-6);
-        let angle_90: f32 = PI / 2.0; assert!(angle_90.cos().abs() < 1e-6); assert!((angle_90.sin() - 1.0).abs() < 1e-6);
-        let angle_180: f32 = PI; assert!((angle_180.cos() + 1.0).abs() < 1e-6); assert!(angle_180.sin().abs() < 1e-6);
-        let angle_270: f32 = 3.0 * PI / 2.0; assert!(angle_270.cos().abs() < 1e-6); assert!((angle_270.sin() + 1.0).abs() < 1e-6);
-        let angle_360 = TAU; assert!((angle_360.cos() - 1.0).abs() < 1e-6); assert!(angle_360.sin().abs() < 1e-6);
-    }
-
-    /// Function-level comment: Verify that the Y-axis rotation matrix follows the standard mathematical form
-    // Standard Y-axis rotation matrix:
-    // [cos θ   0   sin θ   0]
-    // [  0     1     0     0]
-    // [-sin θ  0   cos θ   0]
-    // [  0     0     0     1]
-    #[test]
-    fn test_y_axis_rotation_matrix_mathematical_form() {
-        let angle = PI / 4.0; // 45°
-        let cos_a = angle.cos(); let sin_a = angle.sin();
-        assert!((cos_a - sin_a).abs() < 1e-6);
-        assert!((cos_a - (2.0_f32.sqrt() / 2.0)).abs() < 1e-6);
-        let id = cos_a * cos_a + sin_a * sin_a; assert!((id - 1.0).abs() < 1e-6);
+        let quat = mesh_view.get_rotation_quat();
+        assert!(quat[0].abs() < 1e-6);
+        assert!(quat[1].abs() < 1e-6);
+        assert!(quat[2].abs() < 1e-6);
+        assert!(quat[3].abs() < 1e-6);
     }
 }

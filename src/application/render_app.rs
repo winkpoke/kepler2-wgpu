@@ -190,19 +190,23 @@ impl RenderApp {
                     // Function-level comment: Pipeline invalidation is now handled by individual render contexts.
                     log::info!("InvalidatePipelines event: render contexts will rebuild pipelines as needed.");
                 }
-                Event::UserEvent(UserEvent::SetEnableMesh(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_value, wwwl)) => {
+                Event::UserEvent(UserEvent::SetMeshMode(save_mesh, crop, sx, sy, sz, lx, ly, lz, one_cell, mesh_index, iso_min, iso_max)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_mesh_mode_enabled(mesh_index, mip, change_mpr, index_1, index_2, index_3, index_4, iso_value, wwwl.clone());
-                    log::info!("EnableMesh toggled at runtime: mesh_index={:?}, mip={:?}, change_mpr={change_mpr}, index_1={index_1}, index_2={index_2}, index_3={index_3}, index_4={index_4}, iso_value={iso_value}, wwwl={:?}", mesh_index, mip, wwwl);
+                    state.set_mesh_mode(save_mesh, crop, sx, sy, sz, lx, ly, lz, one_cell, mesh_index, iso_min, iso_max);
+                    log::info!("SetMeshMode event: world_min= [{sx:?},{sy:?},{sz:?}], world_max= [{lx:?},{ly:?},{lz:?}]");
                 }
-                Event::UserEvent(UserEvent::SetOneCellLayout(mode, orientation_index, iso_value, wwwl)) => {
+                Event::UserEvent(UserEvent::SetMprMip(mode, mip, mesh_index, index, orientation_index)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_one_cell_layout(mode, orientation_index, iso_value, wwwl.clone());
-                    log::info!("OneCellLayout set to: mode={mode}, orientation_index={orientation_index}, iso_value={iso_value}, wwwl={:?}", wwwl);
+                    state.set_mpr_mip_mode(mode, mip, mesh_index, index, orientation_index);
+                    log::info!("SetEnableMesh toggled at runtime: mode={mode}, mip={:?}, mesh_index={:?}, index={:?}, orientation_index={orientation_index}", mip, mesh_index, index);
                 }
                 Event::UserEvent(UserEvent::SetCenterAtPointInMM(index, x_mm, y_mm, z_mm)) => {
                     state.set_center_at_point_in_mm(index, x_mm, y_mm, z_mm);
                     log::info!("CenterAtPointInMM set to: x_mm={x_mm}, y_mm={y_mm}, z_mm={z_mm}");
+                }
+                Event::UserEvent(UserEvent::SetSlabThickness(index, thickness)) => {
+                    state.set_slab_thickness(index, thickness);
+                    log::info!("SlabThickness set to: index={index}, thickness={thickness}");
                 }
                 // Mesh control events
                 Event::UserEvent(UserEvent::SetMeshRotationEnabled(_index, enabled)) => {
@@ -228,6 +232,20 @@ impl RenderApp {
                 Event::UserEvent(UserEvent::SetMeshRotationAngleDeg(_index, degrees_x, degrees_y, degrees_z)) => {
                     state.set_mesh_rotation_angle_degrees(degrees_x, degrees_y, degrees_z);
                     log::info!("Mesh rotation angle set to {:?}°", [degrees_x, degrees_y, degrees_z]);
+                }
+                Event::UserEvent(UserEvent::SetMeshRotationDelta(_index, dx, dy)) => {
+                    state.set_mesh_rotation_delta(dx, dy);
+                    // Log at debug level to avoid flooding if called frequently
+                    log::debug!("Mesh rotation delta: dx={:.3}, dy={:.3}", dx, dy);
+                }
+                #[cfg(target_arch = "wasm32")]
+                Event::UserEvent(UserEvent::GetMeshRotationQuat(index, sender)) => {
+                    let quat = state.get_mesh_rotation_quat();
+                    if let Err(_) = sender.send(quat) {
+                        log::error!("Failed to send GetMeshRotationQuat result for window {}", index);
+                    } else {
+                        log::info!("Sent GetMeshRotationQuat result for window {}: {:?}", index, quat);
+                    }
                 }
                 Event::UserEvent(UserEvent::ViewClick(view_index, screen_x, screen_y, screen_z)) => {
                     state.handle_view_click(view_index, screen_x, screen_y, screen_z);
@@ -336,36 +354,37 @@ impl RenderApp {
                                 event:
                                     KeyEvent {
                                         state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyM),
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyT),
                                         ..
                                     },
                                 ..
                             } => {
                                 // Function-level comment: Toggle mesh mode on 'M' key press at runtime.
-                                let new_enabled = !state.mesh_mode_enabled();
-                                state.set_mesh_mode_enabled(Some(3), Some(2), false, 0, 1, 0, 0, 400.0, None);
-                                log::info!("KeyM pressed: mesh mode toggled to {}", new_enabled);
+                                state.set_mpr_mip_mode(2, None, None, Some(3), 2);
+                                state.set_mpr_mip_mode(2, Some(0), None, None, 0);
+                                state.set_mip_mode(0, 1);
+                                state.set_slab_thickness(0, 25.0);
+                                log::info!("KeyT pressed: mpr_or_mip toggled to mip");
                             }
                             WindowEvent::KeyboardInput {
                                 event:
                                     KeyEvent {
                                         state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyN),
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyM),
                                         ..
                                     },
                                 ..
                             } => {
-                                let mode =  2 as usize;
-                                state.set_one_cell_layout(mode, 0, 400.0, None);
+                                state.set_mesh_mode(false, true, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465,true,0, 300.0, 400.0);
                                 state.set_mesh_rotation_angle_degrees(-90.0, 0.0, 0.0);
                                 state.set_mesh_scale(3.0);
-                                log::info!("KeyN pressed: one_cell layout mode toggled to {}", mode);
+                                log::info!("KeyM pressed: mesh mode toggled to {}", false);
                             }
                             WindowEvent::KeyboardInput {
                                 event:
                                     KeyEvent {
                                         state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyB),
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyW),
                                         ..
                                     },
                                 ..
@@ -376,13 +395,13 @@ impl RenderApp {
                                 state.set_window_width(0, wl);
                                 state.set_window_level(1, wc);
                                 state.set_window_width(1, wl);
-                                log::info!("KeyB pressed: window level {} width {}", wc, wl);
+                                log::info!("KeyW pressed: window level {} width {}", wc, wl);
                             }
                             WindowEvent::KeyboardInput {
                                 event:
                                     KeyEvent {
                                         state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyV),
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyC),
                                         ..
                                     },
                                 ..
@@ -398,7 +417,7 @@ impl RenderApp {
                                 event:
                                     KeyEvent {
                                         state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyC),
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyS),
                                         ..
                                     },
                                 ..
@@ -410,7 +429,7 @@ impl RenderApp {
                                 event:
                                     KeyEvent {
                                         state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyX),
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyE),
                                         ..
                                     },
                                 ..

@@ -63,6 +63,17 @@ mod view_transition_integration_tests {
             ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
                 Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
             }
+
+            /// Create a mesh view using existing RenderContent. Returns a mock error for tests.
+            fn create_mesh_view_with_content(
+                &self,
+                _render_content: std::sync::Arc<kepler_wgpu::rendering::view::RenderContent>,
+                _mesh: &kepler_wgpu::rendering::mesh::mesh::Mesh,
+                _pos: (i32, i32),
+                _size: (u32, u32),
+            ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
+                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+            }
         }
 
         let factory = Box::new(MockViewFactory);
@@ -212,6 +223,18 @@ mod view_transition_integration_tests {
             {
                 Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
             }
+
+            /// Create a mesh view using existing RenderContent. Returns a mock error for tests.
+            fn create_mesh_view_with_content(
+                &self,
+                _render_content: std::sync::Arc<kepler_wgpu::rendering::view::RenderContent>,
+                _mesh: &kepler_wgpu::rendering::mesh::mesh::Mesh,
+                _pos: (i32, i32),
+                _size: (u32, u32),
+            ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>>
+            {
+                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+            }
         }
 
         let factory = Box::new(MockViewFactory);
@@ -330,6 +353,18 @@ mod view_transition_integration_tests {
             fn create_mip_view_with_content(
                 &self,
                 _render_content: std::sync::Arc<kepler_wgpu::rendering::view::RenderContent>,
+                _pos: (i32, i32),
+                _size: (u32, u32),
+            ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>>
+            {
+                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+            }
+
+            /// Create a mesh view using existing RenderContent. Returns a mock error for tests.
+            fn create_mesh_view_with_content(
+                &self,
+                _render_content: std::sync::Arc<kepler_wgpu::rendering::view::RenderContent>,
+                _mesh: &kepler_wgpu::rendering::mesh::mesh::Mesh,
                 _pos: (i32, i32),
                 _size: (u32, u32),
             ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>>

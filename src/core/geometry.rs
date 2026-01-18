@@ -43,8 +43,7 @@ impl <'a> GeometryBuilder<'a> {
     /// world/patient coordinates.
     ///
     /// # Implementation Notes
-    /// * The volume dimensions are reduced by one to convert counts to index ranges,
-    ///   since voxel indices go from `0` to `N-1`.
+    /// * The volume dimensions are used directly to ensure full coverage.
     /// * A scaling matrix maps [0,1] UV coordinates to actual voxel index space.
     /// * The final transformation matrix is computed by multiplying the volume's
     ///   base matrix with the UV scaling matrix:
@@ -57,9 +56,9 @@ impl <'a> GeometryBuilder<'a> {
     /// let world_pos = uv_base.matrix.transform_point3(Vec3::new(u, v, w));
     /// ```
     pub fn build_uv_base(vol: &CTVolume) -> Base {       
-        let nx = vol.dimensions.0 as f32 - 1.0;
-        let ny = vol.dimensions.1 as f32 - 1.0;
-        let nz = vol.dimensions.2 as f32 - 1.0;
+        let nx = vol.dimensions.0 as f32;
+        let ny = vol.dimensions.1 as f32;
+        let nz = vol.dimensions.2 as f32;
 
         let scaling_matrix = Mat4::from_scale(Vec3::new(nx, ny, nz));
         
@@ -247,9 +246,9 @@ mod tests {
         let result = GeometryBuilder::build_uv_base(&volume_1);
         assert!(result.label == "CT Volume: UV");
         // Access via col(i)[j] for Mat4
-        assert_eq!(result.matrix.col(0)[0], 511.0);
-        assert_eq!(result.matrix.col(1)[1], 511.0);
-        assert_eq!(result.matrix.col(2)[2], 99.0);
+        assert_eq!(result.matrix.col(0)[0], 512.0);
+        assert_eq!(result.matrix.col(1)[1], 512.0);
+        assert_eq!(result.matrix.col(2)[2], 100.0);
     }
 
     #[test]
