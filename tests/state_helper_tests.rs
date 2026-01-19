@@ -5,9 +5,8 @@
 
 #[cfg(test)]
 mod state_helper_tests {
-    use kepler_wgpu::rendering::MockViewFactory;
     use kepler_wgpu::rendering::view::view_manager::ViewManager;
-    
+    use kepler_wgpu::rendering::MockViewFactory;
 
     #[test]
     fn test_view_manager_creation() {

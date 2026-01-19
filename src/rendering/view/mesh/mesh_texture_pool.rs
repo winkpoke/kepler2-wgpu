@@ -60,10 +60,12 @@ impl MeshTexturePool {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format: crate::rendering::core::pipeline::get_mesh_depth_format(),
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             });
-            self.depth_view = Some(depth_texture.create_view(&wgpu::TextureViewDescriptor::default()));
+            self.depth_view =
+                Some(depth_texture.create_view(&wgpu::TextureViewDescriptor::default()));
             self.depth_texture = Some(depth_texture);
         }
     }
@@ -97,14 +99,17 @@ impl MeshTexturePool {
         // Ensure both color and depth textures exist
         self.ensure_textures(device, width, height, use_depth);
         self.ensure_mesh_offscreen_texture(device, width, height, format);
-        
+
         // Create a new color view from the texture
-        let color_view = self.color_textures.get("mesh_offscreen")
+        let color_view = self
+            .color_textures
+            .get("mesh_offscreen")
             .map(|texture| texture.create_view(&wgpu::TextureViewDescriptor::default()));
 
         // Create a new depth view from the depth texture if needed
         let depth_view = if use_depth {
-            self.depth_texture.as_ref()
+            self.depth_texture
+                .as_ref()
                 .map(|texture| texture.create_view(&wgpu::TextureViewDescriptor::default()))
         } else {
             None
@@ -143,7 +148,8 @@ impl MeshTexturePool {
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
                 format,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             });
 

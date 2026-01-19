@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
-use anyhow::*;
 use crate::data::volume_encoding::VolumeEncoding;
+use anyhow::*;
 
 #[derive(Debug, Clone, Copy)]
 pub struct VolumeDecodeParameters {
@@ -85,7 +85,13 @@ impl RenderContent {
             mipmap_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
-        Ok(Self { texture, view, sampler, texture_format, volume_encoding })
+        Ok(Self {
+            texture,
+            view,
+            sampler,
+            texture_format,
+            volume_encoding,
+        })
     }
 
     // Read a 3D texture from bytes (native half-float path)
@@ -142,7 +148,13 @@ impl RenderContent {
             mipmap_filter: wgpu::FilterMode::Nearest,
             ..Default::default()
         });
-        Ok(Self { texture, view, sampler, texture_format, volume_encoding })
+        Ok(Self {
+            texture,
+            view,
+            sampler,
+            texture_format,
+            volume_encoding,
+        })
     }
 
     // Function to read a 3D texture from a file at compile time
@@ -159,6 +171,15 @@ impl RenderContent {
         // For static testing file, assume default packing
         let offset = VolumeEncoding::DEFAULT_HU_OFFSET;
         let volume_encoding = VolumeEncoding::HuPackedRg8 { offset };
-        Self::from_bytes(device, queue, bytes, label, width, height, depth, volume_encoding)
+        Self::from_bytes(
+            device,
+            queue,
+            bytes,
+            label,
+            width,
+            height,
+            depth,
+            volume_encoding,
+        )
     }
 }

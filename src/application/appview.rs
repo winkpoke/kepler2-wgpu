@@ -3,14 +3,17 @@
 //! Minimal AppView that owns DynamicLayout and DefaultViewFactory.
 //! State will hold AppView and forward calls, keeping existing render loop intact.
 
-use std::sync::Arc;
-use crate::rendering::{GridLayout, LayoutContainer, OneCellLayout};
-use crate::rendering::view::{DynamicLayout, DefaultViewFactory, View, Orientation, ALL_ORIENTATIONS, ViewState, MprView, MipView};
-use crate::rendering::view::ViewFactory;
-use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::mesh::mesh::Mesh;
-use crate::CTVolume;
+use crate::rendering::view::render_content::RenderContent;
+use crate::rendering::view::ViewFactory;
+use crate::rendering::view::{
+    DefaultViewFactory, DynamicLayout, MipView, MprView, Orientation, View, ViewState,
+    ALL_ORIENTATIONS,
+};
 use crate::rendering::StatefulView;
+use crate::rendering::{GridLayout, LayoutContainer, OneCellLayout};
+use crate::CTVolume;
+use std::sync::Arc;
 
 /// Encapsulated state for a view, including its orientation and rendering parameters.
 #[derive(Debug, Clone)]
@@ -31,7 +34,10 @@ impl AppView {
     /// Function-level comment: This constructor enables State to transfer ownership of
     /// layout and factory with minimal changes to existing code.
     pub fn new(layout: DynamicLayout, view_factory: DefaultViewFactory) -> Self {
-        Self { layout, view_factory }
+        Self {
+            layout,
+            view_factory,
+        }
     }
 
     /// Capture the state of all compatible views (currently MPR views).
@@ -39,13 +45,15 @@ impl AppView {
     /// Function-level comment: Iterates over views, identifies MPR views, and saves their state
     /// (orientation, window/level, scale, pan, slice) into a portable structure.
     pub fn capture_view_states(&self) -> Vec<CapturedViewState> {
-        self.layout.views().iter()
+        self.layout
+            .views()
+            .iter()
             .filter_map(|v| {
                 if let Some(mpr_view) = v.as_any().downcast_ref::<MprView>() {
                     let orientation = mpr_view.get_orientation();
-                    mpr_view.save_state().map(|state| CapturedViewState { 
-                        orientation: *orientation, 
-                        state 
+                    mpr_view.save_state().map(|state| CapturedViewState {
+                        orientation: *orientation,
+                        state,
                     })
                 } else {
                     None
@@ -61,7 +69,10 @@ impl AppView {
     pub fn restore_view_states(&mut self, states: &[CapturedViewState]) {
         for view in self.layout.views_mut() {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                if let Some(saved) = states.iter().find(|s| s.orientation == *mpr_view.get_orientation()) {
+                if let Some(saved) = states
+                    .iter()
+                    .find(|s| s.orientation == *mpr_view.get_orientation())
+                {
                     mpr_view.restore_state(&saved.state);
                 }
             }
@@ -121,7 +132,11 @@ impl AppView {
     /// Replace a view at the given index with a new one, returning the old view if present.
     ///
     /// Function-level comment: Wrapper around LayoutContainer::replace_view_at for lifecycle management.
-    pub fn replace_view_at(&mut self, index: usize, new_view: Box<dyn View>) -> Option<Box<dyn View>> {
+    pub fn replace_view_at(
+        &mut self,
+        index: usize,
+        new_view: Box<dyn View>,
+    ) -> Option<Box<dyn View>> {
         LayoutContainer::replace_view_at(&mut self.layout, index, new_view)
     }
 
@@ -129,14 +144,22 @@ impl AppView {
     ///
     /// Function-level comment: Centralizes strategy changes through AppView for active-view workflows.
     pub fn set_one_cell_layout(&mut self) {
-        self.layout.set_strategy(Box::new(OneCellLayout { rows: 1, cols: 1, spacing: 0 }));
+        self.layout.set_strategy(Box::new(OneCellLayout {
+            rows: 1,
+            cols: 1,
+            spacing: 0,
+        }));
     }
 
     /// Switch layout strategy to a grid layout.
     ///
     /// Function-level comment: Exposes grid layout configuration via AppView.
     pub fn set_grid_layout(&mut self, rows: u32, cols: u32, spacing: u32) {
-        self.layout.set_strategy(Box::new(GridLayout { rows, cols, spacing }));
+        self.layout.set_strategy(Box::new(GridLayout {
+            rows,
+            cols,
+            spacing,
+        }));
     }
 
     /// Returns true if the current layout strategy is OneCellLayout.
@@ -154,9 +177,11 @@ impl AppView {
         vol: &CTVolume,
         orientation: Orientation,
         pos: (i32, i32),
-        size: (u32, u32)
+        size: (u32, u32),
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let view = self.view_factory.create_mpr_view(vol, orientation, pos, size)?;
+        let view = self
+            .view_factory
+            .create_mpr_view(vol, orientation, pos, size)?;
         LayoutContainer::add_view(&mut self.layout, view);
         Ok(())
     }
@@ -168,7 +193,7 @@ impl AppView {
         &mut self,
         vol: &CTVolume,
         pos: (i32, i32),
-        size: (u32, u32)
+        size: (u32, u32),
     ) -> Result<(), Box<dyn std::error::Error>> {
         let view = self.view_factory.create_mip_view(vol, pos, size)?;
         LayoutContainer::add_view(&mut self.layout, view);
@@ -182,7 +207,7 @@ impl AppView {
         &mut self,
         mesh: &Mesh,
         pos: (i32, i32),
-        size: (u32, u32)
+        size: (u32, u32),
     ) -> Result<(), Box<dyn std::error::Error>> {
         let view = self.view_factory.create_mesh_view(mesh, pos, size)?;
         LayoutContainer::add_view(&mut self.layout, view);
@@ -198,7 +223,7 @@ impl AppView {
         vol: &CTVolume,
         orientation: Orientation,
         pos: (i32, i32),
-        size: (u32, u32)
+        size: (u32, u32),
     ) -> Result<(), Box<dyn std::error::Error>> {
         let view = self.view_factory.create_mpr_view_with_content(
             render_content,
@@ -218,9 +243,11 @@ impl AppView {
         &mut self,
         render_content: Arc<RenderContent>,
         pos: (i32, i32),
-        size: (u32, u32)
+        size: (u32, u32),
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let view = self.view_factory.create_mip_view_with_content(render_content, pos, size)?;
+        let view = self
+            .view_factory
+            .create_mip_view_with_content(render_content, pos, size)?;
         LayoutContainer::add_view(&mut self.layout, view);
         Ok(())
     }
@@ -270,7 +297,7 @@ impl AppView {
         cached_mesh: Option<crate::mesh::mesh::Mesh>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.remove_all();
-        
+
         // Add 4 MPR views based on indices
         for &index in indices.iter() {
             let orientation = ALL_ORIENTATIONS[index];
@@ -285,13 +312,20 @@ impl AppView {
         }
 
         if mip.is_some() {
-            let mip_view = self.view_factory.create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))?;
+            let mip_view =
+                self.view_factory
+                    .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))?;
             LayoutContainer::replace_view_at(&mut self.layout, mip.unwrap(), mip_view);
             let _ = self.set_mip_mode(mip.unwrap(), orientation_index as u32);
         }
-        
+
         if mesh_index.is_some() {
-            let mesh_view = self.view_factory.create_mesh_view_with_content(texture.clone(),&cached_mesh.unwrap(), (0, 0), (0, 0))?;
+            let mesh_view = self.view_factory.create_mesh_view_with_content(
+                texture.clone(),
+                &cached_mesh.unwrap(),
+                (0, 0),
+                (0, 0),
+            )?;
             LayoutContainer::replace_view_at(&mut self.layout, mesh_index.unwrap(), mesh_view);
         }
 
@@ -306,13 +340,14 @@ impl AppView {
         texture: Arc<RenderContent>,
         vol: &CTVolume,
         mode: usize,
-        orientation_index: usize
+        orientation_index: usize,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.set_one_cell_layout();
         self.remove_all();
 
         match mode {
-            0 => { // MPR
+            0 => {
+                // MPR
                 let orientation = ALL_ORIENTATIONS[orientation_index];
                 let view = self.view_factory.create_mpr_view_with_content(
                     texture.clone(),
@@ -323,8 +358,13 @@ impl AppView {
                 )?;
                 LayoutContainer::add_view(&mut self.layout, view);
             }
-            1 => { // MIP
-                let mip_view = self.view_factory.create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))?;
+            1 => {
+                // MIP
+                let mip_view = self.view_factory.create_mip_view_with_content(
+                    texture.clone(),
+                    (0, 0),
+                    (0, 0),
+                )?;
                 LayoutContainer::add_view(&mut self.layout, mip_view);
                 let _ = self.set_mip_mode(0, orientation_index as u32);
             }
@@ -348,7 +388,9 @@ impl AppView {
     pub fn set_window_level(&mut self, index: usize, window_level: f32) -> Result<(), String> {
         if let Some(view) = self.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                mpr_view.set_window_level(window_level).map_err(|e| e.to_string())?;
+                mpr_view
+                    .set_window_level(window_level)
+                    .map_err(|e| e.to_string())?;
                 Ok(())
             } else {
                 Err(format!("View {} is not an MPR view", index))
@@ -362,7 +404,9 @@ impl AppView {
     pub fn set_window_width(&mut self, index: usize, window_width: f32) -> Result<(), String> {
         if let Some(view) = self.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                mpr_view.set_window_width(window_width).map_err(|e| e.to_string())?;
+                mpr_view
+                    .set_window_width(window_width)
+                    .map_err(|e| e.to_string())?;
                 Ok(())
             } else {
                 Err(format!("View {} is not an MPR view", index))
@@ -409,10 +453,16 @@ impl AppView {
     }
 
     /// Set the translation in screen coordinates.
-    pub fn set_translate_in_screen_coord(&mut self, index: usize, translate: [f32; 3]) -> Result<(), String> {
+    pub fn set_translate_in_screen_coord(
+        &mut self,
+        index: usize,
+        translate: [f32; 3],
+    ) -> Result<(), String> {
         if let Some(view) = self.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                mpr_view.set_translate_in_screen_coord(translate).map_err(|e| e.to_string())?;
+                mpr_view
+                    .set_translate_in_screen_coord(translate)
+                    .map_err(|e| e.to_string())?;
                 Ok(())
             } else {
                 Err(format!("View {} is not an MPR view", index))
@@ -459,10 +509,16 @@ impl AppView {
     }
 
     /// Set the center point in millimeters.
-    pub fn set_center_at_point_in_mm(&mut self, index: usize, point: [f32; 3]) -> Result<[f32; 3], String> {
+    pub fn set_center_at_point_in_mm(
+        &mut self,
+        index: usize,
+        point: [f32; 3],
+    ) -> Result<[f32; 3], String> {
         if let Some(view) = self.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                mpr_view.set_center_at_point_in_mm(point).map_err(|e| e.to_string())
+                mpr_view
+                    .set_center_at_point_in_mm(point)
+                    .map_err(|e| e.to_string())
             } else {
                 Err(format!("View {} is not an MPR view", index))
             }

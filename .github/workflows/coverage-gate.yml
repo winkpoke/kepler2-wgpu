@@ -1,0 +1,66 @@
+name: Coverage Gate
+
+on:
+  pull_request:
+
+jobs:
+  coverage_gate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Install cargo-llvm-cov
+        run: |
+          cargo install cargo-llvm-cov
+
+      - name: Generate coverage report
+        run: |
+          cargo llvm-cov --lcov --output-dir coverage
+
+      - name: Check medical path coverage
+        run: |
+          COVERAGE=$(cargo llvm-cov --quiet | grep -oP '\d+(?=%)' || echo "0%")
+          echo "Medical path coverage: $COVERAGE%"
+
+          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
+            echo "ERROR: Medical path coverage $COVERAGE% is below 80% threshold"
+            exit 1
+          fi
+
+      - name: Check overall coverage gate
+        run: |
+          COVERAGE=$(cargo llvm-cov --quiet | grep -oP '\d+(?=%)' || echo "0%")
+          echo "Overall coverage: $COVERAGE%"
+
+          MIN_COVERAGE=45
+          if (( $(echo "$COVERAGE < $MIN_COVERAGE" | bc -l) )); then
+            echo "ERROR: Coverage $COVERAGE% is below $MIN_COVERAGE% threshold"
+            exit 1
+          fi
+
+      - name: Check coverage regression
+        run: |
+          CURRENT=$(cargo llvm-cov --quiet | grep -oP '\d+(?=%)' || echo "0%")
+          BASELINE=$(git show HEAD~1:coverage_report.txt 2>/dev/null || echo "0%")
+
+          if [ -n "$BASELINE" ]; then
+            DECREASE=$(echo "$BASELINE - $CURRENT" | bc -l)
+
+            if (( $(echo "$DECREASE > 5" | bc -l) )); then
+              echo "ERROR: Coverage decreased by $DECREASE% (baseline: $BASELINE%, current: $CURRENT%)"
+              exit 1
+            fi
+          fi
+
+      - name: Comment coverage in PR
+        uses: romeovs/lcov-reporter-action@v0.3.1
+        with:
+          lcov-file: ./coverage/lcov.info
+          github-token: ${{ secrets.GITHUB_TOKEN }}

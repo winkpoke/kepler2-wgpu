@@ -274,19 +274,27 @@
 ## 6. Phase 5: Performance & Regression (Weeks 9+ - Ongoing)
 
 - [ ] 6.1 Implement performance benchmarks
-  - [ ] Create `tests/performance_benchmarks.rs`
-  - [ ] Benchmark DICOM parsing 512x512 (< 10ms)
-  - [ ] Benchmark volume creation 512x512x100 (< 50ms)
-  - [ ] Benchmark volume rendering 512x512 (< 16ms, 60 FPS)
-  - [ ] Benchmark MPR slice extraction (< 1ms)
-  - [ ] Benchmark mesh generation (< 100ms)
-  - [ ] Test memory usage large volume (< 2GB)
+   - [ ] Create `tests/performance_benchmarks.rs`
+   - [ ] Benchmark DICOM parsing 512x512 (mean ± 3 std dev < 10ms)
+   - [ ] Benchmark volume creation 512x512x100 (mean ± 3 std dev < 50ms)
+   - [ ] Benchmark volume rendering 512x512 (mean ± 3 std dev < 16ms, 60 FPS)
+   - [ ] Benchmark MPR slice extraction (mean ± 3 std dev < 1ms)
+   - [ ] Benchmark mesh generation (mean ± 3 std dev < 100ms)
+   - [ ] Test memory usage large volume (< 2GB, with hardware variability allowance)
+   - [ ] Document benchmark execution environment (CPU, RAM, OS)
+   - [ ] Implement performance regression detection (trend analysis across runs)
+   - [ ] Establish performance baseline before measuring
+   - [ ] Allow hardware variability (different CI runner specifications)
+   - [ ] Do NOT block CI on single benchmark outliers (allow ± 3 std dev variance)
 
 - [ ] 6.2 Implement regression test suite
-  - [ ] Create `tests/regression_tests.rs`
-  - [ ] Add template for regression test structure
-  - [ ] Document regression test naming convention (regression_issue_XXX_description)
-  - [ ] Add example regression test (placeholder for first bug fix)
+   - [ ] Create `tests/regression_tests.rs`
+   - [ ] Add template for regression test structure
+   - [ ] Define naming convention: `regression_issue_NNN_symptom` (e.g., `regression_issue_123_window_clamp_crash`)
+   - [ ] Add fallback format: `regression_module_symptom` for issues without GitHub issue numbers
+   - [ ] Document naming convention in tasks.md with examples
+   - [ ] Add example regression test (placeholder for first bug fix)
+   - [ ] Add regression test execution marker (`#[ignore]` by default until bug is fixed)
 
 - [ ] 6.3 Setup ongoing regression workflow
   - [ ] Document process for adding regression test with each bug fix
@@ -326,7 +334,7 @@
 ## 9. Validation & Success Criteria
 
 ### Phase 1 Completion (Week 2)
-- [ ] 40+ new tests implemented
+- [ ] 37+ new tests implemented
 - [ ] All DICOM mandatory fields validated
 - [ ] Patient identity coverage ≥ 70%
 - [ ] Coordinate transformation coverage ≥ 50%
@@ -335,21 +343,21 @@
 - [ ] All tests passing: `cargo test`
 
 ### Phase 2 Completion (Week 4)
-- [ ] 54+ new tests implemented
+- [ ] 36+ new tests implemented
 - [ ] MHA/MHD coverage ≥ 60%
 - [ ] Volume integrity coverage ≥ 70%
 - [ ] Property-based testing working
 - [ ] Overall coverage ≥ 60%
 
 ### Phase 3 Completion (Week 6)
-- [ ] 48+ new tests implemented
+- [ ] 36+ new tests implemented
 - [ ] GPU initialization coverage ≥ 40%
 - [ ] Rendering coverage ≥ 45%
 - [ ] All GPU tests passing (native)
-- [ ] Overall coverage ≥ 55%
+- [ ] Overall coverage ≥ 65%
 
 ### Phase 4 Completion (Week 8)
-- [ ] 42+ new tests implemented
+- [ ] 29+ new tests implemented
 - [ ] Error path coverage ≥ 70%
 - [ ] Edge case coverage ≥ 60%
 - [ ] Memory tests passing

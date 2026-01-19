@@ -1,12 +1,12 @@
+use crate::core::coord::Base;
 use crate::data::medical_imaging::{
+    error::MedicalImagingResult,
+    formats::ImageFormat,
     metadata::ImageMetadata,
     pixel_data::{PixelData, PixelType},
-    formats::ImageFormat,
-    error:: MedicalImagingResult,
-    validation::{ValidationResult, MedicalImageValidator},
+    validation::{MedicalImageValidator, ValidationResult},
 };
 use crate::data::CTVolume;
-use crate::core::coord::Base;
 use glam::{Mat4, Vec3};
 
 /// Function-level comment: Standardized 3D medical volume representation
@@ -26,12 +26,13 @@ pub struct MedicalVolume {
 impl MedicalVolume {
     /// Creates new medical volume with validation
     pub fn new(
-        metadata: ImageMetadata, 
-        pixel_data: PixelData, 
-        source_format: ImageFormat
-    ) -> MedicalImagingResult<Self>{
+        metadata: ImageMetadata,
+        pixel_data: PixelData,
+        source_format: ImageFormat,
+    ) -> MedicalImagingResult<Self> {
         let mut validator = MedicalImageValidator::new();
-        let validation_status = validator.add_format_validator(source_format.clone(), &metadata, &pixel_data);
+        let validation_status =
+            validator.add_format_validator(source_format.clone(), &metadata, &pixel_data);
         Ok(Self {
             metadata,
             pixel_data,
@@ -42,14 +43,14 @@ impl MedicalVolume {
 
     /// Generates CT volume from MHA file
     pub fn generate_ct_volume_mha(
-        dim: [usize; 3], 
+        dim: [usize; 3],
         data: Vec<u8>,
         pixel_type: PixelType,
         spacing: Vec<f32>,
         offset: Vec<f32>,
         _transform: Vec<f32>,
-        slope:f32, 
-        intercept:f32
+        slope: f32,
+        intercept: f32,
     ) -> Result<CTVolume, String> {
         let col = dim[0]; // x
         let row = dim[1]; // y
@@ -59,24 +60,18 @@ impl MedicalVolume {
         let voxel_count = col * row * depth;
 
         // analyze raw data according to ElementType
-        let voxel_data = PixelData::create_pixel_data(raw,pixel_type, voxel_count, slope, intercept).map_err(|e| e.to_string())?;
+        let voxel_data =
+            PixelData::create_pixel_data(raw, pixel_type, voxel_count, slope, intercept)
+                .map_err(|e| e.to_string())?;
 
         // series
         let uid = "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.365119";
 
         // scaling matrix
-        let scaling_matrix = Mat4::from_scale(Vec3::new(
-            spacing[0],
-            spacing[1],
-            spacing[2],
-        ));
+        let scaling_matrix = Mat4::from_scale(Vec3::new(spacing[0], spacing[1], spacing[2]));
 
         // translation matrix
-        let translation_matrix = Mat4::from_translation(Vec3::new(
-            offset[0],
-            offset[1],
-            offset[2],
-        ));
+        let translation_matrix = Mat4::from_translation(Vec3::new(offset[0], offset[1], offset[2]));
 
         let direction_matrix = Mat4::IDENTITY;
 
@@ -92,7 +87,7 @@ impl MedicalVolume {
             base: Base {
                 label: uid.to_string(),
                 matrix: base_matrix,
-            }
+            },
         };
 
         log::info!("{:?}", &ct_volume_mha.dimensions);
@@ -106,11 +101,11 @@ impl MedicalVolume {
 
         Ok(ct_volume_mha)
     }
-    
+
     // pub fn convert_pixel_type<T: PixelType>(&self) -> MedicalImagingResult<MedicalVolume>;
-    
+
     // pub fn extract_slice(&self, axis: Axis, index: usize) -> MedicalImagingResult<MedicalSlice>;
-    
+
     // Resamples volume to new spacing
     // pub fn resample(&self, new_spacing: [f32; 3]) -> MedicalImagingResult<MedicalVolume>;
 }

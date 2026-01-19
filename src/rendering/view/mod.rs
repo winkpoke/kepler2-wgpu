@@ -28,7 +28,7 @@ pub mod mpr;
 pub mod render_content;
 
 // Re-exports for convenience
-pub use mip::*;
 pub use mesh::*;
+pub use mip::*;
 pub use mpr::*;
 pub use render_content::*;

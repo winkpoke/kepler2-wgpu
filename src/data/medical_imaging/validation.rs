@@ -1,5 +1,5 @@
 //! Comprehensive validation module for medical imaging data and general data types
-//! 
+//!
 //! This module provides a robust validation framework that includes:
 //! - Basic data type validation (strings, numbers, emails, etc.)
 //! - Medical imaging specific validation (pixel data, DICOM fields, etc.)
@@ -12,8 +12,8 @@ use std::path::Path;
 use thiserror::Error;
 
 use crate::data::medical_imaging::{
-    metadata::{ImageMetadata,PixelData, PixelType},
     formats::ImageFormat,
+    metadata::{ImageMetadata, PixelData, PixelType},
 };
 
 // ============================================================================
@@ -24,67 +24,53 @@ use crate::data::medical_imaging::{
 #[derive(Debug, Error, Clone)]
 pub enum ValidationError {
     #[error("Invalid input: {message}")]
-    InvalidInput { 
-        message: String, 
+    InvalidInput {
+        message: String,
         field: Option<String>,
-        context: HashMap<String, String> 
+        context: HashMap<String, String>,
     },
-    
+
     #[error("Range error: value {value} is not within range [{min}, {max}]")]
-    OutOfRange { 
-        value: String, 
-        min: String, 
-        max: String 
+    OutOfRange {
+        value: String,
+        min: String,
+        max: String,
     },
-    
+
     #[error("Format error: {message}")]
-    InvalidFormat { 
-        message: String, 
-        expected_format: String 
+    InvalidFormat {
+        message: String,
+        expected_format: String,
     },
-    
+
     #[error("Length error: {message}")]
-    InvalidLength { 
-        message: String, 
-        actual: usize, 
-        expected_min: Option<usize>, 
-        expected_max: Option<usize> 
+    InvalidLength {
+        message: String,
+        actual: usize,
+        expected_min: Option<usize>,
+        expected_max: Option<usize>,
     },
 
     #[error("Invalid dimension: {message}")]
-    InvalidDimension { 
-        message: String, 
-        dimension: String 
-    },
-    
+    InvalidDimension { message: String, dimension: String },
+
     #[error("Invalid spacing: {message}")]
-    InvalidSpacing { 
-        message: String, 
-        spacing: String 
-    },
-    
+    InvalidSpacing { message: String, spacing: String },
+
     #[error("Invalid orientation: {message}")]
-    InvalidOrientation { 
-        message: String, 
-        orientation: String 
+    InvalidOrientation {
+        message: String,
+        orientation: String,
     },
-    
+
     #[error("Medical imaging error: {message}")]
-    MedicalImaging { 
-        message: String, 
-        error_code: String 
-    },
-    
+    MedicalImaging { message: String, error_code: String },
+
     #[error("Custom validation error: {message}")]
-    Custom { 
-        message: String, 
-        rule_name: String 
-    },
-    
+    Custom { message: String, rule_name: String },
+
     #[error("Async validation error: {message}")]
-    AsyncValidation { 
-        message: String 
-    },
+    AsyncValidation { message: String },
 }
 
 /// Validation warning for non-critical issues
@@ -123,19 +109,18 @@ pub struct DataIssue {
 
 /// Integrity checker trait
 pub trait IntegrityChecker {
-    fn check_integrity(&self, data: &[u8]) -> ValidationResult{
-        if data.is_empty(){
+    fn check_integrity(&self, data: &[u8]) -> ValidationResult {
+        if data.is_empty() {
             return ValidationResult::failure(vec![ValidationError::InvalidInput {
                 message: "Empty data".to_string(),
                 field: Some("data".to_string()),
                 context: HashMap::new(),
             }]);
-        }
-        else {
+        } else {
             ValidationResult::success()
         }
     }
-    fn checker_name(&self) -> &str{
+    fn checker_name(&self) -> &str {
         "IntegrityChecker"
     }
 }
@@ -157,16 +142,20 @@ impl DataSizeChecker {
 impl IntegrityChecker for DataSizeChecker {
     fn check_integrity(&self, data: &[u8]) -> ValidationResult {
         let mut errors = Vec::new();
-        
+
         if data.len() < self.min_size {
             errors.push(ValidationError::InvalidLength {
-                message: format!("Data size {} is below minimum {}", data.len(), self.min_size),
+                message: format!(
+                    "Data size {} is below minimum {}",
+                    data.len(),
+                    self.min_size
+                ),
                 actual: data.len(),
                 expected_min: Some(self.min_size),
                 expected_max: self.max_size,
             });
         }
-        
+
         if let Some(max_size) = self.max_size {
             if data.len() > max_size {
                 errors.push(ValidationError::InvalidLength {
@@ -177,14 +166,14 @@ impl IntegrityChecker for DataSizeChecker {
                 });
             }
         }
-        
+
         if errors.is_empty() {
             ValidationResult::success()
         } else {
             ValidationResult::failure(errors)
         }
     }
-    
+
     fn checker_name(&self) -> &str {
         "DataSizeChecker"
     }
@@ -206,14 +195,15 @@ pub enum ChecksumAlgorithm {
 
 impl ChecksumChecker {
     pub fn new(expected_checksum: u32, algorithm: ChecksumAlgorithm) -> Self {
-        Self { expected_checksum, algorithm }
+        Self {
+            expected_checksum,
+            algorithm,
+        }
     }
-    
+
     fn calculate_checksum(&self, data: &[u8]) -> u32 {
         match self.algorithm {
-            ChecksumAlgorithm::Simple => {
-                data.iter().map(|&b| b as u32).sum()
-            },
+            ChecksumAlgorithm::Simple => data.iter().map(|&b| b as u32).sum(),
             ChecksumAlgorithm::Crc32 => {
                 // Simplified CRC32 implementation for demonstration
                 let mut crc = 0xFFFFFFFF_u32;
@@ -236,7 +226,7 @@ impl ChecksumChecker {
 impl IntegrityChecker for ChecksumChecker {
     fn check_integrity(&self, data: &[u8]) -> ValidationResult {
         let calculated_checksum = self.calculate_checksum(data);
-        
+
         if calculated_checksum != self.expected_checksum {
             ValidationResult::failure(vec![ValidationError::MedicalImaging {
                 message: format!(
@@ -249,7 +239,7 @@ impl IntegrityChecker for ChecksumChecker {
             ValidationResult::success()
         }
     }
-    
+
     fn checker_name(&self) -> &str {
         "ChecksumChecker"
     }
@@ -265,23 +255,30 @@ pub struct MedicalHeaderChecker {
 
 impl MedicalHeaderChecker {
     pub fn new(expected_magic: Vec<u8>, header_size: usize) -> Self {
-        Self { expected_magic, header_size }
+        Self {
+            expected_magic,
+            header_size,
+        }
     }
 }
 
 impl IntegrityChecker for MedicalHeaderChecker {
     fn check_integrity(&self, data: &[u8]) -> ValidationResult {
         let mut errors = Vec::new();
-        
+
         if data.len() < self.header_size {
             errors.push(ValidationError::InvalidLength {
-                message: format!("Data too short for header: {} < {}", data.len(), self.header_size),
+                message: format!(
+                    "Data too short for header: {} < {}",
+                    data.len(),
+                    self.header_size
+                ),
                 actual: data.len(),
                 expected_min: Some(self.header_size),
                 expected_max: None,
             });
         }
-        
+
         if data.len() >= self.expected_magic.len() {
             if !data.starts_with(&self.expected_magic) {
                 errors.push(ValidationError::InvalidFormat {
@@ -290,14 +287,14 @@ impl IntegrityChecker for MedicalHeaderChecker {
                 });
             }
         }
-        
+
         if errors.is_empty() {
             ValidationResult::success()
         } else {
             ValidationResult::failure(errors)
         }
     }
-    
+
     fn checker_name(&self) -> &str {
         "MedicalHeaderChecker"
     }
@@ -322,7 +319,12 @@ impl MedicalImageValidator {
         }
     }
 
-    pub fn add_format_validator(&mut self, format: ImageFormat, metadata: &ImageMetadata, pixel_data: &PixelData) -> ValidationResult {
+    pub fn add_format_validator(
+        &mut self,
+        format: ImageFormat,
+        metadata: &ImageMetadata,
+        pixel_data: &PixelData,
+    ) -> ValidationResult {
         let mut results = Vec::new();
         let metadata_validation_results = self.validate_metadata(&metadata);
         results.push(metadata_validation_results);
@@ -359,7 +361,7 @@ impl MedicalImageValidator {
     /// Performs comprehensive file validation including format, metadata, and data integrity
     pub fn validate_file<P: AsRef<Path>>(&self, path: P) -> ValidationResult {
         let mut result = ValidationResult::success();
-        
+
         // Check file existence
         if !path.as_ref().exists() {
             return ValidationResult::failure(vec![ValidationError::InvalidInput {
@@ -368,7 +370,7 @@ impl MedicalImageValidator {
                 context: HashMap::new(),
             }]);
         }
-        
+
         // Validate file size
         if let Ok(metadata) = std::fs::metadata(&path) {
             if metadata.len() == 0 {
@@ -379,10 +381,10 @@ impl MedicalImageValidator {
                 });
             }
         }
-        
+
         result
     }
-    
+
     /// Function-level comment: Validates metadata consistency
     /// Checks metadata fields for consistency and medical imaging standards compliance
     pub fn validate_metadata(&self, metadata: &ImageMetadata) -> ValidationResult {
@@ -409,9 +411,15 @@ impl MedicalImageValidator {
         }
 
         // Validate orientation matrix (must be orthonormal)
-        let det = metadata.orientation[0][0] * (metadata.orientation[1][1] * metadata.orientation[2][2] - metadata.orientation[1][2] * metadata.orientation[2][1])
-                - metadata.orientation[0][1] * (metadata.orientation[1][0] * metadata.orientation[2][2] - metadata.orientation[1][2] * metadata.orientation[2][0])
-                + metadata.orientation[0][2] * (metadata.orientation[1][0] * metadata.orientation[2][1] - metadata.orientation[1][1] * metadata.orientation[2][0]);
+        let det = metadata.orientation[0][0]
+            * (metadata.orientation[1][1] * metadata.orientation[2][2]
+                - metadata.orientation[1][2] * metadata.orientation[2][1])
+            - metadata.orientation[0][1]
+                * (metadata.orientation[1][0] * metadata.orientation[2][2]
+                    - metadata.orientation[1][2] * metadata.orientation[2][0])
+            + metadata.orientation[0][2]
+                * (metadata.orientation[1][0] * metadata.orientation[2][1]
+                    - metadata.orientation[1][1] * metadata.orientation[2][0]);
         if det.abs() < 1e-6 {
             errors.push(ValidationError::InvalidOrientation {
                 message: "Orientation matrix must be orthonormal".to_string(),
@@ -425,12 +433,16 @@ impl MedicalImageValidator {
             ValidationResult::failure(errors)
         }
     }
-    
+
     /// Function-level comment: Validates pixel data integrity
     /// Ensures pixel data consistency with metadata and checks for data corruption
-    pub fn validate_pixel_data(&self, data: &PixelData, metadata: &ImageMetadata) -> ValidationResult {
+    pub fn validate_pixel_data(
+        &self,
+        data: &PixelData,
+        metadata: &ImageMetadata,
+    ) -> ValidationResult {
         let mut result = ValidationResult::success();
-        
+
         // Calculate expected data size
         let expected_size = metadata.dimensions.iter().product::<usize>();
         let n = match metadata.pixel_type {
@@ -441,8 +453,8 @@ impl MedicalImageValidator {
             PixelType::Float32 => 4,
             PixelType::Float64 => 8,
         };
-        let actual_size = data.as_bytes().len()/n;
-        
+        let actual_size = data.as_bytes().len() / n;
+
         if actual_size != expected_size {
             result.errors.push(ValidationError::InvalidLength {
                 message: "Pixel data size does not match metadata dimensions".to_string(),
@@ -452,7 +464,7 @@ impl MedicalImageValidator {
             });
             result.is_valid = false;
         }
-        
+
         result
     }
 }
@@ -480,7 +492,7 @@ impl ValidationResult {
             data_issues: Vec::new(),
         }
     }
-    
+
     /// Function-level comment: Creates failed validation result with error
     /// Returns a validation result indicating failure with the specified error
     pub fn failure(error: Vec<ValidationError>) -> Self {
@@ -492,19 +504,19 @@ impl ValidationResult {
             data_issues: Vec::new(),
         }
     }
-    
+
     /// Function-level comment: Adds warning to result
     /// Appends a warning to the validation result without affecting validity
     pub fn with_warning(mut self, warning: ValidationWarning) -> Self {
         self.warnings.push(warning);
         self
     }
-    
+
     /// Function-level comment: Combines multiple validation results
     /// Merges multiple validation results into a single comprehensive result
     pub fn combine(results: Vec<ValidationResult>) -> Self {
         let mut combined = Self::success();
-        
+
         for result in results {
             if !result.is_valid {
                 combined.is_valid = false;
@@ -514,7 +526,7 @@ impl ValidationResult {
             combined.metadata_issues.extend(result.metadata_issues);
             combined.data_issues.extend(result.data_issues);
         }
-        
+
         combined
     }
 }

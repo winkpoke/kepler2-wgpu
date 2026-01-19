@@ -13,11 +13,11 @@ use glam::Mat4;
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[derive(Clone)]
 pub struct CTVolume {
-    pub(crate) dimensions: (usize, usize, usize), // (rows, columns, number of slices)
-    pub(crate) voxel_spacing: (f32, f32, f32), // (spacing_x, spacing_y, spacing_z)
+    pub dimensions: (usize, usize, usize), // (rows, columns, number of slices)
+    pub voxel_spacing: (f32, f32, f32),    // (spacing_x, spacing_y, spacing_z)
     // pub(crate) voxel_data: Vec<Vec<i16>>, // 3D voxel data flattened into slices
-    pub(crate) voxel_data: Vec<i16>, // 3D voxel data 
-    pub(crate) base: Base,
+    pub voxel_data: Vec<i16>, // 3D voxel data
+    pub base: Base,
 }
 
 impl fmt::Debug for CTVolume {
@@ -119,7 +119,7 @@ impl fmt::Debug for CTVolume {
 //         let end_x = (max_v[0].ceil() as isize).min(self.dimensions.0 as isize) as usize;
 //         let end_y = (max_v[1].ceil() as isize).min(self.dimensions.1 as isize) as usize;
 //         let end_z = (max_v[2].ceil() as isize).min(self.dimensions.2 as isize) as usize;
-        
+
 //         if start_x >= end_x || start_y >= end_y || start_z >= end_z {
 //              return Err(anyhow::anyhow!("Crop region is empty or outside volume bounds"));
 //         }
@@ -130,11 +130,11 @@ impl fmt::Debug for CTVolume {
 //     }
 // }
 
-pub trait CTVolumeGenerator {
-    fn generate_ct_volume(&self, image_series_id: &str) -> Result<CTVolume>;
-}
-
 pub struct Geometry {
     volumes: Vec<CTVolume>,
     base: Mat4,
+}
+
+pub trait CTVolumeGenerator {
+    fn generate_ct_volume(&self, image_series_id: &str) -> Result<CTVolume>;
 }

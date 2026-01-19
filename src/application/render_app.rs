@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 
-
 use std::sync::Arc;
 
 use winit::{
@@ -14,18 +13,19 @@ use winit::{
 #[cfg(target_arch = "wasm32")]
 use winit::window::WindowBuilder;
 
-use crate::{application::App, rendering::LayoutContainer};
-use crate::rendering::core::Graphics;
 use crate::application::gl_canvas::{GLCanvas, UserEvent};
+use crate::rendering::core::Graphics;
+use crate::{application::App, rendering::LayoutContainer};
 use winit::event_loop::EventLoopProxy;
-
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::spawn_local;
 
-pub async fn create_graphics(window: Arc<Window>) -> Result<Graphics, crate::core::error::KeplerError> {
+pub async fn create_graphics(
+    window: Arc<Window>,
+) -> Result<Graphics, crate::core::error::KeplerError> {
     Graphics::new(window).await
 }
 
@@ -45,14 +45,14 @@ impl RenderApp {
             proxy: Some(proxy),
         }
     }
-    
+
     pub async fn set_window(&mut self, window: Arc<Window>) {
         if let Some(state) = &mut self.state {
             match Graphics::new(window.clone()).await {
                 Ok(graphics) => {
                     state.swap_graphics(graphics);
                     log::info!("Graphics swapped successfully.");
-                },
+                }
                 Err(e) => log::error!("Failed to create graphics: {}", e),
             }
         }

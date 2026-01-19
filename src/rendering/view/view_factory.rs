@@ -5,21 +5,21 @@
 //! source file improves testability and future extensibility (e.g., different
 //! factory implementations for native and WebAssembly builds).
 
-use super::{View, Orientation};
-use crate::CTVolume;
+use super::{Orientation, View};
 use crate::data::volume_encoding::VolumeEncoding;
+use crate::CTVolume;
 
+use log::{debug, info};
 use std::sync::Arc;
-use log::{info, debug};
 
 use crate::core::WindowLevel;
-use crate::rendering::view::render_content::RenderContent;
+use crate::rendering::view::mesh::basic_mesh_context::BasicMeshContext;
+use crate::rendering::view::mesh::mesh::Mesh;
+use crate::rendering::view::mesh::mesh_view::MeshView;
+use crate::rendering::view::mip::{MipView, MipViewWgpuImpl};
 use crate::rendering::view::mpr::mpr_render_context::MprRenderContext;
 use crate::rendering::view::mpr::mpr_view::MprView;
-use crate::rendering::view::mip::{MipView, MipViewWgpuImpl};
-use crate::rendering::view::mesh::mesh::Mesh;
-use crate::rendering::view::mesh::basic_mesh_context::BasicMeshContext;
-use crate::rendering::view::mesh::mesh_view::MeshView;
+use crate::rendering::view::render_content::RenderContent;
 
 /// Factory trait for creating different types of views.
 ///
@@ -42,7 +42,7 @@ pub trait ViewFactory {
         &self,
         mesh: &Mesh,
         pos: (i32, i32),
-        size: (u32, u32)
+        size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>>;
 
     /// Create a new MPR view with volume data and orientation.
@@ -61,7 +61,7 @@ pub trait ViewFactory {
         vol: &CTVolume,
         orientation: Orientation,
         pos: (i32, i32),
-        size: (u32, u32)
+        size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>>;
 
     /// Create a new MIP (Maximum Intensity Projection) view.
@@ -77,7 +77,7 @@ pub trait ViewFactory {
         &self,
         vol: &CTVolume,
         pos: (i32, i32),
-        size: (u32, u32)
+        size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>>;
 
     /// Function-level comment: Create an MPR view using a prebuilt RenderContent for GPU reuse
@@ -91,7 +91,7 @@ pub trait ViewFactory {
         vol: &CTVolume,
         orientation: Orientation,
         pos: (i32, i32),
-        size: (u32, u32)
+        size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>>;
 
     /// Function-level comment: Create a MIP view using a prebuilt RenderContent for GPU reuse
@@ -103,7 +103,7 @@ pub trait ViewFactory {
         &self,
         render_content: Arc<RenderContent>,
         pos: (i32, i32),
-        size: (u32, u32)
+        size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>>;
 
     /// Create a Mesh view using a prebuilt RenderContent for API consistency
@@ -113,7 +113,7 @@ pub trait ViewFactory {
         render_content: Arc<RenderContent>,
         mesh: &Mesh,
         pos: (i32, i32),
-        size: (u32, u32)
+        size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>>;
 }
 
@@ -127,7 +127,10 @@ impl ViewFactory for MockViewFactory {
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented")))
+        Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Mock factory - not implemented",
+        )))
     }
 
     /// Function-level comment: MPR view creation stub returning an error for test scenarios
@@ -138,7 +141,10 @@ impl ViewFactory for MockViewFactory {
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented")))
+        Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Mock factory - not implemented",
+        )))
     }
 
     /// Function-level comment: MIP view creation stub returning an error for test scenarios
@@ -148,7 +154,10 @@ impl ViewFactory for MockViewFactory {
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented")))
+        Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Mock factory - not implemented",
+        )))
     }
 
     /// Function-level comment: MPR with content stub returning an error for test scenarios
@@ -160,7 +169,10 @@ impl ViewFactory for MockViewFactory {
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented")))
+        Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Mock factory - not implemented",
+        )))
     }
 
     /// Function-level comment: MIP with content stub returning an error for test scenarios
@@ -170,7 +182,10 @@ impl ViewFactory for MockViewFactory {
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented")))
+        Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Mock factory - not implemented",
+        )))
     }
 
     fn create_mesh_view_with_content(
@@ -178,9 +193,12 @@ impl ViewFactory for MockViewFactory {
         _render_content: Arc<RenderContent>,
         _mesh: &Mesh,
         _pos: (i32, i32),
-        _size: (u32, u32)
+        _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented")))
+        Err(Box::new(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "Mock factory - not implemented",
+        )))
     }
 }
 
@@ -205,11 +223,19 @@ impl DefaultViewFactory {
         surface_format: wgpu::TextureFormat,
         use_float_volume_texture: bool,
     ) -> Self {
-        Self { device, queue, surface_format, use_float_volume_texture }
+        Self {
+            device,
+            queue,
+            surface_format,
+            use_float_volume_texture,
+        }
     }
 
     /// Function-level comment: Build RenderContent from CTVolume using configured texture format path
-    fn build_render_content(&self, vol: &CTVolume) -> Result<Arc<RenderContent>, Box<dyn std::error::Error>> {
+    fn build_render_content(
+        &self,
+        vol: &CTVolume,
+    ) -> Result<Arc<RenderContent>, Box<dyn std::error::Error>> {
         if self.use_float_volume_texture {
             debug!("[DefaultViewFactory] Using R16Float volume texture path");
             // Convert voxel i16 to half-float (f16) bit pattern then cast to bytes
@@ -233,7 +259,10 @@ impl DefaultViewFactory {
                 encoding,
             ) {
                 Ok(rc) => Ok(Arc::new(rc)),
-                Err(e) => Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))),
+                Err(e) => Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                ))),
             }
         } else {
             debug!("[DefaultViewFactory] Using Rg8Unorm volume texture path");
@@ -256,7 +285,10 @@ impl DefaultViewFactory {
                 encoding,
             ) {
                 Ok(rc) => Ok(Arc::new(rc)),
-                Err(e) => Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))),
+                Err(e) => Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    e.to_string(),
+                ))),
             }
         }
     }
@@ -268,7 +300,7 @@ impl ViewFactory for DefaultViewFactory {
         &self,
         mesh: &Mesh,
         pos: (i32, i32),
-        size: (u32, u32)
+        size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
         use crate::rendering::view::View as _;
 
@@ -297,7 +329,7 @@ impl ViewFactory for DefaultViewFactory {
         vol: &CTVolume,
         orientation: Orientation,
         pos: (i32, i32),
-        size: (u32, u32)
+        size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
         let render_content = match self.build_render_content(vol) {
             Ok(rc) => rc,
@@ -328,7 +360,10 @@ impl ViewFactory for DefaultViewFactory {
             size,
         );
 
-        info!("[DefaultViewFactory] Created MPR view for {:?} at {:?} size {:?}", orientation, pos, size);
+        info!(
+            "[DefaultViewFactory] Created MPR view for {:?} at {:?} size {:?}",
+            orientation, pos, size
+        );
         Ok(Box::new(view))
     }
 
@@ -337,7 +372,7 @@ impl ViewFactory for DefaultViewFactory {
         &self,
         vol: &CTVolume,
         pos: (i32, i32),
-        size: (u32, u32)
+        size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
         use crate::rendering::view::View as _;
 
@@ -345,17 +380,16 @@ impl ViewFactory for DefaultViewFactory {
             Ok(rc) => rc,
             Err(e) => return Err(e),
         };
-        let mip_wgpu_impl = MipViewWgpuImpl::new(
-            render_content,
-            &self.device,
-            self.surface_format,
-        );
+        let mip_wgpu_impl = MipViewWgpuImpl::new(render_content, &self.device, self.surface_format);
 
         let mut mip_view = MipView::new(Arc::new(mip_wgpu_impl));
         mip_view.move_to(pos);
         mip_view.resize(size);
 
-        info!("[DefaultViewFactory] Created MIP view at {:?} size {:?}", pos, size);
+        info!(
+            "[DefaultViewFactory] Created MIP view at {:?} size {:?}",
+            pos, size
+        );
         Ok(Box::new(mip_view))
     }
 
@@ -366,7 +400,7 @@ impl ViewFactory for DefaultViewFactory {
         vol: &CTVolume,
         orientation: Orientation,
         pos: (i32, i32),
-        size: (u32, u32)
+        size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
         // Shared render context for MPR views
         let render_context = Arc::new(MprRenderContext::new(&self.device));
@@ -392,7 +426,10 @@ impl ViewFactory for DefaultViewFactory {
             size,
         );
 
-        info!("[DefaultViewFactory] Created MPR view (with_content) for {:?} at {:?} size {:?}", orientation, pos, size);
+        info!(
+            "[DefaultViewFactory] Created MPR view (with_content) for {:?} at {:?} size {:?}",
+            orientation, pos, size
+        );
         Ok(Box::new(view))
     }
 
@@ -401,21 +438,20 @@ impl ViewFactory for DefaultViewFactory {
         &self,
         render_content: Arc<RenderContent>,
         pos: (i32, i32),
-        size: (u32, u32)
+        size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
         use crate::rendering::view::View as _;
 
-        let mip_wgpu_impl = MipViewWgpuImpl::new(
-            render_content,
-            &self.device,
-            self.surface_format,
-        );
+        let mip_wgpu_impl = MipViewWgpuImpl::new(render_content, &self.device, self.surface_format);
 
         let mut mip_view = MipView::new(Arc::new(mip_wgpu_impl));
         mip_view.move_to(pos);
         mip_view.resize(size);
 
-        info!("[DefaultViewFactory] Created MIP view (with_content) at {:?} size {:?}", pos, size);
+        info!(
+            "[DefaultViewFactory] Created MIP view (with_content) at {:?} size {:?}",
+            pos, size
+        );
         Ok(Box::new(mip_view))
     }
 
@@ -424,7 +460,7 @@ impl ViewFactory for DefaultViewFactory {
         _render_content: Arc<RenderContent>,
         mesh: &Mesh,
         pos: (i32, i32),
-        size: (u32, u32)
+        size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
         use crate::rendering::view::View as _;
 
@@ -432,12 +468,7 @@ impl ViewFactory for DefaultViewFactory {
         mesh_view.set_rotation_enabled(false);
         info!("[DefaultViewFactory] Mesh rotation disabled for consistent inspection");
 
-        let ctx = BasicMeshContext::new(
-            &self.device,
-            &self.queue,
-            mesh,
-            true,
-        );
+        let ctx = BasicMeshContext::new(&self.device, &self.queue, mesh, true);
         let ctx_arc = Arc::new(ctx);
 
         mesh_view.attach_context(ctx_arc);
@@ -446,15 +477,13 @@ impl ViewFactory for DefaultViewFactory {
 
         // Initialize and attach orientation cube context (same as create_mesh_view)
         let cube_mesh = crate::rendering::mesh::mesh::Mesh::unit_cube();
-        let cube_ctx = BasicMeshContext::new(
-            &self.device,
-            &self.queue,
-            &cube_mesh,
-            true,
-        );
+        let cube_ctx = BasicMeshContext::new(&self.device, &self.queue, &cube_mesh, true);
         mesh_view.attach_orientation_cube_context(Arc::new(cube_ctx));
 
-        info!("[DefaultViewFactory] Created Mesh view (with_content) at {:?} size {:?}", pos, size);
+        info!(
+            "[DefaultViewFactory] Created Mesh view (with_content) at {:?} size {:?}",
+            pos, size
+        );
         Ok(Box::new(mesh_view))
     }
 }
