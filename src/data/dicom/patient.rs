@@ -42,7 +42,18 @@ impl Patient {
 
     /// Validates the patient data against DICOM standards
     pub fn validate(&self) -> Result<()> {
+        // Validate PatientID
+        if self.patient_id.is_empty() {
+            return Err(anyhow!("PatientID cannot be empty"));
+        }
+        if self.patient_id.len() > 64 {
+            return Err(anyhow!("PatientID exceeds 64 characters"));
+        }
+
         // Validate name characters
+        if self.name.is_empty() {
+            return Err(anyhow!("PatientName cannot be empty"));
+        }
         if self.name.contains(['$', '@', '#']) {
             return Err(anyhow!("Invalid character in PatientName"));
         }
