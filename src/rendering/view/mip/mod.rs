@@ -6,6 +6,7 @@ use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::layout::compute_aspect_fit;
 use crate::rendering::view::View;
 use crate::data::volume_encoding::VolumeEncoding;
+use glam::{Mat4, Vec4, Vec3};
 
 /// Function-level comment: Configuration for Maximum Intensity Projection (MIP) rendering.
 /// Provides fixed quality settings for the MVP implementation to minimize complexity
@@ -56,6 +57,7 @@ pub struct MipUniforms {
     pub pan_y: f32,
     pub scale: f32,
     pub _pad0: [f32; 7],
+    pub rotation: [f32; 16],
 }
 
 impl Default for MipUniforms {
@@ -71,8 +73,13 @@ impl Default for MipUniforms {
             pan_y: 0.0,
             scale: 1.0,
             _pad0: [0.0; 7],
+            rotation: Mat4::IDENTITY.to_cols_array(),
         }
     }
+}
+
+fn build_rotation_matrix(roll: f32, yaw: f32, pitch: f32) -> Mat4 {
+    Mat4::from_rotation_z(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_x(pitch)
 }
 
 impl MipConfig {
@@ -321,6 +328,10 @@ pub struct MipView {
     scale: f32,
     /// Pan translation in screen coordinates
     pan: [f32; 3], 
+    /// Rotation angles in radians around X, Y, Z axes
+    rotation_radians: [f32; 3],
+    /// Content dimensions in world space
+    content_dimensions: (f32, f32),
 }
 
 impl MipView {
@@ -335,6 +346,8 @@ impl MipView {
             dimensions: (800, 600),
             scale: 1.0,
             pan: [0.0, 0.0, 0.0],
+            rotation_radians: [0.0, 0.0, 0.0],
+            content_dimensions: (1.0, 1.0),
         }
     }
 
@@ -361,6 +374,55 @@ impl MipView {
         let (window, level) = crate::core::window_level::WindowLevel::DEFAULT_BONE;
 
         // Create uniforms with only the fields used in the shader
+        let rotation = build_rotation_matrix(
+            self.rotation_radians[0],
+            self.rotation_radians[1],
+            self.rotation_radians[2],
+        );
+
+        let extent = self.wgpu_impl.render_content().texture.size();
+        let w_vol = extent.width.max(1) as f32;
+        let h_vol = extent.height.max(1) as f32;
+        let d_vol = extent.depth_or_array_layers.max(1) as f32;
+
+        // 3. Calculate Projected Bounding Box (cw, ch)
+        let hw = w_vol / 2.0;
+        let hh = h_vol / 2.0;
+        let hd = d_vol / 2.0;
+
+        let corners = [
+            Vec4::new(-hw, -hh, -hd, 1.0),
+            Vec4::new(hw, -hh, -hd, 1.0),
+            Vec4::new(-hw, hh, -hd, 1.0),
+            Vec4::new(hw, hh, -hd, 1.0),
+            Vec4::new(-hw, -hh, hd, 1.0),
+            Vec4::new(hw, -hh, hd, 1.0),
+            Vec4::new(-hw, hh, hd, 1.0),
+            Vec4::new(hw, hh, hd, 1.0),
+        ];
+
+        let mut min_x = f32::MAX;
+        let mut max_x = f32::MIN;
+        let mut min_y = f32::MAX;
+        let mut max_y = f32::MIN;
+
+        for corner in corners {
+            let rotated = rotation * corner;
+            min_x = min_x.min(rotated.x);
+            max_x = max_x.max(rotated.x);
+            min_y = min_y.min(rotated.y);
+            max_y = max_y.max(rotated.y);
+        }
+
+        let cw = (max_x - min_x).max(1.0);
+        let ch = (max_y - min_y).max(1.0);
+        self.content_dimensions = (cw, ch);
+
+        // 4. Construct Composite Matrix for Shader
+        let scale_viewport = Mat4::from_scale(Vec3::new(cw, ch, 1.0));
+        let scale_texture = Mat4::from_scale(Vec3::new(1.0/w_vol, 1.0/h_vol, 1.0/d_vol));
+        let final_matrix = scale_texture * rotation * scale_viewport;
+
         let uniforms = MipUniforms {
             ray_step_size: 0.005,  // Smaller step size for better quality
             max_steps: 1000.0,     // More steps to ensure we traverse the volume
@@ -372,6 +434,7 @@ impl MipView {
             pan_y: self.pan[1],
             scale: self.scale,
             _pad0: [0.0; 7],
+            rotation: final_matrix.to_cols_array(),
         };
 
         // Upload uniforms to GPU buffer
@@ -398,9 +461,11 @@ impl MipView {
         // Set viewport for this view (aspect-preserving fit)
         let (x, y) = (self.position.0 as f32, self.position.1 as f32);
         let (w, h) = (self.dimensions.0, self.dimensions.1);
-        let extent = self.wgpu_impl.render_content().texture.size();
-        let cw = extent.width.max(1) as f32;
-        let ch = extent.height.max(1) as f32;
+
+        // Calculate projected volume dimensions
+        let (cw, ch) = self.content_dimensions;
+
+        // 5. Compute aspect fit using the PROJECTED dimensions
         if let Some(fit) = compute_aspect_fit(w, h, cw, ch, 0) {
             render_pass.set_viewport(x + fit.x, y + fit.y, fit.w, fit.h, 0.0, 1.0);
         } else {
@@ -451,6 +516,20 @@ impl MipView {
     pub fn set_mip_mode(&mut self, mode: u32) {
         self.config.mode = mode;
         log::info!("MIP mode set to {}", mode);
+    }
+
+    pub fn set_rotation_radians(&mut self, roll: f32, yaw: f32, pitch: f32) {
+        self.rotation_radians = [roll, yaw, pitch];
+        log::info!(
+            "MIP rotation set (radians): roll={:.3}, yaw={:.3}, pitch={:.3}",
+            roll,
+            yaw,
+            pitch
+        );
+    }
+
+    pub fn set_rotation_degrees(&mut self, roll_deg: f32, yaw_deg: f32, pitch_deg: f32) {
+        self.set_rotation_radians(roll_deg.to_radians(), yaw_deg.to_radians(), pitch_deg.to_radians());
     }
 }
 
@@ -509,6 +588,7 @@ impl View for MipView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f32::consts::FRAC_PI_2;
 
     /// Verify MipUniforms size matches expected scalar-only layout for uniform buffer
     #[test]
@@ -516,7 +596,22 @@ mod tests {
         // Verify size and alignment for WGSL
         let size = std::mem::size_of::<MipUniforms>();
         assert_eq!(size % 16, 0);
-        assert_eq!(size, 64);
+        assert_eq!(size, 128);
+    }
+
+    #[test]
+    fn test_build_rotation_matrix_identity() {
+        let m = build_rotation_matrix(0.0, 0.0, 0.0);
+        assert_eq!(m, Mat4::IDENTITY);
+    }
+
+    #[test]
+    fn test_build_rotation_matrix_roll_90() {
+        let m = build_rotation_matrix(FRAC_PI_2, 0.0, 0.0);
+        let v = (m * glam::Vec4::new(1.0, 0.0, 0.0, 0.0)).truncate();
+        assert!((v.x - 0.0).abs() < 1e-5);
+        assert!((v.y - 1.0).abs() < 1e-5);
+        assert!(v.z.abs() < 1e-5);
     }
 
     /// Function-level comment: Test MIP configuration creation and validation.

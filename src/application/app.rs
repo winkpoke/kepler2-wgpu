@@ -598,6 +598,20 @@ impl App {
         }
     }
 
+    pub fn set_mip_rotation_angle_degrees(&mut self, index: usize, roll_deg: f32, yaw_deg: f32, pitch_deg: f32) {
+        if let Err(e) = self.app_view.set_mip_rotation_angle_degrees(index, roll_deg, yaw_deg, pitch_deg) {
+            log::warn!("set_mip_rotation_angle_degrees failed on view {}: {}", index, e);
+        } else {
+            log::info!(
+                "View {} set_mip_rotation_angle_degrees: roll_deg={}, yaw_deg={}, pitch_deg={}",
+                index,
+                roll_deg,
+                yaw_deg,
+                pitch_deg
+            );
+        }
+    }
+
     /// Get screen coordinate in millimeters for the specified view
     pub fn get_screen_coord_in_mm(&self, index: usize, coord: [f32; 3]) -> [f32; 3] {
         if let Some(view) = self.app_view.layout.views().get(index) {

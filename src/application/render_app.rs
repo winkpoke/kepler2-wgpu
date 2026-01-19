@@ -208,6 +208,12 @@ impl RenderApp {
                     state.set_slab_thickness(index, thickness);
                     log::info!("SlabThickness set to: index={index}, thickness={thickness}");
                 }
+                Event::UserEvent(UserEvent::SetMipRotationAngleDeg(index, roll_deg, yaw_deg, pitch_deg)) => {
+                    state.set_mip_rotation_angle_degrees(index, roll_deg, yaw_deg, pitch_deg);
+                    log::info!(
+                        "MipRotationAngleDeg set to: index={index}, roll_deg={roll_deg}, yaw_deg={yaw_deg}, pitch_deg={pitch_deg}"
+                    );
+                }
                 // Mesh control events
                 Event::UserEvent(UserEvent::SetMeshRotationEnabled(_index, enabled)) => {
                     state.set_mesh_rotation_enabled(enabled);

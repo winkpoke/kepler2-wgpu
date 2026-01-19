@@ -49,15 +49,30 @@ struct MipUniforms {
     scale: f32,
     // Padding to satisfy 16-byte multiple size requirements on WebGL
     _pad0: vec3<f32>,
+    rotation: mat4x4<f32>,
 }
 
 @group(1) @binding(0)
 var<uniform> u_mip: MipUniforms;
 
 // Volume intersection function for orthographic rays along +Z
-// For axis-aligned rays into a unit cube volume, we traverse [0,1] fully.
-fn intersect_volume(_ray_origin: vec3<f32>, _ray_dir: vec3<f32>) -> vec2<f32> {
-    return vec2<f32>(0.0, 1.0);
+fn intersect_volume(ray_origin: vec3<f32>, ray_dir: vec3<f32>) -> vec2<f32> {
+    let box_min = vec3<f32>(0.0, 0.0, 0.0);
+    let box_max = vec3<f32>(1.0, 1.0, 1.0);
+
+    let eps = 1e-6;
+    let inv_dir = select(vec3<f32>(1e20, 1e20, 1e20), 1.0 / ray_dir, abs(ray_dir) > vec3<f32>(eps, eps, eps));
+
+    let t0 = (box_min - ray_origin) * inv_dir;
+    let t1 = (box_max - ray_origin) * inv_dir;
+
+    let tmin3 = min(t0, t1);
+    let tmax3 = max(t0, t1);
+
+    let t_min = max(max(tmin3.x, tmin3.y), tmin3.z);
+    let t_max = min(min(tmax3.x, tmax3.y), tmax3.z);
+
+    return vec2<f32>(t_min, t_max);
 }
 
 // Texture sampling function (reused from existing shader_tex.wgsl logic)
@@ -106,7 +121,7 @@ fn apply_window_level(value: f32) -> f32 {
 fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>) -> f32 {
     // Get intersection points with volume
     let intersection = intersect_volume(ray_origin, ray_dir);
-    let t_start = intersection.x;
+    let t_start = max(intersection.x, 0.0);
     let t_end = intersection.y;
     
     // Early exit if no intersection
@@ -151,16 +166,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let uv = uv_scaled + vec2<f32>(0.5, 0.5) + vec2<f32>(u_mip.pan_x, u_mip.pan_y);
     let uv_clamped = clamp(uv, vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0));
 
-    // For orthographic projection, all rays have the same direction
-    // Point rays into the volume (positive Z direction)
-    let ray_dir = vec3<f32>(0.0, 0.0, 1.0);
+    let center = vec3<f32>(0.5, 0.5, 0.5);
+    let base_ray_origin = vec3<f32>(uv_clamped.x, 1.0 - uv_clamped.y, - 0.5);
 
-    // Fixed ray generation for orthographic MIP
-    let ray_origin = vec3<f32>(uv_clamped.x, 1.0 - uv_clamped.y, 0.0);
-
-    // Use ray origin and direction directly in volume space
-    let volume_ray_origin = ray_origin;
-    let volume_ray_dir = ray_dir;
+    let volume_ray_origin = (u_mip.rotation * vec4<f32>(base_ray_origin - center, 1.0)).xyz + center;
+    let volume_ray_dir = normalize((u_mip.rotation * vec4<f32>(0.0, 0.0, 1.0, 0.0)).xyz);
     
     // Perform MIP ray marching
     let max_intensity = mip_ray_march(volume_ray_origin, volume_ray_dir);

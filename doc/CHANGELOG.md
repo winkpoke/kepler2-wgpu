@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-01-16T11-59-23
+- **Added MIP Spin Control (Roll/Yaw/Pitch)**
+  - Extended MIP uniforms to include a rotation matrix for GPU-side ray setup.
+  - Updated MIP shader to support rotated rays with ray-box intersection against the unit volume.
+  - Routed rotation control through App → AppView via a new user event for indexed MIP views.
+
 ## 2025-12-29T10-30-00
 - **Fixed MPR Slice Count Off-by-One Error**
   - **Critical Fix**: Modified `build_uv_base` in `src/core/geometry.rs` to use the full slice count (N) for the scaling matrix instead of N-1.
