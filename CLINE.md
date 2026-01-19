@@ -1,14 +1,18 @@
 <!-- OPENSPEC:START -->
 # OpenSpec Instructions
 
-See `@/AGENTS.md` for complete project guidance.
+These instructions are for AI assistants working in this project.
 
-For spec-driven development (proposals, changes, specs):
-→ `doc/agents/OPENSPEC.md`
+Always open `@/openspec/AGENTS.md` when the request:
+- Mentions planning or proposals (words like proposal, spec, change, plan)
+- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
+- Sounds ambiguous and you need the authoritative spec before coding
 
-**Quick Links**:
-- OpenSpec Workflow: `doc/agents/OPENSPEC.md`
-- Quick Reference: `doc/agents/QUICK_REFERENCE.md`
-- All Documentation: `doc/agents/README.md`
+Use `@/openspec/AGENTS.md` to learn:
+- How to create and apply change proposals
+- Spec format and conventions
+- Project structure and guidelines
+
+Keep this managed block so 'openspec update' can refresh the instructions.
 
 <!-- OPENSPEC:END -->

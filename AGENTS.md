@@ -1,3 +1,22 @@
+<!-- OPENSPEC:START -->
+# OpenSpec Instructions
+
+These instructions are for AI assistants working in this project.
+
+Always open `@/openspec/AGENTS.md` when the request:
+- Mentions planning or proposals (words like proposal, spec, change, plan)
+- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
+- Sounds ambiguous and you need the authoritative spec before coding
+
+Use `@/openspec/AGENTS.md` to learn:
+- How to create and apply change proposals
+- Spec format and conventions
+- Project structure and guidelines
+
+Keep this managed block so 'openspec update' can refresh the instructions.
+
+<!-- OPENSPEC:END -->
+
 # AI Agent Instructions for Kepler2-WGPU
 
 This is the main entry point for AI assistants. See `doc/agents/` for detailed guidance.
@@ -8,6 +27,8 @@ This is the main entry point for AI assistants. See `doc/agents/` for detailed g
 - **Architecture**: `doc/agents/ARCHITECTURE.md` - Module structure and dependencies
 - **Conventions**: `doc/agents/CONVENTIONS.md` - Coding standards and patterns
 - **Build & Test**: `doc/agents/BUILD.md` - Development workflow
+- **Test Strategy**: `doc/agents/test_strategy_comprehensive.md` - Medical software testing coverage and strategy
+- **Test Implementation Plan**: `doc/agents/test_implementation_plan.md` - Concrete test plan with file names, test counts, and effort estimates
 - **Rendering**: `doc/agents/RENDERING.md` - GPU and rendering patterns
 - **Common Pitfalls**: `doc/agents/PITFALLS.md` - Anti-patterns to avoid
 - **PR Guidelines**: `doc/agents/PR_GUIDELINES.md` - Contribution workflow
@@ -16,6 +37,8 @@ This is the main entry point for AI assistants. See `doc/agents/` for detailed g
 ### Quick Reference
 - **One-page cheat sheet**: `doc/agents/QUICK_REFERENCE.md` - Common commands at a glance
 - **Full documentation**: `doc/agents/README.md` - Complete navigation guide
+- **Test Coverage**: `doc/agents/test_strategy_comprehensive.md` - Medical software testing strategy
+- **Test Implementation**: `doc/agents/test_implementation_plan.md` - Concrete test plan with actionable tasks
 
 ## TL;DR
 
@@ -66,7 +89,11 @@ cargo check                                   # Type check
 ### Need more detail?
 See `doc/agents/README.md` for complete documentation guide and workflows.
 
+### Working on Test Coverage?
+- **Test Strategy**: `doc/agents/test_strategy_comprehensive.md` - Overall strategy and medical safety requirements
+- **Implementation Plan**: `doc/agents/test_implementation_plan.md` - Concrete tasks with file names, test counts, and effort estimates
+
 ---
 
-**Last Updated**: 2025-01-15
+**Last Updated**: 2026-01-18
 **Maintained By**: Sisyphus (AI Agent)
