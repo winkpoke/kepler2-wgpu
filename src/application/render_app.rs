@@ -244,15 +244,6 @@ impl RenderApp {
                     // Log at debug level to avoid flooding if called frequently
                     log::debug!("Mesh rotation delta: dx={:.3}, dy={:.3}", dx, dy);
                 }
-                #[cfg(target_arch = "wasm32")]
-                Event::UserEvent(UserEvent::GetMeshRotationQuat(index, sender)) => {
-                    let quat = state.get_mesh_rotation_quat();
-                    if let Err(_) = sender.send(quat) {
-                        log::error!("Failed to send GetMeshRotationQuat result for window {}", index);
-                    } else {
-                        log::info!("Sent GetMeshRotationQuat result for window {}: {:?}", index, quat);
-                    }
-                }
                 Event::UserEvent(UserEvent::ViewClick(view_index, screen_x, screen_y, screen_z)) => {
                     state.handle_view_click(view_index, screen_x, screen_y, screen_z);
                     log::info!("ViewClick processed for view {}: screen_x={screen_x}, screen_y={screen_y}, screen_z={screen_z}", view_index);

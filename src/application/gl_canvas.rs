@@ -270,23 +270,6 @@ impl GLCanvas {
             }
         }
     }
-
-    #[cfg(target_arch = "wasm32")]
-    pub async fn get_mesh_rotation_quat(&self, index: usize) -> Result<Box<[f32]>, String> {
-        let (tx, rx) = oneshot::channel();
-        
-        if let Err(e) = self.proxy.send_event(UserEvent::GetMeshRotationQuat(index, tx)) {
-            log::error!("Failed to send GetMeshRotationQuat event for window {}: {:?}", index, e);
-            return Err(format!("Failed to send event: {:?}", e));
-        }
-        
-        log::info!("Sent GetMeshRotationQuat event for window {}", index);
-        
-        match rx.await {
-            Ok(result) => Ok(result.into()),
-            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
-        }
-    }
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]

@@ -799,15 +799,6 @@ impl App {
         });
     }
 
-    pub fn get_mesh_rotation_quat(&self) -> [f32; 4] {
-        for view in self.app_view.layout.views().iter() {
-            if let Some(mesh_view) = view.as_any().downcast_ref::<crate::rendering::view::MeshView>() {
-                return mesh_view.get_rotation_quat();
-            }
-        }
-        [0.0, 0.0, 0.0, 0.0]
-    }
-
     /// Apply a rotation delta to the first MeshView using mouse movement (pixels).
     pub fn set_mesh_rotation_delta(&mut self, dx: f32, dy: f32) {
         self.apply_to_mesh_view(|mesh_view| {

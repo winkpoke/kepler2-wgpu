@@ -31,7 +31,7 @@
 
     main {
       display: grid;
-      grid-template-columns: 520px 1fr;
+      grid-template-columns: 340px 1fr 320px;
       gap: var(--gap);
       padding: var(--gap)
     }
@@ -60,7 +60,7 @@
     }
 
     input[type="number"] {
-      width: 120px;
+      width: 80px;
     }
 
     label {
@@ -123,7 +123,7 @@
 
     .grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       gap: 8px
     }
 
@@ -174,9 +174,6 @@
 </head>
 
 <body>
-  <header>
-    <h1>三维重建</h1>
-  </header>
   <main>
     <section class="card">
       <h2>1) 选择文件</h2>
@@ -200,21 +197,21 @@
           <legend>视图切换</legend>
           <div class="grid">
             <div>
-              <span id="mode-label">模式:</span>
+              <span id="mode-label">mode:</span></br>
               <input type="number" id="mode" step="1" value="0" min="0" max="1">
             </div>
             <div>
               <span id="index-label">index:</span>
-              <input type="number" id="index" step="1.0" value="0.0">
               <input type="checkbox" id="change_index" />
+              <input type="number" id="index" step="1.0" value="0.0">
             </div>
             <div>
               <span id="mipSpan">mip:</span>
-              <input type="number" id="mip" step="1.0" value="0.0">
               <input type="checkbox" id="change_mip" />
+              <input type="number" id="mip" step="1.0" value="0.0">
             </div>
             <div>
-              <span id="index-orientation-label">index-orientation:</span>
+              <span id="orientation-label">orientation:</span>
               <input type="number" id="index-orientation" step="1.0" value="0.0">
             </div>
           </div>
@@ -262,7 +259,49 @@
             <button id="ROI">截取</button>
           </div>
         </fieldset>
+      </div>
+    </section>
 
+    <section class="card">
+      <h2>2) 解析结果 </h2>
+      <div class="content">
+        <div class="kv small">
+          <div>Patient Position：</div>
+          <div id="PatientPosition" class="pill">未提供</div>
+          <div>Image Series：</div>
+          <div id="ImageSeries" class="pill">未提供</div>
+          <div>检测到的重建文件：</div>
+          <div id="mhxName" class="pill">未提供</div>
+          <div>体素维度 DimSize：</div>
+          <div id="dimSize">—</div>
+          <div>体素间距 Spacing：</div>
+          <div id="spacing">—</div>
+          <div>像素类型：</div>
+          <div id="elemType">—</div>
+          <button id="convertBtn">导出</button>
+          <select id="exportOptions" style="width: 400px">
+            <option value="dicom">导出当前序列DICOM</option>
+            <option value="mhx">导出重建文件</option>
+            <option value="png">导出当前选择的图像PNG</option>
+            <option value="pnglist">导出当前序列PNG</option>
+          </select>
+        </div>
+        <div class="scroll">
+          <h3 class="small">日志</h3>
+          <pre id="log" class="small"></pre>
+        </div>
+        <div style="margin-top:8px">
+          <progress id="progress" max="100" value="0"></progress>
+        </div>
+        <div id="tree-container"></div>
+        <div id="wasm-example"></div>
+        <div id="render_app"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>3) 视图操作</h2>
+      <div class="content">
         <fieldset class="pill" style="margin-bottom:10px">
           <legend>操作视图窗口</legend>
           <div class="row">
@@ -322,14 +361,18 @@
             <div>
               <label>Center</label>
               <div class="row">
-                <span id="center-x-label">x:</span>
                 <input type="number" id="center-x" step="0.1" value="0.0" placeholder="x">
-                <span id="center-y-label">y:</span>
                 <input type="number" id="center-y" step="0.1" value="0.0" placeholder="y">
-                <span id="center-z-label">z:</span>
                 <input type="number" id="center-z" step="0.1" value="0.0" placeholder="z">
               </div>
               <button id="set-center">应用</button>
+            </div>
+            <div>
+              <span id="mip-rotation-label">MIP旋转:</span>
+              <input type="number" id="mip-rotation-x" step="15" value="-90" min="0" max="360">
+              <input type="number" id="mip-rotation-y" step="15" value="0" min="0" max="360">
+              <input type="number" id="mip-rotation-z" step="15" value="0" min="0" max="360">
+              <button id="mip-submit-rot">旋转</button>
             </div>
           </div>
         </fieldset>
@@ -358,7 +401,6 @@
               <input type="number" id="3d-rotation-x" step="15" value="-90" min="0" max="360">
               <input type="number" id="3d-rotation-y" step="15" value="0" min="0" max="360">
               <input type="number" id="3d-rotation-z" step="15" value="0" min="0" max="360">
-              <button id="3d-submit-rot">旋转</button>
             </div>
           </div>
           <div class="row" style="margin-top:8px">
@@ -368,44 +410,8 @@
         </fieldset>
       </div>
     </section>
-
-    <section class="card">
-      <h2>2) 解析结果 </h2>
-      <div class="content">
-        <div class="kv small">
-          <div>Patient Position：</div>
-          <div id="PatientPosition" class="pill">未提供</div>
-          <div>Image Series：</div>
-          <div id="ImageSeries" class="pill">未提供</div>
-          <div>检测到的重建文件：</div>
-          <div id="mhxName" class="pill">未提供</div>
-          <div>体素维度 DimSize：</div>
-          <div id="dimSize">—</div>
-          <div>体素间距 Spacing：</div>
-          <div id="spacing">—</div>
-          <div>像素类型：</div>
-          <div id="elemType">—</div>
-          <button id="convertBtn">导出</button>
-          <select id="exportOptions" style="width: 400px">
-            <option value="dicom">导出当前序列DICOM</option>
-            <option value="mhx">导出重建文件</option>
-            <option value="png">导出当前选择的图像PNG</option>
-            <option value="pnglist">导出当前序列PNG</option>
-          </select>
-        </div>
-        <div class="scroll">
-          <h3 class="small">日志</h3>
-          <pre id="log" class="small"></pre>
-        </div>
-        <div style="margin-top:8px">
-          <progress id="progress" max="100" value="0"></progress>
-        </div>
-        <div id="tree-container"></div>
-        <div id="wasm-example"></div>
-        <div id="render_app"></div>
-      </div>
-    </section>
   </main>
+
   <script type="module">
     // ========= 日志函数 =========
     const log = (msg, level = "info") => {
@@ -745,19 +751,16 @@
       gl_canvas.set_mpr_mip_mode(mode, state.mip, state.mesh_index, state.index, index_orientation);
     });
 
-    byId('3d-submit-rot').addEventListener('click', () => {
+    byId('mip-submit-rot').addEventListener('click', () => {
       const indexValue = parseInt(byId('index-input').value, 10);
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
 
-      gl_canvas.set_mesh_rotation_enabled(indexValue, state.enable_rotation);
-
-      const rotation_x = parseFloat(byId('3d-rotation-x').value);
-      const rotation_y = parseFloat(byId('3d-rotation-y').value);
-      const rotation_z = parseFloat(byId('3d-rotation-z').value);
-      // gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
+      const rotation_x = parseFloat(byId('mip-rotation-x').value);
+      const rotation_y = parseFloat(byId('mip-rotation-y').value);
+      const rotation_z = parseFloat(byId('mip-rotation-z').value);
       gl_canvas.set_mip_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
     })
     
@@ -776,8 +779,9 @@
       const opacity = parseFloat(byId('3d-opacity').value);
       const rotation_x = parseFloat(byId('3d-rotation-x').value);
       const rotation_y = parseFloat(byId('3d-rotation-y').value);
+      const rotation_z = parseFloat(byId('3d-rotation-z').value);
 
-      console.log('3d-submit:', scale, pan_x, pan_y, opacity, rotation_x, rotation_y);
+      console.log('3d-submit:', scale, pan_x, pan_y, opacity, rotation_x, rotation_y, rotation_z);
       gl_canvas.set_mesh_scale(indexValue, scale);
       gl_canvas.set_mesh_pan(indexValue, pan_x, pan_y);
       if (typeof gl_canvas.set_mesh_opacity === 'function') {
@@ -786,12 +790,8 @@
         log('mesh opacity 方法未导出，已跳过', 'warn');
       }
       
-      gl_canvas.set_mesh_rotation_delta(indexValue, rotation_x, rotation_y);
-      gl_canvas.get_mesh_rotation_quat(indexValue).then((result) => {
-        console.log('rotation_quat:', result[0], result[1], result[2], result[3]);
-      }).catch((err) => {
-        console.error('get_mesh_rotation_quat error:', err);
-      });
+      // gl_canvas.set_mesh_rotation_delta(indexValue, rotation_x, rotation_y);
+      gl_canvas.set_mesh_rotation_delta(indexValue, rotation_x, rotation_y, rotation_z);
     });
 
     byId('3d-reset').addEventListener('click', () => {

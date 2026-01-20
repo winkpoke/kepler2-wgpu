@@ -6,7 +6,7 @@ use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::layout::compute_aspect_fit;
 use crate::rendering::view::View;
 use crate::data::volume_encoding::VolumeEncoding;
-use glam::{Mat4, Vec4, Vec3};
+use glam::{Mat4, Vec3};
 
 /// Function-level comment: Configuration for Maximum Intensity Projection (MIP) rendering.
 /// Provides fixed quality settings for the MVP implementation to minimize complexity
@@ -52,7 +52,6 @@ pub struct MipUniforms {
     // Window/Level for medical imaging
     pub window: f32,
     pub level: f32,
-
     pub pan_x: f32,
     pub pan_y: f32,
     pub scale: f32,
@@ -76,10 +75,6 @@ impl Default for MipUniforms {
             rotation: Mat4::IDENTITY.to_cols_array(),
         }
     }
-}
-
-fn build_rotation_matrix(roll: f32, yaw: f32, pitch: f32) -> Mat4 {
-    Mat4::from_rotation_z(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_x(pitch)
 }
 
 impl MipConfig {
@@ -361,6 +356,10 @@ impl MipView {
         &mut self.config
     }
 
+    pub fn build_rotation_matrix(roll: f32, yaw: f32, pitch: f32) -> Mat4 {
+        Mat4::from_rotation_z(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_x(pitch)
+    }
+
     /// Function-level comment: Update MIP view state and prepare for rendering.
     /// Currently minimal implementation for MVP.
     pub fn update(&mut self, queue: &wgpu::Queue) {
@@ -374,7 +373,7 @@ impl MipView {
         let (window, level) = crate::core::window_level::WindowLevel::DEFAULT_BONE;
 
         // Create uniforms with only the fields used in the shader
-        let rotation = build_rotation_matrix(
+        let rotation = Self::build_rotation_matrix(
             self.rotation_radians[0],
             self.rotation_radians[1],
             self.rotation_radians[2],
@@ -386,41 +385,20 @@ impl MipView {
         let d_vol = extent.depth_or_array_layers.max(1) as f32;
 
         // 3. Calculate Projected Bounding Box (cw, ch)
-        let hw = w_vol / 2.0;
-        let hh = h_vol / 2.0;
-        let hd = d_vol / 2.0;
-
-        let corners = [
-            Vec4::new(-hw, -hh, -hd, 1.0),
-            Vec4::new(hw, -hh, -hd, 1.0),
-            Vec4::new(-hw, hh, -hd, 1.0),
-            Vec4::new(hw, hh, -hd, 1.0),
-            Vec4::new(-hw, -hh, hd, 1.0),
-            Vec4::new(hw, -hh, hd, 1.0),
-            Vec4::new(-hw, hh, hd, 1.0),
-            Vec4::new(hw, hh, hd, 1.0),
-        ];
-
-        let mut min_x = f32::MAX;
-        let mut max_x = f32::MIN;
-        let mut min_y = f32::MAX;
-        let mut max_y = f32::MIN;
-
-        for corner in corners {
-            let rotated = rotation * corner;
-            min_x = min_x.min(rotated.x);
-            max_x = max_x.max(rotated.x);
-            min_y = min_y.min(rotated.y);
-            max_y = max_y.max(rotated.y);
-        }
-
-        let cw = (max_x - min_x).max(1.0);
-        let ch = (max_y - min_y).max(1.0);
+        // Use diagonal size to keep the view scale constant during rotation
+        let sz = self.config.slab_thickness;
+        let w_mm = w_vol * 1.0;
+        let h_mm = h_vol * 1.0;
+        let d_mm = d_vol * sz;
+        let diag = (w_mm * w_mm + h_mm * h_mm + d_mm * d_mm).sqrt();
+        let cw = diag;
+        let ch = diag;
         self.content_dimensions = (cw, ch);
 
         // 4. Construct Composite Matrix for Shader
-        let scale_viewport = Mat4::from_scale(Vec3::new(cw, ch, 1.0));
-        let scale_texture = Mat4::from_scale(Vec3::new(1.0/w_vol, 1.0/h_vol, 1.0/d_vol));
+        // Scale Z by cw (diagonal) as well to ensure the camera is placed outside the volume
+        let scale_viewport = Mat4::from_scale(Vec3::new(cw, ch, cw));
+        let scale_texture = Mat4::from_scale(Vec3::new(1.0/w_mm, 1.0/h_mm, 1.0/d_mm));
         let final_matrix = scale_texture * rotation * scale_viewport;
 
         let uniforms = MipUniforms {
@@ -518,18 +496,9 @@ impl MipView {
         log::info!("MIP mode set to {}", mode);
     }
 
-    pub fn set_rotation_radians(&mut self, roll: f32, yaw: f32, pitch: f32) {
-        self.rotation_radians = [roll, yaw, pitch];
-        log::info!(
-            "MIP rotation set (radians): roll={:.3}, yaw={:.3}, pitch={:.3}",
-            roll,
-            yaw,
-            pitch
-        );
-    }
-
     pub fn set_rotation_degrees(&mut self, roll_deg: f32, yaw_deg: f32, pitch_deg: f32) {
-        self.set_rotation_radians(roll_deg.to_radians(), yaw_deg.to_radians(), pitch_deg.to_radians());
+        let (roll, yaw, pitch) = (roll_deg.to_radians(), yaw_deg.to_radians(), pitch_deg.to_radians());
+        self.rotation_radians = [roll, yaw, pitch];
     }
 }
 
@@ -601,13 +570,13 @@ mod tests {
 
     #[test]
     fn test_build_rotation_matrix_identity() {
-        let m = build_rotation_matrix(0.0, 0.0, 0.0);
+        let m = MipView::build_rotation_matrix(0.0, 0.0, 0.0);
         assert_eq!(m, Mat4::IDENTITY);
     }
 
     #[test]
     fn test_build_rotation_matrix_roll_90() {
-        let m = build_rotation_matrix(FRAC_PI_2, 0.0, 0.0);
+        let m = MipView::build_rotation_matrix(FRAC_PI_2, 0.0, 0.0);
         let v = (m * glam::Vec4::new(1.0, 0.0, 0.0, 0.0)).truncate();
         assert!((v.x - 0.0).abs() < 1e-5);
         assert!((v.y - 1.0).abs() < 1e-5);
