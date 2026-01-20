@@ -9,11 +9,11 @@ pub mod camera;
 pub mod mesh_view;
 // pub mod mesh_render_context;
 pub mod basic_mesh_context;
+pub mod mesh_processing;
 pub mod mesh_texture_pool;
 pub mod performance;
-pub mod mesh_processing;
 
 // Re-export commonly used types for easier access
-pub use mesh_view::{MeshView, MeshRenderError};
 pub use basic_mesh_context::BasicMeshContext;
+pub use mesh_view::{MeshRenderError, MeshView};
 pub use performance::QualityLevel;

@@ -34,22 +34,44 @@ pub enum PixelData {
 
 impl PixelData {
     /// Creates pixel data from raw bytes with specified type
-    pub fn from_le_bytes(
-        bytes: &[u8], 
-        pixel_type: PixelType,
-    ) -> MedicalImagingResult<Self>{
+    pub fn from_le_bytes(bytes: &[u8], pixel_type: PixelType) -> MedicalImagingResult<Self> {
         match pixel_type {
             PixelType::UInt8 => Ok(Self::UInt8(bytes.to_vec())),
-            PixelType::UInt16 => Ok(Self::UInt16(bytes.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect())),
-            PixelType::Int16 => Ok(Self::Int16(bytes.chunks_exact(2).map(|c| i16::from_le_bytes([c[0], c[1]])).collect())),
-            PixelType::Int32 => Ok(Self::Int32(bytes.chunks_exact(4).map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect())),
-            PixelType::Float32 => Ok(Self::Float32(bytes.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect())),
-            PixelType::Float64 => Ok(Self::Float64(bytes.chunks_exact(8).map(|c| f64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])).collect())),
+            PixelType::UInt16 => Ok(Self::UInt16(
+                bytes
+                    .chunks_exact(2)
+                    .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                    .collect(),
+            )),
+            PixelType::Int16 => Ok(Self::Int16(
+                bytes
+                    .chunks_exact(2)
+                    .map(|c| i16::from_le_bytes([c[0], c[1]]))
+                    .collect(),
+            )),
+            PixelType::Int32 => Ok(Self::Int32(
+                bytes
+                    .chunks_exact(4)
+                    .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect(),
+            )),
+            PixelType::Float32 => Ok(Self::Float32(
+                bytes
+                    .chunks_exact(4)
+                    .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect(),
+            )),
+            PixelType::Float64 => Ok(Self::Float64(
+                bytes
+                    .chunks_exact(8)
+                    .map(|c| f64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
+                    .collect(),
+            )),
         }
     }
 
     /// Returns pixel data as byte slice
-    pub fn as_bytes(&self) -> &[u8]{
+    pub fn as_bytes(&self) -> &[u8] {
         match self {
             Self::UInt8(data) => data,
             Self::UInt16(data) => bytemuck::cast_slice(data),
@@ -61,17 +83,17 @@ impl PixelData {
     }
 
     /// Creates pixel data from raw bytes with specified type and applies slope/intercept
-    /// 
+    ///
     /// # Arguments
     /// * `raw_data` - Raw pixel data bytes
     /// * `pixel_type` - Type of pixel data
     /// * `voxel_count` - Number of voxels to process
     /// * `slope` - Slope value for scaling
     /// * `intercept` - Intercept value for scaling
-    /// 
+    ///
     /// # Returns
     /// * `MedicalImagingResult<Vec<i16>>` - Processed pixel data with applied slope/intercept
-    /// 
+    ///
     /// # Errors
     /// * `UnsupportedPixelType` - If pixel type is not Int16 or Float32
     pub fn create_pixel_data(
@@ -96,30 +118,56 @@ impl PixelData {
                     voxel_data.push(val);
                 }
             }
-            other => return Err(MedicalImagingError::UnsupportedPixelType{ pixel_type: format!("{:?}", other) }),
+            other => {
+                return Err(MedicalImagingError::UnsupportedPixelType {
+                    pixel_type: format!("{:?}", other),
+                })
+            }
         };
 
         for value in &mut voxel_data {
             if *value < -1024 {
-                    *value = -1024;
-                }
+                *value = -1024;
+            }
         }
 
         Ok(voxel_data)
     }
 
     /// Creates pixel data from raw bytes with specified type and endianness
-    pub fn from_be_bytes(
-        bytes: &[u8], 
-        pixel_type: PixelType,
-    ) -> MedicalImagingResult<Self>{
+    pub fn from_be_bytes(bytes: &[u8], pixel_type: PixelType) -> MedicalImagingResult<Self> {
         match pixel_type {
             PixelType::UInt8 => Ok(Self::UInt8(bytes.to_vec())),
-            PixelType::UInt16 => Ok(Self::UInt16(bytes.chunks_exact(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect())),
-            PixelType::Int16 => Ok(Self::Int16(bytes.chunks_exact(2).map(|c| i16::from_be_bytes([c[0], c[1]])).collect())),
-            PixelType::Int32 => Ok(Self::Int32(bytes.chunks_exact(4).map(|c| i32::from_be_bytes([c[0], c[1], c[2], c[3]])).collect())),
-            PixelType::Float32 => Ok(Self::Float32(bytes.chunks_exact(4).map(|c| f32::from_be_bytes([c[0], c[1], c[2], c[3]])).collect())),
-            PixelType::Float64 => Ok(Self::Float64(bytes.chunks_exact(8).map(|c| f64::from_be_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])).collect())),
+            PixelType::UInt16 => Ok(Self::UInt16(
+                bytes
+                    .chunks_exact(2)
+                    .map(|c| u16::from_be_bytes([c[0], c[1]]))
+                    .collect(),
+            )),
+            PixelType::Int16 => Ok(Self::Int16(
+                bytes
+                    .chunks_exact(2)
+                    .map(|c| i16::from_be_bytes([c[0], c[1]]))
+                    .collect(),
+            )),
+            PixelType::Int32 => Ok(Self::Int32(
+                bytes
+                    .chunks_exact(4)
+                    .map(|c| i32::from_be_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect(),
+            )),
+            PixelType::Float32 => Ok(Self::Float32(
+                bytes
+                    .chunks_exact(4)
+                    .map(|c| f32::from_be_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect(),
+            )),
+            PixelType::Float64 => Ok(Self::Float64(
+                bytes
+                    .chunks_exact(8)
+                    .map(|c| f64::from_be_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
+                    .collect(),
+            )),
         }
     }
 }

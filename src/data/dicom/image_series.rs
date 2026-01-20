@@ -1,8 +1,7 @@
-use anyhow::{Result, anyhow};
-use dicom_object::{FileDicomObject, InMemDicomObject};
-use crate::define_dicom_struct;
 use super::dicom_helper::get_value;
-
+use crate::define_dicom_struct;
+use anyhow::{anyhow, Result};
+use dicom_object::{FileDicomObject, InMemDicomObject};
 
 // Use the macro to define the ImageSeries struct
 define_dicom_struct!(ImageSeries, {

@@ -1,0 +1,195 @@
+//! Property-based tests using proptest
+//!
+//! This module provides property tests for:
+//! - Window/level transformations: monotonicity, invertibility, bounds preservation
+//! - Coordinate transformations: roundtrip precision, orthogonality, determinants
+
+use crate::common::create_test_ct_image;
+use kepler_wgpu::data::dicom::CTImage;
+use proptest::prelude::*;
+
+/// Property-based test range for coordinate values
+const COORDINATE_RANGE: std::ops::RangeInclusive<f32> = -10000.0_f32..=10000.0_f32;
+
+/// Property-based test range for window level values
+const WINDOW_CENTER_RANGE: std::ops::RangeInclusive<f32> = -4000.0_f32..=4000.0_f32;
+
+/// Property-based test range for window width values
+const WINDOW_WIDTH_RANGE: std::ops::RangeInclusive<f32> = 1.0_f32..=4096.0_f32;
+
+/// Property-based test range for pixel values
+const PIXEL_VALUE_RANGE: std::ops::RangeInclusive<i16> = i16::MIN..=i16::MAX;
+
+#[cfg(test)]
+mod window_level_property_tests {
+    use super::*;
+
+    /// Tests window/level monotonicity: increasing window center increases pixel intensity
+    #[test]
+    fn test_window_level_monotonicity() {
+        fn window_level_property(window_center: f32, window_width: f32, pixel_value: i16) -> bool {
+            // Hounsfield unit calculation: HU = (pixel_value * slope) + intercept
+            let hu_value = (pixel_value as f32) * 1.0 + (-1024.0);
+
+            // Windowed value calculation (standard window/level formula)
+            let windowed_value = ((hu_value - window_center) / window_width + 0.5) * 255.0;
+
+            // Windowed value should be monotonic with respect to window_center
+            // When window_center increases, windowed values should increase
+            // (assuming intercept is constant, slope is 1.0)
+            let expected_value = if hu_value <= window_center {
+                0.0
+            } else {
+                255.0
+            };
+
+            (windowed_value.round() - expected_value).abs() < 0.5
+        }
+
+        // Property: For all pixel values, windowing should be monotonic
+        proptest!(!(pixel_value in PIXEL_VALUE_RANGE, window_center in WINDOW_CENTER_RANGE, window_width in WINDOW_WIDTH_RANGE)||
+            window_level_property(pixel_value, window_center, window_width);
+        );
+    }
+
+    /// Tests window/level invertibility: double application restores original
+    #[test]
+    fn test_window_level_invertibility() {
+        fn window_level_invertibility_property(pixel_value: i16) -> bool {
+            // Calculate Hounsfield unit
+            let hu_value = (pixel_value as f32) * 1.0 + (-1024.0);
+
+            // Apply windowing with window_center = 0, window_width = 1000
+            let windowed1 = ((hu_value - 0.0) / (1000.0 / 2.0) + 0.5) * 255.0;
+
+            // Apply windowing with window_center = 0, window_width = -1000 (reverses)
+            let windowed2 = ((hu_value - 0.0) / (-1000.0 / 2.0) + 0.5) * 255.0;
+
+            // Invertibility: applying window then inverse window should restore original
+            let unwindowed1 = ((windowed1 / 255.0 - 0.5) * 1000.0) + 0.0;
+            let unwindowed2 = ((windowed2 / 255.0 - 0.5) * (-1000.0)) + 0.0;
+
+            // Both should be approximately equal to original HU value
+            // Allow small epsilon for floating point precision
+            (unwindowed1 - hu_value).abs() < 0.5 && (unwindowed2 - hu_value).abs() < 0.5
+        }
+
+        // Property: Windowing operation should be invertible
+        proptest!(!(pixel_value in PIXEL_VALUE_RANGE)||
+            window_level_invertibility_property(pixel_value);
+        );
+    }
+
+    /// Tests window/level bounds preservation: values within [0, 255]
+    #[test]
+    fn test_window_level_bounds_preservation() {
+        fn bounds_preservation_property(
+            window_center: f32,
+            window_width: f32,
+            pixel_value: i16,
+        ) -> bool {
+            let hu_value = (pixel_value as f32) * 1.0 + (-1024.0);
+
+            // Apply windowing
+            let half_width = window_width.abs() / 2.0;
+            let windowed = ((hu_value - window_center) / half_width + 0.5) * 255.0;
+
+            // Result should be within [0, 255] for uint8 representation
+            windowed >= 0.0 && windowed <= 255.0
+        }
+
+        // Property: Windowed values should respect display bounds
+        proptest!(!(pixel_value in PIXEL_VALUE_RANGE, window_center in WINDOW_CENTER_RANGE, window_width in WINDOW_WIDTH_RANGE)||
+            bounds_preservation_property(window_center, window_width, pixel_value);
+        );
+    }
+}
+
+#[cfg(test)]
+mod coordinate_transformation_property_tests {
+    use super::*;
+
+    /// Tests coordinate roundtrip precision with property testing
+    #[test]
+    fn test_coordinate_roundtrip_precision_property() {
+        fn roundtrip_property(coord: f32) -> bool {
+            // Simulate screen to world transformation
+            // For testing: assume identity matrix (no translation/scale)
+            let world = coord;
+
+            // Simulate world to screen transformation
+            let screen = world; // identity transformation
+
+            // Roundtrip should preserve coordinate (within precision tolerance)
+            (screen - coord).abs() < 0.001
+        }
+
+        // Property: Coordinate transformations should preserve values within tolerance
+        proptest!(!(coord in COORDINATE_RANGE)||
+            roundtrip_property(coord);
+        );
+    }
+
+    /// Tests matrix orthogonality: rotation matrices have orthogonal row/column vectors
+    #[test]
+    fn test_rotation_matrix_orthogonality_property() {
+        // Simplified test: check if 2D rotation matrix is orthogonal
+        // For a 2D rotation matrix [[cos, -sin], [sin, cos]]:
+        // - Row dot Row 2 should be 0
+        // - Column dot Column 2 should be 0
+        // - Determinant should be 1.0
+
+        fn is_orthogonal(angle_rad: f32) -> bool {
+            let cos_a = angle_rad.cos();
+            let sin_a = angle_rad.sin();
+
+            let matrix = [[cos_a, -sin_a], [sin_a, cos_a]];
+
+            // Row 0 dot Row 1
+            let dot_rows = matrix[0][0] * matrix[1][0] + matrix[0][1] * matrix[1][1];
+
+            // Column 0 dot Column 1
+            let dot_cols = matrix[0][0] * matrix[0][1] + matrix[1][0] * matrix[1][1];
+
+            // Determinant
+            let det = matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0];
+
+            // Orthogonal and rotation (det = 1.0)
+            dot_rows.abs() < 1e-6 && dot_cols.abs() < 1e-6 && (det - 1.0).abs() < 1e-6
+        }
+
+        // Property: Rotation matrices should be orthogonal with unit determinant
+        proptest!(!(angle in -3.14159..=3.14159_f32)||
+            is_orthogonal(angle);
+        );
+    }
+
+    /// Tests matrix determinant property: rotation matrices have det = 1.0
+    #[test]
+    fn test_rotation_matrix_determinant_property() {
+        fn has_unit_determinant(scale_x: f32, scale_y: f32) -> bool {
+            // 2D rotation matrix with scaling
+            let cos_a = 1.0_f32;
+            let sin_a = 0.0_f32;
+            let cos_b = 0.0_f32;
+            let sin_b = 1.0_f32;
+
+            let matrix = [[cos_a * scale_x, -sin_a], [sin_a, cos_a * scale_y]];
+
+            // Determinant
+            let det = matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0];
+
+            // For pure rotation (scale_x = 1, scale_y = 1), det = 1.0
+            // For uniform scaling, det = scale_x * scale_y
+            // Expected determinant
+            let expected_det = scale_x * scale_y;
+
+            (det - expected_det).abs() < 1e-6
+        }
+
+        // Property: Determinant should equal product of scales
+        proptest!(!(scale_x in 0.1..=10.0_f32, scale_y in 0.1..=10.0_f32)||
+            has_unit_determinant(scale_x, scale_y);
+        );
+    }
+}

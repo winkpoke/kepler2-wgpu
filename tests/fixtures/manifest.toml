@@ -1,0 +1,34 @@
+# Test Fixture Manifest
+# Versioned DICOM datasets for reproducible testing
+
+[manifest]
+version = "1.0.0"
+description = "Medical imaging test fixtures for Kepler2-WGPU"
+
+[[fixtures]]
+name = "v001_valid_dicom.dcm"
+description = "Valid CT DICOM with all mandatory fields"
+format = "DICOM"
+size_bytes = 512 * 512 * 2
+
+[[fixtures]]
+name = "v002_invalid_uid.dcm"
+description = "DICOM missing SOPInstanceUID - should fail validation"
+format = "DICOM"
+size_bytes = 512 * 512 * 2
+
+[[fixtures]]
+name = "v003_invalid_rescale.dcm"
+description = "DICOM with zero rescale slope - division by zero risk"
+format = "DICOM"
+size_bytes = 512 * 512 * 2
+
+[[fixtures]]
+name = "v004_malformed.dcm"
+description = "Malformed DICOM with truncated pixel data"
+format = "DICOM"
+size_bytes = 512 * 512
+
+[compatibility]
+# Minimum version of fixture format supported
+min_manifest_version = "1.0.0"

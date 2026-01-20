@@ -1,12 +1,12 @@
 #![allow(dead_code)]
 
-use std::{any::Any, sync::Arc};
-use wgpu::{Device, Queue, RenderPipeline, BindGroupLayout, BindGroup, Buffer, BufferUsages};
-use crate::rendering::view::render_content::RenderContent;
-use crate::rendering::view::layout::compute_aspect_fit;
-use crate::rendering::view::View;
 use crate::data::volume_encoding::VolumeEncoding;
 use glam::{Mat4, Vec3};
+use crate::rendering::view::layout::compute_aspect_fit;
+use crate::rendering::view::render_content::RenderContent;
+use crate::rendering::view::View;
+use std::{any::Any, sync::Arc};
+use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, Queue, RenderPipeline};
 
 /// Function-level comment: Configuration for Maximum Intensity Projection (MIP) rendering.
 /// Provides fixed quality settings for the MVP implementation to minimize complexity
@@ -43,12 +43,12 @@ pub struct MipUniforms {
     // Ray marching parameters
     pub ray_step_size: f32,
     pub max_steps: f32,
-    
+
     // Texture format parameters (reused from existing logic)
     pub is_packed_rg8: f32,
     /// Bias used to decode packed RG8 back to raw HU
     pub bias: f32,
-    
+
     // Window/Level for medical imaging
     pub window: f32,
     pub level: f32,
@@ -64,7 +64,7 @@ impl Default for MipUniforms {
         Self {
             ray_step_size: 0.01,
             max_steps: 512.0,
-            is_packed_rg8: 1.0,  // Default to packed format
+            is_packed_rg8: 1.0, // Default to packed format
             bias: VolumeEncoding::DEFAULT_HU_OFFSET,
             window: 1500.0,
             level: 400.0,
@@ -100,48 +100,48 @@ impl MipRenderContext {
     pub fn new(device: &Device, surface_format: wgpu::TextureFormat) -> Self {
         // Create bind group layout for texture resources (group 0)
         // This layout is compatible with RenderContent texture binding
-        let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("MIP Texture Bind Group Layout"),
-            entries: &[
-                // Texture binding
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: wgpu::TextureViewDimension::D3,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("MIP Texture Bind Group Layout"),
+                entries: &[
+                    // Texture binding
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D3,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                // Sampler binding
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
+                    // Sampler binding
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
 
         // Create bind group layout for uniforms (group 1)
-        let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("MIP Uniform Bind Group Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
+        let uniform_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("MIP Uniform Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
-                        min_binding_size: std::num::NonZeroU64::new(std::mem::size_of::<MipUniforms>() as u64),
+                        min_binding_size: std::num::NonZeroU64::new(
+                            std::mem::size_of::<MipUniforms>() as u64,
+                        ),
                     },
                     count: None,
-                },
-            ],
-        });
-
-
+                }],
+            });
 
         // Load MIP shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -157,43 +157,45 @@ impl MipRenderContext {
         });
 
         // Create render pipeline
-        let pipeline = Arc::new(device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("MIP Render Pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let pipeline = Arc::new(
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("MIP Render Pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: surface_format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleStrip,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: None,
+                    unclipped_depth: false,
+                    polygon_mode: wgpu::PolygonMode::Fill,
+                    conservative: false,
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
+                multiview: None,
+                cache: None,
             }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                unclipped_depth: false,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-            cache: None,
-        }));
+        );
 
         Self {
             texture_bind_group_layout,
@@ -204,7 +206,11 @@ impl MipRenderContext {
 
     /// Function-level comment: Create a bind group for the given RenderContent.
     /// Binds the texture and sampler from RenderContent to the MIP pipeline.
-    pub fn create_texture_bind_group(&self, device: &Device, render_content: &RenderContent) -> BindGroup {
+    pub fn create_texture_bind_group(
+        &self,
+        device: &Device,
+        render_content: &RenderContent,
+    ) -> BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("MIP Texture Bind Group"),
             layout: &self.texture_bind_group_layout,
@@ -227,16 +233,13 @@ impl MipRenderContext {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("MIP Uniform Bind Group"),
             layout: &self.uniform_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform_buffer.as_entire_binding(),
-                },
-            ],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
         })
     }
 }
-
 
 pub struct MipViewWgpuImpl {
     /// Shared render content from existing MPR views
@@ -254,14 +257,27 @@ pub struct MipViewWgpuImpl {
 impl MipViewWgpuImpl {
     /// Function-level comment: Create a new MIP view using existing RenderContent.
     /// Accepts Arc<RenderContent> from MPR views to enable zero-copy texture sharing.
-    pub fn new(render_content: Arc<RenderContent>, device: &Device, surface_format: wgpu::TextureFormat) -> Self {
-        log::info!("[MIP_NEW] Creating MipView with surface format: {:?}", surface_format);
-        log::info!("[MIP_NEW] RenderContent texture format: {:?}", render_content.texture_format);
-        log::info!("[MIP_NEW] RenderContent texture size: {:?}", render_content.texture.size());
-        
+    pub fn new(
+        render_content: Arc<RenderContent>,
+        device: &Device,
+        surface_format: wgpu::TextureFormat,
+    ) -> Self {
+        log::info!(
+            "[MIP_NEW] Creating MipView with surface format: {:?}",
+            surface_format
+        );
+        log::info!(
+            "[MIP_NEW] RenderContent texture format: {:?}",
+            render_content.texture_format
+        );
+        log::info!(
+            "[MIP_NEW] RenderContent texture size: {:?}",
+            render_content.texture.size()
+        );
+
         let render_context = MipRenderContext::new(device, surface_format);
         let texture_bind_group = render_context.create_texture_bind_group(device, &render_content);
-        
+
         // Create uniform buffer
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("MIP Uniform Buffer"),
@@ -278,7 +294,7 @@ impl MipViewWgpuImpl {
             uniform_buffer,
         }
     }
-    
+
     /// Function-level comment: Get reference to the shared render content.
     pub fn render_content(&self) -> &Arc<RenderContent> {
         &self.render_content
@@ -304,8 +320,6 @@ impl MipViewWgpuImpl {
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[*uniforms]));
     }
 }
-
-
 
 /// Function-level comment: MIP view that integrates with the existing RenderContent architecture.
 /// Provides Maximum Intensity Projection rendering while reusing texture data from MPR views
@@ -364,7 +378,7 @@ impl MipView {
     /// Currently minimal implementation for MVP.
     pub fn update(&mut self, queue: &wgpu::Queue) {
         log::trace!("[MIP_UPDATE] Starting MIP update");
-        
+
         // Derive texture format flag for shader decoding
         let decode_params = self.wgpu_impl.render_content().decode_parameters();
 
@@ -402,8 +416,8 @@ impl MipView {
         let final_matrix = scale_texture * rotation * scale_viewport;
 
         let uniforms = MipUniforms {
-            ray_step_size: 0.005,  // Smaller step size for better quality
-            max_steps: 1000.0,     // More steps to ensure we traverse the volume
+            ray_step_size: 0.005, // Smaller step size for better quality
+            max_steps: 1000.0,    // More steps to ensure we traverse the volume
             is_packed_rg8: decode_params.is_packed_flag as f32,
             bias: decode_params.bias,
             window,
@@ -426,13 +440,15 @@ impl MipView {
 
     /// Function-level comment: Render MIP view using ray casting with the configured pipeline.
     /// Sets viewport, binds pipeline and resources, then draws a fullscreen quad for ray casting.
-    pub fn render(
-        &mut self,
-        render_pass: &mut wgpu::RenderPass,
-    ) -> Result<(), wgpu::SurfaceError> {
-        log::trace!("[MIP_RENDER] Starting MIP render at ({}, {}) with size {}x{}",
-                   self.position.0, self.position.1, self.dimensions.0, self.dimensions.1);
-        
+    pub fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
+        log::trace!(
+            "[MIP_RENDER] Starting MIP render at ({}, {}) with size {}x{}",
+            self.position.0,
+            self.position.1,
+            self.dimensions.0,
+            self.dimensions.1
+        );
+
         // Set the MIP render pipeline
         render_pass.set_pipeline(&self.wgpu_impl.render_context().pipeline);
 
@@ -509,10 +525,7 @@ impl crate::rendering::view::Renderable for MipView {
     }
 
     /// Function-level comment: Bridge trait implementation to call inherent render method.
-    fn render(
-        &mut self,
-        render_pass: &mut wgpu::RenderPass,
-    ) -> Result<(), wgpu::SurfaceError> {
+    fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
         MipView::render(self, render_pass)
     }
 }
@@ -615,11 +628,11 @@ mod tests {
     fn test_mip_view_trait_methods() {
         // This test would require a full WGPU setup for complete testing
         // For MVP, we test the basic structure
-        
+
         // Test default position and dimensions
         let default_pos = (0, 0);
         let default_dim = (512, 512);
-        
+
         // Verify reasonable defaults
         assert_eq!(default_pos.0, 0);
         assert_eq!(default_pos.1, 0);
@@ -633,14 +646,23 @@ mod tests {
     fn test_mip_render_context_structure() {
         // For MVP, test the basic structure requirements
         // Full GPU testing would require device setup
-        
+
         // Test that we can create the basic configuration
         let config = MipConfig::new();
-        
+
         // Verify the configuration is suitable for rendering
-        assert!(config.ray_step_size > 0.0, "Ray step size must be positive for ray marching");
-        assert!(config.max_steps > 10, "Need sufficient steps for quality rendering");
-        assert!(config.max_steps < 2048, "Too many steps would hurt performance");
+        assert!(
+            config.ray_step_size > 0.0,
+            "Ray step size must be positive for ray marching"
+        );
+        assert!(
+            config.max_steps > 10,
+            "Need sufficient steps for quality rendering"
+        );
+        assert!(
+            config.max_steps < 2048,
+            "Too many steps would hurt performance"
+        );
     }
 
     /// Function-level comment: Test MIP integration with RenderContent architecture.
@@ -651,11 +673,11 @@ mod tests {
         let test_value = 42u32;
         let shared_value = Arc::new(test_value);
         let value_clone = Arc::clone(&shared_value);
-        
+
         // Verify Arc sharing works correctly
         assert_eq!(Arc::strong_count(&shared_value), 2);
         assert_eq!(*value_clone, *shared_value);
-        
+
         // Test that we can create the data structures needed for RenderContent
         let test_data = vec![128u8; 64 * 64 * 64 * 2]; // Small test volume
         assert_eq!(test_data.len(), 64 * 64 * 64 * 2);

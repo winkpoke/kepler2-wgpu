@@ -1,8 +1,8 @@
-use std::collections::HashMap;
-use ndarray::{Array3, s, ArrayView3};
-use std::f64::consts::PI;
+use ndarray::{s, Array3, ArrayView3};
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
+use std::collections::HashMap;
+use std::f64::consts::PI;
 
 // --- 1. Optimized Merge Vertices (Sort-based, Low Memory) ---
 pub fn merge_vertices(
@@ -10,7 +10,7 @@ pub fn merge_vertices(
     faces: &[[usize; 3]],
 ) -> (Vec<[f32; 3]>, Vec<[usize; 3]>) {
     println!("Merging vertices (Sort-based)...");
-    
+
     // Create indices 0..N
     let mut indices: Vec<usize> = (0..vertices.len()).collect();
 
@@ -28,7 +28,7 @@ pub fn merge_vertices(
     let mut unique_vertices = Vec::new();
     // Map from old_index -> new_index
     let mut index_map = vec![0usize; vertices.len()];
-    
+
     if !indices.is_empty() {
         // First one
         let first_idx = indices[0];
@@ -40,9 +40,9 @@ pub fn merge_vertices(
         let mut last_bits = [v0[0].to_bits(), v0[1].to_bits(), v0[2].to_bits()];
 
         for &orig_idx in &indices[1..] {
-             let v = vertices[orig_idx];
-             let current_bits = [v[0].to_bits(), v[1].to_bits(), v[2].to_bits()];
-            
+            let v = vertices[orig_idx];
+            let current_bits = [v[0].to_bits(), v[1].to_bits(), v[2].to_bits()];
+
             if current_bits == last_bits {
                 // Duplicate
                 index_map[orig_idx] = current_unique_idx;
@@ -62,7 +62,11 @@ pub fn merge_vertices(
         .map(|f| [index_map[f[0]], index_map[f[1]], index_map[f[2]]])
         .collect();
 
-    println!("Merged {} -> {} vertices", vertices.len(), unique_vertices.len());
+    println!(
+        "Merged {} -> {} vertices",
+        vertices.len(),
+        unique_vertices.len()
+    );
     (unique_vertices, new_faces)
 }
 
@@ -84,9 +88,10 @@ pub fn laplacian_smooth(
 
     // Pre-calculate which vertices are pinned
     // Using a simple bool mapping might be faster than checking Z every iter
-    let is_pinned: Vec<bool> = current_vertices.iter().map(|v| {
-        pinned_zs.iter().any(|&z_pin| (v[2] - z_pin).abs() < 1e-3)
-    }).collect();
+    let is_pinned: Vec<bool> = current_vertices
+        .iter()
+        .map(|v| pinned_zs.iter().any(|&z_pin| (v[2] - z_pin).abs() < 1e-3))
+        .collect();
 
     // Pre-allocate buffers once
     let mut moves = vec![[0.0f32; 3]; num_verts];
@@ -104,7 +109,9 @@ pub fn laplacian_smooth(
             let ic = face[2];
 
             // Ignore degenerate triangles within index bounds
-            if ia == ib || ib == ic || ia == ic { continue; }
+            if ia == ib || ib == ic || ia == ic {
+                continue;
+            }
 
             let pa = current_vertices[ia];
             let pb = current_vertices[ib];
@@ -167,14 +174,15 @@ pub fn downsample_mesh(
         return (vertices.to_vec(), faces.to_vec());
     }
     if grid_size <= 1e-6 {
-         return (vertices.to_vec(), faces.to_vec());
+        return (vertices.to_vec(), faces.to_vec());
     }
 
     println!("Downsampling mesh (with pinning)...");
 
-    let is_pinned: Vec<bool> = vertices.iter().map(|v| {
-        pinned_zs.iter().any(|&z_pin| (v[2] - z_pin).abs() < 1e-3)
-    }).collect();
+    let is_pinned: Vec<bool> = vertices
+        .iter()
+        .map(|v| pinned_zs.iter().any(|&z_pin| (v[2] - z_pin).abs() < 1e-3))
+        .collect();
 
     let mut cell_map: HashMap<[i32; 3], Vec<usize>> = HashMap::new();
     let mut new_vertices = Vec::new();
@@ -210,12 +218,8 @@ pub fn downsample_mesh(
             sum_pos[2] += p[2];
         }
         let count = indices.len() as f32;
-        let centroid = [
-            sum_pos[0] / count,
-            sum_pos[1] / count,
-            sum_pos[2] / count,
-        ];
-        
+        let centroid = [sum_pos[0] / count, sum_pos[1] / count, sum_pos[2] / count];
+
         let new_idx = new_vertices.len();
         new_vertices.push(centroid);
 
@@ -232,7 +236,7 @@ pub fn downsample_mesh(
         let idx2 = old_to_new[face[2]];
 
         if idx0 != usize::MAX && idx1 != usize::MAX && idx2 != usize::MAX {
-             if idx0 != idx1 && idx1 != idx2 && idx0 != idx2 {
+            if idx0 != idx1 && idx1 != idx2 && idx0 != idx2 {
                 new_faces.push([idx0, idx1, idx2]);
             }
         }
@@ -240,7 +244,6 @@ pub fn downsample_mesh(
 
     (new_vertices, new_faces)
 }
-
 
 pub struct MarchingTetrahedra {
     min: i16,
@@ -253,7 +256,14 @@ impl MarchingTetrahedra {
     }
 
     /// Interpolate along an edge and return f32 position.
-    fn interpolate_vertex(&self, p1: [f64; 3], p2: [f64; 3], v1: i16, v2: i16, target_threshold: i16) -> [f32; 3] {
+    fn interpolate_vertex(
+        &self,
+        p1: [f64; 3],
+        p2: [f64; 3],
+        v1: i16,
+        v2: i16,
+        target_threshold: i16,
+    ) -> [f32; 3] {
         let v1 = v1 as f64;
         let v2 = v2 as f64;
         let t = target_threshold as f64;
@@ -276,34 +286,50 @@ impl MarchingTetrahedra {
     }
 
     /// Extract isosurface using marching tetrahedra, output f32 vertices.
-    pub fn extract_surface(&self, volume: &ndarray::ArrayView3<i16>, spacing: (f64, f64, f64), offset: [usize; 3], z_range: std::ops::Range<usize>) -> (Vec<[f32; 3]>, Vec<[usize; 3]>) {
+    pub fn extract_surface(
+        &self,
+        volume: &ndarray::ArrayView3<i16>,
+        spacing: (f64, f64, f64),
+        offset: [usize; 3],
+        z_range: std::ops::Range<usize>,
+    ) -> (Vec<[f32; 3]>, Vec<[usize; 3]>) {
         let (depth, height, width) = volume.dim();
         let (spacing_z, spacing_y, spacing_x) = spacing;
-        
+
         // Ensure range is within bounds
         let start_z = z_range.start.max(0);
-        let end_z = z_range.end.min(depth - 1); 
+        let end_z = z_range.end.min(depth - 1);
 
         // Parallelize over Z slices (native), fallback to sequential on WASM
         #[cfg(not(target_arch = "wasm32"))]
-        let all_vertices: Vec<[f32; 3]> = (start_z..end_z).into_par_iter().flat_map(|z| {
-            self.process_slice(volume, z, width, height, spacing_x, spacing_y, spacing_z, offset)
-        }).collect();
+        let all_vertices: Vec<[f32; 3]> = (start_z..end_z)
+            .into_par_iter()
+            .flat_map(|z| {
+                self.process_slice(
+                    volume, z, width, height, spacing_x, spacing_y, spacing_z, offset,
+                )
+            })
+            .collect();
 
         #[cfg(target_arch = "wasm32")]
-        let all_vertices: Vec<[f32; 3]> = (start_z..end_z).into_iter().flat_map(|z| {
-            self.process_slice(volume, z, width, height, spacing_x, spacing_y, spacing_z, offset)
-        }).collect();
+        let all_vertices: Vec<[f32; 3]> = (start_z..end_z)
+            .into_iter()
+            .flat_map(|z| {
+                self.process_slice(
+                    volume, z, width, height, spacing_x, spacing_y, spacing_z, offset,
+                )
+            })
+            .collect();
 
         log::debug!("Generated {} vertices", all_vertices.len());
-        
+
         let num_triangles = all_vertices.len() / 3;
         let faces: Vec<[usize; 3]> = (0..num_triangles)
             .map(|i| [i * 3, i * 3 + 1, i * 3 + 2])
             .collect();
 
         log::debug!("Generated {} triangles", faces.len());
-        
+
         (all_vertices, faces)
     }
 
@@ -319,7 +345,7 @@ impl MarchingTetrahedra {
         offset: [usize; 3],
     ) -> Vec<[f32; 3]> {
         let mut local_vertices = Vec::new();
-            
+
         for y in 0..height - 1 {
             for x in 0..width - 1 {
                 let v0 = volume[[z, y, x]];
@@ -334,8 +360,12 @@ impl MarchingTetrahedra {
                 let cube_values = [v0, v1, v2, v3, v4, v5, v6, v7];
 
                 let tetrahedrons = [
-                    [0, 1, 3, 5], [1, 2, 3, 5], [2, 3, 5, 6],
-                    [0, 3, 4, 5], [3, 4, 5, 7], [3, 5, 6, 7],
+                    [0, 1, 3, 5],
+                    [1, 2, 3, 5],
+                    [2, 3, 5, 6],
+                    [0, 3, 4, 5],
+                    [3, 4, 5, 7],
+                    [3, 5, 6, 7],
                 ];
 
                 for tetra_indices in tetrahedrons {
@@ -355,29 +385,37 @@ impl MarchingTetrahedra {
                     }
 
                     let edges = &TETRA_TABLE[tetra_index];
-                    
+
                     for i in (0..6).step_by(3) {
                         if edges[i] == -1 {
                             break;
                         }
 
                         let e1 = edges[i] as usize;
-                        let e2 = edges[i+1] as usize;
-                        let e3 = edges[i+2] as usize;
+                        let e2 = edges[i + 1] as usize;
+                        let e3 = edges[i + 2] as usize;
 
                         for &edge_idx in &[e1, e2, e3] {
                             let (v1_local, v2_local) = TETRA_EDGE_VERTICES[edge_idx];
                             let v1_cube_idx = t_indices[v1_local];
                             let v2_cube_idx = t_indices[v2_local];
-                            
+
                             let get_pos = |idx| {
-                                let dx = if idx == 1 || idx == 2 || idx == 5 || idx == 6 { 1.0 } else { 0.0 };
-                                let dy = if idx == 2 || idx == 3 || idx == 6 || idx == 7 { 1.0 } else { 0.0 };
+                                let dx = if idx == 1 || idx == 2 || idx == 5 || idx == 6 {
+                                    1.0
+                                } else {
+                                    0.0
+                                };
+                                let dy = if idx == 2 || idx == 3 || idx == 6 || idx == 7 {
+                                    1.0
+                                } else {
+                                    0.0
+                                };
                                 let dz = if idx >= 4 { 1.0 } else { 0.0 };
                                 [
                                     (x as f64 + offset[0] as f64 + dx) * spacing_x,
                                     (y as f64 + offset[1] as f64 + dy) * spacing_y,
-                                    (z as f64 + offset[2] as f64 + dz) * spacing_z
+                                    (z as f64 + offset[2] as f64 + dz) * spacing_z,
                                 ]
                             };
 
@@ -391,13 +429,27 @@ impl MarchingTetrahedra {
                             let is_v1_inside = val1 >= self.min && val1 <= self.max;
                             let target_threshold = if is_v1_inside {
                                 // v1 inside, v2 outside
-                                if val2 < self.min { self.min } else { self.max }
+                                if val2 < self.min {
+                                    self.min
+                                } else {
+                                    self.max
+                                }
                             } else {
                                 // v2 inside, v1 outside
-                                if val1 < self.min { self.min } else { self.max }
+                                if val1 < self.min {
+                                    self.min
+                                } else {
+                                    self.max
+                                }
                             };
 
-                            local_vertices.push(self.interpolate_vertex(p1, p2, val1, val2, target_threshold));
+                            local_vertices.push(self.interpolate_vertex(
+                                p1,
+                                p2,
+                                val1,
+                                val2,
+                                target_threshold,
+                            ));
                         }
                     }
                 }
@@ -440,11 +492,11 @@ const TETRA_TABLE: [[i8; 7]; 16] = [
 ];
 
 /// Applies a Gaussian filter to a 3D volume.
-/// 
+///
 /// # Arguments
 /// * `volume` - The input 3D volume (i16).
 /// * `sigma` - The standard deviation of the Gaussian kernel.
-/// 
+///
 /// # Returns
 /// A new 3D volume with the filter applied.
 pub fn apply_gaussian_filter(volume: Array3<i16>, sigma: f32) -> Array3<i16> {
@@ -454,7 +506,7 @@ pub fn apply_gaussian_filter(volume: Array3<i16>, sigma: f32) -> Array3<i16> {
 
     let kernel = create_gaussian_kernel(sigma);
     let (depth, rows, cols) = volume.dim();
-    
+
     // 1. Convert to f32 and FREE original i16 memory immediately
     // usage: ~700MB (f32) instead of ~350MB(i16) + ~700MB(f32)
     let mut current_buffer = volume.mapv(|v| v as f32);
@@ -541,7 +593,7 @@ fn convolve_1d(data: &[f32], kernel: &[f32]) -> Vec<f32> {
         for j in 0..k_len {
             let k_idx = j as isize - radius as isize;
             let d_idx = i as isize + k_idx;
-            
+
             // Mirror boundary conditions
             let val = if d_idx < 0 {
                 data[(-d_idx) as usize]
@@ -550,7 +602,7 @@ fn convolve_1d(data: &[f32], kernel: &[f32]) -> Vec<f32> {
             } else {
                 data[d_idx as usize]
             };
-            
+
             sum += val * kernel[j];
         }
         result[i] = sum;
@@ -575,9 +627,9 @@ mod tests {
         let faces = vec![[0, 1, 2]];
         let pinned_zs = vec![0.0];
         let grid_size = 1.0;
-        
+
         let (new_verts, _) = downsample_mesh(&vertices, &faces, grid_size, &pinned_zs);
-        
+
         assert_eq!(new_verts.len(), 3);
         assert!(new_verts.contains(&[0.0, 0.0, 0.0]));
         assert!(new_verts.contains(&[0.1, 0.1, 0.0]));
@@ -592,10 +644,7 @@ mod tests {
 
     #[test]
     fn test_apply_gaussian_filter_identity() {
-        let volume = arr3(&[
-            [[10, 10], [10, 10]],
-            [[10, 10], [10, 10]]
-        ]);
+        let volume = arr3(&[[[10, 10], [10, 10]], [[10, 10], [10, 10]]]);
         // Sigma 0 should return original
         let filtered = apply_gaussian_filter(volume.clone(), 0.0);
         assert_eq!(filtered, volume);
@@ -605,13 +654,13 @@ mod tests {
     fn test_range_extraction() {
         // Create 3x3x3 volume
         let mut volume = Array3::<i16>::zeros((3, 3, 3));
-        
+
         // Center voxel
         volume[[1, 1, 1]] = 150;
-        
+
         // Spacing
         let spacing = (1.0, 1.0, 1.0);
-        
+
         // Case 1: Range [100, 200]
         // Center 150 is INSIDE.
         // Neighbors 0 are OUTSIDE (Low).
@@ -619,14 +668,19 @@ mod tests {
         let mt = MarchingTetrahedra::new(100, 200);
         let (verts, _faces) = mt.extract_surface(&volume.view(), spacing, [0, 0, 0], 0..3);
         assert!(!verts.is_empty(), "Should generate vertices for [100, 200]");
-        
+
         // Case 2: Range [160, 200]
         // Center 150 is OUTSIDE (Low).
         // Neighbors 0 are OUTSIDE (Low).
         // Should be empty.
         let mt_high = MarchingTetrahedra::new(160, 200);
-        let (verts_high, _faces_high) = mt_high.extract_surface(&volume.view(), spacing, [0, 0, 0], 0..3);
-        assert!(verts_high.is_empty(), "Should be empty for [160, 200], got {}", verts_high.len());
+        let (verts_high, _faces_high) =
+            mt_high.extract_surface(&volume.view(), spacing, [0, 0, 0], 0..3);
+        assert!(
+            verts_high.is_empty(),
+            "Should be empty for [160, 200], got {}",
+            verts_high.len()
+        );
 
         // Case 3: Range [0, 100]
         // Center 150 is OUTSIDE (High).
@@ -634,15 +688,23 @@ mod tests {
         // Should generate surface.
         // But 0 is exactly min. 0 >= 0 && 0 <= 100. So 0 is INSIDE.
         let mt_low = MarchingTetrahedra::new(0, 100);
-        let (verts_low, _faces_low) = mt_low.extract_surface(&volume.view(), spacing, [0, 0, 0], 0..3);
-        assert!(!verts_low.is_empty(), "Should generate vertices for [0, 100]");
-        
+        let (verts_low, _faces_low) =
+            mt_low.extract_surface(&volume.view(), spacing, [0, 0, 0], 0..3);
+        assert!(
+            !verts_low.is_empty(),
+            "Should generate vertices for [0, 100]"
+        );
+
         // Case 4: Range [10, 140]
         // Center 150 OUTSIDE (High).
         // Neighbors 0 OUTSIDE (Low).
         // Should be empty (double crossing issue/feature).
         let mt_split = MarchingTetrahedra::new(10, 140);
-        let (verts_split, _faces_split) = mt_split.extract_surface(&volume.view(), spacing, [0, 0, 0], 0..3);
-        assert!(verts_split.is_empty(), "Should be empty for split range [10, 140]");
+        let (verts_split, _faces_split) =
+            mt_split.extract_surface(&volume.view(), spacing, [0, 0, 0], 0..3);
+        assert!(
+            verts_split.is_empty(),
+            "Should be empty for split range [10, 140]"
+        );
     }
 }

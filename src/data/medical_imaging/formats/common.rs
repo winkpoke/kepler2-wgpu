@@ -1,11 +1,10 @@
 /// Function-level comment: Common traits and interfaces for medical image format parsers
 /// Provides unified API for parsing different medical imaging formats
-
 use crate::data::medical_imaging::{
-    metadata::*,
     error::{MedicalImagingError, MedicalImagingResult},
-    mhd::MhdParser,
+    metadata::*,
     mha::MhaParser,
+    mhd::MhdParser,
 };
 use std::path::Path;
 
@@ -22,7 +21,8 @@ pub enum ImageFormat {
 // Function-level comment: Extracts the image format from a file path
 pub fn get_extension(file_path: &str) -> MedicalImagingResult<ImageFormat> {
     let path = Path::new(file_path);
-    path.extension().and_then(|ext| ext.to_str().map(|s| s.to_string()))
+    path.extension()
+        .and_then(|ext| ext.to_str().map(|s| s.to_string()))
         .map(|ext| match ext.as_str() {
             "mha" => ImageFormat::MHA,
             "mhd" => ImageFormat::MHD,
@@ -31,7 +31,7 @@ pub fn get_extension(file_path: &str) -> MedicalImagingResult<ImageFormat> {
             _ => ImageFormat::Unknown,
         })
         .ok_or_else(|| MedicalImagingError::UnsupportedFormat {
-            format: format!("file extension: {}", file_path)
+            format: format!("file extension: {}", file_path),
         })
 }
 
@@ -39,25 +39,25 @@ pub fn get_extension(file_path: &str) -> MedicalImagingResult<ImageFormat> {
 /// Defines the interface that all medical image format parsers must implement
 pub trait MedicalImageParser {
     /// Parses a medical image from raw bytes
-    fn parse_bytes(&self, path: &[u8], data: Option<&[u8]>) -> MedicalImagingResult<MedicalVolume>{
+    fn parse_bytes(&self, path: &[u8], data: Option<&[u8]>) -> MedicalImagingResult<MedicalVolume> {
         if let Some(data) = data {
             MhdParser::parse_by_bytes(path, data)
         } else {
             MhaParser::parse_bytes(path)
         }
     }
-    
+
     /// Extracts metadata from a medical image file
-    fn extract_metadata(&self, path: &[u8], format: ImageFormat) -> MedicalImagingResult<ImageMetadata>{
+    fn extract_metadata(
+        &self,
+        path: &[u8],
+        format: ImageFormat,
+    ) -> MedicalImagingResult<ImageMetadata> {
         match format {
-            ImageFormat::MHA => {
-                MhaParser::parse_metadata_only(path)
-            },
-            ImageFormat::MHD => {
-                MhdParser::parse_metadata_only(path)
-            },
+            ImageFormat::MHA => MhaParser::parse_metadata_only(path),
+            ImageFormat::MHD => MhdParser::parse_metadata_only(path),
             _ => Err(MedicalImagingError::UnsupportedFormat {
-                format: format!("file extension: {:?}", format)
+                format: format!("file extension: {:?}", format),
             }),
         }
     }

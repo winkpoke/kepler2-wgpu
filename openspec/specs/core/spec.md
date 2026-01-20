@@ -1,46 +1,32 @@
-# core Specification
+## ADDED Requirements
 
-## Purpose
-Provides fundamental data structures, error types, and mathematical utilities for the application, including coordinate systems and geometry transformations.
+### Requirement: Core Testing
+The core module SHALL have comprehensive test coverage for mathematical operations, coordinate systems, and geometry transformations to ensure numerical correctness.
 
-## Requirements
+#### Scenario: Math Operation Testing
+- **WHEN** core math functions are used (matrix operations, vector math, transformations)
+- **THEN** operations SHALL be tested with property-based tests using `proptest`
+- **AND** edge cases SHALL be covered (zero values, infinity, NaN)
+- **AND** numerical precision SHALL be verified across all input ranges
+- **AND** performance SHALL meet expected thresholds
 
-### Requirement: Standardized Math Library
-The core geometry subsystem MUST use `glam` as the primary linear algebra library for calculations.
-The `Base<T>` struct MUST be retained as the public interface for coordinate systems, and it MUST directly contain a `glam` matrix (e.g. `glam::Mat4` or `glam::DMat4`) instead of any custom matrix type.
-The `Matrix4x4` struct is no longer supported and MUST NOT be used.
+#### Scenario: Coordinate System Testing
+- **WHEN** coordinate transformations are performed (world ↔ screen ↔ voxel)
+- **THEN** correctness SHALL be verified through roundtrip tests
+- **AND** coordinate bounds SHALL be tested (negative values, overflow, NaN)
+- **AND** orientation matrices SHALL be tested for orthogonality
+- **AND** precision SHALL be preserved (error accumulation < 0.001 world units)
 
-#### Scenario: Matrix Construction
-Given a request to build a geometric base (e.g., Transverse, Coronal)
-When the geometry builder computes the transformation matrix
-Then it should use `glam::Mat4` for intermediate operations
-And the result should be numerically equivalent to the defined physical-to-screen transformation.
+#### Scenario: Window/Level Testing
+- **WHEN** window/level transformations are applied to CT values
+- **THEN** mathematical properties SHALL be verified (midpoint property, clamping behavior)
+- **AND** extreme values SHALL be tested to ensure proper clamping
+- **AND** precision SHALL be preserved across all valid ranges
+- **AND** transformations SHALL preserve contrast ratios
 
-### Requirement: Glam-based Base Coordinate System
-The `Base` struct, representing a coordinate system (basis), MUST use `glam::Mat4` for its internal matrix representation.
-
-#### Scenario: Base Structure Definition
-- **WHEN** the `Base` struct is instantiated or used
-- **THEN** it MUST contain a `glam::Mat4` field (column-major)
-- **AND** geometric operations (scaling, translation, basis conversion) MUST use `glam`'s optimized methods.
-
-### Requirement: Camera Matrices
-The `Camera` struct MUST return `glam::Mat4` for `view_matrix`, `projection_matrix`, and `view_projection_matrix`.
-
-#### Scenario: Camera Matrix Access
-- **WHEN** accessing matrices from the `Camera` struct
-- **THEN** the return type MUST be `glam::Mat4`.
-
-### Requirement: Volume Orientation
-Volume generation logic (DICOM, MHA) MUST construct orientation and transform matrices using `glam` directly.
-
-#### Scenario: Constructing Orientation Matrix
-- **WHEN** constructing a base matrix from voxel spacing and direction vectors (e.g. from DICOM)
-- **THEN** use `Mat4::from_scale`, `Mat4::from_cols`, or `Mat4::from_cols_array` to build the matrix directly.
-
-### Requirement: GeometricScalar Trait
-The `GeometricScalar` trait MUST NOT expose conversion methods to/from `Matrix4x4`.
-
-#### Scenario: Trait Implementation
-- **WHEN** using the `GeometricScalar` trait
-- **THEN** it MUST NOT provide methods to convert to or from the legacy `Matrix4x4` type.
+#### Scenario: Geometry Testing
+- **WHEN** geometry bases are constructed (axial, coronal, sagittal, oblique)
+- **THEN** matrices SHALL be tested for correct orientation and scale
+- **AND** determinants SHALL be verified (orthogonal matrices have det = ±1)
+- **AND** basis vectors SHALL be normalized to unit length
+- **AND** transformations SHALL produce correct screen/world mappings

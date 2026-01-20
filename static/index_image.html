@@ -477,6 +477,8 @@
       mAs: 70.0,
       slope: 1612.903,
       intercept: - 1016.129,
+      patient_position: "HFS",
+      modality: "CT",
     }
     const infoUint8 = toUint8Array(info);
     
@@ -896,7 +898,6 @@
 
         const mhxFile = state.mhx;
 
-        const sop_uid = "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.365119";
         // 构造 patient / study 对象
         const patient = {
           patient_id: "P001",
@@ -905,6 +906,7 @@
           sex: "M"
         };
         const study = {
+          study_uid: "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.365120",
           study_id: "STUDY001",
           patient_id: "P001",
           date: "20250908",

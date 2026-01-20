@@ -1,8 +1,7 @@
-use anyhow::{Result, anyhow};
-use dicom_object::{FileDicomObject, InMemDicomObject};
-use crate::define_dicom_struct;
 use super::dicom_helper::get_value;
-
+use crate::define_dicom_struct;
+use anyhow::{anyhow, Result};
+use dicom_object::{FileDicomObject, InMemDicomObject};
 
 // Use the macro to define the StudySet struct
 define_dicom_struct!(StudySet, {
@@ -12,7 +11,6 @@ define_dicom_struct!(StudySet, {
     (date, String, "(0008,0020) StudyDate", false),       // StudyDate is required
     (description, String, "(0008,1030) StudyDescription", true) // StudyDescription is optional
 });
-
 
 impl StudySet {
     // Function to parse the DICOM file and generate the StudySet structure

@@ -5,8 +5,8 @@
 
 #[cfg(test)]
 mod view_transition_integration_tests {
-    use kepler_wgpu::rendering::MockViewFactory;
     use kepler_wgpu::rendering::view::view_manager::ViewManager;
+    use kepler_wgpu::rendering::MockViewFactory;
 
     #[test]
     fn test_view_manager_integration() {
@@ -22,7 +22,11 @@ mod view_transition_integration_tests {
                 _pos: (i32, i32),
                 _size: (u32, u32),
             ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
 
             fn create_mpr_view(
@@ -32,7 +36,11 @@ mod view_transition_integration_tests {
                 _pos: (i32, i32),
                 _size: (u32, u32),
             ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
 
             fn create_mip_view(
@@ -41,7 +49,11 @@ mod view_transition_integration_tests {
                 _pos: (i32, i32),
                 _size: (u32, u32),
             ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
 
             fn create_mpr_view_with_content(
@@ -52,7 +64,11 @@ mod view_transition_integration_tests {
                 _pos: (i32, i32),
                 _size: (u32, u32),
             ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
 
             fn create_mip_view_with_content(
@@ -61,7 +77,11 @@ mod view_transition_integration_tests {
                 _pos: (i32, i32),
                 _size: (u32, u32),
             ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
 
             /// Create a mesh view using existing RenderContent. Returns a mock error for tests.
@@ -72,7 +92,11 @@ mod view_transition_integration_tests {
                 _pos: (i32, i32),
                 _size: (u32, u32),
             ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
         }
 
@@ -178,7 +202,11 @@ mod view_transition_integration_tests {
                 _size: (u32, u32),
             ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>>
             {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
 
             fn create_mpr_view(
@@ -189,7 +217,11 @@ mod view_transition_integration_tests {
                 _size: (u32, u32),
             ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>>
             {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
 
             fn create_mip_view(
@@ -199,7 +231,11 @@ mod view_transition_integration_tests {
                 _size: (u32, u32),
             ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>>
             {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
 
             fn create_mpr_view_with_content(
@@ -211,7 +247,11 @@ mod view_transition_integration_tests {
                 _size: (u32, u32),
             ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>>
             {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
 
             fn create_mip_view_with_content(
@@ -221,7 +261,11 @@ mod view_transition_integration_tests {
                 _size: (u32, u32),
             ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>>
             {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
 
             /// Create a mesh view using existing RenderContent. Returns a mock error for tests.
@@ -233,7 +277,11 @@ mod view_transition_integration_tests {
                 _size: (u32, u32),
             ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>>
             {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
         }
 
@@ -314,7 +362,11 @@ mod view_transition_integration_tests {
                 _size: (u32, u32),
             ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>>
             {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
 
             fn create_mpr_view(
@@ -325,7 +377,11 @@ mod view_transition_integration_tests {
                 _size: (u32, u32),
             ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>>
             {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
 
             fn create_mip_view(
@@ -335,7 +391,11 @@ mod view_transition_integration_tests {
                 _size: (u32, u32),
             ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>>
             {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
 
             fn create_mpr_view_with_content(
@@ -347,7 +407,11 @@ mod view_transition_integration_tests {
                 _size: (u32, u32),
             ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>>
             {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
 
             fn create_mip_view_with_content(
@@ -357,7 +421,11 @@ mod view_transition_integration_tests {
                 _size: (u32, u32),
             ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>>
             {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
 
             /// Create a mesh view using existing RenderContent. Returns a mock error for tests.
@@ -369,7 +437,11 @@ mod view_transition_integration_tests {
                 _size: (u32, u32),
             ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>>
             {
-                Err(std::io::Error::new(std::io::ErrorKind::Other, "Mock factory - not implemented").into())
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "Mock factory - not implemented",
+                )
+                .into())
             }
         }
 

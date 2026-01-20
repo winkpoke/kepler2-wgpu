@@ -8,7 +8,6 @@ use crate::{data::ct_volume::CTVolume, rendering::core::Graphics};
 #[cfg(target_arch = "wasm32")]
 use futures::channel::oneshot;
 
-
 #[derive(Debug)]
 pub enum UserEvent {
     SetSliceSpeed(usize, f32),
@@ -17,9 +16,9 @@ pub enum UserEvent {
     SetSliceMM(usize, f32),
     SetScale(usize, f32),
     SetTranslateInScreenCoord(usize, f32, f32, f32),
-    SetPan(usize, f32, f32), // pan in screen space
+    SetPan(usize, f32, f32),   // pan in screen space
     SetPanMM(usize, f32, f32), // pan in mm
-    LoadDataFromCTVolume(CTVolume), 
+    LoadDataFromCTVolume(CTVolume),
     Resize(u32, u32), // width, height
     Quit,
     SetWindowByDivId(String, CTVolume),
@@ -29,15 +28,28 @@ pub enum UserEvent {
     ReloadShaders,
     /// Manually trigger pipeline cache invalidation without any other action.
     InvalidatePipelines,
-    SetMeshMode(bool, bool, f32, f32, f32, f32, f32, f32, bool, usize, f32, f32),
+    SetMeshMode(
+        bool,
+        bool,
+        f32,
+        f32,
+        f32,
+        f32,
+        f32,
+        f32,
+        bool,
+        usize,
+        f32,
+        f32,
+    ),
     SetMprMip(usize, Option<usize>, Option<usize>, Option<usize>, usize),
     SetOneCellLayout(usize, usize),
     #[cfg(target_arch = "wasm32")]
     GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     #[cfg(target_arch = "wasm32")]
-    GetWindowLevel(usize, oneshot::Sender<[f32;2]>),
+    GetWindowLevel(usize, oneshot::Sender<[f32; 2]>),
     #[cfg(target_arch = "wasm32")]
-    GetPan(usize, oneshot::Sender<[f32;3]>),
+    GetPan(usize, oneshot::Sender<[f32; 3]>),
     #[cfg(target_arch = "wasm32")]
     WorldCoordToScreen(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     SetCenterAtPointInMM(usize, f32, f32, f32), // screen coords
@@ -94,7 +106,10 @@ macro_rules! impl_user_event_senders_for_glcanvas {
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 impl GLCanvas {
     pub fn load_data_from_ct_volume(&self, volume: &CTVolume) {
-        if let Err(e) = self.proxy.send_event(UserEvent::LoadDataFromCTVolume(volume.clone())) {
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::LoadDataFromCTVolume(volume.clone()))
+        {
             log::error!("Failed to send LoadDataFromCTVolume event {:?}", e);
         } else {
             log::info!("Sent LoadDataFromCTVolume event");
@@ -118,8 +133,15 @@ impl GLCanvas {
     }
 
     pub fn set_window_by_div_id(&self, div_id: String, volume: &CTVolume) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetWindowByDivId(div_id.clone(), volume.clone())) {
-            log::error!("Failed to send SetWindowByDivId event for div_id {}: {:?}", div_id, e);
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::SetWindowByDivId(div_id.clone(), volume.clone()))
+        {
+            log::error!(
+                "Failed to send SetWindowByDivId event for div_id {}: {:?}",
+                div_id,
+                e
+            );
         } else {
             log::info!("Sent SetWindowByDivId event for div_id {}", div_id);
         }
@@ -150,16 +172,45 @@ impl GLCanvas {
         }
     }
 
-    pub fn set_mesh_mode(&self, save_mesh: bool, crop: bool, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32, one_cell: bool, mesh_index: usize, iso_min: f32, iso_max: f32) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetMeshMode(save_mesh, crop, sx, sy, sz, lx, ly, lz, one_cell, mesh_index, iso_min, iso_max)) {
+    pub fn set_mesh_mode(
+        &self,
+        save_mesh: bool,
+        crop: bool,
+        sx: f32,
+        sy: f32,
+        sz: f32,
+        lx: f32,
+        ly: f32,
+        lz: f32,
+        one_cell: bool,
+        mesh_index: usize,
+        iso_min: f32,
+        iso_max: f32,
+    ) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetMeshMode(
+            save_mesh, crop, sx, sy, sz, lx, ly, lz, one_cell, mesh_index, iso_min, iso_max,
+        )) {
             log::error!("Failed to send SetMeshMode event: {:?}", e);
         } else {
             log::info!("Sent SetMeshMode event: save_mesh={}, crop={}, sx={}, sy={}, sz={}, lx={}, ly={}, lz={}, one_cell={}, mesh_index={}, iso_min={}, iso_max={}", save_mesh, crop, sx, sy, sz, lx, ly, lz, one_cell, mesh_index, iso_min, iso_max);
         }
     }
 
-    pub fn set_mpr_mip_mode(&self, mode: usize, mip: Option<usize>, mesh_index: Option<usize>, index: Option<usize>, orientation_index: usize) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetMprMip(mode, mip, mesh_index, index, orientation_index)) {
+    pub fn set_mpr_mip_mode(
+        &self,
+        mode: usize,
+        mip: Option<usize>,
+        mesh_index: Option<usize>,
+        index: Option<usize>,
+        orientation_index: usize,
+    ) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetMprMip(
+            mode,
+            mip,
+            mesh_index,
+            index,
+            orientation_index,
+        )) {
             log::error!("Failed to send SetMprMip event: {:?}", e);
         } else {
             log::info!("Sent SetMprMip event: mode={}, mip={:?}, mesh_index={:?}, index={:?}, orientation_index={}", mode, mip, mesh_index, index, orientation_index);
@@ -167,48 +218,90 @@ impl GLCanvas {
     }
 
     pub fn set_one_cell_layout(&self, mode: usize, orientation_index: usize) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetOneCellLayout(mode, orientation_index)) {
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::SetOneCellLayout(mode, orientation_index))
+        {
             log::error!("Failed to send SetOneCellLayout event: {:?}", e);
         } else {
-            log::info!("Sent SetOneCellLayout event: mode={}, orientation_index={}", mode, orientation_index);
+            log::info!(
+                "Sent SetOneCellLayout event: mode={}, orientation_index={}",
+                mode,
+                orientation_index
+            );
         }
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub async fn get_screen_coord_in_mm(&self, index: usize, x: f32, y: f32, z: f32) -> Result<Box<[f32]>, String> {
-        log::info!("get_screen_coord_in_mm: index={}, x={}, y={}, z={}", index, x, y, z);
+    pub async fn get_screen_coord_in_mm(
+        &self,
+        index: usize,
+        x: f32,
+        y: f32,
+        z: f32,
+    ) -> Result<Box<[f32]>, String> {
+        log::info!(
+            "get_screen_coord_in_mm: index={}, x={}, y={}, z={}",
+            index,
+            x,
+            y,
+            z
+        );
         let (tx, rx) = oneshot::channel();
-        
-        if let Err(e) = self.proxy.send_event(UserEvent::GetScreenCoordInMM(index, [x, y, z], tx)) {
-            log::error!("Failed to send GetScreenCoordInMM event for window {}: {:?}", index, e);
+
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::GetScreenCoordInMM(index, [x, y, z], tx))
+        {
+            log::error!(
+                "Failed to send GetScreenCoordInMM event for window {}: {:?}",
+                index,
+                e
+            );
             return Err(format!("Failed to send event: {:?}", e));
         }
-        
-        log::info!("Sent GetScreenCoordInMM event for window {}: {:?}", index, [x, y, z]);
-        
+
+        log::info!(
+            "Sent GetScreenCoordInMM event for window {}: {:?}",
+            index,
+            [x, y, z]
+        );
+
         match rx.await {
             Ok(result) => {
-                log::info!("Received GetScreenCoordInMM result for window {}: {:?}", index, result);
+                log::info!(
+                    "Received GetScreenCoordInMM result for window {}: {:?}",
+                    index,
+                    result
+                );
                 Ok(result.into())
             }
             Err(e) => {
-                log::error!("Failed to receive GetScreenCoordInMM result for window {}: {:?}", index, e);
+                log::error!(
+                    "Failed to receive GetScreenCoordInMM result for window {}: {:?}",
+                    index,
+                    e
+                );
                 Err(format!("Failed to receive result: {:?}", e))
             }
         }
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub async fn get_window_level(&self, index:usize) -> Result<Box<[f32]>, String> {
+    pub async fn get_window_level(&self, index: usize) -> Result<Box<[f32]>, String> {
         let (tx, rx) = oneshot::channel();
-        
+
         if let Err(e) = self.proxy.send_event(UserEvent::GetWindowLevel(index, tx)) {
-            log::error!("Failed to send GetWindowLevel event for window {}: {:?}", index, e);
+            log::error!(
+                "Failed to send GetWindowLevel event for window {}: {:?}",
+                index,
+                e
+            );
             return Err(format!("Failed to send event: {:?}", e));
         }
-        
+
         log::info!("Sent GetWindowLevel event for window {}", index);
-        
+
         match rx.await {
             Ok(result) => Ok(result.into()),
             Err(e) => Err(format!("Failed to receive result: {:?}", e)),
@@ -216,16 +309,16 @@ impl GLCanvas {
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub async fn get_pan(&self, index:usize) -> Result<Box<[f32]>, String> {
+    pub async fn get_pan(&self, index: usize) -> Result<Box<[f32]>, String> {
         let (tx, rx) = oneshot::channel();
-        
+
         if let Err(e) = self.proxy.send_event(UserEvent::GetPan(index, tx)) {
             log::error!("Failed to send GetPan event for window {}: {:?}", index, e);
             return Err(format!("Failed to send event: {:?}", e));
         }
-        
+
         log::info!("Sent GetPan event for window {}", index);
-        
+
         match rx.await {
             Ok(result) => Ok(result.into()),
             Err(e) => Err(format!("Failed to receive result: {:?}", e)),
@@ -234,11 +327,24 @@ impl GLCanvas {
 
     #[cfg(target_arch = "wasm32")]
     /// Dispatch a view click and asynchronously return computed world/slice data.
-    pub async fn handle_view_click_get(&self, index: usize, x: f32, y: f32, z: f32) -> Result<Box<[f32]>, String> {
+    pub async fn handle_view_click_get(
+        &self,
+        index: usize,
+        x: f32,
+        y: f32,
+        z: f32,
+    ) -> Result<Box<[f32]>, String> {
         let (tx, rx) = oneshot::channel();
 
-        if let Err(e) = self.proxy.send_event(UserEvent::ViewClickGet(index, x, y, z, tx)) {
-            log::error!("Failed to send ViewClickGet event for window {}: {:?}", index, e);
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::ViewClickGet(index, x, y, z, tx))
+        {
+            log::error!(
+                "Failed to send ViewClickGet event for window {}: {:?}",
+                index,
+                e
+            );
             return Err(format!("Failed to send event: {:?}", e));
         }
         match rx.await {
@@ -248,24 +354,55 @@ impl GLCanvas {
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub async fn world_coord_to_screen(&self, index: usize, x: f32, y: f32, z: f32) -> Result<Box<[f32]>, String> {
-        log::info!("world_coord_to_screen: index={}, x={}, y={}, z={}", index, x, y, z);
+    pub async fn world_coord_to_screen(
+        &self,
+        index: usize,
+        x: f32,
+        y: f32,
+        z: f32,
+    ) -> Result<Box<[f32]>, String> {
+        log::info!(
+            "world_coord_to_screen: index={}, x={}, y={}, z={}",
+            index,
+            x,
+            y,
+            z
+        );
         let (tx, rx) = oneshot::channel();
-        
-        if let Err(e) = self.proxy.send_event(UserEvent::WorldCoordToScreen(index, [x, y, z], tx)) {
-            log::error!("Failed to send WorldCoordToScreen event for window {}: {:?}", index, e);
+
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::WorldCoordToScreen(index, [x, y, z], tx))
+        {
+            log::error!(
+                "Failed to send WorldCoordToScreen event for window {}: {:?}",
+                index,
+                e
+            );
             return Err(format!("Failed to send event: {:?}", e));
         }
-        
-        log::info!("Sent WorldCoordToScreen event for window {}: {:?}", index, [x, y, z]);
-        
+
+        log::info!(
+            "Sent WorldCoordToScreen event for window {}: {:?}",
+            index,
+            [x, y, z]
+        );
+
         match rx.await {
             Ok(result) => {
-                log::info!("Received WorldCoordToScreen result for window {}: {:?}", index, result);
+                log::info!(
+                    "Received WorldCoordToScreen result for window {}: {:?}",
+                    index,
+                    result
+                );
                 Ok(result.into())
             }
             Err(e) => {
-                log::error!("Failed to receive WorldCoordToScreen result for window {}: {:?}", index, e);
+                log::error!(
+                    "Failed to receive WorldCoordToScreen result for window {}: {:?}",
+                    index,
+                    e
+                );
                 Err(format!("Failed to receive result: {:?}", e))
             }
         }
