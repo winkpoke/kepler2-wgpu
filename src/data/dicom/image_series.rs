@@ -27,9 +27,9 @@ impl ImageSeries {
             .ok_or_else(|| anyhow!("Missing Modality"))?;
 
         // Ensure the modality is "CT"
-        if modality != "CT" {
-            return Err(anyhow!("Expected CT image, but got {} image", modality).into());
-        }
+        // if modality != "CT" {
+        //    return Err(anyhow!("Expected CT image, but got {} image", modality).into());
+        // }
 
         // Optional fields
         let description = get_value::<String>(&dicom_obj, "SeriesDescription");

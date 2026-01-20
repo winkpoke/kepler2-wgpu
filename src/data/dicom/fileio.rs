@@ -500,9 +500,9 @@ pub async fn build_ct_dicom_wasm(
         .map_err(|e| JsValue::from_str(&format!("UTF8 decode error: {}", e)))?;
     let study: serde_json::Value = serde_json::from_str(&study_json)
         .map_err(|e| JsValue::from_str(&format!("JSON parse error: {}", e)))?;
-    let uid = generate_uid();
+    // let uid = generate_uid();
     let study = StudySet {
-        uid: uid.clone(),
+        uid: study["study_uid"].as_str().unwrap_or("").to_string(),
         study_id: study["study_id"].as_str().unwrap_or("").to_string(),
         patient_id: study["patient_id"].as_str().unwrap_or("").to_string(),
         date: study["date"].as_str().unwrap_or("").to_string(),
@@ -530,13 +530,8 @@ pub async fn build_ct_dicom_wasm(
         .as_f64()
         .map(|v| v as f32)
         .ok_or(JsValue::from_str("Missing intercept in info"))?;
-    log::info!(
-        "dicom info: kv={}, mAs={}, slope = {:?}, intercept = {:?}",
-        kv,
-        m_as,
-        slope,
-        intercept
-    );
+    let patient_position = info["patient_position"].as_str().unwrap_or("").to_string();
+    let modality = info["modality"].as_str().unwrap_or("").to_string();
 
     // MHA bytes
     let mut buf = vec![0u8; mha_bytes.length() as usize];
@@ -561,6 +556,8 @@ pub async fn build_ct_dicom_wasm(
         m_as,
         slope,
         intercept,
+        patient_position,
+        modality,
         &mut sink,
     )
     .map_err(|e| JsValue::from_str(&format!("build_ct_dicom failed: {}", e)))?;
