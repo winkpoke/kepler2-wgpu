@@ -198,7 +198,7 @@
           <div class="grid">
             <div>
               <span id="mode-label">mode:</span></br>
-              <input type="number" id="mode" step="1" value="0" min="0" max="1">
+              <input type="number" id="mode" step="1" value="2" min="0" max="1">
             </div>
             <div>
               <span id="index-label">index:</span>
@@ -328,9 +328,9 @@
               <label for="translate-input">Translate</label>
               <div class="row">
                 <span id="trans-x-label">x:</span>
-                <input type="number" id="trans-x" step="10.0" value="0.0">
+                <input type="number" id="trans-x" step="10.0" value="0.0"></br>
                 <span id="trans-y-label">y:</span>
-                <input type="number" id="trans-y" step="10.0" value="0.0">
+                <input type="number" id="trans-y" step="10.0" value="0.0"></br>
               </div>
               <button id="trans-submit">应用</button>
               <button id="trans-get">获取</button>
@@ -398,9 +398,8 @@
             </div>
             <div>
               <span id="3d-rotation-label">angle:</span></br>
-              <span id="3d-rotation-x-label">roll:</span><input type="number" id="3d-rotation-x" step="15" value="-90" min="0" max="360">
-              <span id="3d-rotation-y-label">yaw:</span><input type="number" id="3d-rotation-y" step="15" value="0" min="0" max="360">
-              <span id="3d-rotation-z-label">pitch:</span><input type="number" id="3d-rotation-z" step="15" value="0" min="0" max="360">
+              <span id="3d-rotation-x-label">x:</span><input type="number" id="3d-rotation-x" step="15" value="0" min="0" max="360"></br>
+              <span id="3d-rotation-y-label">y:</span><input type="number" id="3d-rotation-y" step="15" value="0" min="0" max="360">
             </div>
           </div>
           <div class="row" style="margin-top:8px">
@@ -781,9 +780,8 @@
       const opacity = parseFloat(byId('3d-opacity').value);
       const rotation_x = parseFloat(byId('3d-rotation-x').value);
       const rotation_y = parseFloat(byId('3d-rotation-y').value);
-      const rotation_z = parseFloat(byId('3d-rotation-z').value);
 
-      console.log('3d-submit:', scale, pan_x, pan_y, opacity, rotation_x, rotation_y, rotation_z);
+      console.log('3d-submit:', scale, pan_x, pan_y, opacity, rotation_x, rotation_y);
       gl_canvas.set_mesh_scale(indexValue, scale);
       gl_canvas.set_mesh_pan(indexValue, pan_x, pan_y);
       if (typeof gl_canvas.set_mesh_opacity === 'function') {
@@ -792,8 +790,7 @@
         log('mesh opacity 方法未导出，已跳过', 'warn');
       }
       
-      // gl_canvas.set_mesh_rotation_delta(indexValue, rotation_x, rotation_y);
-      gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
+      gl_canvas.set_mesh_rotation_angle_degrees(indexValue, -rotation_x, rotation_y);
     });
 
     byId('3d-reset').addEventListener('click', () => {

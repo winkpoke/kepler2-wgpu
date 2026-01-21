@@ -940,12 +940,10 @@ impl App {
     pub fn set_mesh_rotation_angle_degrees(
         &mut self,
         degrees_x: f32,
-        degrees_y: f32,
-        degrees_z: f32,
+        degrees_y: f32
     ) {
         self.apply_to_mesh_view(|mesh_view| {
-            let degrees = [degrees_x, degrees_y, degrees_z];
-            mesh_view.set_rotation_angle_degrees(degrees);
+            mesh_view.set_rotation_angle_degrees(degrees_x, degrees_y);
         });
     }
 
