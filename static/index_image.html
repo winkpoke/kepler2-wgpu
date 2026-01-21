@@ -798,6 +798,21 @@
         gl_canvas.reset_mesh(indexValue);
     });
 
+    document.getElementById('resize-submit').addEventListener('click', () => {
+      const width = document.getElementById('width').value;
+      const height = document.getElementById('height').value;
+      const input_index = document.getElementById('index-input');
+      if (isNaN(width) || isNaN(height)) {
+          alert('Please enter a valid number');
+          return;
+      }
+      if (!gl_canvas) {
+          alert('Please select a series first!');
+          return;
+      }
+      gl_canvas.resize(width, height);
+    })
+
     // ========= MHX文件解析函数 =========
     async function parseMHXContent(mhxText) {
       const lines = mhxText.split('\n');
