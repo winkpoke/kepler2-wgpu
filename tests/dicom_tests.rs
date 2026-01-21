@@ -457,6 +457,8 @@ mod integration_tests {
             100.0,     // mAs
             1612.903,  // slope
             -1016.129, // intercept
+            "HFS".to_string(),
+            "CT".to_string(),
             &mut sink,
         );
 
@@ -493,6 +495,8 @@ mod integration_tests {
             100.0,     // mAs
             1612.903,  // slope
             -1016.129, // intercept
+            "HFS".to_string(),
+            "CT".to_string(),
             &mut sink,
         );
 

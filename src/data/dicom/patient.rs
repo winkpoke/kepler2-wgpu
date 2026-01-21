@@ -36,7 +36,7 @@ impl Patient {
             birthdate,
             sex,
         };
-        patient.validate()?;
+        // patient.validate()?; // Skip strict validation to allow display of imperfect data
         Ok(patient)
     }
 

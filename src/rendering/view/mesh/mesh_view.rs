@@ -99,6 +99,8 @@ pub struct MeshView {
     rotation_quat: Quat,
     /// Rotation speed in radians per second (default: π/2 = 90 degrees/second)
     rotation_speed: f32,
+    /// Rotation angles in radians around X, Y, Z axes
+    rotation_radians: [f32; 3],
     /// Last frame time for rotation calculation
     last_frame_time: Instant,
     /// Uniform scale factor
@@ -127,9 +129,10 @@ impl Default for MeshView {
             last_success_time: Instant::now(),
             quality_controller: QualityController::default(),
             rotation_enabled: true,
-            // Angles are stored in radians; 90°=FRAC_PI_2, 180°=PI
             rotation_quat: Quat::IDENTITY,
-            rotation_speed: FRAC_PI_2, // 90 degrees per second - reasonable default speed
+            // Angles are stored in radians; 90°=FRAC_PI_2, 180°=PI
+            rotation_speed: FRAC_PI_2, // 90 degrees per second
+            rotation_radians: [0.0, 0.0, 0.0],
             last_frame_time: Instant::now(),
             scale_factor: 1.0,
             pan: [0.0, 0.0, 0.0],
@@ -241,24 +244,16 @@ impl MeshView {
     /// Function-level comment: Reset the rotation angle to zero.
     /// Useful for returning to a known orientation or synchronizing multiple objects.
     pub fn reset_rotation(&mut self) {
-        self.rotation_quat = Quat::IDENTITY;
+        self.rotation_radians = [0.0, 0.0, 0.0];
         self.last_frame_time = Instant::now();
         log::debug!("Mesh rotation reset to identity");
-    }
-
-    /// Function-level comment: Get the current rotation angle in degrees (Pitch, Yaw, Roll).
-    pub fn get_rotation_quat(&self) -> [f32; 4] {
-        let (roll, pitch, yaw) = self.rotation_quat.to_euler(glam::EulerRot::XYZ);
-        [roll.to_degrees(), pitch.to_degrees(), yaw.to_degrees(), 0.0]
     }
 
     /// Function-level comment: Set the current rotation angle using degrees for convenience.
     /// This directly sets the orientation without affecting rotation speed.
     pub fn set_rotation_angle_degrees(&mut self, degrees: [f32; 3]) {
         let rad = degrees.map(|d| d.to_radians());
-        // Map [x, y, z] to Pitch, Yaw, Roll.
-        // Using XYZ order: Pitch(X), Yaw(Y), Roll(Z)
-        self.rotation_quat = Quat::from_euler(glam::EulerRot::XYZ, rad[0], rad[1], rad[2]);
+        self.rotation_radians = rad;
         self.last_frame_time = Instant::now();
         log::info!("Mesh rotation set to {:?}°", degrees);
     }
@@ -380,9 +375,6 @@ impl MeshView {
     /// Function-level comment: Update GPU uniforms for basic mesh rendering with combined MVP matrix
     /// Includes rotation if enabled, using frame-rate independent timing
     pub fn update_uniforms(&mut self, queue: &wgpu::Queue) {
-        // Keep angle in [0, 2π] range to prevent floating point precision issues
-        // use std::f32::consts::TAU; // TAU = 2π
-
         // Update rotation angle only when rotation is enabled; orientation should persist when disabled
         if self.rotation_enabled {
             let current_time = Instant::now();
@@ -420,7 +412,8 @@ impl MeshView {
             );
 
             // Model matrix - apply persistent rotation (if any) and uniform scale
-            let rotation = Mat4::from_quat(self.rotation_quat);
+            // let rotation = Mat4::from_quat(self.rotation_quat);
+            let rotation = Mat4::from_rotation_z(self.rotation_radians[0]) * Mat4::from_rotation_y(self.rotation_radians[1]) * Mat4::from_rotation_x(self.rotation_radians[2]);
 
             // Compose Model: Translation * Rotation * Scale
             let model_matrix = Mat4::from_translation(Vec3::from(self.pan))
@@ -486,8 +479,8 @@ impl MeshView {
         // Update Orientation Cube Uniforms
         if let Some(cube_ctx) = &self.orientation_cube_ctx {
             // Model: Only Rotation (no pan, no scale from main mesh)
-            let rotation = Mat4::from_quat(self.rotation_quat);
-            let model_matrix = rotation; // Scale 1.0, Trans 0.0
+            // let rotation = Mat4::from_quat(self.rotation_quat);
+            let model_matrix = Mat4::from_rotation_z(self.rotation_radians[0]) * Mat4::from_rotation_y(self.rotation_radians[1]) * Mat4::from_rotation_x(self.rotation_radians[2]);
 
             // View: Standard fixed camera
             // Place cube closer to camera (Z=5.0) than main mesh (Z=-2.0) to ensure it renders on top
@@ -784,40 +777,37 @@ impl View for MeshView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::f32::consts::{FRAC_PI_2, PI, TAU};
+    use std::f32::consts::{FRAC_PI_2, PI};
 
     /// Function-level comment: Verify default rotation state and speed
     #[test]
     fn test_rotation_api_basic_functionality() {
         let mesh_view = MeshView::default();
-        let quat = mesh_view.get_rotation_quat();
-        assert!(quat[0].abs() < 1e-6);
-        assert!(quat[1].abs() < 1e-6);
-        assert!(quat[2].abs() < 1e-6);
-        assert!(quat[3].abs() < 1e-6);
-        assert!((mesh_view.get_rotation_speed() - FRAC_PI_2).abs() < 1e-6);
+        let radians = mesh_view.rotation_radians;
+        assert!(radians[0].abs() < 1e-6);
+        assert!(radians[1].abs() < 1e-6);
+        assert!(radians[2].abs() < 1e-6);
+        assert!((mesh_view.rotation_speed - FRAC_PI_2).abs() < 1e-6);
     }
 
     /// Function-level comment: Ensure enabling/disabling rotation does not panic and preserves orientation
     #[test]
     fn test_rotation_enable_disable() {
         let mut mesh_view = MeshView::default();
-        let before = mesh_view.get_rotation_quat();
+        let before = mesh_view.rotation_radians;
         mesh_view.set_rotation_enabled(false);
-        let after_disable = mesh_view.get_rotation_quat();
+        let after_disable = mesh_view.rotation_radians;
         mesh_view.set_rotation_enabled(true);
-        let after_enable = mesh_view.get_rotation_quat();
+        let after_enable = mesh_view.rotation_radians;
 
-        // Quaternions should be identical
+        // Radians should be identical
         assert!((before[0] - after_disable[0]).abs() < 1e-6);
         assert!((before[1] - after_disable[1]).abs() < 1e-6);
         assert!((before[2] - after_disable[2]).abs() < 1e-6);
-        assert!((before[3] - after_disable[3]).abs() < 1e-6);
 
         assert!((before[0] - after_enable[0]).abs() < 1e-6);
         assert!((before[1] - after_enable[1]).abs() < 1e-6);
         assert!((before[2] - after_enable[2]).abs() < 1e-6);
-        assert!((before[3] - after_enable[3]).abs() < 1e-6);
     }
 
     /// Function-level comment: Verify rotation speed setters
@@ -836,10 +826,9 @@ mod tests {
     fn test_rotation_angle_reset() {
         let mut mesh_view = MeshView::default();
         mesh_view.reset_rotation();
-        let quat = mesh_view.get_rotation_quat();
-        assert!(quat[0].abs() < 1e-6);
-        assert!(quat[1].abs() < 1e-6);
-        assert!(quat[2].abs() < 1e-6);
-        assert!(quat[3].abs() < 1e-6);
+        let radians = mesh_view.rotation_radians;
+        assert!(radians[0].abs() < 1e-6);
+        assert!(radians[1].abs() < 1e-6);
+        assert!(radians[2].abs() < 1e-6);
     }
 }
