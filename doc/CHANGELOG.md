@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-01-19T10-30-00
+- **Fixed MIP Orthographic Projection Clipping**
+  - **Bug Fix**: Corrected the Z-axis scaling in `MipView` projection matrix calculation.
+  - Previously, the Z-scale was set to 1.0, which positioned the orthographic camera plane inside the volume (at z=-1.0 relative to center, while volume extends to z=-0.5), causing the front half of the volume to be clipped.
+  - Changed Z-scale to use the diagonal length (`cw`), moving the camera safely outside the volume bounds.
+  - This ensures the entire volume is visible in the orthographic projection regardless of rotation.
+
+## 2026-01-16T11-59-23
+- **Added MIP Spin Control (Roll/Yaw/Pitch)**
+  - Extended MIP uniforms to include a rotation matrix for GPU-side ray setup.
+  - Updated MIP shader to support rotated rays with ray-box intersection against the unit volume.
+  - Routed rotation control through App → AppView via a new user event for indexed MIP views.
+
 ## 2025-12-29T10-30-00
 - **Fixed MPR Slice Count Off-by-One Error**
   - **Critical Fix**: Modified `build_uv_base` in `src/core/geometry.rs` to use the full slice count (N) for the scaling matrix instead of N-1.

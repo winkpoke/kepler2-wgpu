@@ -554,4 +554,23 @@ impl AppView {
             Err(format!("View index {} out of bounds", index))
         }
     }
+
+    pub fn set_mip_rotation_angle_degrees(
+        &mut self,
+        index: usize,
+        roll_deg: f32,
+        yaw_deg: f32,
+        pitch_deg: f32,
+    ) -> Result<(), String> {
+        if let Some(view) = self.layout.views_mut().get_mut(index) {
+            if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
+                mip_view.set_rotation_degrees(roll_deg, yaw_deg, pitch_deg);
+                Ok(())
+            } else {
+                Err(format!("View {} is not a MIP view", index))
+            }
+        } else {
+            Err(format!("View index {} out of bounds", index))
+        }
+    }
 }

@@ -13,11 +13,11 @@ use glam::Mat4;
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[derive(Clone)]
 pub struct CTVolume {
-    pub dimensions: (usize, usize, usize), // (rows, columns, number of slices)
-    pub voxel_spacing: (f32, f32, f32),    // (spacing_x, spacing_y, spacing_z)
+    pub(crate) dimensions: (usize, usize, usize), // (rows, columns, number of slices)
+    pub(crate) voxel_spacing: (f32, f32, f32), // (spacing_x, spacing_y, spacing_z)
     // pub(crate) voxel_data: Vec<Vec<i16>>, // 3D voxel data flattened into slices
-    pub voxel_data: Vec<i16>, // 3D voxel data
-    pub base: Base,
+    pub(crate) voxel_data: Vec<i16>, // 3D voxel data 
+    pub(crate) base: Base,
 }
 
 impl fmt::Debug for CTVolume {
@@ -28,6 +28,38 @@ impl fmt::Debug for CTVolume {
             .field("voxel_data", &format!("{} slices", self.voxel_data.len()))
             .field("base", &format!("\n{:?}", &self.base))
             .finish()
+    }
+}
+
+impl CTVolume {
+    pub fn new(
+        dimensions: (usize, usize, usize),
+        voxel_spacing: (f32, f32, f32),
+        voxel_data: Vec<i16>,
+        base: Base,
+    ) -> Self {
+        Self {
+            dimensions,
+            voxel_spacing,
+            voxel_data,
+            base,
+        }
+    }
+
+    pub fn dimensions(&self) -> (usize, usize, usize) {
+        self.dimensions
+    }
+
+    pub fn voxel_spacing(&self) -> (f32, f32, f32) {
+        self.voxel_spacing
+    }
+
+    pub fn voxel_data(&self) -> &[i16] {
+        &self.voxel_data
+    }
+
+    pub fn base(&self) -> &Base {
+        &self.base
     }
 }
 

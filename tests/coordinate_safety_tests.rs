@@ -5,7 +5,7 @@
 //! - Matrix determinant properties (det = 1.0 for rotations)
 //! - Orientation matrix validation for different views (axial, coronal, sagittal)
 
-use kepler_wgpu::data::CTVolume;
+
 use kepler_wgpu::rendering::Orientation;
 
 mod common;
@@ -82,10 +82,10 @@ mod orthogonality_tests {
 
         // Calculate expected isotropic scale factor
         // d = (dx + dy + dz) / 3.0 where dx=nx*space.x, dy=ny*space.y, dz=nz*space.z
-        let nx = volume.dimensions.0 as f32;
-        let ny = volume.dimensions.1 as f32;
-        let nz = volume.dimensions.2 as f32;
-        let space = volume.voxel_spacing;
+        let nx = volume.dimensions().0 as f32;
+        let ny = volume.dimensions().1 as f32;
+        let nz = volume.dimensions().2 as f32;
+        let space = volume.voxel_spacing();
         let d_x = nx * space.0;
         let d_y = ny * space.1;
         let d_z = nz * space.2;
@@ -161,10 +161,10 @@ mod orthogonality_tests {
         let matrix = base.matrix;
 
         // Calculate expected isotropic scale factor
-        let nx = volume.dimensions.0 as f32;
-        let ny = volume.dimensions.1 as f32;
-        let nz = volume.dimensions.2 as f32;
-        let space = volume.voxel_spacing;
+        let nx = volume.dimensions().0 as f32;
+        let ny = volume.dimensions().1 as f32;
+        let nz = volume.dimensions().2 as f32;
+        let space = volume.voxel_spacing();
         let d_x = nx * space.0;
         let d_y = ny * space.1;
         let d_z = nz * space.2;
@@ -267,10 +267,10 @@ mod determinant_tests {
         let matrix = base.matrix;
 
         // Calculate expected isotropic scale factor
-        let nx = volume.dimensions.0 as f32;
-        let ny = volume.dimensions.1 as f32;
-        let nz = volume.dimensions.2 as f32;
-        let space = volume.voxel_spacing;
+        let nx = volume.dimensions().0 as f32;
+        let ny = volume.dimensions().1 as f32;
+        let nz = volume.dimensions().2 as f32;
+        let space = volume.voxel_spacing();
         let d_x = nx * space.0;
         let d_y = ny * space.1;
         let d_z = nz * space.2;
@@ -412,10 +412,10 @@ mod orientation_validation_tests {
         ];
 
         // Calculate expected isotropic scale factor (same for all orientations)
-        let nx = volume.dimensions.0 as f32;
-        let ny = volume.dimensions.1 as f32;
-        let nz = volume.dimensions.2 as f32;
-        let space = volume.voxel_spacing;
+        let nx = volume.dimensions().0 as f32;
+        let ny = volume.dimensions().1 as f32;
+        let nz = volume.dimensions().2 as f32;
+        let space = volume.voxel_spacing();
         let d_x = nx * space.0;
         let d_y = ny * space.1;
         let d_z = nz * space.2;

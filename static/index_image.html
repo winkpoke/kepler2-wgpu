@@ -31,7 +31,7 @@
 
     main {
       display: grid;
-      grid-template-columns: 520px 1fr;
+      grid-template-columns: 340px 1fr 320px;
       gap: var(--gap);
       padding: var(--gap)
     }
@@ -60,7 +60,7 @@
     }
 
     input[type="number"] {
-      width: 120px;
+      width: 80px;
     }
 
     label {
@@ -123,7 +123,7 @@
 
     .grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       gap: 8px
     }
 
@@ -174,9 +174,6 @@
 </head>
 
 <body>
-  <header>
-    <h1>三维重建</h1>
-  </header>
   <main>
     <section class="card">
       <h2>1) 选择文件</h2>
@@ -200,21 +197,21 @@
           <legend>视图切换</legend>
           <div class="grid">
             <div>
-              <span id="mode-label">模式:</span>
-              <input type="number" id="mode" step="1" value="0" min="0" max="1">
+              <span id="mode-label">mode:</span></br>
+              <input type="number" id="mode" step="1" value="2" min="0" max="1">
             </div>
             <div>
               <span id="index-label">index:</span>
-              <input type="number" id="index" step="1.0" value="0.0">
               <input type="checkbox" id="change_index" />
+              <input type="number" id="index" step="1.0" value="0.0">
             </div>
             <div>
               <span id="mipSpan">mip:</span>
-              <input type="number" id="mip" step="1.0" value="0.0">
               <input type="checkbox" id="change_mip" />
+              <input type="number" id="mip" step="1.0" value="0.0">
             </div>
             <div>
-              <span id="index-orientation-label">index-orientation:</span>
+              <span id="orientation-label">orientation:</span>
               <input type="number" id="index-orientation" step="1.0" value="0.0">
             </div>
           </div>
@@ -262,110 +259,6 @@
             <button id="ROI">截取</button>
           </div>
         </fieldset>
-
-        <fieldset class="pill" style="margin-bottom:10px">
-          <legend>操作视图窗口</legend>
-          <div class="row">
-            <span id="index-input-label">窗口索引:</span>
-            <input type="number" id="index-input" step="1.0" value="0.0">
-          </div>
-          <div class="grid" style="margin-top:8px">
-            <div>
-              <label for="slice-input">slice</label>
-              <input type="number" id="slice-input" step="0.5" value="0.0">
-              <button id="slice-submit">应用</button>
-            </div>
-            <div>
-              <label for="slab-thickness-input">slab thickness</label>
-              <input type="number" id="slab-thickness" step="0.5" value="0.0">
-              <button id="slab-thickness-submit">应用</button>
-            </div>
-            <div>
-              <label for="scale-input">Scale</label>
-              <input type="number" id="scale-input" step="1.0" value="1.0">
-              <button id="scale-submit">应用</button>
-            </div>
-            <div>
-              <label for="translate-input">Translate</label>
-              <div class="row">
-                <span id="trans-x-label">x:</span>
-                <input type="number" id="trans-x" step="10.0" value="0.0">
-                <span id="trans-y-label">y:</span>
-                <input type="number" id="trans-y" step="10.0" value="0.0">
-              </div>
-              <button id="trans-submit">应用</button>
-              <button id="trans-get">获取</button>
-            </div>
-            <div>
-              <label>Window/Level</label>
-              <div class="row">
-                <span id="window-label">width:</span>
-                <input type="number" id="window" step="10.0" value="0.0">
-                <span id="level-label">level:</span>
-                <input type="number" id="level" step="10.0" value="0.0">
-              </div>
-              <div class="row" style="margin-top:6px">
-                <button id="winlev-submit">应用</button>
-                <button id="winlev-get">获取</button>
-              </div>
-            </div>
-            <div>
-              <label for="resize-input">Resize</label>
-              <div class="row">
-                <span id="width-label">width:</span>
-                <input type="number" id="width" step="10.0" value="0.0" placeholder="800">
-                <span id="height-label">height:</span>
-                <input type="number" id="height" step="10.0" value="0.0" placeholder="800">
-              </div>
-              <button id="resize-submit">应用</button>
-            </div>
-            <div>
-              <label>Center</label>
-              <div class="row">
-                <span id="center-x-label">x:</span>
-                <input type="number" id="center-x" step="0.1" value="0.0" placeholder="x">
-                <span id="center-y-label">y:</span>
-                <input type="number" id="center-y" step="0.1" value="0.0" placeholder="y">
-                <span id="center-z-label">z:</span>
-                <input type="number" id="center-z" step="0.1" value="0.0" placeholder="z">
-              </div>
-              <button id="set-center">应用</button>
-            </div>
-          </div>
-        </fieldset>
-
-        <fieldset class="pill">
-          <legend>3D 网格</legend>
-          <div class="grid">
-            <div>
-              <span id="3d-scale-label">scale:</span>
-              <input type="number" id="3d-scale" step="0.1" value="1.0">
-            </div>
-            <div>
-              <span id="3d-pan-label">pan_x:</span>
-              <input type="number" id="3d-pan-x" step="0.1" value="0.0">
-            </div>
-            <div>
-              <span id="3d-pan-label">pan_y:</span>
-              <input type="number" id="3d-pan-y" step="0.1" value="0.0">
-            </div>
-            <div>
-              <span id="3d-opacity-label">opacity:</span>
-              <input type="number" id="3d-opacity" step="0.1" value="1.0" min="0" max="1">
-            </div>
-            <div>
-              <span id="3d-rotation-label">angle:</span>
-              <input type="number" id="3d-rotation-x" step="15" value="-90" min="0" max="360">
-              <input type="number" id="3d-rotation-y" step="15" value="0" min="0" max="360">
-              <input type="number" id="3d-rotation-z" step="15" value="0" min="0" max="360">
-              <button id="3d-submit-rot">旋转</button>
-            </div>
-          </div>
-          <div class="row" style="margin-top:8px">
-            <button id="3d-submit">应用</button>
-            <button id="3d-reset">重置</button>
-          </div>
-        </fieldset>
       </div>
     </section>
 
@@ -405,7 +298,119 @@
         <div id="render_app"></div>
       </div>
     </section>
+
+    <section class="card">
+      <h2>3) 视图操作</h2>
+      <div class="content">
+        <fieldset class="pill" style="margin-bottom:10px">
+          <legend>操作视图窗口</legend>
+          <div class="row">
+            <span id="index-input-label">窗口索引:</span>
+            <input type="number" id="index-input" step="1.0" value="0.0">
+          </div>
+          <div class="grid" style="margin-top:8px">
+            <div>
+              <label for="slice-input">slice</label>
+              <input type="number" id="slice-input" step="0.5" value="0.0">
+              <button id="slice-submit">应用</button>
+            </div>
+            <div>
+              <label for="slab-thickness-input">slab thickness</label>
+              <input type="number" id="slab-thickness" step="0.5" value="0.0">
+              <button id="slab-thickness-submit">应用</button>
+            </div>
+            <div>
+              <label for="scale-input">Scale</label>
+              <input type="number" id="scale-input" step="1.0" value="1.0">
+              <button id="scale-submit">应用</button>
+            </div>
+            <div>
+              <label for="translate-input">Translate</label>
+              <div class="row">
+                <span id="trans-x-label">x:</span>
+                <input type="number" id="trans-x" step="10.0" value="0.0"></br>
+                <span id="trans-y-label">y:</span>
+                <input type="number" id="trans-y" step="10.0" value="0.0"></br>
+              </div>
+              <button id="trans-submit">应用</button>
+              <button id="trans-get">获取</button>
+            </div>
+            <div>
+              <label>Window/Level</label>
+              <div class="row">
+                <span id="window-label">width:</span>
+                <input type="number" id="window" step="10.0" value="0.0">
+                <span id="level-label">level:</span>
+                <input type="number" id="level" step="10.0" value="0.0">
+              </div>
+              <div class="row" style="margin-top:6px">
+                <button id="winlev-submit">应用</button>
+                <button id="winlev-get">获取</button>
+              </div>
+            </div>
+            <div>
+              <label for="resize-input">Resize</label>
+              <div class="row">
+                <span id="width-label">width:</span>
+                <input type="number" id="width" step="10.0" value="0.0" placeholder="800">
+                <span id="height-label">height:</span>
+                <input type="number" id="height" step="10.0" value="0.0" placeholder="800">
+              </div>
+              <button id="resize-submit">应用</button>
+            </div>
+            <div>
+              <label>Center</label>
+              <div class="row">
+                <input type="number" id="center-x" step="0.1" value="0.0" placeholder="x">
+                <input type="number" id="center-y" step="0.1" value="0.0" placeholder="y">
+                <input type="number" id="center-z" step="0.1" value="0.0" placeholder="z">
+              </div>
+              <button id="set-center">应用</button>
+            </div>
+            <div>
+              <span id="mip-rotation-label">MIP旋转:</span></br>
+              <span id="mip-rotation-x-label">roll:</span><input type="number" id="mip-rotation-x" step="15" value="-90" min="0" max="360">
+              <span id="mip-rotation-y-label">yaw:</span><input type="number" id="mip-rotation-y" step="15" value="0" min="0" max="360">
+              <span id="mip-rotation-z-label">pitch:</span><input type="number" id="mip-rotation-z" step="15" value="0" min="0" max="360">
+              <button id="mip-submit-rot">旋转</button>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="pill">
+          <legend>3D 网格</legend>
+          <div class="grid">
+            <div>
+              <span id="3d-scale-label">scale:</span>
+              <input type="number" id="3d-scale" step="0.1" value="1.0">
+            </div>
+            <div>
+              <span id="3d-pan-label">pan_x:</span>
+              <input type="number" id="3d-pan-x" step="0.1" value="0.0">
+            </div>
+            <div>
+              <span id="3d-pan-label">pan_y:</span>
+              <input type="number" id="3d-pan-y" step="0.1" value="0.0">
+            </div>
+            <div>
+              <span id="3d-opacity-label">opacity:</span>
+              <input type="number" id="3d-opacity" step="0.1" value="1.0" min="0" max="1">
+            </div>
+            <div>
+              <span id="3d-rotation-label">angle:</span></br>
+              <span id="3d-rotation-x-label">x:</span><input type="number" id="3d-rotation-x" step="15" value="0" min="0" max="360"></br>
+              <span id="3d-rotation-y-label">y:</span><input type="number" id="3d-rotation-y" step="15" value="0" min="0" max="360">
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button id="3d-submit">应用</button>
+            <button id="3d-reset">重置</button>
+          </div>
+        </fieldset>
+      </div>
+    </section>
   </main>
+
   <script type="module">
     // ========= 日志函数 =========
     const log = (msg, level = "info") => {
@@ -471,6 +476,8 @@
       mAs: 70.0,
       slope: 1612.903,
       intercept: - 1016.129,
+      patient_position: "HFS",
+      modality: "CT",
     }
     const infoUint8 = toUint8Array(info);
     
@@ -745,19 +752,17 @@
       gl_canvas.set_mpr_mip_mode(mode, state.mip, state.mesh_index, state.index, index_orientation);
     });
 
-    byId('3d-submit-rot').addEventListener('click', () => {
+    byId('mip-submit-rot').addEventListener('click', () => {
       const indexValue = parseInt(byId('index-input').value, 10);
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
 
-      gl_canvas.set_mesh_rotation_enabled(indexValue, state.enable_rotation);
-
-      const rotation_x = parseFloat(byId('3d-rotation-x').value);
-      const rotation_y = parseFloat(byId('3d-rotation-y').value);
-      const rotation_z = parseFloat(byId('3d-rotation-z').value);
-      gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
+      const rotation_x = parseFloat(byId('mip-rotation-x').value);
+      const rotation_y = parseFloat(byId('mip-rotation-y').value);
+      const rotation_z = parseFloat(byId('mip-rotation-z').value);
+      gl_canvas.set_mip_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
     })
     
     byId('3d-submit').addEventListener('click', () => {
@@ -785,18 +790,28 @@
         log('mesh opacity 方法未导出，已跳过', 'warn');
       }
       
-      gl_canvas.set_mesh_rotation_delta(indexValue, rotation_x, rotation_y);
-      gl_canvas.get_mesh_rotation_quat(indexValue).then((result) => {
-        console.log('rotation_quat:', result[0], result[1], result[2], result[3]);
-      }).catch((err) => {
-        console.error('get_mesh_rotation_quat error:', err);
-      });
+      gl_canvas.set_mesh_rotation_angle_degrees(indexValue, -rotation_x, rotation_y);
     });
 
     byId('3d-reset').addEventListener('click', () => {
         const indexValue = parseInt(byId('index-input').value, 10);
         gl_canvas.reset_mesh(indexValue);
     });
+
+    document.getElementById('resize-submit').addEventListener('click', () => {
+      const width = document.getElementById('width').value;
+      const height = document.getElementById('height').value;
+      const input_index = document.getElementById('index-input');
+      if (isNaN(width) || isNaN(height)) {
+          alert('Please enter a valid number');
+          return;
+      }
+      if (!gl_canvas) {
+          alert('Please select a series first!');
+          return;
+      }
+      gl_canvas.resize(width, height);
+    })
 
     // ========= MHX文件解析函数 =========
     async function parseMHXContent(mhxText) {
@@ -895,7 +910,6 @@
 
         const mhxFile = state.mhx;
 
-        const sop_uid = "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.365119";
         // 构造 patient / study 对象
         const patient = {
           patient_id: "P001",
@@ -904,6 +918,7 @@
           sex: "M"
         };
         const study = {
+          study_uid: "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.365120",
           study_id: "STUDY001",
           patient_id: "P001",
           date: "20250908",
@@ -918,11 +933,13 @@
 
         const patientUint8 = toUint8Array(patient);
         const studyUint8 = toUint8Array(study);
+        console.log(patientUint8);
+        console.log(studyUint8);
+        console.log(infoUint8);
         byId("progress").value = 50;
 
         const arrayBuffer = await mhxFile.arrayBuffer();
         const mhxUint8Array = new Uint8Array(arrayBuffer);
-        log(`ArrayBuffer大小: ${arrayBuffer.byteLength} bytes`);
         log(`Uint8Array长度: ${mhxUint8Array.length}`);
         log("开始DICOM转换...");
         byId("progress").value = 75;
@@ -943,15 +960,17 @@
               const arrayBuffer = await mhxFile.arrayBuffer();
               dataUint8Array = new Uint8Array(arrayBuffer);
             }
-            console.log(dataUint8Array);
 
-            const files = await state.wasmModule.build_ct_dicom_wasm(
+            const result = await state.wasmModule.build_ct_dicom_wasm(
               mhxUint8Array,
               dataUint8Array,
               patientUint8,
               studyUint8,
               infoUint8
             );
+            
+            const files = result.files;
+            console.log("Series UID:", result.series_uid);
 
             const zip = new JSZip(); 
             files.forEach(file => { 
@@ -1006,6 +1025,7 @@
           repo = await state.wasmModule.parse_dcm_files_wasm(fileArray);
           // 获取所有患者信息
           let patients = JSON.parse(repo.get_all_patients());
+          console.log("???",patients);
           let patient_list = [];
           for (const patient of patients) {
             let patient_data = {

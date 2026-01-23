@@ -12,15 +12,15 @@ pub fn create_dummy_pixel_data(num_pixels: usize) -> String {
 
 /// Create a simple test CTVolume for testing coordinate systems
 pub fn create_test_ct_volume() -> CTVolume {
-    CTVolume {
-        dimensions: (512, 512, 100),
-        voxel_spacing: (1.0, 1.0, 2.0),
-        voxel_data: vec![0i16; 512 * 512 * 100],
-        base: Base {
+    CTVolume::new(
+        (512, 512, 100),
+        (1.0, 1.0, 2.0),
+        vec![0i16; 512 * 512 * 100],
+        Base {
             label: "test_volume".to_string(),
             matrix: Mat4::IDENTITY,
         },
-    }
+    )
 }
 
 /// Create MHA test data header with embedded data

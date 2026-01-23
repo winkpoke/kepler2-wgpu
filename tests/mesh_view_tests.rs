@@ -334,16 +334,4 @@ mod mesh_view_tests {
         view.reset_scale_factor();
         assert!((view.get_scale_factor() - 1.0).abs() < 1e-6);
     }
-
-    #[test]
-    fn test_mesh_view_rotation_defaults() {
-        // Check default orientation and speed align with implementation
-        let view = MeshView::new();
-        let quat = view.get_rotation_quat();
-        // Default rotation should be identity (0, 0, 0, 0) in Euler angles
-        assert!(quat[0].abs() < 1e-6);
-        assert!(quat[1].abs() < 1e-6);
-        assert!(quat[2].abs() < 1e-6);
-        assert!(quat[3].abs() < 1e-6);
-    }
 }

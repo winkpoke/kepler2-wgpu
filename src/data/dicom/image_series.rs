@@ -28,7 +28,7 @@ impl ImageSeries {
 
         // Ensure the modality is "CT"
         if modality != "CT" {
-            return Err(anyhow!("Expected CT image, but got {} image", modality).into());
+           return Err(anyhow!("Expected CT image, but got {} image", modality).into());
         }
 
         // Optional fields

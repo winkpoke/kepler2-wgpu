@@ -1,8 +1,5 @@
 use anyhow::Result;
-use bytemuck::cast_slice;
-use dicom_core::Tag;
 use dicom_object::{from_reader, FileDicomObject, InMemDicomObject};
-use log::warn;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -38,20 +35,3 @@ impl DicomObject {
             .map(|dcm| Self { dcm })
     }
 }
-
-// pub fn read_dicom() -> Result<()> {
-//     warn!("reading dicom file");
-//     let bytes = include_bytes!("C:\\share\\imrt\\CT.RT001921_1.dcm");
-//     let f = std::io::Cursor::new(bytes);
-//     let dcm = from_reader(f)?;
-//     let patient_name = dcm.element_by_name("PatientName")?.to_str()?;
-//     let modality = dcm.element_by_name("Modality")?.to_str()?;
-//     let loc = dcm.element_by_name("SliceLocation")?.to_str()?;
-//     let pixel_data_bytes = dcm.element(Tag(0x7FE0, 0x0010))?.to_bytes()?;
-//     let _pixels: &[i16] = cast_slice(&pixel_data_bytes);
-//     warn!("{:?}", patient_name);
-//     warn!("{:?}", modality);
-//     warn!("slice location: {}", loc);
-//     // warn!("{:?}", pixels);
-//     Ok(())
-// }

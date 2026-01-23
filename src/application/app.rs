@@ -146,20 +146,34 @@ impl App {
 
     /// Function-level comment: Resize the application window and update graphics resources.
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
-        println!("Resizing to: {}, {}", new_size.width, new_size.height);
-        if new_size.width > 0 && new_size.height > 0 {
+        // get max texture dimension
+        let max_dim = self.graphics().device.limits().max_texture_dimension_2d as u32;
+
+        let safe_width = new_size.width.min(max_dim);
+        let safe_height = new_size.height.min(max_dim);
+        if (safe_width != new_size.width) || (safe_height != new_size.height) {
+            log::warn!(
+                "please resize the window to ({}, {}) or smaller",
+                safe_width, safe_height
+            );
+        }
+        log::info!("Resizing to: {}, {}", safe_width, safe_height);
+        
+        if safe_width > 0 && safe_height > 0 {
             // self.size = new_size;
-            self.graphics_mut().surface_config.width = new_size.width;
-            self.graphics_mut().surface_config.height = new_size.height;
+            self.graphics_mut().surface_config.width = safe_width;
+            self.graphics_mut().surface_config.height = safe_height;
 
             self.app_view
                 .layout
-                .resize((new_size.width, new_size.height));
+                .resize((safe_width, safe_height));
 
             #[cfg(target_arch = "wasm32")]
             {
                 // sets the style width and height of the window canvas
-                let _ = self.window().request_inner_size(new_size);
+                let _ = self.window().request_inner_size(
+                    winit::dpi::PhysicalSize::new(safe_width, safe_height)
+                );
             }
             self.graphics()
                 .surface
@@ -705,6 +719,20 @@ impl App {
         }
     }
 
+    pub fn set_mip_rotation_angle_degrees(&mut self, index: usize, roll_deg: f32, yaw_deg: f32, pitch_deg: f32) {
+        if let Err(e) = self.app_view.set_mip_rotation_angle_degrees(index, roll_deg, yaw_deg, pitch_deg) {
+            log::warn!("set_mip_rotation_angle_degrees failed on view {}: {}", index, e);
+        } else {
+            log::info!(
+                "View {} set_mip_rotation_angle_degrees: roll_deg={}, yaw_deg={}, pitch_deg={}",
+                index,
+                roll_deg,
+                yaw_deg,
+                pitch_deg
+            );
+        }
+    }
+
     /// Get screen coordinate in millimeters for the specified view
     pub fn get_screen_coord_in_mm(&self, index: usize, coord: [f32; 3]) -> [f32; 3] {
         if let Some(view) = self.app_view.layout.views().get(index) {
@@ -926,25 +954,11 @@ impl App {
     pub fn set_mesh_rotation_angle_degrees(
         &mut self,
         degrees_x: f32,
-        degrees_y: f32,
-        degrees_z: f32,
+        degrees_y: f32
     ) {
         self.apply_to_mesh_view(|mesh_view| {
-            let degrees = [degrees_x, degrees_y, degrees_z];
-            mesh_view.set_rotation_angle_degrees(degrees);
+            mesh_view.set_rotation_angle_degrees(degrees_x, degrees_y);
         });
-    }
-
-    pub fn get_mesh_rotation_quat(&self) -> [f32; 4] {
-        for view in self.app_view.layout.views().iter() {
-            if let Some(mesh_view) = view
-                .as_any()
-                .downcast_ref::<crate::rendering::view::MeshView>()
-            {
-                return mesh_view.get_rotation_quat();
-            }
-        }
-        [0.0, 0.0, 0.0, 0.0]
     }
 
     /// Apply a rotation delta to the first MeshView using mouse movement (pixels).

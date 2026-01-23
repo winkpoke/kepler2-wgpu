@@ -54,6 +54,7 @@ pub enum UserEvent {
     WorldCoordToScreen(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     SetCenterAtPointInMM(usize, f32, f32, f32), // screen coords
     SetSlabThickness(usize, f32),
+    SetMipRotationAngleDeg(usize, f32, f32, f32),
     ViewClick(usize, f32, f32, f32), // view_index, screen_x, screen_y, screen_z
     #[cfg(target_arch = "wasm32")]
     /// View click with reply; returns [x_mm, y_mm, slice_mm, reserved]
@@ -65,7 +66,7 @@ pub enum UserEvent {
     SetMeshPan(usize, f32, f32),
     ResetMesh(usize),
     SetMeshScale(usize, f32),
-    SetMeshRotationAngleDeg(usize, f32, f32, f32),
+    SetMeshRotationAngleDeg(usize, f32, f32),
     SetMeshRotationDelta(usize, f32, f32),
     #[cfg(target_arch = "wasm32")]
     GetMeshRotationQuat(usize, oneshot::Sender<[f32; 4]>),
@@ -406,30 +407,6 @@ impl GLCanvas {
             }
         }
     }
-
-    #[cfg(target_arch = "wasm32")]
-    pub async fn get_mesh_rotation_quat(&self, index: usize) -> Result<Box<[f32]>, String> {
-        let (tx, rx) = oneshot::channel();
-
-        if let Err(e) = self
-            .proxy
-            .send_event(UserEvent::GetMeshRotationQuat(index, tx))
-        {
-            log::error!(
-                "Failed to send GetMeshRotationQuat event for window {}: {:?}",
-                index,
-                e
-            );
-            return Err(format!("Failed to send event: {:?}", e));
-        }
-
-        log::info!("Sent GetMeshRotationQuat event for window {}", index);
-
-        match rx.await {
-            Ok(result) => Ok(result.into()),
-            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
-        }
-    }
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -449,12 +426,13 @@ impl_user_event_senders_for_glcanvas! {
     set_center_at_point_in_mm => SetCenterAtPointInMM(x_mm: f32, y_mm: f32, z_mm: f32),
     handle_view_click => ViewClick(screen_x: f32, screen_y: f32, screen_z: f32),
     set_slab_thickness => SetSlabThickness(thickness: f32),
+    set_mip_rotation_angle_degrees => SetMipRotationAngleDeg(roll_deg: f32, yaw_deg: f32, pitch_deg: f32),
     // Mesh controls
     set_mesh_rotation_enabled => SetMeshRotationEnabled(enabled: bool),
     set_mesh_opacity => SetMeshOpacity(alpha: f32),
     set_mesh_pan => SetMeshPan(dx: f32, dy: f32),
     reset_mesh => ResetMesh(),
     set_mesh_scale => SetMeshScale(scale: f32),
-    set_mesh_rotation_angle_degrees => SetMeshRotationAngleDeg(degrees_x: f32, degrees_y: f32, degrees_z: f32),
+    set_mesh_rotation_angle_degrees => SetMeshRotationAngleDeg(degrees_x: f32, degrees_y: f32),
     set_mesh_rotation_delta => SetMeshRotationDelta(dx: f32, dy: f32),
 }

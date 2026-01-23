@@ -5,15 +5,15 @@ use kepler_wgpu::rendering::Orientation;
 
 #[test]
 fn debug_matrix_layout() {
-    let volume = CTVolume {
-        dimensions: (512, 512, 100),
-        voxel_spacing: (1.0, 1.0, 2.0),
-        voxel_data: vec![0i16; 512 * 512 * 100],
-        base: Base {
+    let volume = CTVolume::new(
+        (512, 512, 100),
+        (1.0, 1.0, 2.0),
+        vec![0i16; 512 * 512 * 100],
+        Base {
             label: "test_volume".to_string(),
             matrix: Mat4::IDENTITY,
         },
-    };
+    );
 
     let base = Orientation::Transverse.build_base(&volume);
     let m = base.matrix;
