@@ -221,8 +221,8 @@ impl ImageMetadata {
 }
 
 /// Patient position enumeration
-/// Represents different positions of the patient in the imaging setup
-#[derive(Debug, Clone)]
+/// Represents different positions of patient in imaging setup
+#[derive(Debug, Clone, PartialEq)]
 pub enum PatientPosition {
     HFS,
     HFP,
