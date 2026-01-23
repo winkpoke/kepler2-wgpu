@@ -933,11 +933,13 @@
 
         const patientUint8 = toUint8Array(patient);
         const studyUint8 = toUint8Array(study);
+        console.log(patientUint8);
+        console.log(studyUint8);
+        console.log(infoUint8);
         byId("progress").value = 50;
 
         const arrayBuffer = await mhxFile.arrayBuffer();
         const mhxUint8Array = new Uint8Array(arrayBuffer);
-        log(`ArrayBuffer大小: ${arrayBuffer.byteLength} bytes`);
         log(`Uint8Array长度: ${mhxUint8Array.length}`);
         log("开始DICOM转换...");
         byId("progress").value = 75;
@@ -958,15 +960,17 @@
               const arrayBuffer = await mhxFile.arrayBuffer();
               dataUint8Array = new Uint8Array(arrayBuffer);
             }
-            console.log(dataUint8Array);
 
-            const files = await state.wasmModule.build_ct_dicom_wasm(
+            const result = await state.wasmModule.build_ct_dicom_wasm(
               mhxUint8Array,
               dataUint8Array,
               patientUint8,
               studyUint8,
               infoUint8
             );
+            
+            const files = result.files;
+            console.log("Series UID:", result.series_uid);
 
             const zip = new JSZip(); 
             files.forEach(file => { 

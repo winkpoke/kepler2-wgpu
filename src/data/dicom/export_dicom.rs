@@ -76,7 +76,7 @@ pub fn build_ct_dicom<S: DicomSink>(
     patient_position: String,
     modality: String,
     sink: &mut S,
-) -> Result<()> {
+) -> Result<String> {
     // generate series uid
     let series_uid = change_dicom_uid(&study.uid, true);
     let sop_class_uid = "1.2.840.10008.5.1.4.1.1.2"; // CT Image Storage
@@ -128,9 +128,9 @@ pub fn build_ct_dicom<S: DicomSink>(
 
     // generate image info
     obj.put(DataElement::new(tags::PATIENT_POSITION, VR::CS, PrimitiveValue::from(patient_position.clone())));
-    inject_image(&mut obj, &mut meta, series_uid, mha_path, data_path,slope, intercept, sink)?;
+    inject_image(&mut obj, &mut meta, series_uid.clone(), mha_path, data_path,slope, intercept, sink)?;
     
-    Ok(())
+    Ok(series_uid)
 }
 
 // generate image info

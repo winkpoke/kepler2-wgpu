@@ -547,7 +547,7 @@ pub async fn build_ct_dicom_wasm(
     };
 
     let mut sink = MemSink::new();
-    build_ct_dicom(
+    let series_uid = build_ct_dicom(
         &buf,
         data_buf_option.as_ref().map(|v| v.as_slice()),
         &patient,
@@ -575,5 +575,13 @@ pub async fn build_ct_dicom_wasm(
         js_array.push(&obj);
     }
 
-    Ok(js_array.into())
+    let result = js_sys::Object::new();
+    js_sys::Reflect::set(&result, &"files".into(), &js_array)?;
+    js_sys::Reflect::set(
+        &result,
+        &"series_uid".into(),
+        &JsValue::from_str(&series_uid),
+    )?;
+
+    Ok(result.into())
 }
