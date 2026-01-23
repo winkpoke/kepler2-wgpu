@@ -2,7 +2,9 @@
 
 use kepler_wgpu::rendering::view::compute_aspect_fit;
 
-fn approx_eq(a: f32, b: f32, eps: f32) -> bool { (a - b).abs() <= eps }
+fn approx_eq(a: f32, b: f32, eps: f32) -> bool {
+    (a - b).abs() <= eps
+}
 
 #[test]
 fn fit_square_in_square_no_padding() {

@@ -25,9 +25,9 @@
 //! - Add tests covering cache hit/miss behavior and signature correctness.
 #![allow(dead_code)]
 
-use wgpu::util::DeviceExt;
 use once_cell::sync::OnceCell;
 use std::sync::Arc;
+use wgpu::util::DeviceExt;
 
 /// Global storage for the swapchain/surface color target format used by onscreen render passes.
 ///
@@ -87,14 +87,18 @@ pub fn get_or_create_texture_quad_pipeline(
     vertex_buffers: &[wgpu::VertexBufferLayout<'static>],
     target_format: wgpu::TextureFormat,
 ) -> Arc<wgpu::RenderPipeline> {
-    log::trace!("Creating texture quad pipeline for target format: {:?}", target_format);
+    log::trace!(
+        "Creating texture quad pipeline for target format: {:?}",
+        target_format
+    );
     let pipeline = crate::rendering::view::mpr::mpr_render_context::create_texture_quad_pipeline(
-        device, bind_group_layouts, vertex_buffers, target_format
+        device,
+        bind_group_layouts,
+        vertex_buffers,
+        target_format,
     );
     Arc::new(pipeline)
 }
-
-
 
 /// Creates a MIP (Maximum Intensity Projection) render pipeline.
 ///
@@ -112,14 +116,14 @@ pub fn create_mip_pipeline_(
 ) -> wgpu::RenderPipeline {
     // Load MIP shader with vertex and fragment entry points
     let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/mip.wgsl"));
-    
+
     // Create pipeline layout with MIP bind group
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("MIP Pipeline Layout"),
         bind_group_layouts: &[bind_group_layout],
         push_constant_ranges: &[],
     });
-    
+
     // Create the MIP pipeline
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("MIP Pipeline"),
@@ -180,7 +184,6 @@ pub fn create_mip_pipeline_(
 /// TODO
 /// - Parameterize MSAA (`multisample.count`) and culling for performance/quality trade-offs.
 
-
 /// Creates a basic mesh pipeline with depth testing enabled.
 /// Uses global swapchain format if set; otherwise falls back to Rgba8Unorm.
 ///
@@ -206,77 +209,84 @@ pub fn get_or_create_mesh_pipeline(device: &wgpu::Device) -> Arc<wgpu::RenderPip
 ///
 /// Returns
 /// - `Arc<wgpu::RenderPipeline>`: Shared pipeline handle for mesh rendering.
-pub fn get_or_create_mesh_pipeline_with_depth(device: &wgpu::Device, use_depth: bool) -> Arc<wgpu::RenderPipeline> {
+pub fn get_or_create_mesh_pipeline_with_depth(
+    device: &wgpu::Device,
+    use_depth: bool,
+) -> Arc<wgpu::RenderPipeline> {
     log::trace!("Creating mesh pipeline with depth: {}", use_depth);
-    
+
     // Get target format and topology
     let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
     let topology = wgpu::PrimitiveTopology::TriangleList;
-    
+
     // Mesh shader with both vertex and fragment stages.
     let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/mesh.wgsl"));
-    
+
     // Create bind group layouts for uniform buffers
     // Bind group 0: Camera uniforms (view, projection matrices, camera position)
-    let camera_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("Camera Bind Group Layout"),
-        entries: &[wgpu::BindGroupLayoutEntry {
-            binding: 0,
-            visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
-            count: None,
-        }],
-    });
-    
+    let camera_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Camera Bind Group Layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+
     // Bind group 1: Lighting uniforms (light position, color, material properties)
-    let lighting_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("Lighting Bind Group Layout"),
-        entries: &[wgpu::BindGroupLayoutEntry {
-            binding: 0,
-            visibility: wgpu::ShaderStages::FRAGMENT,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
-            count: None,
-        }],
-    });
-    
+    let lighting_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Lighting Bind Group Layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+
     // Bind group 2: Model uniforms (model matrix, normal matrix)
-    let model_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("Model Bind Group Layout"),
-        entries: &[wgpu::BindGroupLayoutEntry {
-            binding: 0,
-            visibility: wgpu::ShaderStages::VERTEX,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
-            count: None,
-        }],
-    });
-    
+    let model_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Model Bind Group Layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+
     // Bind group 3: Material uniforms (albedo, metallic, roughness, etc.)
-    let material_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("Material Bind Group Layout"),
-        entries: &[wgpu::BindGroupLayoutEntry {
-            binding: 0,
-            visibility: wgpu::ShaderStages::FRAGMENT,
-            ty: wgpu::BindingType::Buffer {
-                ty: wgpu::BufferBindingType::Uniform,
-                has_dynamic_offset: false,
-                min_binding_size: None,
-            },
-            count: None,
-        }],
-    });
-    
+    let material_bind_group_layout =
+        device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Material Bind Group Layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+
     // Create pipeline layout with uniform buffer bind groups
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Mesh Pipeline Layout"),
@@ -357,9 +367,18 @@ pub fn vertex_layout_signature(layouts: &[wgpu::VertexBufferLayout<'static>]) ->
     let mut s = String::new();
     s.push_str(&format!("count:{};", layouts.len()));
     for (i, vb) in layouts.iter().enumerate() {
-        s.push_str(&format!("i:{};stride:{};step:{:?};attrs:{};", i, vb.array_stride, vb.step_mode, vb.attributes.len()));
+        s.push_str(&format!(
+            "i:{};stride:{};step:{:?};attrs:{};",
+            i,
+            vb.array_stride,
+            vb.step_mode,
+            vb.attributes.len()
+        ));
         for a in vb.attributes.iter() {
-            s.push_str(&format!("loc:{};off:{};fmt:{:?};", a.shader_location, a.offset, a.format));
+            s.push_str(&format!(
+                "loc:{};off:{};fmt:{:?};",
+                a.shader_location, a.offset, a.format
+            ));
         }
     }
     s
@@ -526,17 +545,17 @@ pub fn create_basic_mesh_pipeline_with_lighting(
 ) -> wgpu::RenderPipeline {
     // Use the basic mesh shader with lighting support
     let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/mesh_basic.wgsl"));
-    
+
     // Create pipeline layout with two bind groups
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Basic Mesh Pipeline Layout with Lighting"),
         bind_group_layouts: &[transform_bind_group_layout, lighting_bind_group_layout],
         push_constant_ranges: &[],
     });
-    
+
     // Get target format
     let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
-    
+
     // Create the pipeline
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("Basic Mesh Pipeline with Lighting"),
@@ -594,17 +613,17 @@ pub fn create_simple_mesh_pipeline(
 ) -> wgpu::RenderPipeline {
     // Use the basic mesh shader with minimal uniforms
     let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/mesh_basic.wgsl"));
-    
+
     // Create pipeline layout with only one bind group
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Simple Mesh Pipeline Layout"),
         bind_group_layouts: &[bind_group_layout],
         push_constant_ranges: &[],
     });
-    
+
     // Get target format
     let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
-    
+
     // Create the pipeline
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("Simple Mesh Pipeline"),

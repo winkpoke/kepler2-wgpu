@@ -1,12 +1,12 @@
 use crate::data::medical_imaging::{
-    error::*, 
-    metadata::{MedicalVolume,  ImageMetadata, PixelData},
-    ImageFormat,
+    error::*,
+    metadata::{ImageMetadata, MedicalVolume, PixelData},
     validation::MedicalImageValidator,
+    ImageFormat,
 };
-use std::{collections::HashMap, io::Read};
 use std::fs::File;
 use std::path::PathBuf;
+use std::{collections::HashMap, io::Read};
 
 /// Function-level comment: Parses MHD (MetaIO) files with separate data files
 /// Handles header files that reference external raw or compressed data
@@ -26,7 +26,7 @@ impl MhdParser {
     pub fn new(
         validator: MedicalImageValidator,
         path_resolver: PathBuf,
-        data_loader: PathBuf
+        data_loader: PathBuf,
     ) -> Self {
         Self {
             validator,
@@ -34,7 +34,7 @@ impl MhdParser {
             data_loader,
         }
     }
-    
+
     /// Parses MHD header file and loads associated data file
     #[cfg(not(target_arch = "wasm32"))]
     pub async fn parse_file(path: PathBuf) -> MedicalImagingResult<MedicalVolume> {
@@ -44,25 +44,28 @@ impl MhdParser {
         let metadata = Self::parse_metadata_only(&bytes_mhd)?;
         let pixel_data = mhd.load_data_file(&metadata)?;
         let mut mhd_clone = MhdParser::new(MedicalImageValidator::new(), PathBuf::new(), mhd_path);
-        let result = mhd_clone.validator.add_format_validator(ImageFormat::MHD, &metadata, &pixel_data);
-        if result.is_valid{
+        let result =
+            mhd_clone
+                .validator
+                .add_format_validator(ImageFormat::MHD, &metadata, &pixel_data);
+        if result.is_valid {
             MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
-        }else{
-            Err(MedicalImagingError::InvalidPath { path: (
-                path.to_string_lossy().to_string()
-            ) })
+        } else {
+            Err(MedicalImagingError::InvalidPath {
+                path: (path.to_string_lossy().to_string()),
+            })
         }
     }
-        
+
     /// Parses MHD header file from raw bytes and loads pixel data
-    pub fn parse_by_bytes(mhd:&[u8],data: &[u8]) -> MedicalImagingResult<MedicalVolume>{
+    pub fn parse_by_bytes(mhd: &[u8], data: &[u8]) -> MedicalImagingResult<MedicalVolume> {
         let metadata = Self::parse_metadata_only(mhd)?;
         let pixel_data = PixelData::UInt8(data.to_vec());
         MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
     }
-    
+
     /// Loads pixel data from associated data file
-    pub fn load_data_file(self, metadata: &ImageMetadata) -> MedicalImagingResult<PixelData>{
+    pub fn load_data_file(self, metadata: &ImageMetadata) -> MedicalImagingResult<PixelData> {
         let dims = metadata.dimensions.clone();
         let n = dims[0] * dims[1] * dims[2];
         let mut temp_buf = vec![0u8; n * 4];
@@ -72,7 +75,7 @@ impl MhdParser {
         f.read_exact(&mut temp_buf)?;
         Ok(PixelData::UInt8(temp_buf))
     }
-    
+
     /// Parses MHD header file from raw bytes
     pub fn parse_metadata_only(mhd_data: &[u8]) -> MedicalImagingResult<ImageMetadata> {
         let mut kv: HashMap<String, String> = HashMap::new();
@@ -107,11 +110,10 @@ impl MhdParser {
 
         // Parse the metadata from header key-value pairs
         let mut metadata = ImageMetadata::get_header(kv, data_offset)?;
-        
+
         // Mark that this is a header-only parse for WASM
         metadata.element_data_file = "WASM_HEADER_ONLY".to_string();
-        
+
         Ok(metadata)
     }
-
 }

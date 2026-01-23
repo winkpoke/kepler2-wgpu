@@ -8,9 +8,9 @@ use crate::core::coord::Base;
 use crate::data::ct_volume::{CTVolume, CTVolumeGenerator};
 use crate::data::medical_imaging::image_info::PatientPosition;
 use anyhow::Result;
+use glam::{Mat4, Vec3, Vec4};
 use std::cmp::Ordering;
 use std::collections::HashMap;
-use glam::{Mat4, Vec3, Vec4};
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[derive(Debug, Clone)]
@@ -236,20 +236,22 @@ impl DicomRepo {
 
         // Image position patient (origin of the base matrix)
         let image_position_patient = ct_images[0]
-        .image_position_patient
-        .ok_or_else(|| "ImagePositionPatient is missing in the first CTImage".to_string())?;
+            .image_position_patient
+            .ok_or_else(|| "ImagePositionPatient is missing in the first CTImage".to_string())?;
 
         // Define the scaling matrix (voxel spacings)
-        let scaling_matrix = Mat4::from_scale(Vec3::new(
-            voxel_spacing.0,
-            voxel_spacing.1,
-            voxel_spacing.2,
-        ));
+        let scaling_matrix =
+            Mat4::from_scale(Vec3::new(voxel_spacing.0, voxel_spacing.1, voxel_spacing.2));
 
         // Define the direction matrix (row, column, slice directions)
         let direction_matrix = Mat4::from_cols(
             Vec4::new(row_direction.0, row_direction.1, row_direction.2, 0.0),
-            Vec4::new(column_direction.0, column_direction.1, column_direction.2, 0.0),
+            Vec4::new(
+                column_direction.0,
+                column_direction.1,
+                column_direction.2,
+                0.0,
+            ),
             Vec4::new(slice_direction.0, slice_direction.1, slice_direction.2, 0.0),
             Vec4::new(0.0, 0.0, 0.0, 1.0),
         );

@@ -44,7 +44,7 @@ impl Camera {
             center: [0.0, 0.0, 0.0],
             up: [0.0, 1.0, 0.0],
             fov_y_radians: std::f32::consts::PI / 4.0, // 45 degrees (used for perspective mode)
-            near: 0.1, // Adjusted near plane to be positive for perspective
+            near: 0.1,  // Adjusted near plane to be positive for perspective
             far: 100.0, // Adjusted far plane
             projection_type: ProjectionType::Orthogonal, // Default to orthogonal for medical accuracy
             // Orthogonal bounds - defines viewing volume to make cube prominent
@@ -68,7 +68,7 @@ impl Camera {
     pub fn set_orthogonal_bounds(&mut self, width: f32, height: f32, zoom: f32) {
         let half_width = (width * zoom) / 2.0;
         let half_height = (height * zoom) / 2.0;
-        
+
         self.ortho_left = -half_width;
         self.ortho_right = half_width;
         self.ortho_bottom = -half_height;
@@ -80,7 +80,7 @@ impl Camera {
         let eye = Vec3::from(self.eye);
         let center = Vec3::from(self.center);
         let up = Vec3::from(self.up);
-        
+
         Mat4::look_at_rh(eye, center, up)
     }
 
@@ -104,19 +104,29 @@ impl Camera {
         // Adjust orthogonal bounds to maintain aspect ratio
         let width = self.ortho_right - self.ortho_left;
         let height = self.ortho_top - self.ortho_bottom;
-        
+
         let (left, right, bottom, top) = if width / height > aspect_ratio {
             // Width is constraining factor - adjust height
             let adjusted_height = width / aspect_ratio;
             let center_y = (self.ortho_top + self.ortho_bottom) / 2.0;
             let half_height = adjusted_height / 2.0;
-            (self.ortho_left, self.ortho_right, center_y - half_height, center_y + half_height)
+            (
+                self.ortho_left,
+                self.ortho_right,
+                center_y - half_height,
+                center_y + half_height,
+            )
         } else {
             // Height is constraining factor - adjust width
             let adjusted_width = height * aspect_ratio;
             let center_x = (self.ortho_left + self.ortho_right) / 2.0;
             let half_width = adjusted_width / 2.0;
-            (center_x - half_width, center_x + half_width, self.ortho_bottom, self.ortho_top)
+            (
+                center_x - half_width,
+                center_x + half_width,
+                self.ortho_bottom,
+                self.ortho_top,
+            )
         };
 
         Mat4::orthographic_rh_gl(left, right, bottom, top, self.near, self.far)
@@ -132,12 +142,12 @@ impl Camera {
     /// Function-level comment: Set camera to orbit around a target point
     pub fn set_orbit(&mut self, target: [f32; 3], distance: f32, azimuth: f32, elevation: f32) {
         self.center = target;
-        
+
         // Convert spherical coordinates to Cartesian
         let x = distance * elevation.cos() * azimuth.sin();
         let y = distance * elevation.sin();
         let z = distance * elevation.cos() * azimuth.cos();
-        
+
         self.eye = [target[0] + x, target[1] + y, target[2] + z];
     }
 }

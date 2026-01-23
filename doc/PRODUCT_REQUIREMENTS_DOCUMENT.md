@@ -38,6 +38,7 @@ To deliver a state-of-the-art medical imaging visualization platform that combin
 - **3D Volume Rendering**: Maximum intensity projection through volumetric data
 - **Viewing Angles**: Multiple projection angles (front, side, top, custom)
 - **Opacity Control**: Adjustable transparency for tissue visualization
+- **Precision Rotation**: Manual roll, yaw, and pitch controls for precise orientation
 - **Real-time Rotation**: Interactive 3D volume rotation and manipulation
 
 #### 3D Mesh Visualization

@@ -1,5 +1,5 @@
 //! Shader files for the rendering system
-//! 
+//!
 //! This module contains all WGSL and GLSL shader files used by the rendering pipeline.
 //! The shaders are embedded as string constants for easy access by the rendering system.
 

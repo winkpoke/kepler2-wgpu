@@ -1,9 +1,11 @@
 #![allow(dead_code)]
 
-use wgpu::{Device, Queue};
-use wgpu::util::DeviceExt;
-use crate::rendering::core::pipeline::{create_basic_mesh_pipeline_with_lighting, create_basic_lighting_bind_group_layout};
 use super::mesh::BasicLightingUniforms;
+use crate::rendering::core::pipeline::{
+    create_basic_lighting_bind_group_layout, create_basic_mesh_pipeline_with_lighting,
+};
+use wgpu::util::DeviceExt;
+use wgpu::{Device, Queue};
 
 /// Function-level comment: Simplified uniform data structure for basic mesh rendering
 /// Contains only a single combined model-view-projection matrix for efficient transformation
@@ -44,14 +46,13 @@ pub struct BasicMeshContext {
 
 impl BasicMeshContext {
     /// Create a new basic mesh context with simplified pipeline and uniforms
-    pub fn new(
-        device: &Device,
-        queue: &Queue,
-        mesh: &super::mesh::Mesh,
-        use_depth: bool,
-    ) -> Self {
-        log::info!("Creating BasicMeshContext with {} vertices, {} indices, depth: {}", 
-                   mesh.vertices.len(), mesh.indices.len(), use_depth);
+    pub fn new(device: &Device, queue: &Queue, mesh: &super::mesh::Mesh, use_depth: bool) -> Self {
+        log::info!(
+            "Creating BasicMeshContext with {} vertices, {} indices, depth: {}",
+            mesh.vertices.len(),
+            mesh.indices.len(),
+            use_depth
+        );
 
         // Create vertex buffer
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -77,7 +78,11 @@ impl BasicMeshContext {
 
         // Initialize with default uniforms
         let default_uniforms = BasicUniforms::default();
-        queue.write_buffer(&uniform_buffer, 0, bytemuck::cast_slice(&[default_uniforms]));
+        queue.write_buffer(
+            &uniform_buffer,
+            0,
+            bytemuck::cast_slice(&[default_uniforms]),
+        );
 
         // Create bind group layout for basic uniforms
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -104,13 +109,22 @@ impl BasicMeshContext {
 
         // Initialize with default lighting uniforms
         let default_lighting_uniforms = BasicLightingUniforms::default();
-        queue.write_buffer(&lighting_uniform_buffer, 0, bytemuck::cast_slice(&[default_lighting_uniforms]));
+        queue.write_buffer(
+            &lighting_uniform_buffer,
+            0,
+            bytemuck::cast_slice(&[default_lighting_uniforms]),
+        );
 
         // Create lighting bind group layout
         let lighting_bind_group_layout = create_basic_lighting_bind_group_layout(device);
 
         // Create lighting-enabled mesh pipeline with depth testing enabled to match render pass
-        let pipeline = std::sync::Arc::new(create_basic_mesh_pipeline_with_lighting(device, &bind_group_layout, &lighting_bind_group_layout, use_depth));
+        let pipeline = std::sync::Arc::new(create_basic_mesh_pipeline_with_lighting(
+            device,
+            &bind_group_layout,
+            &lighting_bind_group_layout,
+            use_depth,
+        ));
 
         // Create bind group for uniforms
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -147,14 +161,8 @@ impl BasicMeshContext {
         }
     }
 
-
-
     /// Function-level comment: Update uniforms with combined model-view-projection matrix
-    pub fn update_uniforms(
-        &self,
-        queue: &Queue,
-        model_view_proj_matrix: &[[f32; 4]; 4],
-    ) {
+    pub fn update_uniforms(&self, queue: &Queue, model_view_proj_matrix: &[[f32; 4]; 4]) {
         let uniforms = BasicUniforms {
             model_view_proj: *model_view_proj_matrix,
         };
@@ -164,14 +172,21 @@ impl BasicMeshContext {
     }
 
     pub fn update_lighting(&self, queue: &Queue, uniforms: BasicLightingUniforms) {
-        queue.write_buffer(&self.lighting_uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+        queue.write_buffer(
+            &self.lighting_uniform_buffer,
+            0,
+            bytemuck::cast_slice(&[uniforms]),
+        );
     }
 
     /// Function-level comment: Render the mesh using the basic pipeline with lighting
     pub fn render(&self, render_pass: &mut wgpu::RenderPass) {
         // Single debug log per render call instead of 6 separate logs
-        log::debug!("[BASIC_MESH_RENDER] Rendering mesh: {} indices, {} vertices", 
-                   self.num_indices, self.num_vertices);
+        log::debug!(
+            "[BASIC_MESH_RENDER] Rendering mesh: {} indices, {} vertices",
+            self.num_indices,
+            self.num_vertices
+        );
 
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &self.bind_group, &[]);

@@ -1,12 +1,13 @@
 /// Function-level comment: MHA (MetaImage) format parser implementation
 /// Handles parsing of MHA files with embedded binary data according to MetaImage specification
-
 use crate::data::medical_imaging::{
-    error::*, 
-    metadata::{Endianness, ImageMetadata, MedicalVolume, PixelData}, 
-    CompressionType,
-    ImageFormat, 
-    validation::{MedicalImageValidator,DataSizeChecker, ChecksumChecker, ChecksumAlgorithm, MedicalHeaderChecker},
+    error::*,
+    metadata::{Endianness, ImageMetadata, MedicalVolume, PixelData},
+    validation::{
+        ChecksumAlgorithm, ChecksumChecker, DataSizeChecker, MedicalHeaderChecker,
+        MedicalImageValidator,
+    },
+    CompressionType, ImageFormat,
 };
 use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
@@ -43,41 +44,46 @@ impl MhaParser {
 
     /// Parses complete MHA file including header and embedded data
     #[cfg(not(target_arch = "wasm32"))]
-    pub async fn parse_file(path: PathBuf) -> MedicalImagingResult<MedicalVolume>{
+    pub async fn parse_file(path: PathBuf) -> MedicalImagingResult<MedicalVolume> {
         let path = path.join("CT.mha");
         let file = tokio::fs::read(path).await?;
         Self::parse_bytes(&file)
     }
 
     /// Parses MHA from byte buffer for WASM compatibility
-    pub fn parse_bytes(data: &[u8]) -> MedicalImagingResult<MedicalVolume>{
+    pub fn parse_bytes(data: &[u8]) -> MedicalImagingResult<MedicalVolume> {
         let metadata = Self::parse_metadata_only(data)?;
         let start_offset = metadata.data_offset.unwrap_or(0);
         let raw = &data[start_offset..];
         let pixel_data = PixelData::UInt8(raw.to_vec());
         let validator = Self::new(&metadata, &pixel_data);
-        let result = validator.validator.format_validators.get(&ImageFormat::MHA).unwrap().clone();
+        let result = validator
+            .validator
+            .format_validators
+            .get(&ImageFormat::MHA)
+            .unwrap()
+            .clone();
         if result.is_valid {
-                let pixel_data = match validator.endian_converter {
-                    Endianness::Little => {
-                        if validator.compression_handler == CompressionType::Raw {
-                            pixel_data
-                        } else {
-                            PixelData::from_le_bytes(raw, metadata.pixel_type)?
-                        }
-                    },
-                    Endianness::Big => PixelData::from_be_bytes(raw, metadata.pixel_type)?,
-                };
+            let pixel_data = match validator.endian_converter {
+                Endianness::Little => {
+                    if validator.compression_handler == CompressionType::Raw {
+                        pixel_data
+                    } else {
+                        PixelData::from_le_bytes(raw, metadata.pixel_type)?
+                    }
+                }
+                Endianness::Big => PixelData::from_be_bytes(raw, metadata.pixel_type)?,
+            };
             MedicalVolume::new(metadata, pixel_data, ImageFormat::MHA)
-        }else{
+        } else {
             Err(MedicalImagingError::UnsupportedFormat {
                 format: format!("Invalid MHA format: {:?}", result.errors),
             })
         }
     }
-    
+
     /// Extracts only metadata without loading pixel data
-    pub fn parse_metadata_only(data: &[u8]) -> MedicalImagingResult<ImageMetadata>{
+    pub fn parse_metadata_only(data: &[u8]) -> MedicalImagingResult<ImageMetadata> {
         let mut kv: HashMap<String, String> = HashMap::new();
         let mut data_offset: Option<usize> = None;
 
@@ -113,7 +119,7 @@ impl MhaParser {
                 }
             } else {
                 return Err(MedicalImagingError::UnsupportedFormat {
-                    format: format!("Invalid line {}: {}", line_no, l)
+                    format: format!("Invalid line {}: {}", line_no, l),
                 });
             }
         }
@@ -121,5 +127,4 @@ impl MhaParser {
         // analyze header key-values
         ImageMetadata::get_header(kv, data_offset)
     }
-
 }

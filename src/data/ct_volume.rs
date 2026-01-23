@@ -31,6 +31,38 @@ impl fmt::Debug for CTVolume {
     }
 }
 
+impl CTVolume {
+    pub fn new(
+        dimensions: (usize, usize, usize),
+        voxel_spacing: (f32, f32, f32),
+        voxel_data: Vec<i16>,
+        base: Base,
+    ) -> Self {
+        Self {
+            dimensions,
+            voxel_spacing,
+            voxel_data,
+            base,
+        }
+    }
+
+    pub fn dimensions(&self) -> (usize, usize, usize) {
+        self.dimensions
+    }
+
+    pub fn voxel_spacing(&self) -> (f32, f32, f32) {
+        self.voxel_spacing
+    }
+
+    pub fn voxel_data(&self) -> &[i16] {
+        &self.voxel_data
+    }
+
+    pub fn base(&self) -> &Base {
+        &self.base
+    }
+}
+
 // impl CTVolume {
 //     /// Function-level comment: Creates a new CTVolume containing only the data within the specified ROI (Region of Interest).
 //     /// The start coordinates and dimensions are in voxel space.
@@ -119,7 +151,7 @@ impl fmt::Debug for CTVolume {
 //         let end_x = (max_v[0].ceil() as isize).min(self.dimensions.0 as isize) as usize;
 //         let end_y = (max_v[1].ceil() as isize).min(self.dimensions.1 as isize) as usize;
 //         let end_z = (max_v[2].ceil() as isize).min(self.dimensions.2 as isize) as usize;
-        
+
 //         if start_x >= end_x || start_y >= end_y || start_z >= end_z {
 //              return Err(anyhow::anyhow!("Crop region is empty or outside volume bounds"));
 //         }
@@ -130,11 +162,11 @@ impl fmt::Debug for CTVolume {
 //     }
 // }
 
-pub trait CTVolumeGenerator {
-    fn generate_ct_volume(&self, image_series_id: &str) -> Result<CTVolume>;
-}
-
 pub struct Geometry {
     volumes: Vec<CTVolume>,
     base: Mat4,
+}
+
+pub trait CTVolumeGenerator {
+    fn generate_ct_volume(&self, image_series_id: &str) -> Result<CTVolume>;
 }

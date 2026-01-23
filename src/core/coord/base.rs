@@ -18,7 +18,6 @@ impl Base {
         }
     }
 
-
     pub fn get_scale_factors(&self) -> [f32; 3] {
         let col0 = self.matrix.col(0);
         let col1 = self.matrix.col(1);

@@ -1,12 +1,11 @@
+use log::{info, warn};
 use std::sync::Arc;
 use winit::window::Window;
-use log::{info, warn};
 
 use crate::KeplerError;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[derive(Debug)]
@@ -32,8 +31,9 @@ impl GraphicsContext {
     /// Function-level comment: Create a new GraphicsContext with initialized Graphics and PassExecutor.
     pub async fn new(window: Arc<Window>) -> Result<GraphicsContext, KeplerError> {
         let graphics = Graphics::initialize(window).await?;
-        let pass_executor = crate::rendering::core::PassExecutor::new(graphics.surface_config.format);
-        
+        let pass_executor =
+            crate::rendering::core::PassExecutor::new(graphics.surface_config.format);
+
         Ok(GraphicsContext {
             graphics,
             pass_executor,
@@ -42,42 +42,44 @@ impl GraphicsContext {
 
     /// Function-level comment: Create a new GraphicsContext from an existing Graphics instance.
     pub fn from_graphics(graphics: Graphics) -> GraphicsContext {
-        let pass_executor = crate::rendering::core::PassExecutor::new(graphics.surface_config.format);
-        
+        let pass_executor =
+            crate::rendering::core::PassExecutor::new(graphics.surface_config.format);
+
         GraphicsContext {
             graphics,
             pass_executor,
         }
     }
-    
+
     /// Function-level comment: Get a reference to the underlying Graphics struct.
     pub fn graphics(&self) -> &Graphics {
         &self.graphics
     }
-    
+
     /// Function-level comment: Get a mutable reference to the underlying Graphics struct.
     pub fn graphics_mut(&mut self) -> &mut Graphics {
         &mut self.graphics
     }
-    
+
     /// Function-level comment: Get a reference to the PassExecutor.
     pub fn pass_executor(&self) -> &crate::rendering::core::PassExecutor {
         &self.pass_executor
     }
-    
+
     /// Function-level comment: Get a mutable reference to the PassExecutor.
     pub fn pass_executor_mut(&mut self) -> &mut crate::rendering::core::PassExecutor {
         &mut self.pass_executor
     }
-    
+
     /// Function-level comment: Get mutable reference to surface configuration.
     pub fn surface_config_mut(&mut self) -> &mut wgpu::SurfaceConfiguration {
         &mut self.graphics.surface_config
     }
-    
+
     /// Function-level comment: Update surface configuration and notify PassExecutor of format changes.
     pub fn update_surface_config(&mut self, config: wgpu::SurfaceConfiguration) {
-        self.pass_executor_mut().update_surface_format(config.format);
+        self.pass_executor_mut()
+            .update_surface_format(config.format);
         *self.surface_config_mut() = config;
     }
 }
@@ -96,28 +98,48 @@ impl Graphics {
         // The instance is a handle to our GPU with runtime-selectable backend and optional validation
         #[cfg(not(target_arch = "wasm32"))]
         let selected_backends: wgpu::Backends = {
-            let env_backend = std::env::var("KEPLER_WGPU_BACKEND").ok()
+            let env_backend = std::env::var("KEPLER_WGPU_BACKEND")
+                .ok()
                 .or_else(|| std::env::var("WGPU_BACKEND").ok());
             match env_backend.as_deref() {
-                Some("dx12") => { info!("Backend override via env: DX12"); wgpu::Backends::DX12 }
-                Some("vulkan") | Some("vk") => { info!("Backend override via env: VULKAN"); wgpu::Backends::VULKAN }
-                Some("metal") => { info!("Backend override via env: METAL"); wgpu::Backends::METAL }
-                Some("gl") => { info!("Backend override via env: GL"); wgpu::Backends::GL }
-                Some("primary") | Some("auto") | None => { info!("Backend selection: PRIMARY"); wgpu::Backends::PRIMARY }
-                Some(other) => { warn!("Unknown backend {} in env, defaulting to PRIMARY", other); wgpu::Backends::PRIMARY }
+                Some("dx12") => {
+                    info!("Backend override via env: DX12");
+                    wgpu::Backends::DX12
+                }
+                Some("vulkan") | Some("vk") => {
+                    info!("Backend override via env: VULKAN");
+                    wgpu::Backends::VULKAN
+                }
+                Some("metal") => {
+                    info!("Backend override via env: METAL");
+                    wgpu::Backends::METAL
+                }
+                Some("gl") => {
+                    info!("Backend override via env: GL");
+                    wgpu::Backends::GL
+                }
+                Some("primary") | Some("auto") | None => {
+                    info!("Backend selection: PRIMARY");
+                    wgpu::Backends::PRIMARY
+                }
+                Some(other) => {
+                    warn!("Unknown backend {} in env, defaulting to PRIMARY", other);
+                    wgpu::Backends::PRIMARY
+                }
             }
         };
         #[cfg(target_arch = "wasm32")]
         let selected_backends: wgpu::Backends = wgpu::Backends::GL;
 
         #[cfg(not(target_arch = "wasm32"))]
-        let instance_flags: wgpu::InstanceFlags = match std::env::var("KEPLER_WGPU_VALIDATION").ok().as_deref() {
-            Some("1") | Some("true") | Some("on") => {
-                info!("Instance validation enabled via env KEPLER_WGPU_VALIDATION");
-                wgpu::InstanceFlags::VALIDATION
-            },
-            _ => wgpu::InstanceFlags::empty(),
-        };
+        let instance_flags: wgpu::InstanceFlags =
+            match std::env::var("KEPLER_WGPU_VALIDATION").ok().as_deref() {
+                Some("1") | Some("true") | Some("on") => {
+                    info!("Instance validation enabled via env KEPLER_WGPU_VALIDATION");
+                    wgpu::InstanceFlags::VALIDATION
+                }
+                _ => wgpu::InstanceFlags::empty(),
+            };
         #[cfg(target_arch = "wasm32")]
         let instance_flags: wgpu::InstanceFlags = wgpu::InstanceFlags::empty();
 
@@ -127,7 +149,8 @@ impl Graphics {
             ..Default::default()
         });
 
-        let surface = instance.create_surface(window.clone())
+        let surface = instance
+            .create_surface(window.clone())
             .map_err(|e| KeplerError::Graphics(format!("Failed to create surface: {}", e)))?;
 
         let adapter = instance
@@ -162,7 +185,8 @@ impl Graphics {
         let adapter_info = adapter.get_info();
         // Native: read env to summarize requested backend and validation; WASM: default values
         #[cfg(not(target_arch = "wasm32"))]
-        let backend_env = std::env::var("KEPLER_WGPU_BACKEND").ok()
+        let backend_env = std::env::var("KEPLER_WGPU_BACKEND")
+            .ok()
             .or_else(|| std::env::var("WGPU_BACKEND").ok());
         #[cfg(not(target_arch = "wasm32"))]
         let backend_str = match backend_env.as_deref() {
@@ -181,7 +205,10 @@ impl Graphics {
         #[cfg(target_arch = "wasm32")]
         let (backend_str, validation) = ("gl", false);
 
-        info!("Adapter: {} ({:?}), vendor: {}, device: {}", adapter_info.name, adapter_info.backend, adapter_info.vendor, adapter_info.device);
+        info!(
+            "Adapter: {} ({:?}), vendor: {}, device: {}",
+            adapter_info.name, adapter_info.backend, adapter_info.vendor, adapter_info.device
+        );
         info!("Final backend chosen by wgpu: {:?}", adapter_info.backend);
         info!(
             "Startup GPU summary: backend_env={} validation={} final_backend={:?} adapter=\"{}\" vendor={} device={}",
@@ -198,7 +225,7 @@ impl Graphics {
         info!("Surface supports {} formats:", surface_caps.formats.len());
         for fmt in surface_caps.formats.iter().copied() {
             let is_srgb = fmt.is_srgb();
-            info!("  - {:?}: sRGB={}",fmt, is_srgb);
+            info!("  - {:?}: sRGB={}", fmt, is_srgb);
         }
         // Prefer non-sRGB (linear) format for medical grayscale accuracy.
         // sRGB applies gamma on present, which can alter perceived contrast of DICOM WL.
@@ -219,7 +246,13 @@ impl Graphics {
             desired_maximum_frame_latency: 2,
             view_formats: vec![],
         };
-        info!("Surface format chosen: {:?} (sRGB: {}), present_mode: {:?}, alpha_mode: {:?}", surface_config.format, surface_config.format.is_srgb(), surface_config.present_mode, surface_config.alpha_mode);
+        info!(
+            "Surface format chosen: {:?} (sRGB: {}), present_mode: {:?}, alpha_mode: {:?}",
+            surface_config.format,
+            surface_config.format.is_srgb(),
+            surface_config.present_mode,
+            surface_config.alpha_mode
+        );
 
         if size.width > 0 && size.height > 0 {
             surface.configure(&device, &surface_config);

@@ -1,10 +1,10 @@
 //! Comprehensive test suite for MHA/MHD medical imaging functionality
-//! 
+//!
 //! This test suite validates all critical paths, edge cases, and error handling scenarios
 //! for the medical imaging module, ensuring robust functionality across different platforms
-mod mha_mhd_tests{
+mod mha_mhd_tests {
+    use kepler_wgpu::data::medical_imaging::*;
     use std::time::Instant;
-    use kepler_wgpu::data::medical_imaging::{*};
 
     // ============================================================================
     // Test Data and Utilities
@@ -13,7 +13,7 @@ mod mha_mhd_tests{
     /// Creates test MHA header with embedded data
     pub fn create_test_mha_data(
         dimensions: [usize; 3],
-        pixel_type: PixelType, 
+        pixel_type: PixelType,
         spacing: [f64; 3],
         verbose: bool,
     ) -> Vec<u8> {
@@ -31,8 +31,12 @@ mod mha_mhd_tests{
             DimSize = {} {} {}\n\
             ElementType = {}\n\
             ElementDataFile = LOCAL\n",
-            spacing[0], spacing[1], spacing[2],
-            dimensions[0], dimensions[1], dimensions[2],
+            spacing[0],
+            spacing[1],
+            spacing[2],
+            dimensions[0],
+            dimensions[1],
+            dimensions[2],
             match pixel_type {
                 PixelType::UInt8 => "MET_UCHAR",
                 PixelType::UInt16 => "MET_USHORT",
@@ -41,10 +45,11 @@ mod mha_mhd_tests{
                 PixelType::Float32 => "MET_FLOAT",
                 PixelType::Float64 => "MET_DOUBLE",
             }
-        ).into_bytes();
+        )
+        .into_bytes();
 
         // Add data section
-        if verbose{
+        if verbose {
             let data_size = dimensions[0] * dimensions[1] * dimensions[2];
             let pixel_size = match pixel_type {
                 PixelType::UInt8 => 1,
@@ -54,14 +59,14 @@ mod mha_mhd_tests{
                 PixelType::Float32 => 4,
                 PixelType::Float64 => 8,
             };
-            
+
             let data: Vec<u8> = (0..data_size * pixel_size)
                 .map(|i| (i % 256) as u8)
                 .collect();
-            
+
             header.extend_from_slice(&data);
         }
-        
+
         header
     }
 
@@ -86,8 +91,12 @@ mod mha_mhd_tests{
             DimSize = {} {} {}\n\
             ElementType = {}\n\
             ElementDataFile = data.raw\n",
-            spacing[0], spacing[1], spacing[2],
-            dimensions[0], dimensions[1], dimensions[2],
+            spacing[0],
+            spacing[1],
+            spacing[2],
+            dimensions[0],
+            dimensions[1],
+            dimensions[2],
             match pixel_type {
                 PixelType::UInt8 => "MET_UCHAR",
                 PixelType::UInt16 => "MET_USHORT",
@@ -96,7 +105,8 @@ mod mha_mhd_tests{
                 PixelType::Float32 => "MET_FLOAT",
                 PixelType::Float64 => "MET_DOUBLE",
             }
-        ).into_bytes();
+        )
+        .into_bytes();
 
         // Create small synthetic raw data; tests using this are ignored by default
         let voxel_count = dimensions[0] * dimensions[1] * dimensions[2];
@@ -116,15 +126,15 @@ mod mha_mhd_tests{
     // ============================================================================
     // Unit Tests - Metadata and Data Structures
     // ============================================================================
-    
+
     #[test]
     fn test_pixel_data_from_le_bytes() {
         let bytes = vec![1u8, 2, 3, 4, 5, 6, 7, 8];
-        
+
         // Test UInt8
         let pixel_data = PixelData::from_le_bytes(&bytes, PixelType::UInt8);
         assert!(pixel_data.is_ok());
-        
+
         match pixel_data.unwrap() {
             PixelData::UInt8(data) => assert_eq!(data, bytes),
             _ => panic!("Expected UInt8 pixel data"),
@@ -144,13 +154,8 @@ mod mha_mhd_tests{
         let slope = 1.0;
         let intercept = 0.0;
 
-        let result = PixelData::create_pixel_data(
-            raw_data,
-            PixelType::Int16,
-            voxel_count,
-            slope,
-            intercept,
-        );
+        let result =
+            PixelData::create_pixel_data(raw_data, PixelType::Int16, voxel_count, slope, intercept);
 
         assert!(result.is_ok());
         let voxel_data = result.unwrap();
@@ -190,7 +195,7 @@ mod mha_mhd_tests{
         assert!(result.is_ok());
         let voxel_data = result.unwrap();
         assert_eq!(voxel_data.len(), 4);
-        
+
         // val1: (100.5 * 2.0 + 10.0).round() = 211
         assert_eq!(voxel_data[0], 211);
         // val2: (-50.25 * 2.0 + 10.0).round() = -91
@@ -214,13 +219,8 @@ mod mha_mhd_tests{
         let slope = 1.0;
         let intercept = 0.0;
 
-        let result = PixelData::create_pixel_data(
-            raw_data,
-            PixelType::Int16,
-            voxel_count,
-            slope,
-            intercept,
-        );
+        let result =
+            PixelData::create_pixel_data(raw_data, PixelType::Int16, voxel_count, slope, intercept);
 
         assert!(result.is_ok());
         let voxel_data = result.unwrap();
@@ -244,13 +244,8 @@ mod mha_mhd_tests{
         let slope = 1.0;
         let intercept = 0.0;
 
-        let result = PixelData::create_pixel_data(
-            raw_data,
-            PixelType::Int16,
-            voxel_count,
-            slope,
-            intercept,
-        );
+        let result =
+            PixelData::create_pixel_data(raw_data, PixelType::Int16, voxel_count, slope, intercept);
 
         assert!(result.is_ok());
         let voxel_data = result.unwrap();
@@ -268,7 +263,11 @@ mod mha_mhd_tests{
     fn test_mhd_parser_header_by_bytes() {
         let (bytes_mhd, _) = create_test_mhd();
         let result = MhdParser::parse_metadata_only(&bytes_mhd);
-        assert!(result.is_ok(), "Failed to parse valid MHD header: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to parse valid MHD header: {:?}",
+            result.err()
+        );
 
         let metadata = result.unwrap();
         assert_eq!(metadata.dimensions, [512, 512, 300]);
@@ -278,7 +277,7 @@ mod mha_mhd_tests{
 
     #[test]
     #[ignore]
-    fn test_mhd_parse_by_bytes(){
+    fn test_mhd_parse_by_bytes() {
         let (bytes_mhd, bytes_data) = create_test_mhd();
         let volume = MhdParser::parse_by_bytes(&bytes_mhd, &bytes_data).unwrap();
         let header = volume.metadata;
@@ -290,15 +289,19 @@ mod mha_mhd_tests{
         println!("ElementDataFile: {}", header.element_data_file);
         println!("Offset: {:?}", header.offset);
         println!("TransformMatrix: {:?}", header.orientation);
-        println!("PatientPosition: {:?}",header.patient_position);
+        println!("PatientPosition: {:?}", header.patient_position);
         println!("data_offset: {:?}", header.data_offset);
-        println!("First 20 bytes of pixel data: {:?}", &pixel_data.as_bytes()[..20]);
+        println!(
+            "First 20 bytes of pixel data: {:?}",
+            &pixel_data.as_bytes()[..20]
+        );
     }
 
     #[test]
     #[ignore]
     fn test_mha_parser_header_by_bytes() {
-        let mha_data = create_test_mha_data([512,512,300], PixelType::Float32, [0.2, 0.2, 0.5], true);
+        let mha_data =
+            create_test_mha_data([512, 512, 300], PixelType::Float32, [0.2, 0.2, 0.5], true);
         let result = MhaParser::parse_metadata_only(&mha_data);
         assert!(result.is_ok(), "Failed to parse MHA metadata");
 
@@ -310,8 +313,9 @@ mod mha_mhd_tests{
 
     #[test]
     #[ignore]
-    fn test_mha_parse_by_bytes(){
-        let mha_data = create_test_mha_data([512,512,300], PixelType::UInt8, [1.0, 1.0, 1.0], true);
+    fn test_mha_parse_by_bytes() {
+        let mha_data =
+            create_test_mha_data([512, 512, 300], PixelType::UInt8, [1.0, 1.0, 1.0], true);
         let volume = MhaParser::parse_bytes(&mha_data).unwrap();
         let validation_status = volume.validation_status;
         assert_eq!(validation_status.is_valid, true);
@@ -325,9 +329,12 @@ mod mha_mhd_tests{
         println!("ElementDataFile: {}", header.element_data_file);
         println!("Offset: {:?}", header.offset);
         println!("TransformMatrix: {:?}", header.orientation);
-        println!("PatientPosition: {:?}",header.patient_position);
+        println!("PatientPosition: {:?}", header.patient_position);
         println!("data_offset: {:?}", header.data_offset);
-        println!("First 20 bytes of pixel data: {:?}", &pixel_data.as_bytes()[..20]);
+        println!(
+            "First 20 bytes of pixel data: {:?}",
+            &pixel_data.as_bytes()[..20]
+        );
     }
 
     // ============================================================================
@@ -339,14 +346,18 @@ mod mha_mhd_tests{
         // Create a reasonably large test volume
         let dimensions = [256, 256, 64]; // ~4MB for UInt8
         let mha_data = create_test_mha_data(dimensions, PixelType::UInt8, [1.0, 1.0, 1.0], true);
-        
+
         let start = Instant::now();
         let result = MhaParser::parse_bytes(&mha_data);
         let parse_duration = start.elapsed();
-        
+
         assert!(result.is_ok(), "Failed to parse large volume");
-        assert!(parse_duration.as_secs() < 5, "Parsing took too long: {:?}", parse_duration);
-        
+        assert!(
+            parse_duration.as_secs() < 5,
+            "Parsing took too long: {:?}",
+            parse_duration
+        );
+
         println!("Large volume parsing took: {:?}", parse_duration);
     }
 
@@ -355,7 +366,7 @@ mod mha_mhd_tests{
     fn test_metadata_parsing_performance() {
         let mha_data = create_test_mha();
         let mhd_data = create_test_mhd().0;
-        
+
         let start = Instant::now();
         for _ in 0..100 {
             let _ = MhaParser::parse_metadata_only(&mha_data);
@@ -367,10 +378,18 @@ mod mha_mhd_tests{
             let _ = MhdParser::parse_metadata_only(&mhd_data);
         }
         let duration_mhd = start.elapsed();
-        
-        assert!(duration_mha.as_millis() < 1000, "Metadata parsing too slow: {:?}", duration_mha);
+
+        assert!(
+            duration_mha.as_millis() < 1000,
+            "Metadata parsing too slow: {:?}",
+            duration_mha
+        );
         println!("100 metadata parses took(mha): {:?}", duration_mha);
-        assert!(duration_mhd.as_millis() < 1000, "Metadata parsing too slow: {:?}", duration_mhd);
+        assert!(
+            duration_mhd.as_millis() < 1000,
+            "Metadata parsing too slow: {:?}",
+            duration_mhd
+        );
         println!("100 metadata parses took(mhd): {:?}", duration_mhd);
     }
 
@@ -380,18 +399,24 @@ mod mha_mhd_tests{
         let mut validator = MedicalImageValidator::new();
         validator.add_integrity_checker(Box::new(DataSizeChecker::new(1000, Some(100000))));
         validator.add_integrity_checker(Box::new(MedicalHeaderChecker::new(
-            vec![0x4D, 0x48, 0x41], 256
+            vec![0x4D, 0x48, 0x41],
+            256,
         )));
 
-        let test_data = create_test_mha_data([512,512,300], PixelType::UInt8, [1.0, 1.0, 1.0], true);
-        
+        let test_data =
+            create_test_mha_data([512, 512, 300], PixelType::UInt8, [1.0, 1.0, 1.0], true);
+
         let start = Instant::now();
         for _ in 0..50 {
             let _ = validator.run_integrity_checks(&test_data);
         }
         let duration = start.elapsed();
-        
-        assert!(duration.as_millis() < 2000, "Validation too slow: {:?}", duration);
+
+        assert!(
+            duration.as_millis() < 2000,
+            "Validation too slow: {:?}",
+            duration
+        );
         println!("50 validation runs took: {:?}", duration);
     }
 
@@ -399,22 +424,28 @@ mod mha_mhd_tests{
     fn test_memory_usage_large_volumes() {
         // Test that we can handle multiple large volumes without excessive memory usage
         let mut volumes = Vec::new();
-        
+
         for i in 0..5 {
             let dimensions = [64, 64, 64];
-            let mha_data = create_test_mha_data(dimensions, PixelType::UInt8, [1.0, 1.0, 1.0], true);
-            
+            let mha_data =
+                create_test_mha_data(dimensions, PixelType::UInt8, [1.0, 1.0, 1.0], true);
+
             let result = MhaParser::parse_bytes(&mha_data);
             assert!(result.is_ok(), "Failed to parse volume {}", i);
-            
+
             volumes.push(result.unwrap());
         }
-        
+
         // Verify all volumes are valid
         for (i, volume) in volumes.iter().enumerate() {
-            assert_eq!(volume.metadata.dimensions, [64, 64, 64], "Volume {} has wrong dimensions", i);
+            assert_eq!(
+                volume.metadata.dimensions,
+                [64, 64, 64],
+                "Volume {} has wrong dimensions",
+                i
+            );
         }
-        
+
         println!("Successfully created and stored {} volumes", volumes.len());
     }
 
@@ -446,20 +477,15 @@ mod mha_mhd_tests{
         }
     }
 
-        #[test]
+    #[test]
     fn test_create_pixel_data_empty_input() {
         let raw_data = Vec::new();
         let voxel_count = 0;
         let slope = 1.0;
         let intercept = 0.0;
 
-        let result = PixelData::create_pixel_data(
-            raw_data,
-            PixelType::Int16,
-            voxel_count,
-            slope,
-            intercept,
-        );
+        let result =
+            PixelData::create_pixel_data(raw_data, PixelType::Int16, voxel_count, slope, intercept);
 
         assert!(result.is_ok());
         let voxel_data = result.unwrap();

@@ -1,8 +1,8 @@
 use super::dicom_helper::get_value;
-use crate::define_dicom_struct;
-use anyhow::{anyhow, Result, Context};
-use dicom_object::{FileDicomObject, InMemDicomObject};
 use crate::data::medical_imaging::metadata::PatientPosition;
+use crate::define_dicom_struct;
+use anyhow::{anyhow, Context, Result};
+use dicom_object::{FileDicomObject, InMemDicomObject};
 
 define_dicom_struct!(CTImage, {
     (uid, String, "(0008,0018) SOPInstanceUID", false),              // Unique identifier for the image
@@ -101,24 +101,42 @@ impl CTImage {
         let rescale_slope = self.rescale_slope.unwrap_or(1.0); // Default to 1.0 if not provided
         let rescale_intercept = self.rescale_intercept.unwrap_or(0.0); // Default to 0.0 if not provided
 
+        // Validate pixel data size (16-bit pixels = 2 bytes per pixel)
+        let expected_size = self.rows as usize * self.columns as usize * 2;
+        if pixel_data.len() != expected_size {
+            anyhow::bail!(
+                "Pixel data size mismatch: expected {} bytes for {}x{} image (16-bit pixels), found {} bytes",
+                expected_size,
+                self.rows,
+                self.columns,
+                pixel_data.len()
+            );
+        }
+
         // Define a small epsilon for float comparison
         const EPSILON: f32 = 1e-6;
 
         // Case 1: No rescaling and pixel data is signed (pixel_representation == 1)
-        if (rescale_slope - 1.0).abs() < EPSILON && (rescale_intercept - 0.0).abs() < EPSILON && pixel_representation == 1 {
+        if (rescale_slope - 1.0).abs() < EPSILON
+            && (rescale_intercept - 0.0).abs() < EPSILON
+            && pixel_representation == 1
+        {
             // No transformation is needed, return the data as borrowed
             let data: Vec<i16> = pixel_data
                 .chunks_exact(2)
                 .map(|chunk| {
                     if chunk.len() != 2 {
-                        anyhow::bail!("Invalid pixel data chunk size: expected 2 bytes, found {}", chunk.len());
+                        anyhow::bail!(
+                            "Invalid pixel data chunk size: expected 2 bytes, found {}",
+                            chunk.len()
+                        );
                     }
                     Ok(i16::from_ne_bytes([chunk[0], chunk[1]])) // Example for 16-bit signed
                 })
                 .collect::<Result<_>>()
                 .context("Failed to process pixel data from DICOM file")?;
 
-            return Ok(data); 
+            return Ok(data);
         }
 
         // Case 2: Transformation required (rescale or pixel_representation is different)
@@ -126,12 +144,17 @@ impl CTImage {
             .chunks_exact(2)
             .map(|chunk| {
                 if chunk.len() != 2 {
-                    anyhow::bail!("Invalid pixel data chunk size: expected 2 bytes, found {}", chunk.len());
+                    anyhow::bail!(
+                        "Invalid pixel data chunk size: expected 2 bytes, found {}",
+                        chunk.len()
+                    );
                 }
                 let raw_value = match pixel_representation {
                     0 => u16::from_ne_bytes([chunk[0], chunk[1]]) as i16, // Unsigned to signed conversion
-                    1 => i16::from_ne_bytes([chunk[0], chunk[1]]),         // Already signed
-                    _ => anyhow::bail!("Unsupported pixel representation: {}", pixel_representation),
+                    1 => i16::from_ne_bytes([chunk[0], chunk[1]]),        // Already signed
+                    _ => {
+                        anyhow::bail!("Unsupported pixel representation: {}", pixel_representation)
+                    }
                 };
                 // Apply rescale slope and intercept
                 let transformed_value = (raw_value as f32) * rescale_slope + rescale_intercept;

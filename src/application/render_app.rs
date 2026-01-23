@@ -1,6 +1,5 @@
 #![allow(dead_code)]
 
-
 use std::sync::Arc;
 
 use winit::{
@@ -14,18 +13,19 @@ use winit::{
 #[cfg(target_arch = "wasm32")]
 use winit::window::WindowBuilder;
 
-use crate::{application::App, rendering::LayoutContainer};
-use crate::rendering::core::Graphics;
 use crate::application::gl_canvas::{GLCanvas, UserEvent};
+use crate::rendering::core::Graphics;
+use crate::{application::App, rendering::LayoutContainer};
 use winit::event_loop::EventLoopProxy;
-
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen_futures::spawn_local;
 
-pub async fn create_graphics(window: Arc<Window>) -> Result<Graphics, crate::core::error::KeplerError> {
+pub async fn create_graphics(
+    window: Arc<Window>,
+) -> Result<Graphics, crate::core::error::KeplerError> {
     Graphics::new(window).await
 }
 
@@ -45,14 +45,14 @@ impl RenderApp {
             proxy: Some(proxy),
         }
     }
-    
+
     pub async fn set_window(&mut self, window: Arc<Window>) {
         if let Some(state) = &mut self.state {
             match Graphics::new(window.clone()).await {
                 Ok(graphics) => {
                     state.swap_graphics(graphics);
                     log::info!("Graphics swapped successfully.");
-                },
+                }
                 Err(e) => log::error!("Failed to create graphics: {}", e),
             }
         }
@@ -208,6 +208,12 @@ impl RenderApp {
                     state.set_slab_thickness(index, thickness);
                     log::info!("SlabThickness set to: index={index}, thickness={thickness}");
                 }
+                Event::UserEvent(UserEvent::SetMipRotationAngleDeg(index, roll_deg, yaw_deg, pitch_deg)) => {
+                    state.set_mip_rotation_angle_degrees(index, roll_deg, yaw_deg, pitch_deg);
+                    log::info!(
+                        "MipRotationAngleDeg set to: index={index}, roll_deg={roll_deg}, yaw_deg={yaw_deg}, pitch_deg={pitch_deg}"
+                    );
+                }
                 // Mesh control events
                 Event::UserEvent(UserEvent::SetMeshRotationEnabled(_index, enabled)) => {
                     state.set_mesh_rotation_enabled(enabled);
@@ -229,23 +235,14 @@ impl RenderApp {
                     state.set_mesh_opacity(alpha);
                     log::info!("Mesh opacity set to {:.3}", alpha);
                 }
-                Event::UserEvent(UserEvent::SetMeshRotationAngleDeg(_index, degrees_x, degrees_y, degrees_z)) => {
-                    state.set_mesh_rotation_angle_degrees(degrees_x, degrees_y, degrees_z);
-                    log::info!("Mesh rotation angle set to {:?}°", [degrees_x, degrees_y, degrees_z]);
+                Event::UserEvent(UserEvent::SetMeshRotationAngleDeg(_index, degrees_x, degrees_y)) => {
+                    state.set_mesh_rotation_angle_degrees(degrees_x, degrees_y);
+                    log::info!("Mesh rotation angle set to {:?}°", [degrees_x, degrees_y]);
                 }
                 Event::UserEvent(UserEvent::SetMeshRotationDelta(_index, dx, dy)) => {
                     state.set_mesh_rotation_delta(dx, dy);
                     // Log at debug level to avoid flooding if called frequently
                     log::debug!("Mesh rotation delta: dx={:.3}, dy={:.3}", dx, dy);
-                }
-                #[cfg(target_arch = "wasm32")]
-                Event::UserEvent(UserEvent::GetMeshRotationQuat(index, sender)) => {
-                    let quat = state.get_mesh_rotation_quat();
-                    if let Err(_) = sender.send(quat) {
-                        log::error!("Failed to send GetMeshRotationQuat result for window {}", index);
-                    } else {
-                        log::info!("Sent GetMeshRotationQuat result for window {}: {:?}", index, quat);
-                    }
                 }
                 Event::UserEvent(UserEvent::ViewClick(view_index, screen_x, screen_y, screen_z)) => {
                     state.handle_view_click(view_index, screen_x, screen_y, screen_z);
@@ -376,7 +373,6 @@ impl RenderApp {
                                 ..
                             } => {
                                 state.set_mesh_mode(false, true, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465,true,0, 300.0, 400.0);
-                                state.set_mesh_rotation_angle_degrees(-90.0, 0.0, 0.0);
                                 state.set_mesh_scale(3.0);
                                 log::info!("KeyM pressed: mesh mode toggled to {}", false);
                             }
@@ -411,7 +407,6 @@ impl RenderApp {
                                 state.set_pan(1, 0.09, 0.09);
                                 state.set_mesh_scale(2.0);
                                 state.set_mesh_pan(-1.0, 1.0);
-                                state.set_mesh_rotation_angle_degrees(0.0, 0.0, 0.0);
                             }
                             WindowEvent::KeyboardInput {
                                 event:

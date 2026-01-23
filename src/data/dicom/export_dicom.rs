@@ -1,20 +1,18 @@
-use super::{
-    patient::Patient,
-    studyset::StudySet
-};
+use super::{patient::Patient, studyset::StudySet};
 use crate::data::medical_imaging::{
     formats::mha::*,
-    metadata::{PixelData, PixelType}, MhdParser,
+    metadata::{PixelData, PixelType},
+    MhdParser,
 };
 
 use anyhow::{anyhow, Result};
+use chrono::Local;
 use dicom_core::{value::PrimitiveValue, DataElement, VR};
 use dicom_dictionary_std::tags;
 use dicom_object::{DefaultDicomObject, FileMetaTableBuilder, InMemDicomObject};
-use uuid::Uuid;
-use chrono::Local;
-use sha1::{Sha1, Digest};
+use sha1::{Digest, Sha1};
 use std::path::PathBuf;
+use uuid::Uuid;
 
 /// generate dicom uid
 pub fn generate_uid() -> String {
@@ -23,8 +21,8 @@ pub fn generate_uid() -> String {
     hasher.update(uuid.as_bytes());
     let hash = hasher.finalize();
     let hash_num = u128::from_be_bytes([
-        hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7],
-        hash[8], hash[9], hash[10], hash[11], hash[12], hash[13], hash[14], hash[15],
+        hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7], hash[8], hash[9],
+        hash[10], hash[11], hash[12], hash[13], hash[14], hash[15],
     ]);
     format!(
         "{}.{:03}.{:06}.{:04}.{:01}.{:01}.{:01}.{:03}.{:10}.{:10}.{:06}",
@@ -43,7 +41,7 @@ pub fn generate_uid() -> String {
 }
 
 /// Change DICOM UID based on a root UID
-pub fn change_dicom_uid(root: &str,twice:bool) -> String {
+pub fn change_dicom_uid(root: &str, twice: bool) -> String {
     // Generate a new UUID and split the root into parts
     let uuid = Uuid::new_v4();
     let uuid_num = uuid.as_u128();
@@ -60,12 +58,8 @@ pub fn change_dicom_uid(root: &str,twice:bool) -> String {
             ten_digit_num,
             six_digit_num
         )
-    }else {
-        format!(
-            "{}.{}",
-            &parts_root[0..11].join("."),
-            six_digit_num
-        )
+    } else {
+        format!("{}.{}", &parts_root[0..11].join("."), six_digit_num)
     }
 }
 
@@ -79,11 +73,12 @@ pub fn build_ct_dicom<S: DicomSink>(
     m_as: f64,
     slope: f32,
     intercept: f32,
-    modality: &str,
+    patient_position: String,
+    modality: String,
     sink: &mut S,
-) -> Result<()> {
+) -> Result<String> {
     // generate series uid
-    let series_uid= change_dicom_uid(&study.uid,true);
+    let series_uid = change_dicom_uid(&study.uid, true);
     let sop_class_uid = "1.2.840.10008.5.1.4.1.1.2"; // CT Image Storage
     let sop_instance_uid = change_dicom_uid(&series_uid, false);
 
@@ -93,8 +88,7 @@ pub fn build_ct_dicom<S: DicomSink>(
         .media_storage_sop_instance_uid(sop_instance_uid.clone())
         .transfer_syntax("1.2.840.10008.1.2.1") // Explicit VR Little Endian
         .implementation_class_uid("2.25.999")
-        .implementation_version_name("DIRAC-CT")
-    ;
+        .implementation_version_name("DIRAC-CT");
 
     // generate dicom object
     let mut obj = InMemDicomObject::new_empty().with_meta(meta.clone())?;
@@ -105,7 +99,7 @@ pub fn build_ct_dicom<S: DicomSink>(
     obj.put(DataElement::new(tags::MODALITY, VR::CS, PrimitiveValue::from(modality)));
     obj.put(DataElement::new(tags::PHOTOMETRIC_INTERPRETATION, VR::CS, PrimitiveValue::from("MONOCHROME2")));
     obj.put(DataElement::new(tags::KVP, VR::DS, PrimitiveValue::from(kv))); // kVp
-    obj.put(DataElement::new(tags::	X_RAY_TUBE_CURRENT, VR::IS, PrimitiveValue::from(m_as))); // mA
+    obj.put(DataElement::new(tags::X_RAY_TUBE_CURRENT, VR::IS, PrimitiveValue::from(m_as))); // mA
     obj.put(DataElement::new(tags::IMAGE_TYPE, VR::CS, PrimitiveValue::from("ORIGINAL\\PRIMARY\\AXIAL")));
 
     // generate patient info
@@ -133,9 +127,10 @@ pub fn build_ct_dicom<S: DicomSink>(
     obj.put(DataElement::new(tags::SERIES_TIME, VR::TM, PrimitiveValue::from(now.format("%H%M%S").to_string())));
 
     // generate image info
-    inject_image(&mut obj, &mut meta, series_uid, mha_path, data_path,slope, intercept, sink)?;
+    obj.put(DataElement::new(tags::PATIENT_POSITION, VR::CS, PrimitiveValue::from(patient_position.clone())));
+    inject_image(&mut obj, &mut meta, series_uid.clone(), mha_path, data_path,slope, intercept, sink)?;
     
-    Ok(())
+    Ok(series_uid)
 }
 
 // generate image info
@@ -155,7 +150,6 @@ fn inject_image<S: DicomSink>(
         MhaParser::parse_bytes(mha_path)?
     };
     let metadata = medical_volume.metadata;
-    let patient_position = metadata.patient_position;
 
     let col = metadata.dimensions[0]; 
     let row = metadata.dimensions[1]; 
@@ -212,7 +206,7 @@ fn inject_image<S: DicomSink>(
                 ];
                 (col_dir, row_dir, pos)
             }
-            _ => return Err(anyhow!("不支持的 mha element type: {:?}", metadata.pixel_type)),
+            _ => return Err(anyhow!("UNSUPPORTED mha element type: {:?}", metadata.pixel_type)),
         };
 
         if z == 5 {
@@ -221,12 +215,6 @@ fn inject_image<S: DicomSink>(
             log::info!("➡️ CT 切片位置：base={:?}, col_dir={:?}, row_dir={:?}", base, col_dir, row_dir);
             log::info!("➡️ CT 切片位置起点：pos={:?}", pos);
         }
-        if z == 5 {
-            println!("➡️ CT 切片维度：col={}, row={}, depth={}", col, row, depth);
-            println!("➡️ CT 切片体素间距：dx={:.3}, dy={:.3}, dz={:.3}", spacing[0], spacing[1], spacing[2]);
-            println!("➡️ CT 切片位置：base={:?}, col_dir={:?}, row_dir={:?}", base, col_dir, row_dir);
-            println!("➡️ CT 切片位置起点：pos={:?}", pos);
-        }
 
         // save DICOM slice
         let filename = format!("CT_{:04}.dcm", z + 1);
@@ -234,7 +222,6 @@ fn inject_image<S: DicomSink>(
             obj.clone(),
             &mut meta.clone(),
             sop_instance_uid,
-            patient_position.to_string(),
             row, 
             col,
             spacing,
@@ -257,7 +244,6 @@ fn write_ct_dicom_slice<S: DicomSink>(
     mut base: DefaultDicomObject,
     meta: &mut FileMetaTableBuilder,
     sop_instance_uid: String,
-    patient_position: String,
     rows: usize,
     cols: usize,
     spacing: &[f32],    // [dx, dy, dz]
@@ -275,7 +261,7 @@ fn write_ct_dicom_slice<S: DicomSink>(
     let win_center = 250;
     let win_width = 1500;
  
-    // 更新文件元信息中的 MEDIA_STORAGE_SOP_INSTANCE_UID
+    // update sop instance uid
     base.put(DataElement::new(tags::SOP_INSTANCE_UID, VR::UI, PrimitiveValue::from(sop_instance_uid.clone())));
     let new_meta = FileMetaTableBuilder::from(meta.clone())
         .media_storage_sop_instance_uid(sop_instance_uid.clone())
@@ -284,7 +270,7 @@ fn write_ct_dicom_slice<S: DicomSink>(
 
     *base.meta_mut() = new_meta;
     
-    // 像素结构（16 位有符号）
+    // update image dimensions
     base.put(DataElement::new(tags::ROWS, VR::US, PrimitiveValue::from(rows as u16)));
     base.put(DataElement::new(tags::COLUMNS, VR::US, PrimitiveValue::from(cols as u16)));
     base.put(DataElement::new(tags::BITS_ALLOCATED, VR::US, PrimitiveValue::from(16u16)));
@@ -293,7 +279,7 @@ fn write_ct_dicom_slice<S: DicomSink>(
     base.put(DataElement::new(tags::SAMPLES_PER_PIXEL, VR::US, PrimitiveValue::from(1u16)));
     base.put(DataElement::new(tags::PIXEL_REPRESENTATION, VR::US, PrimitiveValue::from(1u16))); // signed
 
-    // 像素间距（DICOM: Row\Col = dy\dx）
+    // update pixel spacing (DICOM: Row\Col = dy\dx)
     let dx = spacing.get(0).copied().unwrap_or(1.0);
     let dy = spacing.get(1).copied().unwrap_or(1.0);
     let dz = spacing.get(2).copied().unwrap_or(1.0);
@@ -301,8 +287,7 @@ fn write_ct_dicom_slice<S: DicomSink>(
     base.put(DataElement::new(tags::PIXEL_SPACING, VR::DS, PrimitiveValue::from(format!("{:.3}\\{:.3}", dx, dy))));
     base.put(DataElement::new(tags::SLICE_THICKNESS, VR::DS, PrimitiveValue::from(format!("{:.3}", dz))));
 
-    // orientation/position
-    base.put(DataElement::new(tags::PATIENT_POSITION, VR::CS, PrimitiveValue::from(patient_position.clone())));
+    // orientation
     base.put(DataElement::new(
         tags::IMAGE_ORIENTATION_PATIENT,
         VR::DS,

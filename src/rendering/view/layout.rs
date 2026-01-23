@@ -13,7 +13,6 @@
 //! TODO: Consider explicit visibility semantics in `View` to avoid offscreen hiding.
 #![allow(dead_code)]
 
-
 use super::{Renderable, View};
 use log;
 
@@ -37,14 +36,24 @@ pub fn compute_aspect_fit(
     content_h: f32,
     padding: u32,
 ) -> Option<AspectFitResult> {
-    if container_w == 0 || container_h == 0 { return None; }
-    if !content_w.is_finite() || !content_h.is_finite() { return None; }
-    if content_w <= 0.0 || content_h <= 0.0 { return None; }
+    if container_w == 0 || container_h == 0 {
+        return None;
+    }
+    if !content_w.is_finite() || !content_h.is_finite() {
+        return None;
+    }
+    if content_w <= 0.0 || content_h <= 0.0 {
+        return None;
+    }
 
     let mut inner_w = container_w as i32 - 2 * (padding as i32);
     let mut inner_h = container_h as i32 - 2 * (padding as i32);
-    if inner_w < 1 { inner_w = 1; }
-    if inner_h < 1 { inner_h = 1; }
+    if inner_w < 1 {
+        inner_w = 1;
+    }
+    if inner_h < 1 {
+        inner_h = 1;
+    }
 
     let inner_wf = inner_w as f32;
     let inner_hf = inner_h as f32;
@@ -56,8 +65,22 @@ pub fn compute_aspect_fit(
     }
     const MIN_AR: f32 = 1.0 / 10_000.0;
     const MAX_AR: f32 = 10_000.0;
-    if c_aspect < MIN_AR { log::debug!("AspectFit: content aspect {} capped to {}", c_aspect, MIN_AR); c_aspect = MIN_AR; }
-    if c_aspect > MAX_AR { log::debug!("AspectFit: content aspect {} capped to {}", c_aspect, MAX_AR); c_aspect = MAX_AR; }
+    if c_aspect < MIN_AR {
+        log::debug!(
+            "AspectFit: content aspect {} capped to {}",
+            c_aspect,
+            MIN_AR
+        );
+        c_aspect = MIN_AR;
+    }
+    if c_aspect > MAX_AR {
+        log::debug!(
+            "AspectFit: content aspect {} capped to {}",
+            c_aspect,
+            MAX_AR
+        );
+        c_aspect = MAX_AR;
+    }
 
     let container_aspect = inner_wf / inner_hf;
 
@@ -80,7 +103,13 @@ pub fn compute_aspect_fit(
     // scale relative to content height (arbitrary; useful for downstream zoom math)
     let scale = fit_h / (content_h.max(1e-6));
 
-    Some(AspectFitResult { x, y, w: fit_w, h: fit_h, scale })
+    Some(AspectFitResult {
+        x,
+        y,
+        w: fit_w,
+        h: fit_h,
+        scale,
+    })
 }
 
 /// A strategy that computes per-view position and size within a parent dimension.
@@ -136,7 +165,9 @@ pub struct GridLayout {
 }
 
 impl LayoutStrategy for GridLayout {
-    fn id(&self) -> &str { "GridLayout" }
+    fn id(&self) -> &str {
+        "GridLayout"
+    }
 
     /// Compute the origin and size for the cell corresponding to `index`.
     ///
@@ -177,7 +208,9 @@ pub struct OneCellLayout {
 }
 
 impl LayoutStrategy for OneCellLayout {
-    fn id(&self) -> &str { "OneCellLayout" }
+    fn id(&self) -> &str {
+        "OneCellLayout"
+    }
 
     /// Compute position and size where only index 0 occupies the parent; others are hidden.
     /// Function-level comment: Displays the first view (index 0) in full screen, which is now the mesh view.
@@ -201,7 +234,7 @@ impl LayoutStrategy for OneCellLayout {
 ///
 /// Manages a collection of `View` instances and delegates placement to `strategy` on view addition
 /// and when the parent dimensions change. Also forwards update and render calls to each child view.
-pub struct StaticLayout <T: LayoutStrategy> {
+pub struct StaticLayout<T: LayoutStrategy> {
     /// Parent dimensions `(width, height)` in pixels.
     dim: (u32, u32),
     /// The layout strategy used to compute positions and sizes.
@@ -231,7 +264,9 @@ impl<T: LayoutStrategy> LayoutContainer for StaticLayout<T> {
     fn add_view(&mut self, mut view: Box<dyn View>) {
         let idx = self.views.len() as u32;
         let total_views = (self.views.len() + 1) as u32;
-        let (pos, size) = self.strategy.calculate_position_and_size(idx, total_views, self.dim);
+        let (pos, size) = self
+            .strategy
+            .calculate_position_and_size(idx, total_views, self.dim);
         log::info!("Adding view at position: {:?} with size: {:?}", pos, size);
         view.move_to(pos);
         view.resize(size);
@@ -255,27 +290,38 @@ impl<T: LayoutStrategy> LayoutContainer for StaticLayout<T> {
     }
 
     /// Replace a view at the specified index with a new view.
-    /// 
+    ///
     /// Returns the old view if the index is valid, or None if out of bounds.
     /// The new view is automatically positioned and sized according to the layout strategy.
-    fn replace_view_at(&mut self, index: usize, mut new_view: Box<dyn View>) -> Option<Box<dyn View>> {
+    fn replace_view_at(
+        &mut self,
+        index: usize,
+        mut new_view: Box<dyn View>,
+    ) -> Option<Box<dyn View>> {
         if index >= self.views.len() {
             log::warn!("Attempted to replace view at invalid index: {}", index);
             return None;
         }
 
         let total_views = self.views.len() as u32;
-        let (pos, size) = self.strategy.calculate_position_and_size(index as u32, total_views, self.dim);
-        
-        log::info!("Replacing view at index {} with position: {:?} and size: {:?}", index, pos, size);
+        let (pos, size) =
+            self.strategy
+                .calculate_position_and_size(index as u32, total_views, self.dim);
+
+        log::info!(
+            "Replacing view at index {} with position: {:?} and size: {:?}",
+            index,
+            pos,
+            size
+        );
         new_view.move_to(pos);
         new_view.resize(size);
-        
+
         Some(std::mem::replace(&mut self.views[index], new_view))
     }
 
     /// Get a mutable reference to a view by index.
-    /// 
+    ///
     /// Returns None if the index is out of bounds.
     fn get_view_mut(&mut self, index: usize) -> Option<&mut Box<dyn View>> {
         if index >= self.views.len() {
@@ -285,7 +331,7 @@ impl<T: LayoutStrategy> LayoutContainer for StaticLayout<T> {
     }
 
     /// Check if a view at the specified index is of a specific type.
-    /// 
+    ///
     /// This method uses type name comparison to determine view type.
     /// Returns false if the index is out of bounds.
     fn is_view_type<V: View + 'static>(&self, index: usize) -> bool {
@@ -293,7 +339,7 @@ impl<T: LayoutStrategy> LayoutContainer for StaticLayout<T> {
             // Use type_name for type checking
             let target_type = std::any::type_name::<V>();
             let actual_type = std::any::type_name_of_val(view.as_ref());
-            
+
             // For more robust type checking, we can also check if the type names contain
             // the expected view type (e.g., "MeshView" or "GenericMPRView")
             actual_type.contains(&target_type.split("::").last().unwrap_or(target_type))
@@ -315,7 +361,9 @@ impl<T: LayoutStrategy> LayoutContainer for StaticLayout<T> {
         self.dim = dim;
         let total_views = self.views.len() as u32;
         for (i, view) in self.views.iter_mut().enumerate() {
-            let (pos, size) = self.strategy.calculate_position_and_size(i as u32, total_views, self.dim);
+            let (pos, size) =
+                self.strategy
+                    .calculate_position_and_size(i as u32, total_views, self.dim);
             view.move_to(pos);
             view.resize(size);
         }
@@ -380,13 +428,13 @@ impl DynamicLayout {
         // Recalculate all view positions and sizes
         self.relayout();
     }
-    
+
     fn relayout(&mut self) {
         let total_views = self.views.len() as u32;
         for (i, view) in self.views.iter_mut().enumerate() {
-            let (pos, size) = self.strategy.calculate_position_and_size(
-                i as u32, total_views, self.dim
-            );
+            let (pos, size) =
+                self.strategy
+                    .calculate_position_and_size(i as u32, total_views, self.dim);
             view.move_to(pos);
             view.resize(size);
         }
@@ -397,7 +445,9 @@ impl LayoutContainer for DynamicLayout {
     fn add_view(&mut self, mut view: Box<dyn View>) {
         let idx = self.views.len() as u32;
         let total_views = (self.views.len() + 1) as u32;
-        let (pos, size) = self.strategy.calculate_position_and_size(idx, total_views, self.dim);
+        let (pos, size) = self
+            .strategy
+            .calculate_position_and_size(idx, total_views, self.dim);
         log::info!("Adding view at position: {:?} with size: {:?}", pos, size);
         view.move_to(pos);
         view.resize(size);
@@ -421,27 +471,38 @@ impl LayoutContainer for DynamicLayout {
     }
 
     /// Replace a view at the specified index with a new view.
-    /// 
+    ///
     /// Returns the old view if the index is valid, or None if out of bounds.
     /// The new view is automatically positioned and sized according to the layout strategy.
-    fn replace_view_at(&mut self, index: usize, mut new_view: Box<dyn View>) -> Option<Box<dyn View>> {
+    fn replace_view_at(
+        &mut self,
+        index: usize,
+        mut new_view: Box<dyn View>,
+    ) -> Option<Box<dyn View>> {
         if index >= self.views.len() {
             log::warn!("Attempted to replace view at invalid index: {}", index);
             return None;
         }
 
         let total_views = self.views.len() as u32;
-        let (pos, size) = self.strategy.calculate_position_and_size(index as u32, total_views, self.dim);
-        
-        log::info!("Replacing view at index {} with position: {:?} and size: {:?}", index, pos, size);
+        let (pos, size) =
+            self.strategy
+                .calculate_position_and_size(index as u32, total_views, self.dim);
+
+        log::info!(
+            "Replacing view at index {} with position: {:?} and size: {:?}",
+            index,
+            pos,
+            size
+        );
         new_view.move_to(pos);
         new_view.resize(size);
-        
+
         Some(std::mem::replace(&mut self.views[index], new_view))
     }
 
     /// Get a mutable reference to a view by index.
-    /// 
+    ///
     /// Returns None if the index is out of bounds.
     fn get_view_mut(&mut self, index: usize) -> Option<&mut Box<dyn View>> {
         if index >= self.views.len() {
@@ -451,7 +512,7 @@ impl LayoutContainer for DynamicLayout {
     }
 
     /// Check if a view at the specified index is of a specific type.
-    /// 
+    ///
     /// This method uses type name comparison to determine view type.
     /// Returns false if the index is out of bounds.
     fn is_view_type<V: View + 'static>(&self, index: usize) -> bool {
@@ -459,7 +520,7 @@ impl LayoutContainer for DynamicLayout {
             // Use type_name for type checking
             let target_type = std::any::type_name::<V>();
             let actual_type = std::any::type_name_of_val(view.as_ref());
-            
+
             // For more robust type checking, we can also check if the type names contain
             // the expected view type (e.g., "MeshView" or "GenericMPRView")
             actual_type.contains(&target_type.split("::").last().unwrap_or(target_type))
@@ -481,7 +542,9 @@ impl LayoutContainer for DynamicLayout {
         self.dim = dim;
         let total_views = self.views.len() as u32;
         for (i, view) in self.views.iter_mut().enumerate() {
-            let (pos, size) = self.strategy.calculate_position_and_size(i as u32, total_views, self.dim);
+            let (pos, size) =
+                self.strategy
+                    .calculate_position_and_size(i as u32, total_views, self.dim);
             view.move_to(pos);
             view.resize(size);
         }

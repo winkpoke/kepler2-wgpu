@@ -10,8 +10,8 @@
 //! - Error handling and recovery for view operations
 //! - Logging and debugging support for view management
 
+use super::{StatefulView, View, ViewFactory, ViewState};
 use std::collections::HashMap;
-use super::{View, ViewState, StatefulView, ViewFactory};
 
 /// Centralized manager for view transitions and state preservation.
 ///
@@ -57,9 +57,14 @@ impl ViewManager {
             if let Some(state) = mpr_view.save_state() {
                 if state.is_valid() {
                     log::info!("Saving view state for position: {}", position);
-                    log::debug!("Saved state: window_level={}, window_width={}, slice_mm={}, scale={}", 
-                        state.window_level, state.window_width, state.slice_mm, state.scale);
-                    
+                    log::debug!(
+                        "Saved state: window_level={}, window_width={}, slice_mm={}, scale={}",
+                        state.window_level,
+                        state.window_width,
+                        state.slice_mm,
+                        state.scale
+                    );
+
                     self.saved_states.insert(position.to_string(), state);
                     Ok(())
                 } else {
@@ -73,7 +78,10 @@ impl ViewManager {
                 Err(error)
             }
         } else {
-            let error = format!("View at position {} does not support state management", position);
+            let error = format!(
+                "View at position {} does not support state management",
+                position
+            );
             log::debug!("{}", error);
             Err(error)
         }
@@ -95,18 +103,27 @@ impl ViewManager {
             // Try to downcast to StatefulView using the concrete type
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<super::MprView>() {
                 log::info!("Restoring view state for position: {}", position);
-                log::debug!("Restoring state: window_level={}, window_width={}, slice_mm={}, scale={}", 
-                    saved_state.window_level, saved_state.window_width, saved_state.slice_mm, saved_state.scale);
-                
+                log::debug!(
+                    "Restoring state: window_level={}, window_width={}, slice_mm={}, scale={}",
+                    saved_state.window_level,
+                    saved_state.window_width,
+                    saved_state.slice_mm,
+                    saved_state.scale
+                );
+
                 if mpr_view.restore_state(saved_state) {
                     Ok(())
                 } else {
-                    let error = format!("Failed to restore state for view at position: {}", position);
+                    let error =
+                        format!("Failed to restore state for view at position: {}", position);
                     log::warn!("{}", error);
                     Err(error)
                 }
             } else {
-                let error = format!("View at position {} does not support state management", position);
+                let error = format!(
+                    "View at position {} does not support state management",
+                    position
+                );
                 log::warn!("{}", error);
                 Err(error)
             }
@@ -132,11 +149,16 @@ impl ViewManager {
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, String> {
-        log::info!("Creating mesh view through ViewManager at pos: {:?}, size: {:?}", pos, size);
+        log::info!(
+            "Creating mesh view through ViewManager at pos: {:?}, size: {:?}",
+            pos,
+            size
+        );
         // Build a default mesh if caller did not supply one via a higher-level API.
         // Using spine_vertebra as the default demo mesh keeps existing ergonomics intact.
         let mesh = crate::rendering::mesh::mesh::Mesh::spine_vertebra();
-        self.factory.create_mesh_view(&mesh, pos, size)
+        self.factory
+            .create_mesh_view(&mesh, pos, size)
             .map_err(|e| {
                 log::error!("Failed to create mesh view: {}", e);
                 format!("{}", e)
@@ -161,9 +183,14 @@ impl ViewManager {
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, String> {
-        log::info!("Creating MPR view through ViewManager with orientation: {:?} at pos: {:?}, size: {:?}", 
-                   orientation, pos, size);
-        self.factory.create_mpr_view(vol, orientation, pos, size)
+        log::info!(
+            "Creating MPR view through ViewManager with orientation: {:?} at pos: {:?}, size: {:?}",
+            orientation,
+            pos,
+            size
+        );
+        self.factory
+            .create_mpr_view(vol, orientation, pos, size)
             .map_err(|e| {
                 log::error!("Failed to create MPR view: {}", e);
                 format!("{}", e)
@@ -186,12 +213,15 @@ impl ViewManager {
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, String> {
-        log::info!("Creating MIP view through ViewManager at pos: {:?}, size: {:?}", pos, size);
-        self.factory.create_mip_view(vol, pos, size)
-            .map_err(|e| {
-                log::error!("Failed to create MIP view: {}", e);
-                format!("{}", e)
-            })
+        log::info!(
+            "Creating MIP view through ViewManager at pos: {:?}, size: {:?}",
+            pos,
+            size
+        );
+        self.factory.create_mip_view(vol, pos, size).map_err(|e| {
+            log::error!("Failed to create MIP view: {}", e);
+            format!("{}", e)
+        })
     }
 
     /// Clear all saved states.
@@ -199,7 +229,10 @@ impl ViewManager {
     /// This method removes all stored view states, typically used during
     /// application reset or when switching to a completely new dataset.
     pub fn clear_states(&mut self) {
-        log::info!("Clearing all saved view states (count: {})", self.saved_states.len());
+        log::info!(
+            "Clearing all saved view states (count: {})",
+            self.saved_states.len()
+        );
         self.saved_states.clear();
     }
 
@@ -236,7 +269,10 @@ impl std::fmt::Debug for ViewManager {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ViewManager")
             .field("saved_states_count", &self.saved_states.len())
-            .field("saved_positions", &self.saved_states.keys().collect::<Vec<_>>())
+            .field(
+                "saved_positions",
+                &self.saved_states.keys().collect::<Vec<_>>(),
+            )
             .finish()
     }
 }
@@ -250,7 +286,7 @@ mod tests {
     fn test_view_manager_creation() {
         let factory = Box::new(MockViewFactory);
         let manager = ViewManager::new(factory);
-        
+
         assert_eq!(manager.saved_state_count(), 0);
         assert!(!manager.has_saved_state("test_position"));
     }
@@ -259,11 +295,11 @@ mod tests {
     fn test_state_management() {
         let factory = Box::new(MockViewFactory);
         let mut manager = ViewManager::new(factory);
-        
+
         // Test state operations
         assert!(!manager.has_saved_state("test"));
         assert!(!manager.remove_saved_state("test"));
-        
+
         manager.clear_states();
         assert_eq!(manager.saved_state_count(), 0);
     }

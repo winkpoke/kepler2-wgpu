@@ -4,10 +4,10 @@
 //! provides minimal APIs to manage it. It lives in the application layer to avoid
 //! coupling the data module to rendering-specific types.
 
-use std::sync::Arc;
 use crate::core::error::KeplerError;
 use crate::data::ct_volume::CTVolume;
 use crate::data::volume_encoding::VolumeEncoding;
+use std::sync::Arc;
 
 /// AppModel encapsulates application data state like the loaded CT volume.
 #[derive(Debug)]
@@ -33,7 +33,7 @@ impl AppModel {
     /// Handles the logic for R16Float vs Rg8Unorm conversion internally.
     pub fn get_volume_render_data(&self) -> Result<(Vec<u8>, VolumeEncoding), KeplerError> {
         let vol = self.volume()?;
-        
+
         if self.enable_float_volume_texture {
             // Convert voxel i16 values to half-float bytes
             let bytes: Vec<u8> = {

@@ -1,11 +1,17 @@
 #![allow(dead_code)]
 
-use super::{mesh::{Mesh, Lighting}, camera::Camera, performance::{QualityController, QualityLevel, PerformanceStats}, basic_mesh_context::BasicMeshContext};
-use crate::{
-    rendering::view::{Renderable, View}, 
-    core::timing::Instant,
+use super::{
+    basic_mesh_context::BasicMeshContext,
+    camera::Camera,
+    mesh::{Lighting, Mesh},
+    performance::{PerformanceStats, QualityController, QualityLevel},
 };
-use glam::{Mat4, Vec3, Quat, Vec2};
+use crate::{
+    core::timing::Instant,
+    rendering::view::{Renderable, View},
+};
+use glam::{Mat4, Quat, Vec2, Vec3};
+use std::f32::consts::{FRAC_PI_2, PI};
 
 /// Function-level comment: Error types specific to mesh rendering operations
 #[derive(Debug)]
@@ -26,7 +32,9 @@ impl std::fmt::Display for MeshRenderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MeshRenderError::ContextNotAttached => write!(f, "Mesh render context not attached"),
-            MeshRenderError::BufferValidationFailed(msg) => write!(f, "Buffer validation failed: {}", msg),
+            MeshRenderError::BufferValidationFailed(msg) => {
+                write!(f, "Buffer validation failed: {}", msg)
+            }
             MeshRenderError::PipelineError(msg) => write!(f, "Pipeline error: {}", msg),
             MeshRenderError::ViewportError(msg) => write!(f, "Viewport error: {}", msg),
             MeshRenderError::ResourceError(msg) => write!(f, "Resource error: {}", msg),
@@ -92,6 +100,8 @@ pub struct MeshView {
     rotation_quat: Quat,
     /// Rotation speed in radians per second (default: π/2 = 90 degrees/second)
     rotation_speed: f32,
+    /// Current rotation state as a matrix (supports free 3D rotation)
+    rotation: Mat4,
     /// Last frame time for rotation calculation
     last_frame_time: Instant,
     /// Uniform scale factor
@@ -104,7 +114,6 @@ pub struct MeshView {
 
 impl Default for MeshView {
     fn default() -> Self {
-        use std::f32::consts::FRAC_PI_2;
         Self {
             mesh: None,
             // material: None,
@@ -120,9 +129,10 @@ impl Default for MeshView {
             last_success_time: Instant::now(),
             quality_controller: QualityController::default(),
             rotation_enabled: true,
-            // Angles are stored in radians; 90°=FRAC_PI_2, 180°=PI
             rotation_quat: Quat::IDENTITY,
-            rotation_speed: FRAC_PI_2, // 90 degrees per second - reasonable default speed
+            // Angles are stored in radians; 90°=FRAC_PI_2, 180°=PI
+            rotation_speed: FRAC_PI_2, // 90 degrees per second
+            rotation: Mat4::from_rotation_x(PI),
             last_frame_time: Instant::now(),
             scale_factor: 1.0,
             pan: [0.0, 0.0, 0.0],
@@ -132,10 +142,10 @@ impl Default for MeshView {
 }
 
 impl MeshView {
-    pub fn new() -> Self { 
+    pub fn new() -> Self {
         Self::default()
     }
-    
+
     /// Function-level comment: Attaches a basic mesh render context for GPU operations
     pub fn attach_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
         self.ctx = Some(ctx);
@@ -147,47 +157,49 @@ impl MeshView {
     /// Function-level comment: Attaches a basic mesh render context for the orientation cube
     pub fn attach_orientation_cube_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
         self.orientation_cube_ctx = Some(ctx);
-        log::debug!("MeshView::attach_orientation_cube_context - Orientation cube context attached");
+        log::debug!(
+            "MeshView::attach_orientation_cube_context - Orientation cube context attached"
+        );
     }
-    
+
     /// Function-level comment: Get current rendering statistics for performance monitoring.
     pub fn get_stats(&self) -> &RenderStats {
         &self.stats
     }
-    
+
     /// Function-level comment: Get current fallback mode for debugging.
     pub fn get_fallback_mode(&self) -> FallbackMode {
         self.fallback_mode
     }
-    
+
     /// Function-level comment: Force a specific fallback mode for testing or recovery.
     pub fn set_fallback_mode(&mut self, mode: FallbackMode) {
         self.fallback_mode = mode;
         log::info!("Mesh rendering fallback mode set to: {:?}", mode);
     }
-    
+
     /// Function-level comment: Reset error state and attempt to return to normal rendering.
     pub fn reset_error_state(&mut self) {
         self.consecutive_errors = 0;
         self.fallback_mode = FallbackMode::Normal;
         log::info!("Mesh rendering error state reset");
     }
-    
+
     /// Function-level comment: Get current quality level from the performance controller.
     pub fn get_quality_level(&self) -> QualityLevel {
         self.quality_controller.get_quality_level()
     }
-    
+
     /// Function-level comment: Manually set quality level (disables automatic adjustment temporarily).
     pub fn set_quality_level(&mut self, quality: QualityLevel) {
         self.quality_controller.set_quality_level(quality);
     }
-    
+
     /// Function-level comment: Get comprehensive performance statistics.
     pub fn get_performance_stats(&self) -> PerformanceStats {
         self.quality_controller.get_performance_stats()
     }
-    
+
     /// Function-level comment: Get buffer memory usage statistics for monitoring and optimization.
     pub fn get_memory_stats(&self) -> (u64, u64, f32, f32) {
         if let Some(ctx) = &self.ctx {
@@ -203,7 +215,10 @@ impl MeshView {
         if enabled {
             // Reset timing when enabling rotation to prevent jumps
             self.last_frame_time = Instant::now();
-            log::info!("Mesh rotation enabled at {:.1}°/s", self.rotation_speed.to_degrees());
+            log::info!(
+                "Mesh rotation enabled at {:.1}°/s",
+                self.rotation_speed.to_degrees()
+            );
         } else {
             log::info!("Mesh rotation disabled");
         }
@@ -214,8 +229,11 @@ impl MeshView {
     /// Common values: π/4 (45°/s), π/2 (90°/s), π (180°/s), 2π (360°/s)
     pub fn set_rotation_speed(&mut self, speed_rad_per_sec: f32) {
         self.rotation_speed = speed_rad_per_sec;
-        log::info!("Mesh rotation speed set to {:.3} rad/s ({:.1}°/s)", 
-                   speed_rad_per_sec, speed_rad_per_sec.to_degrees());
+        log::info!(
+            "Mesh rotation speed set to {:.3} rad/s ({:.1}°/s)",
+            speed_rad_per_sec,
+            speed_rad_per_sec.to_degrees()
+        );
     }
 
     /// Function-level comment: Get the current rotation speed in radians per second.
@@ -226,26 +244,20 @@ impl MeshView {
     /// Function-level comment: Reset the rotation angle to zero.
     /// Useful for returning to a known orientation or synchronizing multiple objects.
     pub fn reset_rotation(&mut self) {
+        self.rotation = Mat4::from_rotation_x(PI);
         self.rotation_quat = Quat::IDENTITY;
         self.last_frame_time = Instant::now();
         log::debug!("Mesh rotation reset to identity");
     }
 
-    /// Function-level comment: Get the current rotation angle in degrees (Pitch, Yaw, Roll).
-    pub fn get_rotation_quat(&self) -> [f32; 4] {
-        let (roll, pitch, yaw) = self.rotation_quat.to_euler(glam::EulerRot::XYZ);
-        [roll.to_degrees(), pitch.to_degrees(), yaw.to_degrees(), 0.0]
-    }
-    
     /// Function-level comment: Set the current rotation angle using degrees for convenience.
     /// This directly sets the orientation without affecting rotation speed.
-    pub fn set_rotation_angle_degrees(&mut self, degrees: [f32; 3]) {
-        let rad = degrees.map(|d| d.to_radians());
-        // Map [x, y, z] to Pitch, Yaw, Roll.
-        // Using XYZ order: Pitch(X), Yaw(Y), Roll(Z)
-        self.rotation_quat = Quat::from_euler(glam::EulerRot::XYZ, rad[0], rad[1], rad[2]);
+    pub fn set_rotation_angle_degrees(&mut self, degrees_x: f32, degrees_y: f32) {
+        let rad = [degrees_x, degrees_y].map(|d| d.to_radians());
+        let rotation = Mat4::from_rotation_y(rad[1]) * Mat4::from_rotation_x(rad[0]);
+        self.rotation = rotation * self.rotation;
         self.last_frame_time = Instant::now();
-        log::info!("Mesh rotation set to {:?}°", degrees);
+        log::info!("Mesh rotation set to {:?}°", self.rotation);
     }
 
     /// Function-level comment: Rotate the mesh based on mouse movement (pixels).
@@ -295,7 +307,6 @@ impl MeshView {
         log::info!("Mesh scale factor reset to default (1.0)");
     }
 
-    
     /// Function-level comment: Set mesh pan translation (world units) for X and Y axes.
     /// Pan values are uploaded to the vertex shader as a uniform offset.
     pub fn set_pan(&mut self, dx: f32, dy: f32) {
@@ -333,14 +344,14 @@ impl MeshView {
         let mut camera = Camera::new(); // uses Orthogonal by default
 
         // Set standard viewing parameters
-        camera.eye = [0.0, 0.0, 3.0];      // Camera in front of the scene
-        camera.center = [0.0, 0.0, 0.0];   // Look at origin
-        camera.up = [0.0, 1.0, 0.0];       // Y-up coordinate system
-        
+        camera.eye = [0.0, 0.0, 3.0]; // Camera in front of the scene
+        camera.center = [0.0, 0.0, 0.0]; // Look at origin
+        camera.up = [0.0, 1.0, 0.0]; // Y-up coordinate system
+
         // Fix clipping issues: near and far planes must include the scene
         // For orthographic projection, near MUST be < far; negative near is allowed.
-        camera.near = -5.0;   // Allow objects between camera and center
-        camera.far = 5.0;     // Small range improves depth precision
+        camera.near = -5.0; // Allow objects between camera and center
+        camera.far = 5.0; // Small range improves depth precision
 
         // Setup orthogonal bounds to ensure a unit cube (-1..1) fits inside view
         camera.ortho_left = -2.0;
@@ -366,14 +377,13 @@ impl MeshView {
     /// Function-level comment: Update GPU uniforms for basic mesh rendering with combined MVP matrix
     /// Includes rotation if enabled, using frame-rate independent timing
     pub fn update_uniforms(&mut self, queue: &wgpu::Queue) {
-        // Keep angle in [0, 2π] range to prevent floating point precision issues
-        // use std::f32::consts::TAU; // TAU = 2π
-
         // Update rotation angle only when rotation is enabled; orientation should persist when disabled
         if self.rotation_enabled {
             let current_time = Instant::now();
-            let delta_time = current_time.duration_since(self.last_frame_time).as_secs_f32();
-            
+            let delta_time = current_time
+                .duration_since(self.last_frame_time)
+                .as_secs_f32();
+
             // Auto-rotate around Global Y
             let angle_delta = self.rotation_speed * delta_time;
             let rot_delta = Quat::from_rotation_y(angle_delta);
@@ -381,34 +391,41 @@ impl MeshView {
             self.rotation_quat = self.rotation_quat.normalize();
 
             #[cfg(feature = "trace-logging")]
-            log::trace!("[MESH_ROTATION] Auto-rotation delta: {:.3} rad", angle_delta);
-            
+            log::trace!(
+                "[MESH_ROTATION] Auto-rotation delta: {:.3} rad",
+                angle_delta
+            );
+
             self.last_frame_time = current_time;
         }
-        
+
         if let Some(ctx) = &self.ctx {
             let aspect_ratio = if self.dim.0 > 0 && self.dim.1 > 0 {
                 self.dim.0 as f32 / self.dim.1 as f32
             } else {
                 1.0
             };
-            
-            log::debug!("[BASIC_MESH_UNIFORMS] Viewport dimensions: {}x{}, aspect_ratio: {:.3}", 
-                       self.dim.0, self.dim.1, aspect_ratio);
-            
+
+            log::debug!(
+                "[BASIC_MESH_UNIFORMS] Viewport dimensions: {}x{}, aspect_ratio: {:.3}",
+                self.dim.0,
+                self.dim.1,
+                aspect_ratio
+            );
+
             // Model matrix - apply persistent rotation (if any) and uniform scale
-            let rotation = Mat4::from_quat(self.rotation_quat);
+            let rotation = self.rotation;
 
             // Compose Model: Translation * Rotation * Scale
             let model_matrix = Mat4::from_translation(Vec3::from(self.pan))
                 * rotation
                 * Mat4::from_scale(Vec3::splat(self.scale_factor));
-            
+
             // View matrix - camera positioned for optimal viewing of smaller cube
-            // Camera at (0, 0, 3.0) looking at origin, but original matrix 
+            // Camera at (0, 0, 3.0) looking at origin, but original matrix
             // had specific translation (0, 0, -2.0) hardcoded in the array.
             let view_matrix = Mat4::from_translation(Vec3::new(0.0, 0.0, -2.0));
-            
+
             // Dynamic orthographic range adjustment
             let base_extent = 2.0;
             let expand_factor = 1.8;
@@ -419,23 +436,32 @@ impl MeshView {
             let top = view_extent / aspect_ratio;
             let near = -view_extent * 2.0;
             let far = view_extent * 2.0;
-            
+
             // Matches original OpenGL-style orthographic projection (-1 to 1 Z range)
             let proj_matrix = Mat4::orthographic_rh(left, right, bottom, top, near, far);
-            
+
             // Calculate MVP: projection * view * model
             let mvp_matrix = proj_matrix * view_matrix * model_matrix;
-            
+
             #[cfg(feature = "trace-logging")]
             log::trace!("[BASIC_MESH_MATRICES] Model matrix (scale {} with rotation {:?} rad, enabled={}): {:?}", 
                         self.scale_factor, angles, self.rotation_enabled, model_matrix.to_cols_array());
-            log::trace!("[BASIC_MESH_MATRICES] View matrix (camera at -3): {:?}", view_matrix.to_cols_array());
-            log::trace!("[BASIC_MESH_MATRICES] Projection matrix (orthogonal): {:?}", proj_matrix.to_cols_array());
-            log::trace!("[BASIC_MESH_MATRICES] Combined MVP matrix: {:?}", mvp_matrix.to_cols_array());
-            
+            log::trace!(
+                "[BASIC_MESH_MATRICES] View matrix (camera at -3): {:?}",
+                view_matrix.to_cols_array()
+            );
+            log::trace!(
+                "[BASIC_MESH_MATRICES] Projection matrix (orthogonal): {:?}",
+                proj_matrix.to_cols_array()
+            );
+            log::trace!(
+                "[BASIC_MESH_MATRICES] Combined MVP matrix: {:?}",
+                mvp_matrix.to_cols_array()
+            );
+
             // Update uniforms in BasicMeshContext with combined MVP matrix
             // Note: The shader expects column-major matrices, and glam is column-major by default.
-            
+
             ctx.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
 
             // Update lighting uniforms to ensure lighting effects are applied
@@ -454,25 +480,24 @@ impl MeshView {
         // Update Orientation Cube Uniforms
         if let Some(cube_ctx) = &self.orientation_cube_ctx {
             // Model: Only Rotation (no pan, no scale from main mesh)
-            let rotation = Mat4::from_quat(self.rotation_quat);
-            let model_matrix = rotation; // Scale 1.0, Trans 0.0
-            
+            let model_matrix = self.rotation;
+
             // View: Standard fixed camera
             // Place cube closer to camera (Z=5.0) than main mesh (Z=-2.0) to ensure it renders on top
             // Orthographic range is -10 to 10, so 5.0 is well within range.
             let view_matrix = Mat4::from_translation(Vec3::new(0.0, 0.0, 5.0));
-            
+
             // Proj: Fixed Ortho to fit unit cube (-1..1) with padding
             // Unit cube diagonal is 1.73. 1.5 might clip corners if rotating.
             let extent = 2.0;
             let proj_matrix = Mat4::orthographic_rh(-extent, extent, -extent, extent, -10.0, 10.0);
-            
+
             let mvp_matrix = proj_matrix * view_matrix * model_matrix;
-            
+
             cube_ctx.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
-            
+
             // Also update lighting for cube (use same lighting)
-             let lighting_uniforms = if let Some(ref lighting) = self.lighting {
+            let lighting_uniforms = if let Some(ref lighting) = self.lighting {
                 lighting.to_basic_uniforms()
             } else {
                 let default_lighting = self.create_default_lighting();
@@ -484,31 +509,35 @@ impl MeshView {
             cube_ctx.update_lighting(queue, cube_lighting);
         }
     }
-    
+
     /// Function-level comment: Start frame timing for performance monitoring.
     pub fn start_frame_timing(&mut self) {
         self.quality_controller.start_frame();
     }
-    
+
     /// Function-level comment: End frame timing and check for quality adjustments.
     pub fn end_frame_timing(&mut self) -> Option<QualityLevel> {
         self.quality_controller.end_frame()
     }
-    
+
     /// Function-level comment: Check if the view is in a healthy state for rendering.
     pub fn is_healthy(&self) -> bool {
-        self.consecutive_errors < 5 && 
-        self.last_success_time.elapsed().as_secs_f64() < 30.0 &&
-        !matches!(self.fallback_mode, FallbackMode::Disabled)
+        self.consecutive_errors < 5
+            && self.last_success_time.elapsed().as_secs_f64() < 30.0
+            && !matches!(self.fallback_mode, FallbackMode::Disabled)
     }
-    
+
     /// Function-level comment: Handle rendering errors and determine appropriate fallback strategy.
     fn handle_render_error(&mut self, error: MeshRenderError) {
         self.stats.error_count += 1;
         self.consecutive_errors += 1;
-        
-        log::warn!("Mesh render error (consecutive: {}): {}", self.consecutive_errors, error);
-        
+
+        log::warn!(
+            "Mesh render error (consecutive: {}): {}",
+            self.consecutive_errors,
+            error
+        );
+
         // Update specific error counters
         match error {
             MeshRenderError::BufferValidationFailed(_) => {
@@ -519,39 +548,46 @@ impl MeshView {
             }
             _ => {}
         }
-        
+
         // Determine fallback strategy based on error count and type
         self.fallback_mode = match self.consecutive_errors {
-            1..=2 => FallbackMode::Normal, // Retry normal rendering
+            1..=2 => FallbackMode::Normal,     // Retry normal rendering
             3..=4 => FallbackMode::Simplified, // Switch to simplified rendering
-            5..=7 => FallbackMode::Wireframe, // Fall back to wireframe
-            _ => FallbackMode::Disabled, // Disable rendering entirely
+            5..=7 => FallbackMode::Wireframe,  // Fall back to wireframe
+            _ => FallbackMode::Disabled,       // Disable rendering entirely
         };
-        
+
         log::info!("Switched to fallback mode: {:?}", self.fallback_mode);
     }
-    
+
     /// Function-level comment: Record successful render and update performance metrics.
     fn record_success(&mut self, render_time_ms: f32) {
         self.stats.frame_count += 1;
         self.stats.last_render_time_ms = render_time_ms;
-        
+
         // Update rolling average
         let alpha = 0.1; // Smoothing factor
-        self.stats.average_render_time_ms = 
+        self.stats.average_render_time_ms =
             alpha * render_time_ms + (1.0 - alpha) * self.stats.average_render_time_ms;
-        
+
         // Reset error state on successful render
         if self.consecutive_errors > 0 {
             self.consecutive_errors = 0;
-            log::info!("Mesh rendering recovered after {} consecutive errors", self.consecutive_errors);
+            log::info!(
+                "Mesh rendering recovered after {} consecutive errors",
+                self.consecutive_errors
+            );
         }
-        
+
         self.last_success_time = Instant::now();
-        
+
         // Gradually return to normal mode if we've been in fallback
-        if matches!(self.fallback_mode, FallbackMode::Simplified | FallbackMode::Wireframe) {
-            if self.stats.frame_count % 60 == 0 { // Try to upgrade every 60 frames
+        if matches!(
+            self.fallback_mode,
+            FallbackMode::Simplified | FallbackMode::Wireframe
+        ) {
+            if self.stats.frame_count % 60 == 0 {
+                // Try to upgrade every 60 frames
                 self.fallback_mode = match self.fallback_mode {
                     FallbackMode::Wireframe => FallbackMode::Simplified,
                     FallbackMode::Simplified => FallbackMode::Normal,
@@ -561,40 +597,53 @@ impl MeshView {
             }
         }
     }
-    
+
     /// Function-level comment: Attempt to render with comprehensive error handling and fallback.
     fn try_render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), MeshRenderError> {
         // Start frame timing for performance monitoring
         self.start_frame_timing();
         let start_time = Instant::now();
-        
+
         // Check if rendering is disabled
         if matches!(self.fallback_mode, FallbackMode::Disabled) {
             log::trace!("BasicMeshView::try_render - Rendering disabled due to fallback mode");
-            return Err(MeshRenderError::ResourceError("Rendering disabled due to repeated failures".to_string()));
+            return Err(MeshRenderError::ResourceError(
+                "Rendering disabled due to repeated failures".to_string(),
+            ));
         }
-        
+
         // Ensure context is available
-        let ctx = self.ctx.as_ref()
-            .ok_or_else(|| {
-                log::trace!("BasicMeshView::try_render - No context attached");
-                MeshRenderError::ContextNotAttached
-            })?;
-        
-        log::trace!("BasicMeshView::try_render - Context available, vertices: {}, indices: {}", ctx.num_vertices, ctx.num_indices);
-        
+        let ctx = self.ctx.as_ref().ok_or_else(|| {
+            log::trace!("BasicMeshView::try_render - No context attached");
+            MeshRenderError::ContextNotAttached
+        })?;
+
+        log::trace!(
+            "BasicMeshView::try_render - Context available, vertices: {}, indices: {}",
+            ctx.num_vertices,
+            ctx.num_indices
+        );
+
         // Validate viewport dimensions
         if self.dim.0 == 0 || self.dim.1 == 0 {
-            return Err(MeshRenderError::ViewportError("Invalid viewport dimensions".to_string()));
+            return Err(MeshRenderError::ViewportError(
+                "Invalid viewport dimensions".to_string(),
+            ));
         }
-        
+
         // Configure viewport
         let (x, y) = (self.pos.0 as f32, self.pos.1 as f32);
         let (width, height) = (self.dim.0 as f32, self.dim.1 as f32);
         render_pass.set_viewport(x, y, width, height, 0.0, 1.0);
-        
-        log::trace!("BasicMeshView::try_render - Viewport set to ({}, {}) {}x{}", x, y, width, height);
-        
+
+        log::trace!(
+            "BasicMeshView::try_render - Viewport set to ({}, {}) {}x{}",
+            x,
+            y,
+            width,
+            height
+        );
+
         // Use the simplified BasicMeshContext render method
         ctx.render(render_pass);
 
@@ -602,35 +651,41 @@ impl MeshView {
         if let Some(cube_ctx) = &self.orientation_cube_ctx {
             let cube_size = 120.0;
             let padding = 10.0;
-            
+
             // Calculate bottom-left position within the view
             // Assuming (x, y) is top-left of the view
             let view_x = self.pos.0 as f32;
             let view_y = self.pos.1 as f32;
             let view_h = self.dim.1 as f32;
-            
+
             // Bottom-left relative to view
             let cube_x = view_x + padding;
             let cube_y = view_y + view_h - cube_size - padding;
-            
+
             // Ensure we don't draw outside the view if view is too small
             if self.dim.0 > (cube_size as u32 + 20) && self.dim.1 > (cube_size as u32 + 20) {
                 render_pass.set_viewport(cube_x, cube_y, cube_size, cube_size, 0.0, 1.0);
                 cube_ctx.render(render_pass);
             }
         }
-        
+
         // Record successful render
         let render_time_ms = start_time.elapsed().as_millis_f32();
         self.record_success(render_time_ms);
-        log::trace!("BasicMeshView::try_render - Render completed successfully in {:.2}ms", render_time_ms);
-        
+        log::trace!(
+            "BasicMeshView::try_render - Render completed successfully in {:.2}ms",
+            render_time_ms
+        );
+
         // End frame timing and check for quality adjustments
         if let Some(new_quality) = self.end_frame_timing() {
-            log::info!("Quality automatically adjusted to {:?} based on performance", new_quality);
+            log::info!(
+                "Quality automatically adjusted to {:?} based on performance",
+                new_quality
+            );
             // Quality adjustment is already applied by the controller
         }
-        
+
         Ok(())
     }
 }
@@ -638,12 +693,13 @@ impl MeshView {
 impl Renderable for MeshView {
     fn update(&mut self, queue: &wgpu::Queue) {
         // Function-level comment: Update mesh view state and perform health checks
-        
+
         // Update uniform buffers with current camera and lighting data
         self.update_uniforms(queue);
-        
+
         // Perform periodic health checks
-        if self.stats.frame_count % 300 == 0 { // Every 5 seconds at 60fps
+        if self.stats.frame_count % 300 == 0 {
+            // Every 5 seconds at 60fps
             if !self.is_healthy() {
                 log::warn!("MeshView health check failed: consecutive_errors={}, last_success={:?}s ago, mode={:?}", 
                     self.consecutive_errors, 
@@ -652,19 +708,20 @@ impl Renderable for MeshView {
                 );
             }
         }
-        
+
         // Auto-recovery attempt if we've been disabled for too long
-        if matches!(self.fallback_mode, FallbackMode::Disabled) && 
-           self.last_success_time.elapsed().as_secs_f64() > 60.0 {
+        if matches!(self.fallback_mode, FallbackMode::Disabled)
+            && self.last_success_time.elapsed().as_secs_f64() > 60.0
+        {
             log::info!("Attempting auto-recovery from disabled state");
             self.fallback_mode = FallbackMode::Wireframe;
             self.consecutive_errors = 5; // Start with reduced error count
         }
     }
-    
+
     fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
         // Function-level comment: Render mesh with comprehensive error handling and fallback mechanisms
-        
+
         // Attempt rendering with error handling
         match self.try_render(render_pass) {
             Ok(()) => {
@@ -674,7 +731,7 @@ impl Renderable for MeshView {
             Err(error) => {
                 // Handle the error and determine recovery strategy
                 self.handle_render_error(error);
-                
+
                 // Always return Ok to prevent frame failure
                 // The error handling will adjust fallback mode for next frame
                 Ok(())
@@ -686,62 +743,80 @@ impl Renderable for MeshView {
 impl Drop for MeshView {
     /// Function-level comment: Clean up MeshView resources and log the drop for debugging.
     fn drop(&mut self) {
-        log::debug!("[MESH_VIEW] Dropping MeshView at position {:?} with size {:?}", self.pos, self.dim);
+        log::debug!(
+            "[MESH_VIEW] Dropping MeshView at position {:?} with size {:?}",
+            self.pos,
+            self.dim
+        );
     }
 }
 
 impl View for MeshView {
-    fn position(&self) -> (i32, i32) { self.pos }
-    fn dimensions(&self) -> (u32, u32) { self.dim }
-    fn move_to(&mut self, pos: (i32, i32)) { 
+    fn position(&self) -> (i32, i32) {
+        self.pos
+    }
+    fn dimensions(&self) -> (u32, u32) {
+        self.dim
+    }
+    fn move_to(&mut self, pos: (i32, i32)) {
         log::debug!("[MESH_VIEW] Moving to position: {:?}", pos);
-        self.pos = pos; 
+        self.pos = pos;
     }
-    fn resize(&mut self, dim: (u32, u32)) { 
+    fn resize(&mut self, dim: (u32, u32)) {
         log::debug!("[MESH_VIEW] Resizing to dimensions: {:?}", dim);
-        self.dim = dim; 
+        self.dim = dim;
     }
-    fn as_any(&self) -> &dyn std::any::Any { self }
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any { self }
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::f32::consts::{PI, FRAC_PI_2, TAU};
+    use glam::Mat4;
+    use std::f32::consts::{FRAC_PI_2, PI};
 
     /// Function-level comment: Verify default rotation state and speed
     #[test]
     fn test_rotation_api_basic_functionality() {
         let mesh_view = MeshView::default();
-        let quat = mesh_view.get_rotation_quat();
-        assert!(quat[0].abs() < 1e-6);
-        assert!(quat[1].abs() < 1e-6);
-        assert!(quat[2].abs() < 1e-6);
-        assert!(quat[3].abs() < 1e-6);
-        assert!((mesh_view.get_rotation_speed() - FRAC_PI_2).abs() < 1e-6);
+
+        // Verify default rotation is 180 degrees around X (PI radians)
+        let expected_mat = Mat4::from_rotation_x(PI);
+        // Check Matrix columns
+        assert!(mesh_view.rotation.col(0).abs_diff_eq(expected_mat.col(0), 1e-6));
+        assert!(mesh_view.rotation.col(1).abs_diff_eq(expected_mat.col(1), 1e-6));
+        assert!(mesh_view.rotation.col(2).abs_diff_eq(expected_mat.col(2), 1e-6));
+        assert!(mesh_view.rotation.col(3).abs_diff_eq(expected_mat.col(3), 1e-6));
+
+        // Verify default speed (90 degrees/s)
+        assert!((mesh_view.rotation_speed - FRAC_PI_2).abs() < 1e-6);
     }
 
     /// Function-level comment: Ensure enabling/disabling rotation does not panic and preserves orientation
     #[test]
     fn test_rotation_enable_disable() {
         let mut mesh_view = MeshView::default();
-        let before = mesh_view.get_rotation_quat();
+
+        // Set some rotation first to ensure we aren't just testing identity or default
+        // Add 45 degrees around Y to the existing default
+        mesh_view.set_rotation_angle_degrees(0.0, 45.0);
+        
+        let before_mat = mesh_view.rotation;
+
         mesh_view.set_rotation_enabled(false);
-        let after_disable = mesh_view.get_rotation_quat();
+        let after_disable_mat = mesh_view.rotation;
+
         mesh_view.set_rotation_enabled(true);
-        let after_enable = mesh_view.get_rotation_quat();
-        
-        // Quaternions should be identical
-        assert!((before[0] - after_disable[0]).abs() < 1e-6);
-        assert!((before[1] - after_disable[1]).abs() < 1e-6);
-        assert!((before[2] - after_disable[2]).abs() < 1e-6);
-        assert!((before[3] - after_disable[3]).abs() < 1e-6);
-        
-        assert!((before[0] - after_enable[0]).abs() < 1e-6);
-        assert!((before[1] - after_enable[1]).abs() < 1e-6);
-        assert!((before[2] - after_enable[2]).abs() < 1e-6);
-        assert!((before[3] - after_enable[3]).abs() < 1e-6);
+        let after_enable_mat = mesh_view.rotation;
+
+        // Rotation should be preserved through enable/disable cycles
+        assert_eq!(before_mat, after_disable_mat);
+        assert_eq!(before_mat, after_enable_mat);
     }
 
     /// Function-level comment: Verify rotation speed setters
@@ -749,8 +824,10 @@ mod tests {
     fn test_rotation_speed_control() {
         let mut mesh_view = MeshView::default();
         let test_speed = PI / 4.0; // 45°/s
+
         mesh_view.set_rotation_speed(test_speed);
         assert!((mesh_view.get_rotation_speed() - test_speed).abs() < 1e-6);
+
         mesh_view.set_rotation_speed_degrees(180.0); // π rad/s
         assert!((mesh_view.get_rotation_speed() - PI).abs() < 1e-6);
     }
@@ -759,11 +836,20 @@ mod tests {
     #[test]
     fn test_rotation_angle_reset() {
         let mut mesh_view = MeshView::default();
+
+        // Apply some rotation
+        mesh_view.set_rotation_angle_degrees(90.0, 45.0);
+        // Verify initial state is NOT default
+        assert_ne!(mesh_view.rotation, Mat4::from_rotation_x(PI));
+        
+        // Reset
         mesh_view.reset_rotation();
-        let quat = mesh_view.get_rotation_quat();
-        assert!(quat[0].abs() < 1e-6);
-        assert!(quat[1].abs() < 1e-6);
-        assert!(quat[2].abs() < 1e-6);
-        assert!(quat[3].abs() < 1e-6);
+
+        // Verify reset to default (PI around X)
+        let expected_mat = Mat4::from_rotation_x(PI);
+
+        assert!(mesh_view.rotation.col(0).abs_diff_eq(expected_mat.col(0), 1e-6));
+        assert!(mesh_view.rotation.col(1).abs_diff_eq(expected_mat.col(1), 1e-6));
+        assert!(mesh_view.rotation.col(2).abs_diff_eq(expected_mat.col(2), 1e-6));
     }
 }

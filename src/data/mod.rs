@@ -1,5 +1,5 @@
 //! Data structures and domain models
-//! 
+//!
 //! This module contains domain models and data structures.
 //! Dependencies: Core utilities only, no rendering dependencies.
 

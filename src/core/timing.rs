@@ -1,5 +1,5 @@
 /// Cross-platform timing utilities that work on both native and WASM targets
-/// 
+///
 /// This module provides timing functionality using std::time::Instant on native
 /// and the browser's performance API on WASM for accurate timing.
 
@@ -30,7 +30,7 @@ pub struct Instant {
 
 impl Instant {
     /// Creates a new `Instant` representing the current time
-    /// 
+    ///
     /// On WASM, uses performance.now() for accurate timing
     pub fn now() -> Self {
         #[cfg(not(target_arch = "wasm32"))]
@@ -41,14 +41,12 @@ impl Instant {
         }
         #[cfg(target_arch = "wasm32")]
         {
-            Self { 
-                time_ms: now() 
-            }
+            Self { time_ms: now() }
         }
     }
 
     /// Returns the elapsed time since this instant
-    /// 
+    ///
     /// On WASM, calculates elapsed time using performance.now()
     pub fn elapsed(&self) -> Duration {
         #[cfg(not(target_arch = "wasm32"))]
@@ -64,7 +62,7 @@ impl Instant {
     }
 
     /// Returns the duration since another instant
-    /// 
+    ///
     /// On WASM, calculates duration using performance.now() timestamps
     pub fn duration_since(&self, earlier: Instant) -> Duration {
         #[cfg(not(target_arch = "wasm32"))]
@@ -95,15 +93,15 @@ impl DurationExt for Duration {
     fn as_millis_f64(&self) -> f64 {
         self.as_secs_f64() * 1000.0
     }
-    
+
     fn as_millis_f32(&self) -> f32 {
         self.as_secs_f32() * 1000.0
     }
-    
+
     fn as_secs_f64(&self) -> f64 {
         self.as_secs() as f64 + self.subsec_nanos() as f64 / 1_000_000_000.0
     }
-    
+
     fn as_secs_f32(&self) -> f32 {
         self.as_secs() as f32 + self.subsec_nanos() as f32 / 1_000_000_000.0
     }

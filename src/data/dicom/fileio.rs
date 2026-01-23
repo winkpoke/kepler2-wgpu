@@ -157,24 +157,23 @@ pub async fn parse_dcm_files(file_paths: Vec<std::path::PathBuf>) -> Result<Dico
 //------------------------------ WASM Code -------------------------------------
 
 #[cfg(target_arch = "wasm32")]
-use js_sys::{Array, Promise, Uint8Array};
-#[cfg(target_arch = "wasm32")]
-use web_sys::{File, FileReader, ProgressEvent};
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::JsValue;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::JsCast;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen_futures::JsFuture;
-#[cfg(target_arch = "wasm32")]
 use crate::data::ct_volume::CTVolume;
 #[cfg(target_arch = "wasm32")]
 use crate::data::medical_imaging::formats::*;
 #[cfg(target_arch = "wasm32")]
 use crate::data::medical_imaging::metadata::{volume::MedicalVolume, PixelData};
-
+#[cfg(target_arch = "wasm32")]
+use js_sys::{Array, Promise, Uint8Array};
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsCast;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::JsValue;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen_futures::JsFuture;
+#[cfg(target_arch = "wasm32")]
+use web_sys::{File, FileReader, ProgressEvent};
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[cfg(target_arch = "wasm32")]
@@ -207,7 +206,7 @@ pub async fn parse_dcm_files_wasm(files: Array) -> Result<DicomRepo, JsValue> {
                             .ok_or_else(|| JsValue::from("Failed to retrieve target"))?
                             .dyn_into::<FileReader>()?
                             .result()?;
-                            // .map_err(|| JsValue::from("Failed to retrieve file result"))?;
+                        // .map_err(|| JsValue::from("Failed to retrieve file result"))?;
 
                         let buffer = Uint8Array::new(&buffer).to_vec();
 
@@ -237,7 +236,9 @@ pub async fn parse_dcm_files_wasm(files: Array) -> Result<DicomRepo, JsValue> {
                 });
 
                 file_reader.set_onload(Some(closure.as_ref().unchecked_ref()));
-                file_reader.read_as_array_buffer(&file).expect("Failed to read file");
+                file_reader
+                    .read_as_array_buffer(&file)
+                    .expect("Failed to read file");
             });
 
             promise
@@ -258,7 +259,10 @@ pub async fn parse_dcm_files_wasm(files: Array) -> Result<DicomRepo, JsValue> {
 /// For MHD files, expects both header (.mhd) and data (.raw/.zraw) files in the array
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[cfg(target_arch = "wasm32")]
-pub async fn parse_common_files_wasm(files: Array, info: js_sys::Uint8Array) -> Result<CTVolume, JsValue> {
+pub async fn parse_common_files_wasm(
+    files: Array,
+    info: js_sys::Uint8Array,
+) -> Result<CTVolume, JsValue> {
     // Parse info parameters once
     let mut buf = vec![0u8; info.length() as usize];
     info.copy_to(&mut buf[..]);
@@ -266,24 +270,30 @@ pub async fn parse_common_files_wasm(files: Array, info: js_sys::Uint8Array) -> 
         .map_err(|e| JsValue::from_str(&format!("UTF8 decode error: {}", e)))?;
     let info: serde_json::Value = serde_json::from_str(&info_json)
         .map_err(|e| JsValue::from_str(&format!("JSON parse error: {}", e)))?;
-    let slope = info["slope"].as_f64()
+    let slope = info["slope"]
+        .as_f64()
         .map(|v| v as f32)
         .ok_or(JsValue::from_str("Missing slope in info"))?;
-    let intercept = info["intercept"].as_f64()
+    let intercept = info["intercept"]
+        .as_f64()
         .map(|v| v as f32)
         .ok_or(JsValue::from_str("Missing intercept in info"))?;
-    log::info!("Medical imaging info: slope = {:?}, intercept = {:?}", slope, intercept);
+    log::info!(
+        "Medical imaging info: slope = {:?}, intercept = {:?}",
+        slope,
+        intercept
+    );
 
     // Collect and categorize medical imaging files
     let mut mha_files = Vec::new();
     let mut mhd_files = Vec::new();
     let mut raw_files = Vec::new();
     let len = files.length() as usize;
-    
+
     for idx in 0..len {
         let file: File = files.get(idx as u32).dyn_into()?;
         let file_name = file.name().to_lowercase();
-        
+
         // Categorize files by extension
         if file_name.ends_with(".mha") {
             mha_files.push(file);
@@ -295,15 +305,18 @@ pub async fn parse_common_files_wasm(files: Array, info: js_sys::Uint8Array) -> 
             // Check using the extension parser for other formats
             match get_extension(&file.name()) {
                 Ok(ImageFormat::NIfTI) | Ok(ImageFormat::DICOM) => {
-                    log::warn!("Format {:?} not yet supported in WASM", get_extension(&file.name()).unwrap());
-                },
+                    log::warn!(
+                        "Format {:?} not yet supported in WASM",
+                        get_extension(&file.name()).unwrap()
+                    );
+                }
                 _ => {
                     log::debug!("Skipping unsupported file: {}", file.name());
                 }
             }
         }
     }
-    
+
     // Process files based on what's available
     if !mha_files.is_empty() {
         // Process MHA files (self-contained)
@@ -314,59 +327,64 @@ pub async fn parse_common_files_wasm(files: Array, info: js_sys::Uint8Array) -> 
         Ok(ct_volume)
     } else if !mhd_files.is_empty() && !raw_files.is_empty() {
         // Process MHD files (require separate data files)
-        log::info!("Processing MHD files: {} header(s), {} data file(s)", mhd_files.len(), raw_files.len());
-        
+        log::info!(
+            "Processing MHD files: {} header(s), {} data file(s)",
+            mhd_files.len(),
+            raw_files.len()
+        );
+
         // Find matching MHD and data file pairs
         let mut matched_pair = None;
         for mhd_file in &mhd_files {
             let mhd_name = mhd_file.name();
             let base_name = mhd_name.trim_end_matches(".mhd").trim_end_matches(".MHD");
-            
+
             // Look for corresponding data file
             for raw_file in &raw_files {
                 let raw_name = raw_file.name();
-                let raw_base = raw_name.trim_end_matches(".raw")
+                let raw_base = raw_name
+                    .trim_end_matches(".raw")
                     .trim_end_matches(".RAW")
                     .trim_end_matches(".zraw")
                     .trim_end_matches(".ZRAW");
-                
+
                 if base_name.eq_ignore_ascii_case(raw_base) {
                     matched_pair = Some((mhd_file.clone(), raw_file.clone()));
                     log::info!("Found matching MHD pair: {} + {}", mhd_name, raw_name);
                     break;
                 }
             }
-            
+
             if matched_pair.is_some() {
                 break;
             }
         }
-        
+
         match matched_pair {
             Some((header_file, data_file)) => {
                 let header_data = read_file_as_bytes(header_file).await?;
                 let data_bytes = read_file_as_bytes(data_file).await?;
-                let ct_volume = parse_mha_and_generate_ct(header_data, Some(data_bytes), slope, intercept).await?;
+                let ct_volume =
+                    parse_mha_and_generate_ct(header_data, Some(data_bytes), slope, intercept)
+                        .await?;
                 Ok(ct_volume)
-            },
-            None => {
-                Err(JsValue::from_str(
-                    "MHD header files found but no corresponding data files (.raw/.zraw). \
-                     MHD format requires both header and data files."
-                ))
             }
+            None => Err(JsValue::from_str(
+                "MHD header files found but no corresponding data files (.raw/.zraw). \
+                     MHD format requires both header and data files.",
+            )),
         }
     } else if !mhd_files.is_empty() {
         // MHD files without data files - return error with helpful message
         Err(JsValue::from_str(
             "MHD header files found but no corresponding data files (.raw/.zraw). \
-             MHD format requires both header and data files."
+             MHD format requires both header and data files.",
         ))
     } else {
         // No supported files found
         Err(JsValue::from_str(
             "No supported medical imaging files found. \
-             Supported formats: MHA (self-contained), MHD+RAW (header+data pair)"
+             Supported formats: MHA (self-contained), MHD+RAW (header+data pair)",
         ))
     }
 }
@@ -383,7 +401,8 @@ pub async fn read_file_as_bytes(file: File) -> Result<Vec<u8>, JsValue> {
         let reject_clone = Arc::clone(&bytes);
         let onload = Closure::once_into_js(move |e: ProgressEvent| {
             let result: Result<(), String> = {
-                let buffer = e.target()
+                let buffer = e
+                    .target()
                     .ok_or_else(|| JsValue::from("Failed to retrieve target"))?
                     .dyn_into::<FileReader>()?
                     .result()?;
@@ -402,13 +421,20 @@ pub async fn read_file_as_bytes(file: File) -> Result<Vec<u8>, JsValue> {
     });
 
     JsFuture::from(promise).await?;
-    let bytes = bytes.lock().map_err(|e| JsValue::from_str(&format!("Mutex lock error: {}", e)))?;
+    let bytes = bytes
+        .lock()
+        .map_err(|e| JsValue::from_str(&format!("Mutex lock error: {}", e)))?;
     Ok(bytes.clone())
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[cfg(target_arch = "wasm32")]
-pub async fn parse_mha_and_generate_ct(header_bytes: Vec<u8>, data_bytes: Option<Vec<u8>>, slope: f32, intercept: f32) -> Result<CTVolume, JsValue> {
+pub async fn parse_mha_and_generate_ct(
+    header_bytes: Vec<u8>,
+    data_bytes: Option<Vec<u8>>,
+    slope: f32,
+    intercept: f32,
+) -> Result<CTVolume, JsValue> {
     let medical_volume = if data_bytes.is_none() {
         MhaParser::parse_bytes(&header_bytes)
             .map_err(|e| JsValue::from_str(&format!("MHA parse error: {}", e)))?
@@ -419,7 +445,7 @@ pub async fn parse_mha_and_generate_ct(header_bytes: Vec<u8>, data_bytes: Option
         MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
             .map_err(|e| JsValue::from_str(&format!("Volume creation error: {}", e)))?
     };
-    
+
     match medical_volume.pixel_data {
         PixelData::UInt8(data) => {
             let dimensions = medical_volume.metadata.dimensions;
@@ -427,7 +453,7 @@ pub async fn parse_mha_and_generate_ct(header_bytes: Vec<u8>, data_bytes: Option
             let offset = medical_volume.metadata.offset;
             let orientation = medical_volume.metadata.orientation;
             let transform: Vec<f32> = orientation.into_iter().flatten().collect();
-            
+
             MedicalVolume::generate_ct_volume_mha(
                 [dimensions[0], dimensions[1], dimensions[2]],
                 data,
@@ -436,9 +462,10 @@ pub async fn parse_mha_and_generate_ct(header_bytes: Vec<u8>, data_bytes: Option
                 offset,
                 transform,
                 slope,
-                intercept
-            ).map_err(|e| JsValue::from_str(&e))
-        },
+                intercept,
+            )
+            .map_err(|e| JsValue::from_str(&e))
+        }
         _ => Err(JsValue::from_str("Unsupported pixel data type")),
     }
 }
@@ -451,7 +478,7 @@ pub async fn build_ct_dicom_wasm(
     patient: js_sys::Uint8Array,
     study: js_sys::Uint8Array,
     info: js_sys::Uint8Array,
-) -> Result<JsValue,JsValue> {
+) -> Result<JsValue, JsValue> {
     //patient JSON
     let mut p_buf = vec![0u8; patient.length() as usize];
     patient.copy_to(&mut p_buf[..]);
@@ -463,7 +490,7 @@ pub async fn build_ct_dicom_wasm(
         patient_id: patient["patient_id"].as_str().unwrap_or("").to_string(),
         name: patient["name"].as_str().unwrap_or("").to_string(),
         birthdate: patient["birthdate"].as_str().map(|s| s.to_string()),
-        sex: patient["sex"].as_str().map(|s|s.to_string()),
+        sex: patient["sex"].as_str().map(|s| s.to_string()),
     };
 
     //study JSON
@@ -473,9 +500,9 @@ pub async fn build_ct_dicom_wasm(
         .map_err(|e| JsValue::from_str(&format!("UTF8 decode error: {}", e)))?;
     let study: serde_json::Value = serde_json::from_str(&study_json)
         .map_err(|e| JsValue::from_str(&format!("JSON parse error: {}", e)))?;
-    let uid = generate_uid();
+    // let uid = generate_uid();
     let study = StudySet {
-        uid: uid.clone(),
+        uid: study["study_uid"].as_str().unwrap_or("").to_string(),
         study_id: study["study_id"].as_str().unwrap_or("").to_string(),
         patient_id: study["patient_id"].as_str().unwrap_or("").to_string(),
         date: study["date"].as_str().unwrap_or("").to_string(),
@@ -489,16 +516,22 @@ pub async fn build_ct_dicom_wasm(
         .map_err(|e| JsValue::from_str(&format!("UTF8 decode error: {}", e)))?;
     let info: serde_json::Value = serde_json::from_str(&info_json)
         .map_err(|e| JsValue::from_str(&format!("JSON parse error: {}", e)))?;
-    let kv = info["kv"].as_f64().ok_or(JsValue::from_str("Missing kv in info"))?;
-    let m_as = info["mAs"].as_f64().ok_or(JsValue::from_str("Missing mAs in info"))?;
-        let slope = info["slope"].as_f64()
+    let kv = info["kv"]
+        .as_f64()
+        .ok_or(JsValue::from_str("Missing kv in info"))?;
+    let m_as = info["mAs"]
+        .as_f64()
+        .ok_or(JsValue::from_str("Missing mAs in info"))?;
+    let slope = info["slope"]
+        .as_f64()
         .map(|v| v as f32)
         .ok_or(JsValue::from_str("Missing slope in info"))?;
-    let intercept = info["intercept"].as_f64()
+    let intercept = info["intercept"]
+        .as_f64()
         .map(|v| v as f32)
         .ok_or(JsValue::from_str("Missing intercept in info"))?;
-    let modality = info["modality"].as_str().unwrap_or("CT").to_string();
-    log::info!("dicom info: kv={}, mAs={}, slope = {:?}, intercept = {:?}, modality = {:?}", kv, m_as, slope, intercept, modality);
+    let patient_position = info["patient_position"].as_str().unwrap_or("").to_string();
+    let modality = info["modality"].as_str().unwrap_or("").to_string();
 
     // MHA bytes
     let mut buf = vec![0u8; mha_bytes.length() as usize];
@@ -512,27 +545,43 @@ pub async fn build_ct_dicom_wasm(
     } else {
         None
     };
-    
+
     let mut sink = MemSink::new();
-    build_ct_dicom(
+    let series_uid = build_ct_dicom(
         &buf,
         data_buf_option.as_ref().map(|v| v.as_slice()),
         &patient,
         &study,
-        kv, m_as,
-        slope, intercept,
+        kv,
+        m_as,
+        slope,
+        intercept,
+        patient_position,
         modality,
-        &mut sink
-    ).map_err(|e| JsValue::from_str(&format!("build_ct_dicom failed: {}", e)))?;
+        &mut sink,
+    )
+    .map_err(|e| JsValue::from_str(&format!("build_ct_dicom failed: {}", e)))?;
 
     // Convert the files in MemSink to a JavaScript array of objects
     let js_array = js_sys::Array::new();
     for (filename, data) in sink.files {
         let obj = js_sys::Object::new();
         js_sys::Reflect::set(&obj, &"filename".into(), &JsValue::from_str(&filename))?;
-        js_sys::Reflect::set(&obj, &"data".into(), &js_sys::Uint8Array::from(data.as_slice()))?;
+        js_sys::Reflect::set(
+            &obj,
+            &"data".into(),
+            &js_sys::Uint8Array::from(data.as_slice()),
+        )?;
         js_array.push(&obj);
     }
 
-    Ok(js_array.into())
+    let result = js_sys::Object::new();
+    js_sys::Reflect::set(&result, &"files".into(), &js_array)?;
+    js_sys::Reflect::set(
+        &result,
+        &"series_uid".into(),
+        &JsValue::from_str(&series_uid),
+    )?;
+
+    Ok(result.into())
 }

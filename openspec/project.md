@@ -44,7 +44,7 @@ Kepler-WGPU is a high-performance, cross-platform medical imaging framework buil
 - **Medical Imaging**: Focus on CT (Hounsfield Units), DICOM standards.
 - **Views**:
   - **MPR**: Multi-Planar Reconstruction (Axial, Sagittal, Coronal, Oblique).
-  - **MIP**: Maximum Intensity Projection.
+  - **MIP**: Maximum Intensity Projection (supports 3D spin/rotation).
   - **3D**: Isosurface/Mesh visualization.
 - **Projections**: Orthogonal projection is preferred for medical accuracy (avoid perspective unless specified).
 - **Coordinates**: Careful handling of Rust (row-major) vs Shader (column-major) matrices; transpose before upload.
