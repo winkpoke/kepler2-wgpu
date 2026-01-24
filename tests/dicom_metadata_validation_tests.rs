@@ -416,9 +416,9 @@ mod dicom_metadata_validation_tests {
         assert!(result.is_ok(), "Should generate CTVolume from fixtures");
 
         let volume = result.unwrap();
-        assert_eq!(volume.dimensions.2, 10, "Should have 10 slices");
-        assert_eq!(volume.dimensions.0, 512, "Should have 512 columns");
-        assert_eq!(volume.dimensions.1, 512, "Should have 512 rows");
+        assert_eq!(volume.dimensions().2, 10, "Should have 10 slices");
+        assert_eq!(volume.dimensions().0, 512, "Should have 512 columns");
+        assert_eq!(volume.dimensions().1, 512, "Should have 512 rows");
     }
 
     #[test]

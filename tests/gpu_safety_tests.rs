@@ -24,30 +24,30 @@ mod texture_upload_bounds_tests {
     /// Tests volume with maximum supported dimensions is accepted
     #[test]
     fn test_upload_max_texture_dimensions_accepted() {
-        let volume = CTVolume {
-            dimensions: (MAX_TEXTURE_DIMENSION, MAX_TEXTURE_DIMENSION, 100),
-            voxel_spacing: (1.0, 1.0, 1.0),
-            voxel_data: vec![0i16; MAX_TEXTURE_DIMENSION * MAX_TEXTURE_DIMENSION * 100],
-            base: Base::default(),
-        };
+        let volume = CTVolume::new(
+            (MAX_TEXTURE_DIMENSION, MAX_TEXTURE_DIMENSION, 100),
+            (1.0, 1.0, 1.0),
+            vec![0i16; MAX_TEXTURE_DIMENSION * MAX_TEXTURE_DIMENSION * 100],
+            Base::default(),
+        );
 
-        assert_eq!(volume.dimensions.0, MAX_TEXTURE_DIMENSION);
-        assert_eq!(volume.dimensions.1, MAX_TEXTURE_DIMENSION);
+        assert_eq!(volume.dimensions().0, MAX_TEXTURE_DIMENSION);
+        assert_eq!(volume.dimensions().1, MAX_TEXTURE_DIMENSION);
     }
 
     /// Tests volume with minimum valid dimensions is accepted
     #[test]
     fn test_upload_minimum_texture_dimensions_accepted() {
-        let volume = CTVolume {
-            dimensions: (MIN_TEXTURE_DIMENSION, MIN_TEXTURE_DIMENSION, 1),
-            voxel_spacing: (1.0, 1.0, 1.0),
-            voxel_data: vec![0i16; MIN_TEXTURE_DIMENSION],
-            base: Base::default(),
-        };
+        let volume = CTVolume::new(
+            (MIN_TEXTURE_DIMENSION, MIN_TEXTURE_DIMENSION, 1),
+            (1.0, 1.0, 1.0),
+            vec![0i16; MIN_TEXTURE_DIMENSION],
+            Base::default(),
+        );
 
-        assert_eq!(volume.dimensions.0, MIN_TEXTURE_DIMENSION);
-        assert_eq!(volume.dimensions.1, MIN_TEXTURE_DIMENSION);
-        assert_eq!(volume.voxel_data.len(), 1);
+        assert_eq!(volume.dimensions().0, MIN_TEXTURE_DIMENSION);
+        assert_eq!(volume.dimensions().1, MIN_TEXTURE_DIMENSION);
+        assert_eq!(volume.voxel_data().len(), 1);
     }
 
     /// Tests volume dimensions are power of 2 (optimal for GPU)
@@ -56,15 +56,15 @@ mod texture_upload_bounds_tests {
         let pot_dims: [usize; 5] = [256, 512, 1024, 2048, 4096];
 
         for dim in pot_dims.iter() {
-            let volume = CTVolume {
-                dimensions: (*dim, *dim, 100),
-                voxel_spacing: (1.0, 1.0, 1.0),
-                voxel_data: vec![0i16; *dim * *dim * 100],
-                base: Base::default(),
-            };
+            let volume = CTVolume::new(
+                (*dim, *dim, 100),
+                (1.0, 1.0, 1.0),
+                vec![0i16; *dim * *dim * 100],
+                Base::default(),
+            );
 
-            assert_eq!(volume.dimensions.0, *dim);
-            assert_eq!(volume.dimensions.1, *dim);
+            assert_eq!(volume.dimensions().0, *dim);
+            assert_eq!(volume.dimensions().1, *dim);
         }
     }
 }
@@ -76,14 +76,14 @@ mod format_validation_tests {
     /// Tests pixel type consistency is maintained
     #[test]
     fn test_pixel_type_consistency() {
-        let volume = CTVolume {
-            dimensions: (256, 256, 128),
-            voxel_spacing: (1.0, 1.0, 1.0),
-            voxel_data: vec![0i16; 256 * 256 * 128],
-            base: Base::default(),
-        };
+        let volume = CTVolume::new(
+            (256, 256, 128),
+            (1.0, 1.0, 1.0),
+            vec![0i16; 256 * 256 * 128],
+            Base::default(),
+        );
 
-        assert_eq!(volume.voxel_data.len(), 256 * 256 * 128);
+        assert_eq!(volume.voxel_data().len(), 256 * 256 * 128);
     }
 
     /// Tests pixel data size matches dimensions
@@ -92,14 +92,14 @@ mod format_validation_tests {
         let dims = (512, 512, 100);
         let expected_size = dims.0 * dims.1 * dims.2;
 
-        let volume = CTVolume {
-            dimensions: dims,
-            voxel_spacing: (1.0, 1.0, 1.0),
-            voxel_data: vec![0i16; expected_size],
-            base: Base::default(),
-        };
+        let volume = CTVolume::new(
+            dims,
+            (1.0, 1.0, 1.0),
+            vec![0i16; expected_size],
+            Base::default(),
+        );
 
-        assert_eq!(volume.voxel_data.len(), expected_size);
+        assert_eq!(volume.voxel_data().len(), expected_size);
     }
 }
 
