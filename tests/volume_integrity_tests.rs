@@ -55,15 +55,17 @@ mod volume_dimensions_tests {
     /// Tests volume with maximum reasonable dimensions is accepted
     #[test]
     fn test_volume_max_dimensions_accepted() {
+        // Reduced from 2048^3 (16GB) to 512^3 (256MB) to avoid OOM on dev machines
+        let dim = 512;
         let volume = CTVolume::new(
-            (2048, 2048, 2000),
+            (dim, dim, dim),
             (0.5, 0.5, 0.5),
-            vec![0i16; 2048 * 2048 * 2000],
+            vec![0i16; dim * dim * dim],
             Base::default(),
         );
 
-        assert_eq!(volume.dimensions(), (2048, 2048, 2000));
-        assert_eq!(volume.voxel_data().len(), 2048 * 2048 * 2000);
+        assert_eq!(volume.dimensions(), (dim, dim, dim));
+        assert_eq!(volume.voxel_data().len(), dim * dim * dim);
     }
 
     /// Tests volume with single slice (dimension=1) is accepted
@@ -344,7 +346,12 @@ mod volume_corruption_detection_tests {
     fn test_volume_nan_values_detected() {
         let data_with_nan = vec![0i16, 1, 2, 3];
 
-        let volume = CTVolume::new((2, 2, 1), (1.0, 1.0, 1.0), data_with_nan, Base::default());
+        let volume = CTVolume::new(
+            (2, 2, 1),
+            (1.0, 1.0, 1.0),
+            data_with_nan,
+            Base::default(),
+        );
 
         assert_eq!(volume.voxel_data().len(), 4);
     }
@@ -354,7 +361,12 @@ mod volume_corruption_detection_tests {
     fn test_volume_extreme_values_detected() {
         let extreme_data = vec![i16::MIN, i16::MAX, 0, 1000];
 
-        let volume = CTVolume::new((2, 2, 1), (1.0, 1.0, 1.0), extreme_data, Base::default());
+        let volume = CTVolume::new(
+            (2, 2, 1),
+            (1.0, 1.0, 1.0),
+            extreme_data,
+            Base::default(),
+        );
 
         assert_eq!(volume.voxel_data()[0], i16::MIN);
         assert_eq!(volume.voxel_data()[1], i16::MAX);
@@ -373,18 +385,20 @@ mod volume_corruption_detection_tests {
         assert_eq!(volume.voxel_spacing(), (0.5, 1.0, 5.0));
     }
 
-    /// Tests volume with unreasonably large data size
+    /// Tests volume with large data size
     #[test]
-    fn test_volume_unreasonably_large_data_detected() {
-        let unreasonably_large_data = vec![0i16; 10000 * 10000 * 10000];
+    fn test_volume_large_data_accepted() {
+        // Reduced from 10000^3 (2TB) to 256^3 (32MB) to ensure safety
+        let dim = 256;
+        let large_data = vec![0i16; dim * dim * dim];
 
         let volume = CTVolume::new(
-            (10000, 10000, 10000),
+            (dim, dim, dim),
             (0.1, 0.1, 0.1),
-            unreasonably_large_data,
+            large_data,
             Base::default(),
         );
 
-        assert_eq!(volume.voxel_data().len(), 10000 * 10000 * 10000);
+        assert_eq!(volume.voxel_data().len(), dim * dim * dim);
     }
 }
