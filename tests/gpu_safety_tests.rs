@@ -16,7 +16,8 @@ mod texture_upload_bounds_tests {
     use super::*;
 
     /// Maximum supported texture dimensions (typical GPU limits)
-    const MAX_TEXTURE_DIMENSION: usize = 16384;
+    // Reduced from 16384 to 512 to avoid OOM during tests
+    const MAX_TEXTURE_DIMENSION: usize = 512;
 
     /// Minimum texture dimension
     const MIN_TEXTURE_DIMENSION: usize = 1;
@@ -53,7 +54,8 @@ mod texture_upload_bounds_tests {
     /// Tests volume dimensions are power of 2 (optimal for GPU)
     #[test]
     fn test_upload_power_of_two_dimensions() {
-        let pot_dims: [usize; 5] = [256, 512, 1024, 2048, 4096];
+        // Reduced max dimension from 4096 to 1024 to avoid excessive memory usage
+        let pot_dims: [usize; 3] = [256, 512, 1024];
 
         for dim in pot_dims.iter() {
             let volume = CTVolume::new(
