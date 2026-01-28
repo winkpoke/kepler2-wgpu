@@ -187,7 +187,8 @@
           <label>输入重建文件：</label>
           <input id="mhxInput" type="file" multiple accept=".mha,.mhd,.raw" />
           <div class="row" style="margin-top:8px">
-            <button id="btn">运行重建</button>
+            <button onclick="window.location.href='index.html'" class="nav-link">采图</button>
+            <button id="btn">重建</button>
             <button id="analyzeBtn">分析文件</button>
             <button id="rerender">视图显示</button>
           </div>
@@ -368,6 +369,12 @@
               <button id="set-center">应用</button>
             </div>
             <div>
+              <span id="mip-mode-label">MIP Mode:</span>
+              <select id="mip-mode">
+                <option value="0">MIP</option>
+                <option value="1">MinIP</option>
+                <option value="2">AvgIP</option>
+              </select></br>
               <span id="mip-rotation-label">MIP旋转:</span></br>
               <span id="mip-rotation-x-label">roll:</span><input type="number" id="mip-rotation-x" step="15" value="-90" min="0" max="360">
               <span id="mip-rotation-y-label">yaw:</span><input type="number" id="mip-rotation-y" step="15" value="0" min="0" max="360">
@@ -759,6 +766,9 @@
         return;
       }
 
+      const mip_mode = parseInt(byId('mip-mode').value, 10);
+      gl_canvas.set_mip_mode(indexValue, mip_mode);
+      
       const rotation_x = parseFloat(byId('mip-rotation-x').value);
       const rotation_y = parseFloat(byId('mip-rotation-y').value);
       const rotation_z = parseFloat(byId('mip-rotation-z').value);

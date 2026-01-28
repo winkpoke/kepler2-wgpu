@@ -66,6 +66,7 @@ cargo check                                   # Type check
 - Use crate-level `log` macros (info/warn/error/debug)
 - Coordinate systems: World, Screen, Voxel, Base (use `glam` for math)
 - Recreate pipelines when surface format changes
+- MIP supports MIP/MinIP/AvgIP projection modes (GPU `mode` uniform)
 
 ### Key Locations
 - Entry points: `src/main.rs` (native), `src/lib.rs` (WASM, library)

@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-01-28T11-45-20
+- **Added MinIP and AvgIP Rendering Modes**
+  - Extended MIP shader and uniforms to support minimum and average intensity projections.
+  - MIP mode selection now supports 0 (MIP), 1 (MinIP), and 2 (AvgIP).
+
 ## 2026-01-19T10-30-00
 - **Fixed MIP Orthographic Projection Clipping**
   - **Bug Fix**: Corrected the Z-axis scaling in `MipView` projection matrix calculation.

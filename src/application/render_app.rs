@@ -204,6 +204,11 @@ impl RenderApp {
                     state.set_center_at_point_in_mm(index, x_mm, y_mm, z_mm);
                     log::info!("CenterAtPointInMM set to: x_mm={x_mm}, y_mm={y_mm}, z_mm={z_mm}");
                 }
+                //mesh control events
+                Event::UserEvent(UserEvent::SetMipMode(index, mode)) => {
+                    state.set_mip_mode(index, mode);
+                    log::info!("MipMode set to: index={index}, mode={mode}");
+                }
                 Event::UserEvent(UserEvent::SetSlabThickness(index, thickness)) => {
                     state.set_slab_thickness(index, thickness);
                     log::info!("SlabThickness set to: index={index}, thickness={thickness}");

@@ -42,6 +42,7 @@ pub enum UserEvent {
         f32,
         f32,
     ),
+    SetMipMode(usize, u32),
     SetMprMip(usize, Option<usize>, Option<usize>, Option<usize>, usize),
     SetOneCellLayout(usize, usize),
     #[cfg(target_arch = "wasm32")]
@@ -425,6 +426,8 @@ impl_user_event_senders_for_glcanvas! {
     set_pan_mm => SetPanMM(dx_mm: f32, dy_mm: f32),
     set_center_at_point_in_mm => SetCenterAtPointInMM(x_mm: f32, y_mm: f32, z_mm: f32),
     handle_view_click => ViewClick(screen_x: f32, screen_y: f32, screen_z: f32),
+    // Mip controls
+    set_mip_mode => SetMipMode(mode: u32),
     set_slab_thickness => SetSlabThickness(thickness: f32),
     set_mip_rotation_angle_degrees => SetMipRotationAngleDeg(roll_deg: f32, yaw_deg: f32, pitch_deg: f32),
     // Mesh controls

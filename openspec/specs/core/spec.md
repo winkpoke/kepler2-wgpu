@@ -1,6 +1,13 @@
-## ADDED Requirements
+# Core Specification
+
+## Purpose
+
+Defines requirements for Kepler's core mathematics, coordinate systems, geometry, and window/level behavior.
+
+## Requirements
 
 ### Requirement: Core Testing
+
 The core module SHALL have comprehensive test coverage for mathematical operations, coordinate systems, and geometry transformations to ensure numerical correctness.
 
 #### Scenario: Math Operation Testing
