@@ -8,7 +8,7 @@ use glam::{Mat4, Vec3};
 use std::{any::Any, sync::Arc};
 use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, Queue, RenderPipeline};
 
-/// Function-level comment: Configuration for Maximum Intensity Projection (MIP) rendering.
+/// Configuration for Maximum Intensity Projection (MIP) rendering.
 /// Provides fixed quality settings for the MVP implementation to minimize complexity
 /// while delivering core MIP functionality.
 #[derive(Debug, Clone)]
@@ -16,7 +16,7 @@ pub struct MipConfig {
     /// Slab thickness for MIP rendering in mm
     pub slab_thickness: f32,
     /// MIP rendering mode (0: MIP, 1: MinIP, 2: AvgIP)
-    pub mode: u32,
+    pub mip_mode: u32,
 }
 
 impl Default for MipConfig {
@@ -25,7 +25,7 @@ impl Default for MipConfig {
     fn default() -> Self {
         Self {
             slab_thickness: 10.0, // Default 10mm slab
-            mode: 0,              // Default to Maximum Intensity Projection
+            mip_mode: 0,              // Default to Maximum Intensity Projection
         }
     }
 }
@@ -56,7 +56,7 @@ pub struct MipUniforms {
     pub pan_x: f32,
     pub pan_y: f32,
     pub scale: f32,
-    pub mode: f32,
+    pub mip_mode: f32,
     pub lower_threshold: f32,
     pub upper_threshold: f32,
     pub rotation: [f32; 16],
@@ -74,7 +74,7 @@ impl Default for MipUniforms {
             pan_x: 0.0,
             pan_y: 0.0,
             scale: 1.0,
-            mode: 0.0,
+            mip_mode: 0.0,
             lower_threshold: -1024.0,
             upper_threshold: 3071.0,
             rotation: Mat4::IDENTITY.to_cols_array(),
@@ -341,8 +341,8 @@ impl MipView {
 
     /// Helper to get render parameters (W/L, Thresholds) based on mode.
     /// Returns (window, level, lower_threshold, upper_threshold).
-    fn get_render_params(mode: u32) -> (f32, f32, f32, f32) {
-        match mode {
+    fn get_render_params(mip_mode: u32) -> (f32, f32, f32, f32) {
+        match mip_mode {
             1 => {
                 // MinIP: Lung Window, full range to include air
                 let (w, l) = crate::core::window_level::WindowLevel::DEFAULT_LUNG;
@@ -363,8 +363,8 @@ impl MipView {
 
     /// Helper to get quality parameters (step size, max steps) based on mode.
     /// Returns (ray_step_size, max_steps).
-    fn get_quality_params(mode: u32) -> (f32, f32) {
-        match mode {
+    fn get_quality_params(mip_mode: u32) -> (f32, f32) {
+        match mip_mode {
             2 => (0.003, 2000.0), // AvgIP 高质量采样
             1 => (0.004, 1500.0), // MinIP 中等采样
             _ => (0.005, 1000.0), // MIP 默认
@@ -387,9 +387,9 @@ impl MipView {
     }
 
     /// Set MIP rendering mode.
-    pub fn set_mip_mode(&mut self, mode: u32) {
-        self.config.mode = mode;
-        log::info!("MIP mode set to {}", mode);
+    pub fn set_mip_mode(&mut self, mip_mode: u32) {
+        self.config.mip_mode = mip_mode;
+        log::info!("MIP mode set to {}", mip_mode);
     }
 
     /// Set MIP slab thickness in mm.
@@ -407,6 +407,23 @@ impl MipView {
         );
         self.rotation_radians = [roll, yaw, pitch];
     }
+
+    /// Set MIP rotation angles in radians around X, Y, Z axes.
+    pub fn set_rotation_radians(&mut self, roll: f32, yaw: f32, pitch: f32) {
+        self.rotation_radians = [roll, yaw, pitch];
+    }
+
+    pub fn get_scale(&self) -> f32 {
+        self.scale
+    }
+
+    pub fn get_pan(&self) -> [f32; 3] {
+        self.pan
+    }
+
+    pub fn get_rotation_radians(&self) -> [f32; 3] {
+        self.rotation_radians
+    }
 }
 
 impl Renderable for MipView {
@@ -417,10 +434,10 @@ impl Renderable for MipView {
         let decode_params = self.wgpu_impl.render_content().decode_parameters();
 
         // Automatically determine Window/Level and Thresholds based on mode
-        let (window, level, lower_threshold, upper_threshold) = Self::get_render_params(self.config.mode);
+        let (window, level, lower_threshold, upper_threshold) = Self::get_render_params(self.config.mip_mode);
         
         // Determine quality settings
-        let (ray_step_size, max_steps) = Self::get_quality_params(self.config.mode);
+        let (ray_step_size, max_steps) = Self::get_quality_params(self.config.mip_mode);
 
         // Create uniforms
         let rotation = Self::build_rotation_matrix(
@@ -459,7 +476,7 @@ impl Renderable for MipView {
             pan_x: self.pan[0],
             pan_y: self.pan[1],
             scale: self.scale,
-            mode: self.config.mode as f32,
+            mip_mode: self.config.mip_mode as f32,
             lower_threshold,
             upper_threshold,
             rotation: final_matrix.to_cols_array(),
@@ -469,8 +486,8 @@ impl Renderable for MipView {
         self.wgpu_impl.update_uniforms(queue, &uniforms);
 
         log::trace!(
-            "[MIP_UPDATE] Uniforms set: mode={}, window={}, level={}, lower={}, upper={}",
-            uniforms.mode, window, level, lower_threshold, upper_threshold
+            "[MIP_UPDATE] Uniforms set: mip_mode={}, window={}, level={}, lower={}, upper={}",
+            uniforms.mip_mode, window, level, lower_threshold, upper_threshold
         );
     }
 
@@ -563,7 +580,7 @@ mod tests {
     fn test_mip_config_creation() {
         let config = MipConfig::new();
         // Just verify it can be created and has expected default mode
-        assert_eq!(config.mode, 0);
+        assert_eq!(config.mip_mode, 0);
         assert!(config.slab_thickness > 0.0);
     }
 }

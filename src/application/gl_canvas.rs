@@ -69,8 +69,9 @@ pub enum UserEvent {
     SetMeshScale(usize, f32),
     SetMeshRotationAngleDeg(usize, f32, f32),
     SetMeshRotationDelta(usize, f32, f32),
+    SetMeshRotation(usize, [f32; 16]),
     #[cfg(target_arch = "wasm32")]
-    GetMeshRotationQuat(usize, oneshot::Sender<[f32; 4]>),
+    GetMeshRotation(usize, oneshot::Sender<[f32; 16]>),
 }
 
 #[macro_export]
@@ -406,6 +407,47 @@ impl GLCanvas {
                 );
                 Err(format!("Failed to receive result: {:?}", e))
             }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn get_mesh_rotation(&self, index: usize) -> Result<Box<[f32]>, String> {
+        let (tx, rx) = oneshot::channel();
+
+        if let Err(e) = self.proxy.send_event(UserEvent::GetMeshRotation(index, tx)) {
+            log::error!(
+                "Failed to send GetMeshRotation event for window {}: {:?}",
+                index,
+                e
+            );
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+
+        log::info!("Sent GetMeshRotation event for window {}", index);
+
+        match rx.await {
+            Ok(result) => Ok(result.into()),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
+        }
+    }
+
+    pub fn set_mesh_rotation(&self, index: usize, rotation: Vec<f32>) {
+        if rotation.len() != 16 {
+            log::error!(
+                "set_mesh_rotation expected 16 floats, got {}",
+                rotation.len()
+            );
+            return;
+        }
+        let mut arr = [0.0; 16];
+        arr.copy_from_slice(&rotation);
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::SetMeshRotation(index, arr))
+        {
+            log::error!("Failed to send SetMeshRotation event: {:?}", e);
+        } else {
+            log::info!("Sent SetMeshRotation event for window {}", index);
         }
     }
 }

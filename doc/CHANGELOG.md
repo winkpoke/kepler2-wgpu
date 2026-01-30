@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-01-29T11-00-00
+- **View State Persistence**
+  - Refactored `AppView` to internally manage view states (`saved_states`).
+  - Implemented `save_view_states` and `restore_view_states` to support MPR, MIP, and Mesh views.
+  - Enabled seamless state preservation (orientation, scale, pan, window/level) when switching between single-view and multi-view layouts.
+
 ## 2026-01-28T11-45-20
 - **Added MinIP and AvgIP Rendering Modes**
   - Extended MIP shader and uniforms to support minimum and average intensity projections.

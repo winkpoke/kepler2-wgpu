@@ -449,6 +449,7 @@
       mesh_index: null,
       index : null,
       enable_rotation: false,
+      mesh_rotation: [],
     };
 
     let gl_canvas = null;
@@ -721,6 +722,10 @@
       }
 
       gl_canvas.set_mesh_mode(checkbox3d, checkboxCrop, sx, sy, sz, lx, ly, lz, checkbox1cell, mesh_index, iso_min, iso_max);
+
+      if (checkbox3d) {
+        gl_canvas.set_mesh_rotation(mesh_index, state.mesh_rotation);
+      }
     })
 
     byId('mesh').addEventListener('click', () => {
@@ -775,7 +780,7 @@
       gl_canvas.set_mip_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
     })
     
-    byId('3d-submit').addEventListener('click', () => {
+    byId('3d-submit').addEventListener('click', async () => {
       const indexValue = parseInt(byId('index-input').value, 10);
       if (!gl_canvas) {
         alert('Please select a series first!');
@@ -791,7 +796,6 @@
       const rotation_x = parseFloat(byId('3d-rotation-x').value);
       const rotation_y = parseFloat(byId('3d-rotation-y').value);
 
-      console.log('3d-submit:', scale, pan_x, pan_y, opacity, rotation_x, rotation_y);
       gl_canvas.set_mesh_scale(indexValue, scale);
       gl_canvas.set_mesh_pan(indexValue, pan_x, pan_y);
       if (typeof gl_canvas.set_mesh_opacity === 'function') {
@@ -800,7 +804,9 @@
         log('mesh opacity 方法未导出，已跳过', 'warn');
       }
       
-      gl_canvas.set_mesh_rotation_angle_degrees(indexValue, -rotation_x, rotation_y);
+      gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y);
+      state.mesh_rotation = await gl_canvas.get_mesh_rotation(indexValue);
+      console.log('3d-submit:', state.mesh_rotation);
     });
 
     byId('3d-reset').addEventListener('click', () => {

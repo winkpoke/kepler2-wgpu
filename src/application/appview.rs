@@ -10,22 +10,41 @@ use crate::rendering::view::{
     DefaultViewFactory, DynamicLayout, MipView, MprView, Orientation, View, ViewState,
     ALL_ORIENTATIONS,
 };
+use crate::rendering::view::mip::MipConfig;
+use crate::rendering::view::mesh::mesh_view::MeshView;
 use crate::rendering::StatefulView;
 use crate::rendering::{GridLayout, LayoutContainer, OneCellLayout};
 use crate::CTVolume;
 use std::sync::Arc;
+use glam::Mat4;
 
 /// Encapsulated state for a view, including its orientation and rendering parameters.
 #[derive(Debug, Clone)]
-pub struct CapturedViewState {
-    pub orientation: Orientation,
-    pub state: ViewState,
+pub enum CapturedViewState {
+    Mpr {
+        view_index: usize,
+        orientation: Orientation,
+        state: ViewState,
+    },
+    Mip {
+        config: MipConfig,
+        scale: f32,
+        pan: [f32; 3],
+        rotation_radians: [f32; 3],
+    },
+    Mesh {
+        rotation: Mat4,
+        scale: f32,
+        pan: [f32; 3],
+        opacity: f32,
+    },
 }
 
 /// AppView holds layout and view factory for building and arranging views.
 pub struct AppView {
     pub(crate) layout: DynamicLayout,
     pub(crate) view_factory: DefaultViewFactory,
+    pub(crate) saved_states: Vec<CapturedViewState>,
 }
 
 impl AppView {
@@ -37,43 +56,90 @@ impl AppView {
         Self {
             layout,
             view_factory,
+            saved_states: Vec::new(),
         }
     }
 
-    /// Capture the state of all compatible views (currently MPR views).
+    /// Capture and save the state of all compatible views (MPR, MIP, Mesh).
     ///
-    /// Function-level comment: Iterates over views, identifies MPR views, and saves their state
-    /// (orientation, window/level, scale, pan, slice) into a portable structure.
-    pub fn capture_view_states(&self) -> Vec<CapturedViewState> {
-        self.layout
+    /// Function-level comment: Iterates over views, identifies their type, and saves their state
+    /// into the internal saved_states buffer. This enables restoring exact view configurations
+    /// after layout switches (e.g., Single <-> Multi-view).
+    pub fn save_view_states(&mut self) {
+        self.saved_states = self.layout
             .views()
             .iter()
-            .filter_map(|v| {
+            .enumerate()
+            .filter_map(|(i, v)| {
                 if let Some(mpr_view) = v.as_any().downcast_ref::<MprView>() {
                     let orientation = mpr_view.get_orientation();
-                    mpr_view.save_state().map(|state| CapturedViewState {
+                    mpr_view.save_state().map(|state| CapturedViewState::Mpr {
+                        view_index: i,
                         orientation: *orientation,
                         state,
+                    })
+                } else if let Some(mip_view) = v.as_any().downcast_ref::<MipView>() {
+                    Some(CapturedViewState::Mip {
+                        config: mip_view.config().clone(),
+                        scale: mip_view.get_scale(),
+                        pan: mip_view.get_pan(),
+                        rotation_radians: mip_view.get_rotation_radians(),
+                    })
+                } else if let Some(mesh_view) = v.as_any().downcast_ref::<MeshView>() {
+                    Some(CapturedViewState::Mesh {
+                        rotation: mesh_view.get_rotation(),
+                        scale: mesh_view.get_scale_factor(),
+                        pan: mesh_view.get_pan(),
+                        opacity: mesh_view.get_opacity(),
                     })
                 } else {
                     None
                 }
             })
-            .collect()
+            .collect();
     }
 
     /// Restore previously captured view states to matching views.
     ///
-    /// Function-level comment: Matches saved states to current views by orientation and applies
-    /// the saved parameters.
-    pub fn restore_view_states(&mut self, states: &[CapturedViewState]) {
-        for view in self.layout.views_mut() {
+    /// Function-level comment: Matches internally saved states to current views by type and orientation
+    /// (for MPR) and applies the saved parameters.
+    pub fn restore_view_states(&mut self) {
+        // Clone states to avoid borrowing self.saved_states while mutating self.layout
+        let states = self.saved_states.clone();
+        
+        for (i, view) in self.layout.views_mut().iter_mut().enumerate() {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                if let Some(saved) = states
+                if let Some(CapturedViewState::Mpr { state, .. }) = states
                     .iter()
-                    .find(|s| s.orientation == *mpr_view.get_orientation())
+                    .find(|s| matches!(s, CapturedViewState::Mpr { view_index, orientation: o, .. } 
+                        if *view_index == i && *o == *mpr_view.get_orientation()))
                 {
-                    mpr_view.restore_state(&saved.state);
+                    mpr_view.restore_state(state);
+                }
+            }
+            // Handle MIP Views
+            else if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
+                if let Some(CapturedViewState::Mip { config, scale, pan, rotation_radians }) = states
+                    .iter()
+                    .find(|s| matches!(s, CapturedViewState::Mip { .. }))
+                {
+                    mip_view.set_mip_mode(config.mip_mode);
+                    mip_view.set_slab_thickness(config.slab_thickness);
+                    mip_view.set_scale(*scale);
+                    mip_view.set_pan(pan[0], pan[1]); // Note: MIP pan is 3D stored but 2D set currently, Z is 0.0 usually.
+                    mip_view.set_rotation_radians(rotation_radians[0],rotation_radians[1],rotation_radians[2]);
+                }
+            }
+            // Handle Mesh Views
+            else if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                if let Some(CapturedViewState::Mesh { rotation, scale, pan, opacity }) = states
+                    .iter()
+                    .find(|s| matches!(s, CapturedViewState::Mesh { .. }))
+                {
+                    mesh_view.set_rotation(*rotation);
+                    mesh_view.set_scale_factor(*scale);
+                    mesh_view.set_pan(pan[0],pan[1]);
+                    mesh_view.set_opacity(*opacity);
                 }
             }
         }

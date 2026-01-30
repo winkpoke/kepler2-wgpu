@@ -281,6 +281,16 @@ impl MeshView {
         self.rotation_quat = self.rotation_quat.normalize();
     }
 
+    pub fn set_rotation(&mut self, rotation: Mat4) {
+        self.rotation = rotation;
+        self.last_frame_time = Instant::now();
+        log::info!("Mesh rotation set to {:?}", self.rotation);
+    }
+    
+    pub fn get_rotation(&self) -> Mat4 {
+        self.rotation
+    }
+
     /// Function-level comment: Set rotation speed using degrees per second for convenience.
     /// This is a helper method that converts degrees to radians internally.
     pub fn set_rotation_speed_degrees(&mut self, degrees_per_sec: f32) {
@@ -335,6 +345,10 @@ impl MeshView {
     pub fn reset_opacity(&mut self) {
         self.opacity = 1.0;
         log::info!("Mesh opacity reset to default (1.0)");
+    }
+
+    pub fn get_opacity(&self) -> f32 {
+        self.opacity
     }
 
     /// Function-level comment: Create a default camera compatible with orthogonal projection
