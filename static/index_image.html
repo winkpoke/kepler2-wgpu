@@ -187,7 +187,7 @@
           <label>输入重建文件：</label>
           <input id="mhxInput" type="file" multiple accept=".mha,.mhd,.raw" />
           <div class="row" style="margin-top:8px">
-            <button onclick="window.location.href='index.html'" class="nav-link">采图</button>
+            <button onclick="window.location.href='remedy.html'" class="nav-link">采图</button>
             <button id="btn">重建</button>
             <button id="analyzeBtn">分析文件</button>
             <button id="rerender">视图显示</button>
@@ -215,33 +215,22 @@
               <span id="orientation-label">orientation:</span>
               <input type="number" id="index-orientation" step="1.0" value="0.0">
             </div>
-          </div>
-          <div class="row" style="margin-top:8px">
-            <button id="mesh">应用视图</button>
-          </div>
-        </fieldset>
-
-        <fieldset class="pill" style="margin-bottom:10px">
-          <legend>三维视图</legend>
-          <div class="grid">
             <div>
               <span id="mesh_index-label">mesh_index:</span>
-              <input type="number" id="mesh_index" step="1.0" value="0.0">
               <input type="checkbox" id="change_mesh_index" />
-              <span id="one_cell_mesh-label">one_cell:</span>
-              <input type="checkbox" id="one_cell" />
+              <input type="number" id="mesh_index" step="1.0" value="0.0">
             </div>
             <div>
-              <span id="iso-min-label">Iso Min:</span>
-              <input type="number" id="iso-min" step="1.0" value="100.0">
+              <span id="crop_mesh-label">crop_mesh:</span>
+              <input type="checkbox" id="crop_mesh" />
               <span id="save_mesh-label">save_mesh:</span>
               <input type="checkbox" id="save_mesh" />
             </div>
             <div>
+              <span id="iso-min-label">Iso Min:</span>
+              <input type="number" id="iso-min" step="1.0" value="100.0"></br>
               <span id="iso-max-label">Iso Max:</span>
               <input type="number" id="iso-max" step="1.0" value="400.0">
-              <span id="crop_mesh-label">crop_mesh:</span>
-              <input type="checkbox" id="crop_mesh" />
             </div>
             <div>
               <span id="roi-min-label">ROI Min:</span>
@@ -257,7 +246,7 @@
             </div>
           </div>
           <div class="row" style="margin-top:8px">
-            <button id="ROI">截取</button>
+            <button id="mesh">应用视图</button>
           </div>
         </fieldset>
       </div>
@@ -691,43 +680,6 @@
       });
     });
 
-    byId('ROI').addEventListener('click', () => {
-      const sx = parseInt(byId('roi-min-x').value);
-      const sy = parseInt(byId('roi-min-y').value);
-      const sz = parseInt(byId('roi-min-z').value);
-      const lx = parseInt(byId('roi-max-x').value);
-      const ly = parseInt(byId('roi-max-y').value);
-      const lz = parseInt(byId('roi-max-z').value);
-      const checkbox3d = byId('save_mesh').checked;
-      const checkbox1cell = byId('one_cell').checked;
-      const checkboxCrop = byId('crop_mesh').checked;
-      const mesh_index = parseInt(byId('mesh_index').value, 10);
-      const iso_min = parseFloat(byId('iso-min').value);
-      const iso_max = parseFloat(byId('iso-max').value);
-      console.log('ROI:', checkbox3d, checkboxCrop, sx, sy, sz, lx, ly, lz, checkbox1cell, mesh_index, iso_min, iso_max);
-
-      if (!gl_canvas) {
-        alert('Please select a series first!');
-        return;
-      }
-
-      if ([sx, sy, sz, lx, ly, lz].some(v => Number.isNaN(v))) {
-        alert('Please enter a valid number');
-        return;
-      }
-
-      if (sx >= lx || sy >= ly || sz >= lz) {
-        alert('ROI min must be less than max');
-        return;
-      }
-
-      gl_canvas.set_mesh_mode(checkbox3d, checkboxCrop, sx, sy, sz, lx, ly, lz, checkbox1cell, mesh_index, iso_min, iso_max);
-
-      if (checkbox3d) {
-        gl_canvas.set_mesh_rotation(mesh_index, state.mesh_rotation);
-      }
-    })
-
     byId('mesh').addEventListener('click', () => {
       const checkboxChangeMip = byId('change_mip').checked;
       const checkboxChangeIndex = byId('change_index').checked;
@@ -754,14 +706,37 @@
         state.index = null;
       }
       const index_orientation = parseInt(byId('index-orientation').value, 10);
-
+      const sx = parseInt(byId('roi-min-x').value);
+      const sy = parseInt(byId('roi-min-y').value);
+      const sz = parseInt(byId('roi-min-z').value);
+      const lx = parseInt(byId('roi-max-x').value);
+      const ly = parseInt(byId('roi-max-y').value);
+      const lz = parseInt(byId('roi-max-z').value);
+      const checkbox3d = byId('save_mesh').checked;
+      const checkboxCrop = byId('crop_mesh').checked;
+      const iso_min = parseFloat(byId('iso-min').value);
+      const iso_max = parseFloat(byId('iso-max').value);
 
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
 
-      gl_canvas.set_mpr_mip_mode(mode, state.mip, state.mesh_index, state.index, index_orientation);
+      if ([sx, sy, sz, lx, ly, lz].some(v => Number.isNaN(v))) {
+        alert('Please enter a valid number');
+        return;
+      }
+
+      if (sx >= lx || sy >= ly || sz >= lz) {
+        alert('ROI min must be less than max');
+        return;
+      }
+
+      gl_canvas.set_render_mode(mode, checkbox3d, checkboxCrop, sx,sy,sz,lx,ly,lz, state.mesh_index,state.index,iso_min,iso_max,state.mip,index_orientation)
+      
+      if (checkbox3d) {
+        gl_canvas.set_mesh_rotation(mesh_index, state.mesh_rotation);
+      }
     });
 
     byId('mip-submit-rot').addEventListener('click', () => {

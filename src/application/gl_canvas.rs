@@ -28,22 +28,8 @@ pub enum UserEvent {
     ReloadShaders,
     /// Manually trigger pipeline cache invalidation without any other action.
     InvalidatePipelines,
-    SetMeshMode(
-        bool,
-        bool,
-        f32,
-        f32,
-        f32,
-        f32,
-        f32,
-        f32,
-        bool,
-        usize,
-        f32,
-        f32,
-    ),
+    SetRenderMode(usize, bool, bool, f32, f32, f32, f32, f32, f32, Option<usize>, Option<usize>, f32, f32, Option<usize>, usize),
     SetMipMode(usize, u32),
-    SetMprMip(usize, Option<usize>, Option<usize>, Option<usize>, usize),
     SetOneCellLayout(usize, usize),
     #[cfg(target_arch = "wasm32")]
     GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
@@ -174,8 +160,9 @@ impl GLCanvas {
         }
     }
 
-    pub fn set_mesh_mode(
+    pub fn set_render_mode(
         &self,
+        mode: usize,
         save_mesh: bool,
         crop: bool,
         sx: f32,
@@ -184,38 +171,33 @@ impl GLCanvas {
         lx: f32,
         ly: f32,
         lz: f32,
-        one_cell: bool,
-        mesh_index: usize,
-        iso_min: f32,
-        iso_max: f32,
-    ) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetMeshMode(
-            save_mesh, crop, sx, sy, sz, lx, ly, lz, one_cell, mesh_index, iso_min, iso_max,
-        )) {
-            log::error!("Failed to send SetMeshMode event: {:?}", e);
-        } else {
-            log::info!("Sent SetMeshMode event: save_mesh={}, crop={}, sx={}, sy={}, sz={}, lx={}, ly={}, lz={}, one_cell={}, mesh_index={}, iso_min={}, iso_max={}", save_mesh, crop, sx, sy, sz, lx, ly, lz, one_cell, mesh_index, iso_min, iso_max);
-        }
-    }
-
-    pub fn set_mpr_mip_mode(
-        &self,
-        mode: usize,
-        mip: Option<usize>,
         mesh_index: Option<usize>,
         index: Option<usize>,
+        iso_min: f32,
+        iso_max: f32,
+        mip_index: Option<usize>,
         orientation_index: usize,
     ) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetMprMip(
+        if let Err(e) = self.proxy.send_event(UserEvent::SetRenderMode(
             mode,
-            mip,
+            save_mesh,
+            crop,
+            sx,
+            sy,
+            sz,
+            lx,
+            ly,
+            lz,
             mesh_index,
             index,
+            iso_min,
+            iso_max,
+            mip_index,
             orientation_index,
         )) {
-            log::error!("Failed to send SetMprMip event: {:?}", e);
+            log::error!("Failed to send SetRenderMode event: {:?}", e);
         } else {
-            log::info!("Sent SetMprMip event: mode={}, mip={:?}, mesh_index={:?}, index={:?}, orientation_index={}", mode, mip, mesh_index, index, orientation_index);
+            log::info!("Sent SetRenderMode event: mode={}, save_mesh={}, crop={}, sx={}, sy={}, sz={}, lx={}, ly={}, lz={}, mesh_index={:?}, index={:?}, iso_min={}, iso_max={}, orientation_index={}", mode, save_mesh, crop, sx, sy, sz, lx, ly, lz, mesh_index, index, iso_min, iso_max, orientation_index);
         }
     }
 

@@ -190,15 +190,10 @@ impl RenderApp {
                     // Function-level comment: Pipeline invalidation is now handled by individual render contexts.
                     log::info!("InvalidatePipelines event: render contexts will rebuild pipelines as needed.");
                 }
-                Event::UserEvent(UserEvent::SetMeshMode(save_mesh, crop, sx, sy, sz, lx, ly, lz, one_cell, mesh_index, iso_min, iso_max)) => {
+                Event::UserEvent(UserEvent::SetRenderMode(mode, save_mesh, crop, sx,sy,sz,lx,ly,lz, mesh_index,index,iso_min,iso_max,mip_index,orientation_index)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_mesh_mode(save_mesh, crop, sx, sy, sz, lx, ly, lz, one_cell, mesh_index, iso_min, iso_max);
-                    log::info!("SetMeshMode event: world_min= [{sx:?},{sy:?},{sz:?}], world_max= [{lx:?},{ly:?},{lz:?}]");
-                }
-                Event::UserEvent(UserEvent::SetMprMip(mode, mip, mesh_index, index, orientation_index)) => {
-                    // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_mpr_mip_mode(mode, mip, mesh_index, index, orientation_index);
-                    log::info!("SetEnableMesh toggled at runtime: mode={mode}, mip={:?}, mesh_index={:?}, index={:?}, orientation_index={orientation_index}", mip, mesh_index, index);
+                    state.set_render_mode(mode, save_mesh, crop, sx,sy,sz,lx,ly,lz, mesh_index,index,iso_min,iso_max,mip_index,orientation_index);
+                    log::info!("SetRenderMode toggled at runtime: mode={mode}, mip={:?}, mesh_index={:?}, index={:?}, orientation_index={orientation_index}", mip_index, mesh_index, index);
                 }
                 Event::UserEvent(UserEvent::SetCenterAtPointInMM(index, x_mm, y_mm, z_mm)) => {
                     state.set_center_at_point_in_mm(index, x_mm, y_mm, z_mm);
