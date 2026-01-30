@@ -52,7 +52,7 @@ cargo test                                   # Run tests
 
 # WASM
 wasm-pack build --target web                  # Build for web
-npx live-server ./static                      # Serve static files
+python -m http.server 8000                    # Serve static files (open static/remedy.html)
 
 # Code Quality
 cargo fmt                                    # Format code
@@ -74,6 +74,8 @@ cargo check                                   # Type check
 - CT volumes: `src/data/ct_volume.rs`
 - App state: `src/application/app.rs`
 - GPU init: `src/rendering/core/graphics.rs`
+- Acquisition: `src/acquisition/remedy.rs` (protocol + WASM bindings)
+- Web UI: `static/remedy.html` (Web Serial interface)
 
 ## Getting Started
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-01-30T10-30-00
+- **Added Remedy Serial Communication for Web**
+  - **Feature**: Implemented full stack support for Remedy hardware control via Web Serial API.
+  - **Rust**: Refactored `remedy.rs` into a pure logic module (`src/acquisition/remedy.rs`) with WASM bindings.
+  - **WASM**: Exposed protocol handling and state management to JavaScript using `serde-wasm-bindgen`.
+  - **Web**: Created `static/remedy.html` interface for serial connection, monitoring, and control.
+  - **Documentation**: Added `doc/acquisition/remedy-serial-web.md`.
+
 ## 2026-01-29T11-00-00
 - **View State Persistence**
   - Refactored `AppView` to internally manage view states (`saved_states`).

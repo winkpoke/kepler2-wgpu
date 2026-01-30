@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Remedy Serial Control</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background-color: #121212; color: #e0e0e0; }
+        .container { display: flex; flex-direction: column; gap: 20px; max-width: 1000px; margin: 0 auto; }
+        .controls { display: flex; gap: 10px; align-items: center; background: #1e1e1e; padding: 15px; border-radius: 8px; }
+        .log-panel { 
+            height: 400px; 
+            overflow-y: scroll; 
+            background: #000; 
+            color: #ccc; 
+            padding: 10px; 
+            border: 1px solid #333;
+            font-family: 'Consolas', monospace;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .log-info { color: white; }
+        .log-rx { color: #4caf50; }
+        .log-tx { color: #2196f3; }
+        .log-alert { color: #f44336; }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+        .status-box {
+            background: #1e1e1e;
+            border: 1px solid #333;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        h1, h3 { margin-top: 0; }
+        .field { margin-bottom: 10px; display: flex; align-items: center; }
+        label { display: inline-block; width: 120px; font-weight: bold; color: #aaa; }
+        span.val { font-weight: bold; color: #fff; }
+        
+        button { 
+            padding: 8px 16px; 
+            cursor: pointer; 
+            background: #333; 
+            color: white; 
+            border: 1px solid #555; 
+            border-radius: 4px; 
+            transition: background 0.2s;
+        }
+        button:hover { background: #444; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        button.primary { background: #0d47a1; border-color: #0d47a1; }
+        button.danger { background: #b71c1c; border-color: #b71c1c; }
+        
+        input[type="text"], input[type="number"] { 
+            padding: 8px; 
+            background: #2d2d2d; 
+            border: 1px solid #444; 
+            color: white; 
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Remedy Serial Control</h1>
+    
+    <div class="container">
+        <!-- Connection Controls -->
+        <div class="controls">
+            <button id="btn-connect" class="primary">Connect Serial Port</button>
+            <button id="btn-disconnect" disabled>Disconnect</button>
+            <span id="connection-status" style="color: gray; margin-left: auto;">● Not Connected</span>
+        </div>
+
+        <div class="status-grid">
+            <!-- Left Column: Controls -->
+            <div class="status-box">
+                <h3>Controls</h3>
+                <div class="field">
+                    <label>KV:</label>
+                    <input type="text" id="input-kv" placeholder="40-150">
+                    <button id="btn-set-kv">Set</button>
+                </div>
+                <div class="field">
+                    <label>mA:</label>
+                    <input type="text" id="input-ma" placeholder="10-500">
+                    <button id="btn-set-ma">Set</button>
+                </div>
+                <div class="field">
+                    <label>mS:</label>
+                    <input type="text" id="input-ms" placeholder="1-10000">
+                    <button id="btn-set-ms">Set</button>
+                </div>
+                <hr style="border-color: #333; margin: 20px 0;">
+                <div class="field" style="gap: 10px;">
+                     <button id="btn-prep">Prep (PR1)</button>
+                     <button id="btn-expose" class="danger">Expose (XR1)</button>
+                     <button id="btn-cancel">Cancel (PR0)</button>
+                </div>
+            </div>
+
+            <!-- Right Column: Status -->
+            <div class="status-box">
+                <h3>System Status</h3>
+                <div class="field"><label>KV:</label> <span id="val-kv" class="val">N/A</span></div>
+                <div class="field"><label>mA:</label> <span id="val-ma" class="val">N/A</span></div>
+                <div class="field"><label>mS:</label> <span id="val-ms" class="val">N/A</span></div>
+                <div class="field"><label>mAs:</label> <span id="val-mx" class="val">N/A</span></div>
+                <div class="field"><label>Status:</label> <span id="val-status" class="val">N/A</span></div>
+                <div class="field"><label>Anode Heat:</label> <span id="val-anode-heat" class="val">N/A</span></div>
+                <div class="field"><label>Housing:</label> <span id="val-housing-heat" class="val">N/A</span></div>
+            </div>
+        </div>
+
+        <!-- Log Panel -->
+        <div class="log-panel" id="log-container"></div>
+    </div>
+
+    <script type="module">
+        import init, { RemedyWasm } from '../pkg/kepler_wgpu.js';
+
+        let remedy = null;
+        let port = null;
+        let reader = null;
+        let keepReading = false;
+
+        async function main() {
+            try {
+                await init();
+                remedy = new RemedyWasm();
+                log("WASM Initialized. Ready to connect.", "Info");
+            } catch (e) {
+                console.error("WASM Init Failed:", e);
+                log("WASM Init Failed: " + e, "Alert");
+            }
+        }
+
+        main();
+
+        // UI References
+        const btnConnect = document.getElementById('btn-connect');
+        const btnDisconnect = document.getElementById('btn-disconnect');
+        const statusLabel = document.getElementById('connection-status');
+        const logContainer = document.getElementById('log-container');
+
+        // Helper: Log to UI
+        function log(text, colorType) {
+            const div = document.createElement('div');
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+            div.className = `log-${colorType.toLowerCase()}`;
+            logContainer.appendChild(div);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        // Helper: Update UI from State
+        function updateUI(state) {
+             document.getElementById('val-kv').textContent = state.kv;
+             document.getElementById('val-ma').textContent = state.ma;
+             document.getElementById('val-ms').textContent = state.ms;
+             document.getElementById('val-mx').textContent = state.mx;
+             document.getElementById('val-status').textContent = state.status;
+             document.getElementById('val-anode-heat').textContent = state.anode_heat;
+             document.getElementById('val-housing-heat').textContent = state.housing_heat;
+        }
+
+        // Serial Connect
+        btnConnect.addEventListener('click', async () => {
+            if (!("serial" in navigator)) {
+                alert("Web Serial API not supported in this browser.");
+                return;
+            }
+
+            try {
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 19200 }); // Default baudrate from remedy.rs
+
+                keepReading = true;
+                btnConnect.disabled = true;
+                btnDisconnect.disabled = false;
+                statusLabel.textContent = "● Connected";
+                statusLabel.style.color = "#4caf50";
+                
+                log("Serial Port Connected", "Info");
+
+                // Start Reading Loop
+                readLoop();
+
+            } catch (err) {
+                console.error(err);
+                log("Connection Failed: " + err, "Alert");
+            }
+        });
+
+        // Serial Disconnect
+        btnDisconnect.addEventListener('click', async () => {
+            keepReading = false;
+            if (reader) {
+                await reader.cancel();
+            }
+            if (port) {
+                await port.close();
+                port = null;
+            }
+            btnConnect.disabled = false;
+            btnDisconnect.disabled = true;
+            statusLabel.textContent = "● Not Connected";
+            statusLabel.style.color = "gray";
+            log("Disconnected", "Info");
+        });
+
+        // Read Loop
+        async function readLoop() {
+            while (port.readable && keepReading) {
+                reader = port.readable.getReader();
+                try {
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) {
+                            // Reader has been canceled.
+                            break;
+                        }
+                        if (value) {
+                            // Pass data to Rust WASM
+                            if (remedy) {
+                                const result = remedy.process_input(value);
+                                handleProcessResult(result);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error(error);
+                    log("Read Error: " + error, "Alert");
+                } finally {
+                    reader.releaseLock();
+                }
+            }
+        }
+
+        // Handle Result from Rust
+        async function handleProcessResult(result) {
+            // 1. Process Events (Logs, Updates)
+            if (result.events) {
+                for (const event of result.events) {
+                    if (event.Log) {
+                        log(event.Log.text, event.Log.color);
+                    } else if (event.DataUpdate) {
+                        // Update specific field if needed, or just refresh all state
+                        // The state is already updated in Rust struct
+                    } else if (event.Error) {
+                         log("Error: " + event.Error, "Alert");
+                    }
+                }
+                // Refresh UI with latest state
+                const state = remedy.get_state();
+                updateUI(state);
+            }
+
+            // 2. Process Replies (Send data back to serial)
+            if (result.replies) {
+                for (const packet of result.replies) {
+                     await sendToSerial(new Uint8Array(packet));
+                }
+            }
+        }
+
+        // Write to Serial
+        async function sendToSerial(data) {
+            if (port && port.writable) {
+                const writer = port.writable.getWriter();
+                try {
+                    await writer.write(data);
+                    // log("TX: " + new TextDecoder().decode(data), "Tx"); // Optional: Log TX raw
+                } finally {
+                    writer.releaseLock();
+                }
+            }
+        }
+
+        // Command Helpers
+        async function sendCommand(cmdStr) {
+            if (!remedy) return;
+            const packet = remedy.build_command(cmdStr);
+            await sendToSerial(new Uint8Array(packet));
+            log("Send: " + cmdStr, "Tx");
+        }
+
+        // Button Actions
+        document.getElementById('btn-set-kv').addEventListener('click', () => {
+            const val = document.getElementById('input-kv').value;
+            if(val) sendCommand("KV" + val);
+        });
+        document.getElementById('btn-set-ma').addEventListener('click', () => {
+            const val = document.getElementById('input-ma').value;
+            if(val) sendCommand("MA" + val);
+        });
+        document.getElementById('btn-set-ms').addEventListener('click', () => {
+            const val = document.getElementById('input-ms').value;
+            if(val) sendCommand("MS" + val);
+        });
+        
+        document.getElementById('btn-prep').addEventListener('click', () => sendCommand("PR1"));
+        document.getElementById('btn-expose').addEventListener('click', () => sendCommand("XR1"));
+        document.getElementById('btn-cancel').addEventListener('click', () => sendCommand("PR0"));
+
+    </script>
+</body>
+</html>

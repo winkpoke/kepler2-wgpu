@@ -172,6 +172,11 @@ To deliver a state-of-the-art medical imaging visualization platform that combin
 - **EMR Integration**: Electronic Medical Record system integration
 - **API Availability**: RESTful API for system integration
 
+### Remedy Hardware Integration
+- **Serial Communication**: Remedy device control via serial protocol
+- **Web Support**: Browser integration using Web Serial API and WASM
+- **Native Support**: Platform serial interface with identical protocol framing
+
 ### Development Integration
 - **Library Distribution**: Available as Rust library crate
 - **Language Bindings**: C/C++ bindings for legacy system integration
