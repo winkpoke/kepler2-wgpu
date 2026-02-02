@@ -260,26 +260,20 @@ impl MeshView {
         log::info!("Mesh rotation set to {:?}°", self.rotation);
     }
 
-    /// Function-level comment: Rotate the mesh based on mouse movement (pixels).
-    /// Allows 3-axis rotation using only 2D input by accumulating rotations.
-    /// dx: horizontal mouse movement (rotates around Global Y)
-    /// dy: vertical mouse movement (rotates around Local X)
-    pub fn rotate_by_mouse(&mut self, dx: f32, dy: f32) {
-        let sensitivity = 0.03;
-        let drag = Vec2::new(dx, dy);
-        let angle = drag.length() * sensitivity;
+    /// Set Mesh rotation angles in degrees around X, Y, Z axes.
+    pub fn set_rotation_degrees(&mut self, roll_deg: f32, yaw_deg: f32, pitch_deg: f32) {
+        let (roll, yaw, pitch) = (
+            roll_deg.to_radians(),
+            yaw_deg.to_radians(),
+            pitch_deg.to_radians(),
+        );
 
-        if angle.abs() < 1e-6 {
-            return;
-        }
-
-        // screen space direction to rotation axis (around Z vertical screen)
-        let axis = Vec3::new(-drag.x, -drag.y, 0.0).normalize();
-        let rot = Quat::from_axis_angle(axis, angle);
-
-        self.rotation_quat = rot * self.rotation_quat;
-        self.rotation_quat = self.rotation_quat.normalize();
+        let rot = Mat4::from_rotation_x(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(pitch);
+        self.rotation = rot;
+        self.last_frame_time = Instant::now();
+        log::info!("Mesh rotation set to {:?}°", self.rotation);
     }
+        
 
     pub fn set_rotation(&mut self, rotation: Mat4) {
         self.rotation = rotation;

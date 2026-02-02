@@ -54,7 +54,7 @@ pub enum UserEvent {
     ResetMesh(usize),
     SetMeshScale(usize, f32),
     SetMeshRotationAngleDeg(usize, f32, f32),
-    SetMeshRotationDelta(usize, f32, f32),
+    SetMeshRotationDegrees(usize, f32, f32, f32),
     SetMeshRotation(usize, [f32; 16]),
     #[cfg(target_arch = "wasm32")]
     GetMeshRotation(usize, oneshot::Sender<[f32; 16]>),
@@ -461,5 +461,5 @@ impl_user_event_senders_for_glcanvas! {
     reset_mesh => ResetMesh(),
     set_mesh_scale => SetMeshScale(scale: f32),
     set_mesh_rotation_angle_degrees => SetMeshRotationAngleDeg(degrees_x: f32, degrees_y: f32),
-    set_mesh_rotation_delta => SetMeshRotationDelta(dx: f32, dy: f32),
+    set_mesh_rotation_degrees => SetMeshRotationDegrees(roll_deg: f32, yaw_deg: f32, pitch_deg: f32),
 }

@@ -395,11 +395,13 @@
             <div>
               <span id="3d-rotation-label">angle:</span></br>
               <span id="3d-rotation-x-label">x:</span><input type="number" id="3d-rotation-x" step="15" value="0" min="0" max="360"></br>
-              <span id="3d-rotation-y-label">y:</span><input type="number" id="3d-rotation-y" step="15" value="0" min="0" max="360">
+              <span id="3d-rotation-y-label">y:</span><input type="number" id="3d-rotation-y" step="15" value="0" min="0" max="360"></br>
+              <span id="3d-rotation-z-label">z:</span><input type="number" id="3d-rotation-z" step="15" value="0" min="0" max="360">
             </div>
           </div>
           <div class="row" style="margin-top:8px">
             <button id="3d-submit">应用</button>
+            <button id="3d-rot">旋转</button>
             <button id="3d-reset">重置</button>
           </div>
         </fieldset>
@@ -782,6 +784,18 @@
       gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y);
       state.mesh_rotation = await gl_canvas.get_mesh_rotation(indexValue);
       console.log('3d-submit:', state.mesh_rotation);
+    });
+
+    byId('3d-rot').addEventListener('click', () => {
+      const indexValue = parseInt(byId('index-input').value, 10);
+      const rotation_x = parseFloat(byId('3d-rotation-x').value);
+      const rotation_y = parseFloat(byId('3d-rotation-y').value);
+      const rotation_z = parseFloat(byId('3d-rotation-z').value);
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+      gl_canvas.set_mesh_rotation_degrees(indexValue, rotation_x, rotation_y, rotation_z);
     });
 
     byId('3d-reset').addEventListener('click', () => {

@@ -243,6 +243,10 @@ impl RenderApp {
                     state.set_mesh_rotation(rotation);
                     log::debug!("Mesh rotation set to {:?}", rotation);
                 }
+                Event::UserEvent(UserEvent::SetMeshRotationDegrees(_index, roll_deg, yaw_deg, pitch_deg)) => {
+                    state.set_mesh_rotation_degrees(roll_deg, yaw_deg, pitch_deg);
+                    log::debug!("Mesh rotation set to {:?}°", [roll_deg, yaw_deg, pitch_deg]);
+                }
                 #[cfg(target_arch = "wasm32")]
                 Event::UserEvent(UserEvent::GetMeshRotation(_index, sender)) => {
                     let rotation = state.get_mesh_rotation();

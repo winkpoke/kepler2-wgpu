@@ -953,9 +953,9 @@ impl App {
     }
 
     /// Apply a rotation delta to the first MeshView using mouse movement (pixels).
-    pub fn set_mesh_rotation_delta(&mut self, dx: f32, dy: f32) {
+    pub fn set_mesh_rotation_degrees(&mut self, roll_deg: f32, yaw_deg: f32, pitch_deg: f32) {
         self.apply_to_mesh_view(|mesh_view| {
-            mesh_view.rotate_by_mouse(dx, dy);
+            mesh_view.set_rotation_degrees(roll_deg, yaw_deg, pitch_deg);
         });
     }
 

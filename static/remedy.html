@@ -71,6 +71,7 @@
         <div class="controls">
             <button id="btn-connect" class="primary">Connect Serial Port</button>
             <button id="btn-disconnect" disabled>Disconnect</button>
+            <button id="btn-web-connect" class="primary">Connect Web Serial</button>
             <span id="connection-status" style="color: gray; margin-left: auto;">● Not Connected</span>
         </div>
 
@@ -82,16 +83,19 @@
                     <label>KV:</label>
                     <input type="text" id="input-kv" placeholder="40-150">
                     <button id="btn-set-kv">Set</button>
+                    <button id="btn-get-kv">Get</button>
                 </div>
                 <div class="field">
                     <label>mA:</label>
                     <input type="text" id="input-ma" placeholder="10-500">
                     <button id="btn-set-ma">Set</button>
+                    <button id="btn-get-ma">Get</button>
                 </div>
                 <div class="field">
                     <label>mS:</label>
                     <input type="text" id="input-ms" placeholder="1-10000">
                     <button id="btn-set-ms">Set</button>
+                    <button id="btn-get-ms">Get</button>
                 </div>
                 <hr style="border-color: #333; margin: 20px 0;">
                 <div class="field" style="gap: 10px;">
