@@ -64,57 +64,90 @@
     </style>
 </head>
 <body>
-    <h1>Remedy Serial Control</h1>
+    <h1>Remedy 串口控制台</h1>
     
     <div class="container">
         <!-- Connection Controls -->
         <div class="controls">
-            <button id="btn-connect" class="primary">Connect Serial Port</button>
-            <button id="btn-disconnect" disabled>Disconnect</button>
-            <button id="btn-web-connect" class="primary">Connect Web Serial</button>
-            <span id="connection-status" style="color: gray; margin-left: auto;">● Not Connected</span>
+            <button id="btn-connect" class="primary">连接串口</button>
+            <button id="btn-disconnect" disabled>断开连接</button>
+            <button onclick="window.location.href='index_image.html'" class="nav-link">返回主页</button>
+            <span style="margin: 0 10px;">波特率</span>
+            <select id="baud-rate" class="cmd-control">
+                <option value="9600">9600</option>
+                <option value="19200">19200</option>
+                <option value="38400">38400</option>
+                <option value="57600">57600</option>
+                <option value="115200">115200</option>
+            </select>
+            <span id="connection-status" style="color: gray; margin-left: auto;">● 未连接</span>
         </div>
 
         <div class="status-grid">
             <!-- Left Column: Controls -->
             <div class="status-box">
-                <h3>Controls</h3>
+                <h3>参数控制</h3>
                 <div class="field">
                     <label>KV:</label>
-                    <input type="text" id="input-kv" placeholder="40-150">
-                    <button id="btn-set-kv">Set</button>
-                    <button id="btn-get-kv">Get</button>
+                    <input type="text" id="input-kv" class="cmd-control" placeholder="40-150">
+                    <button id="btn-set-kv" class="cmd-control">设</button>
+                    <button id="btn-get-kv" class="cmd-control">查</button>
                 </div>
                 <div class="field">
-                    <label>mA:</label>
-                    <input type="text" id="input-ma" placeholder="10-500">
-                    <button id="btn-set-ma">Set</button>
-                    <button id="btn-get-ma">Get</button>
+                    <label>MA(0.1):</label>
+                    <input type="text" id="input-ma" class="cmd-control" placeholder="10-500">
+                    <button id="btn-set-ma" class="cmd-control">设</button>
+                    <button id="btn-get-ma" class="cmd-control">查</button>
                 </div>
                 <div class="field">
-                    <label>mS:</label>
-                    <input type="text" id="input-ms" placeholder="1-10000">
-                    <button id="btn-set-ms">Set</button>
-                    <button id="btn-get-ms">Get</button>
+                    <label>MS(0.1):</label>
+                    <input type="text" id="input-ms" class="cmd-control" placeholder="1-10000">
+                    <button id="btn-set-ms" class="cmd-control">设</button>
+                    <button id="btn-get-ms" class="cmd-control">查</button>
                 </div>
                 <hr style="border-color: #333; margin: 20px 0;">
-                <div class="field" style="gap: 10px;">
-                     <button id="btn-prep">Prep (PR1)</button>
-                     <button id="btn-expose" class="danger">Expose (XR1)</button>
-                     <button id="btn-cancel">Cancel (PR0)</button>
+                <h3>常用指令</h3>
+                <div class="field" style="gap: 10px; flex-wrap: wrap;">
+                    <button id="btn-reset" class="cmd-control">复位 (RE)</button>
+                    <button id="btn-refresh-system" class="cmd-control">刷新系统 (RS)</button>
+                    <button id="btn-refresh-shot" class="cmd-control">刷新拍片 (RR)</button>
+                </div>
+                <hr style="border-color: #333; margin: 20px 0;">
+                <h3>高级查询</h3>
+                <div class="field" style="gap: 10px; flex-wrap: wrap;">
+                    <button id="btn-query-mx" class="cmd-control">MX查询</button>
+                    <button id="btn-query-he" class="cmd-control">阳极热容量</button>
+                    <button id="btn-query-hh" class="cmd-control">管套热容量</button>
+                    <button id="btn-query-ap" class="cmd-control">曝光后mAs</button>
+                    <button id="btn-query-at" class="cmd-control">曝光后时间</button>
+                    <button id="btn-query-ws" class="cmd-control">工作站</button>
+                    <button id="btn-query-fo" class="cmd-control">焦点</button>
+                    <button id="btn-query-et" class="cmd-control">曝光技术</button>
                 </div>
             </div>
 
             <!-- Right Column: Status -->
             <div class="status-box">
-                <h3>System Status</h3>
+                <h3>系统状态监控</h3>
                 <div class="field"><label>KV:</label> <span id="val-kv" class="val">N/A</span></div>
-                <div class="field"><label>mA:</label> <span id="val-ma" class="val">N/A</span></div>
-                <div class="field"><label>mS:</label> <span id="val-ms" class="val">N/A</span></div>
+                <div class="field"><label>MA:</label> <span id="val-ma" class="val">N/A</span></div>
+                <div class="field"><label>MS:</label> <span id="val-ms" class="val">N/A</span></div>
                 <div class="field"><label>mAs:</label> <span id="val-mx" class="val">N/A</span></div>
                 <div class="field"><label>Status:</label> <span id="val-status" class="val">N/A</span></div>
+                <div class="field"><label>Tech:</label> <span id="val-technique" class="val">N/A</span></div>
+                <div class="field"><label>Focus:</label> <span id="val-focus" class="val">N/A</span></div>
+                <div class="field"><label>Station:</label> <span id="val-workstation" class="val">N/A</span></div>
                 <div class="field"><label>Anode Heat:</label> <span id="val-anode-heat" class="val">N/A</span></div>
-                <div class="field"><label>Housing:</label> <span id="val-housing-heat" class="val">N/A</span></div>
+                <div class="field"><label>Housing Heat:</label> <span id="val-housing-heat" class="val">N/A</span></div>
+                <div class="field"><label>Post mAs:</label> <span id="val-post-mas" class="val">N/A</span></div>
+                <div class="field"><label>Post Time:</label> <span id="val-post-time" class="val">N/A</span></div>
+                <hr style="border-color: #333; margin: 20px 0;">
+                <div class="field" style="gap: 10px; flex-wrap: wrap;">
+                    <button id="btn-PR1" class="cmd-control">手闸(PR1)</button>
+                    <button id="btn-PR2" class="cmd-control">启动(PR2)</button>
+                    <button id="btn-XR2" class="cmd-control">曝光(XR2)</button>
+                    <button id="btn-PR0" class="cmd-control">待机(PR0)</button>
+                </div>
             </div>
         </div>
 
@@ -129,6 +162,8 @@
         let port = null;
         let reader = null;
         let keepReading = false;
+        let heartbeatInterval = null;
+        let retryTimeoutId = null;
 
         async function main() {
             try {
@@ -143,13 +178,12 @@
 
         main();
 
-        // UI References
         const btnConnect = document.getElementById('btn-connect');
         const btnDisconnect = document.getElementById('btn-disconnect');
         const statusLabel = document.getElementById('connection-status');
         const logContainer = document.getElementById('log-container');
+        const cmdControls = document.querySelectorAll('.cmd-control');
 
-        // Helper: Log to UI
         function log(text, colorType) {
             const div = document.createElement('div');
             div.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
@@ -158,18 +192,73 @@
             logContainer.scrollTop = logContainer.scrollHeight;
         }
 
-        // Helper: Update UI from State
         function updateUI(state) {
-             document.getElementById('val-kv').textContent = state.kv;
-             document.getElementById('val-ma').textContent = state.ma;
-             document.getElementById('val-ms').textContent = state.ms;
-             document.getElementById('val-mx').textContent = state.mx;
-             document.getElementById('val-status').textContent = state.status;
-             document.getElementById('val-anode-heat').textContent = state.anode_heat;
-             document.getElementById('val-housing-heat').textContent = state.housing_heat;
+            document.getElementById('val-kv').textContent = state.kv;
+            document.getElementById('val-ma').textContent = state.ma;
+            document.getElementById('val-ms').textContent = state.ms;
+            document.getElementById('val-mx').textContent = state.mx;
+            document.getElementById('val-status').textContent = state.status;
+            document.getElementById('val-technique').textContent = state.technique;
+            document.getElementById('val-focus').textContent = state.focus;
+            document.getElementById('val-workstation').textContent = state.workstation;
+            document.getElementById('val-anode-heat').textContent = state.anode_heat;
+            document.getElementById('val-housing-heat').textContent = state.housing_heat;
+            document.getElementById('val-post-mas').textContent = state.post_mas;
+            document.getElementById('val-post-time').textContent = state.post_time;
         }
 
-        // Serial Connect
+        function setConnectedState(connected) {
+            cmdControls.forEach((el) => {
+                el.disabled = !connected;
+            });
+        }
+
+        setConnectedState(false);
+
+        function clearRetryTimeout() {
+            if (retryTimeoutId) {
+                clearTimeout(retryTimeoutId);
+                retryTimeoutId = null;
+            }
+        }
+
+        function scheduleRetryTimeout() {
+            if (!remedy) return;
+            clearRetryTimeout();
+            const timeoutMs = remedy.get_retry_timeout_ms ? remedy.get_retry_timeout_ms() : 9000;
+            retryTimeoutId = setTimeout(async () => {
+                if (!remedy) return;
+                const retryPacket = remedy.retry_on_timeout ? remedy.retry_on_timeout() : [];
+                if (retryPacket && retryPacket.length > 0) {
+                    await sendToSerial(new Uint8Array(retryPacket));
+                    scheduleRetryTimeout();
+                }
+            }, timeoutMs);
+        }
+
+        function startHeartbeat() {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            heartbeatInterval = setInterval(async () => {
+                // Check if remedy has is_standby method (requires WASM update)
+                if (remedy && port && port.writable && remedy.is_standby && remedy.is_standby()) {
+                    try {
+                         const packet = remedy.build_command("ST");
+                         // Send directly to avoid logging
+                         await sendToSerial(new Uint8Array(packet));
+                    } catch (e) {
+                        console.error("Heartbeat error:", e);
+                    }
+                }
+            }, 1000);
+        }
+
+        function stopHeartbeat() {
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = null;
+            }
+        }
+
         btnConnect.addEventListener('click', async () => {
             if (!("serial" in navigator)) {
                 alert("Web Serial API not supported in this browser.");
@@ -177,18 +266,25 @@
             }
 
             try {
+                // Get selected baud rate
+                const baudRateSelect = document.getElementById('baud-rate');
+                const selectedBaudRate = parseInt(baudRateSelect.value, 10);
+
                 port = await navigator.serial.requestPort();
-                await port.open({ baudRate: 19200 }); // Default baudrate from remedy.rs
+                await port.open({ baudRate: selectedBaudRate });
 
                 keepReading = true;
                 btnConnect.disabled = true;
+                baudRateSelect.disabled = true; // Disable baud rate selection while connected
                 btnDisconnect.disabled = false;
                 statusLabel.textContent = "● Connected";
                 statusLabel.style.color = "#4caf50";
+                setConnectedState(true);
                 
                 log("Serial Port Connected", "Info");
+                log("--- 串口已连接，智能心跳已启动 ---", "Info");
 
-                // Start Reading Loop
+                startHeartbeat();
                 readLoop();
 
             } catch (err) {
@@ -197,8 +293,9 @@
             }
         });
 
-        // Serial Disconnect
         btnDisconnect.addEventListener('click', async () => {
+            clearRetryTimeout();
+            stopHeartbeat();
             keepReading = false;
             if (reader) {
                 await reader.cancel();
@@ -208,13 +305,15 @@
                 port = null;
             }
             btnConnect.disabled = false;
+            document.getElementById('baud-rate').disabled = false; // Re-enable baud rate selection
             btnDisconnect.disabled = true;
             statusLabel.textContent = "● Not Connected";
             statusLabel.style.color = "gray";
+            setConnectedState(false);
             log("Disconnected", "Info");
+            log("--- 串口已断开，智能心跳已停止 ---", "Info");
         });
 
-        // Read Loop
         async function readLoop() {
             while (port.readable && keepReading) {
                 reader = port.readable.getReader();
@@ -222,11 +321,9 @@
                     while (true) {
                         const { value, done } = await reader.read();
                         if (done) {
-                            // Reader has been canceled.
                             break;
                         }
                         if (value) {
-                            // Pass data to Rust WASM
                             if (remedy) {
                                 const result = remedy.process_input(value);
                                 handleProcessResult(result);
@@ -242,26 +339,26 @@
             }
         }
 
-        // Handle Result from Rust
         async function handleProcessResult(result) {
-            // 1. Process Events (Logs, Updates)
             if (result.events) {
                 for (const event of result.events) {
                     if (event.Log) {
                         log(event.Log.text, event.Log.color);
                     } else if (event.DataUpdate) {
-                        // Update specific field if needed, or just refresh all state
-                        // The state is already updated in Rust struct
                     } else if (event.Error) {
                          log("Error: " + event.Error, "Alert");
                     }
                 }
-                // Refresh UI with latest state
                 const state = remedy.get_state();
                 updateUI(state);
+                if (result.events.length > 0) {
+                    clearRetryTimeout();
+                    if (remedy && remedy.confirm_response) {
+                        remedy.confirm_response();
+                    }
+                }
             }
 
-            // 2. Process Replies (Send data back to serial)
             if (result.replies) {
                 for (const packet of result.replies) {
                      await sendToSerial(new Uint8Array(packet));
@@ -269,44 +366,69 @@
             }
         }
 
-        // Write to Serial
         async function sendToSerial(data) {
             if (port && port.writable) {
                 const writer = port.writable.getWriter();
                 try {
                     await writer.write(data);
-                    // log("TX: " + new TextDecoder().decode(data), "Tx"); // Optional: Log TX raw
                 } finally {
                     writer.releaseLock();
                 }
             }
         }
 
-        // Command Helpers
         async function sendCommand(cmdStr) {
             if (!remedy) return;
-            const packet = remedy.build_command(cmdStr);
+            const packet = remedy.send_command_with_retry ? remedy.send_command_with_retry(cmdStr) : remedy.build_command(cmdStr);
             await sendToSerial(new Uint8Array(packet));
             log("Send: " + cmdStr, "Tx");
+            if (remedy.send_command_with_retry) {
+                scheduleRetryTimeout();
+            }
         }
 
-        // Button Actions
+        function formatNumber(value, width) {
+            const num = Number.parseInt(value, 10);
+            if (Number.isNaN(num)) return null;
+            return num.toString().padStart(width, '0');
+        }
+
         document.getElementById('btn-set-kv').addEventListener('click', () => {
             const val = document.getElementById('input-kv').value;
-            if(val) sendCommand("KV" + val);
+            const formatted = formatNumber(val, 3);
+            if (formatted) sendCommand("KV" + formatted);
         });
         document.getElementById('btn-set-ma').addEventListener('click', () => {
             const val = document.getElementById('input-ma').value;
-            if(val) sendCommand("MA" + val);
+            const formatted = formatNumber(val, 5);
+            if (formatted) sendCommand("MA" + formatted);
         });
         document.getElementById('btn-set-ms').addEventListener('click', () => {
             const val = document.getElementById('input-ms').value;
-            if(val) sendCommand("MS" + val);
+            const formatted = formatNumber(val, 5);
+            if (formatted) sendCommand("MS" + formatted);
         });
+        document.getElementById('btn-get-kv').addEventListener('click', () => sendCommand("KV?"));
+        document.getElementById('btn-get-ma').addEventListener('click', () => sendCommand("MA?"));
+        document.getElementById('btn-get-ms').addEventListener('click', () => sendCommand("MS?"));
         
-        document.getElementById('btn-prep').addEventListener('click', () => sendCommand("PR1"));
-        document.getElementById('btn-expose').addEventListener('click', () => sendCommand("XR1"));
-        document.getElementById('btn-cancel').addEventListener('click', () => sendCommand("PR0"));
+        document.getElementById('btn-reset').addEventListener('click', () => sendCommand("RE"));
+        document.getElementById('btn-refresh-system').addEventListener('click', () => sendCommand("RS"));
+        document.getElementById('btn-refresh-shot').addEventListener('click', () => sendCommand("RR"));
+
+        document.getElementById('btn-query-mx').addEventListener('click', () => sendCommand("MX?"));
+        document.getElementById('btn-query-he').addEventListener('click', () => sendCommand("HE?"));
+        document.getElementById('btn-query-hh').addEventListener('click', () => sendCommand("HH?"));
+        document.getElementById('btn-query-ap').addEventListener('click', () => sendCommand("AP?"));
+        document.getElementById('btn-query-at').addEventListener('click', () => sendCommand("AT?"));
+        document.getElementById('btn-query-ws').addEventListener('click', () => sendCommand("WS?"));
+        document.getElementById('btn-query-fo').addEventListener('click', () => sendCommand("FO?"));
+        document.getElementById('btn-query-et').addEventListener('click', () => sendCommand("ET?"));
+
+        document.getElementById('btn-PR1').addEventListener('click', () => sendCommand("PR1"));
+        document.getElementById('btn-PR2').addEventListener('click', () => sendCommand("PR2"));
+        document.getElementById('btn-PR0').addEventListener('click', () => sendCommand("PR0"));
+        document.getElementById('btn-XR2').addEventListener('click', () => sendCommand("XR2"));
 
     </script>
 </body>

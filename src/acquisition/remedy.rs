@@ -1,9 +1,15 @@
 use serde::{Deserialize, Serialize};
+#[cfg(target_arch = "wasm32")]
+use std::time::Duration;
+
 
 // --- Protocol Constants ---
 const ETX: u8 = 0x03;
 const NAK: u8 = 0x15;
 const ACK: u8 = 0x06;
+const MAX_RETRY: usize = 8;
+#[cfg(target_arch = "wasm32")]
+const TIMEOUT: Duration = Duration::from_secs(9);
 
 // --- Data Structures ---
 
@@ -59,6 +65,45 @@ impl Default for SystemState {
     }
 }
 
+#[derive(Debug, Clone)]
+struct RetryState {
+    last_sent: Option<Vec<u8>>,
+    attempts: usize,
+}
+
+impl RetryState {
+    fn new() -> Self {
+        Self {
+            last_sent: None,
+            attempts: 0,
+        }
+    }
+
+    fn register(&mut self, frame: Vec<u8>) -> Vec<u8> {
+        self.last_sent = Some(frame.clone());
+        self.attempts = 0;
+        frame
+    }
+
+    fn retry(&mut self) -> Option<Vec<u8>> {
+        if self.attempts >= MAX_RETRY {
+            return None;
+        }
+        match self.last_sent.clone() {
+            Some(frame) => {
+                self.attempts += 1;
+                Some(frame)
+            }
+            None => None,
+        }
+    }
+
+    fn clear(&mut self) {
+        self.last_sent = None;
+        self.attempts = 0;
+    }
+}
+
 // --- Helper Functions ---
 
 fn calculate_checksum(data: &[u8]) -> u8 {
@@ -69,6 +114,7 @@ fn calculate_checksum(data: &[u8]) -> u8 {
     (sum & 0xFF) as u8
 }
 
+/// Command + Data + ETX(0x03) + Checksum(1B)
 pub fn build_packet(cmd: &str) -> Vec<u8> {
     let mut packet = cmd.as_bytes().to_vec();
     packet.push(ETX);
@@ -77,12 +123,23 @@ pub fn build_packet(cmd: &str) -> Vec<u8> {
     packet
 }
 
+pub fn verify_checksum(frame: &[u8]) -> bool {
+    let len = frame.len();
+    if len < 2 {
+        return false;
+    }
+    let checksum_calc = calculate_checksum(&frame[0..len - 1]);
+    let checksum_recv = frame[len - 1];
+    checksum_calc == checksum_recv
+}
+
 // --- Protocol Handler ---
 
 pub struct RemedyProtocol {
     buffer: Vec<u8>,
     is_standby: bool,
     pub system_state: SystemState,
+    retry_state: RetryState,
 }
 
 impl RemedyProtocol {
@@ -91,7 +148,20 @@ impl RemedyProtocol {
             buffer: Vec::new(),
             is_standby: true,
             system_state: SystemState::default(),
+            retry_state: RetryState::new(),
         }
+    }
+
+    pub fn register_outbound(&mut self, frame: Vec<u8>) -> Vec<u8> {
+        self.retry_state.register(frame)
+    }
+
+    pub fn retry_on_timeout(&mut self) -> Option<Vec<u8>> {
+        self.retry_state.retry()
+    }
+
+    pub fn confirm_response(&mut self) {
+        self.retry_state.clear();
     }
 
     pub fn process_input(&mut self, input: &[u8]) -> (Vec<RemedyEvent>, Vec<Vec<u8>>) {
@@ -107,6 +177,13 @@ impl RemedyProtocol {
 
             // 1. Handle control characters
             if self.buffer[0] == NAK || self.buffer[0] == ACK {
+                if self.buffer[0] == NAK {
+                    if let Some(frame) = self.retry_state.retry() {
+                        replies.push(frame);
+                    }
+                } else {
+                    self.retry_state.clear();
+                }
                 self.buffer.remove(0);
                 continue;
             }
@@ -132,10 +209,7 @@ impl RemedyProtocol {
                 } // Wait for checksum
 
                 let frame = self.buffer[0..=etx_idx + 1].to_vec();
-                let checksum_calc = calculate_checksum(&frame[0..frame.len() - 1]);
-                let checksum_recv = frame[frame.len() - 1];
-
-                if checksum_calc == checksum_recv {
+                if verify_checksum(&frame) {
                     // Parse success
                     let msg_bytes = &frame[0..etx_idx]; // Remove ETX and checksum
                     let msg_str = String::from_utf8_lossy(msg_bytes).to_string();
@@ -199,20 +273,35 @@ impl RemedyProtocol {
                         reply_needed = true;
                         reset_needed = true;
                         self.is_standby = true;
+                        
+                        let code_str = &msg_str[2..];
+                        let desc = if let Ok(code) = code_str.parse::<u16>() {
+                            super::error::get_error_message(code)
+                        } else {
+                            "Unknown Code Format"
+                        };
+
                         events.push(RemedyEvent::Log {
-                            text: format!("!!! Interlock Error {} - Auto Reset", msg_str),
+                            text: format!("!!! Interlock Error {} - {} - Auto Reset", msg_str, desc),
                             color: LogColor::Alert,
                         });
                     }
                     // Warning ER/EW
                     else if msg_str.starts_with("ER") || msg_str.starts_with("EW") {
                         reply_needed = true;
+                        
+                        let code_str = &msg_str[2..];
+                        let desc = if let Ok(code) = code_str.parse::<u16>() {
+                            super::error::get_error_message(code)
+                        } else {
+                            "Unknown Code Format"
+                        };
+
                         events.push(RemedyEvent::Log {
-                            text: format!("!!! Error Warning {}", msg_str),
+                            text: format!("!!! Error Warning {} - {}", msg_str, desc),
                             color: LogColor::Alert,
                         });
                     }
-                    // Others (ST etc.)
                     else {
                         // Only log non-ST or ST with content
                         if !msg_str.starts_with("ST") || msg_str.len() > 2 {
@@ -242,8 +331,14 @@ impl RemedyProtocol {
                     // Remove processed frame from buffer
                     self.buffer.drain(0..=etx_idx + 1);
                 } else {
+                    let log_text = format!("!!! Checksum Error - RX <<< {}", frame.iter().map(|b| format!("{:02X}", b)).collect::<String>());
+                    events.push(RemedyEvent::Log {
+                        text: log_text,
+                        color: LogColor::Alert,
+                    });
                     // Checksum error, remove first byte and retry
                     self.buffer.remove(0);
+                    continue;
                 }
             } else {
                 // No ETX, wait for more data
@@ -288,12 +383,17 @@ impl RemedyProtocol {
                 _ => val.to_string(),
             },
             "ST" => s.status = match val {
-                "001" => "Init".to_string(),
-                "002" => "Standby".to_string(),
-                "003" => "Prep".to_string(),
-                "004" => "Ready".to_string(),
-                "005" => "Exp".to_string(),
-                "008" => "Error".to_string(),
+                "001" => "Init".to_string(), // 初始化
+                "002" => "Standby".to_string(), // 待机
+                "003" => "Prep".to_string(), // 准备
+                "004" => "Ready".to_string(), // 就绪
+                "005" => "Exposure".to_string(), // 曝光
+                "006" => "Calibration".to_string(), // 校准
+                "007" => "HangOver".to_string(), // 验证
+                "008" => "Error".to_string(), // 错误
+                "009" => "ST_FLUORO_PREP".to_string(),
+                "010" => "ST_FLUORO".to_string(),
+                "011" => "ST_PULSED_FLUORO".to_string(),
                 _ => val.to_string(),
             },
             _ => {}
@@ -339,9 +439,37 @@ impl RemedyWasm {
         build_packet(cmd)
     }
 
+    pub fn send_command_with_retry(&mut self, cmd: &str) -> Vec<u8> {
+        let frame = build_packet(cmd);
+        self.protocol.register_outbound(frame)
+    }
+
+    pub fn retry_on_timeout(&mut self) -> Vec<u8> {
+        self.protocol.retry_on_timeout().unwrap_or_default()
+    }
+
+    pub fn confirm_response(&mut self) {
+        self.protocol.confirm_response();
+    }
+
+    pub fn get_retry_timeout_ms(&self) -> u32 {
+        TIMEOUT.as_millis() as u32
+    }
+
     /// Get current system state
     pub fn get_state(&self) -> JsValue {
         serde_wasm_bindgen::to_value(&self.protocol.system_state).unwrap()
+    }
+
+    /// Reset the protocol state
+    #[wasm_bindgen]
+    pub fn reset(&mut self) {
+        self.protocol = RemedyProtocol::new();
+    }
+
+    /// Check if protocol is in standby mode (for heartbeat)
+    pub fn is_standby(&self) -> bool {
+        self.protocol.is_standby
     }
 }
 

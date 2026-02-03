@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-02-03T13-47-02
+- **Remedy Serial Retry in WASM**
+  - Added retry state tracking in `src/acquisition/remedy.rs` for NAK/timeout resend support.
+  - Exposed WASM APIs for retry-aware sending and timeout handling.
+  - Updated `static/remedy.html` to use the retry-aware send path.
+
 ## 2026-01-30T10-30-00
 - **Added Remedy Serial Communication for Web**
   - **Feature**: Implemented full stack support for Remedy hardware control via Web Serial API.
