@@ -288,7 +288,7 @@ impl RemedyProtocol {
                     }
                     // Warning ER/EW
                     else if msg_str.starts_with("ER") || msg_str.starts_with("EW") {
-                        reply_needed = true;
+                        // reply_needed = true; // Do not echo errors to prevent potential loop
                         
                         let code_str = &msg_str[2..];
                         let desc = if let Ok(code) = code_str.parse::<u16>() {
