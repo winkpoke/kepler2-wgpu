@@ -28,21 +28,8 @@ pub enum UserEvent {
     ReloadShaders,
     /// Manually trigger pipeline cache invalidation without any other action.
     InvalidatePipelines,
-    SetMeshMode(
-        bool,
-        bool,
-        f32,
-        f32,
-        f32,
-        f32,
-        f32,
-        f32,
-        bool,
-        usize,
-        f32,
-        f32,
-    ),
-    SetMprMip(usize, Option<usize>, Option<usize>, Option<usize>, usize),
+    SetRenderMode(usize, bool, bool, f32, f32, f32, f32, f32, f32, Option<usize>, Option<usize>, f32, f32, Option<usize>, usize),
+    SetMipMode(usize, u32),
     SetOneCellLayout(usize, usize),
     #[cfg(target_arch = "wasm32")]
     GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
@@ -67,9 +54,10 @@ pub enum UserEvent {
     ResetMesh(usize),
     SetMeshScale(usize, f32),
     SetMeshRotationAngleDeg(usize, f32, f32),
-    SetMeshRotationDelta(usize, f32, f32),
+    SetMeshRotationDegrees(usize, f32, f32, f32),
+    SetMeshRotation(usize, [f32; 16]),
     #[cfg(target_arch = "wasm32")]
-    GetMeshRotationQuat(usize, oneshot::Sender<[f32; 4]>),
+    GetMeshRotation(usize, oneshot::Sender<[f32; 16]>),
 }
 
 #[macro_export]
@@ -172,8 +160,9 @@ impl GLCanvas {
         }
     }
 
-    pub fn set_mesh_mode(
+    pub fn set_render_mode(
         &self,
+        mode: usize,
         save_mesh: bool,
         crop: bool,
         sx: f32,
@@ -182,38 +171,33 @@ impl GLCanvas {
         lx: f32,
         ly: f32,
         lz: f32,
-        one_cell: bool,
-        mesh_index: usize,
-        iso_min: f32,
-        iso_max: f32,
-    ) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetMeshMode(
-            save_mesh, crop, sx, sy, sz, lx, ly, lz, one_cell, mesh_index, iso_min, iso_max,
-        )) {
-            log::error!("Failed to send SetMeshMode event: {:?}", e);
-        } else {
-            log::info!("Sent SetMeshMode event: save_mesh={}, crop={}, sx={}, sy={}, sz={}, lx={}, ly={}, lz={}, one_cell={}, mesh_index={}, iso_min={}, iso_max={}", save_mesh, crop, sx, sy, sz, lx, ly, lz, one_cell, mesh_index, iso_min, iso_max);
-        }
-    }
-
-    pub fn set_mpr_mip_mode(
-        &self,
-        mode: usize,
-        mip: Option<usize>,
         mesh_index: Option<usize>,
         index: Option<usize>,
+        iso_min: f32,
+        iso_max: f32,
+        mip_index: Option<usize>,
         orientation_index: usize,
     ) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetMprMip(
+        if let Err(e) = self.proxy.send_event(UserEvent::SetRenderMode(
             mode,
-            mip,
+            save_mesh,
+            crop,
+            sx,
+            sy,
+            sz,
+            lx,
+            ly,
+            lz,
             mesh_index,
             index,
+            iso_min,
+            iso_max,
+            mip_index,
             orientation_index,
         )) {
-            log::error!("Failed to send SetMprMip event: {:?}", e);
+            log::error!("Failed to send SetRenderMode event: {:?}", e);
         } else {
-            log::info!("Sent SetMprMip event: mode={}, mip={:?}, mesh_index={:?}, index={:?}, orientation_index={}", mode, mip, mesh_index, index, orientation_index);
+            log::info!("Sent SetRenderMode event: mode={}, save_mesh={}, crop={}, sx={}, sy={}, sz={}, lx={}, ly={}, lz={}, mesh_index={:?}, index={:?}, iso_min={}, iso_max={}, orientation_index={}", mode, save_mesh, crop, sx, sy, sz, lx, ly, lz, mesh_index, index, iso_min, iso_max, orientation_index);
         }
     }
 
@@ -407,6 +391,47 @@ impl GLCanvas {
             }
         }
     }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn get_mesh_rotation(&self, index: usize) -> Result<Box<[f32]>, String> {
+        let (tx, rx) = oneshot::channel();
+
+        if let Err(e) = self.proxy.send_event(UserEvent::GetMeshRotation(index, tx)) {
+            log::error!(
+                "Failed to send GetMeshRotation event for window {}: {:?}",
+                index,
+                e
+            );
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+
+        log::info!("Sent GetMeshRotation event for window {}", index);
+
+        match rx.await {
+            Ok(result) => Ok(result.into()),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
+        }
+    }
+
+    pub fn set_mesh_rotation(&self, index: usize, rotation: Vec<f32>) {
+        if rotation.len() != 16 {
+            log::error!(
+                "set_mesh_rotation expected 16 floats, got {}",
+                rotation.len()
+            );
+            return;
+        }
+        let mut arr = [0.0; 16];
+        arr.copy_from_slice(&rotation);
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::SetMeshRotation(index, arr))
+        {
+            log::error!("Failed to send SetMeshRotation event: {:?}", e);
+        } else {
+            log::info!("Sent SetMeshRotation event for window {}", index);
+        }
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -425,6 +450,8 @@ impl_user_event_senders_for_glcanvas! {
     set_pan_mm => SetPanMM(dx_mm: f32, dy_mm: f32),
     set_center_at_point_in_mm => SetCenterAtPointInMM(x_mm: f32, y_mm: f32, z_mm: f32),
     handle_view_click => ViewClick(screen_x: f32, screen_y: f32, screen_z: f32),
+    // Mip controls
+    set_mip_mode => SetMipMode(mode: u32),
     set_slab_thickness => SetSlabThickness(thickness: f32),
     set_mip_rotation_angle_degrees => SetMipRotationAngleDeg(roll_deg: f32, yaw_deg: f32, pitch_deg: f32),
     // Mesh controls
@@ -434,5 +461,5 @@ impl_user_event_senders_for_glcanvas! {
     reset_mesh => ResetMesh(),
     set_mesh_scale => SetMeshScale(scale: f32),
     set_mesh_rotation_angle_degrees => SetMeshRotationAngleDeg(degrees_x: f32, degrees_y: f32),
-    set_mesh_rotation_delta => SetMeshRotationDelta(dx: f32, dy: f32),
+    set_mesh_rotation_degrees => SetMeshRotationDegrees(roll_deg: f32, yaw_deg: f32, pitch_deg: f32),
 }

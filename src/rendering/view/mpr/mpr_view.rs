@@ -927,8 +927,10 @@ impl StatefulView for MprView {
         let _ = self.set_slice_mm(state.slice_mm);
         let _ = self.set_scale(state.scale);
         let _ = self.set_translate_in_screen_coord(state.translate_in_screen_coord);
-        self.move_to(state.position);
-        self.resize(state.dimensions);
+        // Do not restore position and dimensions, as they are managed by the Layout system.
+        // Restoring them would override the layout's resizing (e.g. when switching from multi-view to single-view).
+        // self.move_to(state.position);
+        // self.resize(state.dimensions);
 
         // Note: Transform matrix will be updated in the next update() call
 

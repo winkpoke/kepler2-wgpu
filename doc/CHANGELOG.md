@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-02-03T13-47-02
+- **Remedy Serial Retry in WASM**
+  - Added retry state tracking in `src/acquisition/remedy.rs` for NAK/timeout resend support.
+  - Exposed WASM APIs for retry-aware sending and timeout handling.
+  - Updated `static/remedy.html` to use the retry-aware send path.
+
+## 2026-01-30T10-30-00
+- **Added Remedy Serial Communication for Web**
+  - **Feature**: Implemented full stack support for Remedy hardware control via Web Serial API.
+  - **Rust**: Refactored `remedy.rs` into a pure logic module (`src/acquisition/remedy.rs`) with WASM bindings.
+  - **WASM**: Exposed protocol handling and state management to JavaScript using `serde-wasm-bindgen`.
+  - **Web**: Created `static/remedy.html` interface for serial connection, monitoring, and control.
+  - **Documentation**: Added `doc/acquisition/remedy-serial-web.md`.
+
+## 2026-01-29T11-00-00
+- **View State Persistence**
+  - Refactored `AppView` to internally manage view states (`saved_states`).
+  - Implemented `save_view_states` and `restore_view_states` to support MPR, MIP, and Mesh views.
+  - Enabled seamless state preservation (orientation, scale, pan, window/level) when switching between single-view and multi-view layouts.
+
+## 2026-01-28T11-45-20
+- **Added MinIP and AvgIP Rendering Modes**
+  - Extended MIP shader and uniforms to support minimum and average intensity projections.
+  - MIP mode selection now supports 0 (MIP), 1 (MinIP), and 2 (AvgIP).
+
 ## 2026-01-19T10-30-00
 - **Fixed MIP Orthographic Projection Clipping**
   - **Bug Fix**: Corrected the Z-axis scaling in `MipView` projection matrix calculation.

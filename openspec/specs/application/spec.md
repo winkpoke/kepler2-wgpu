@@ -1,6 +1,13 @@
-## ADDED Requirements
+# Application Specification
+
+## Purpose
+
+Defines requirements for application-level state management, view orchestration, and user-facing interactions.
+
+## Requirements
 
 ### Requirement: Application Testing
+
 The application layer SHALL have comprehensive test coverage for state management, view orchestration, and user interactions to prevent regressions.
 
 #### Scenario: Test Fixture Usage
@@ -24,6 +31,7 @@ The application layer SHALL have comprehensive test coverage for state managemen
 - **AND** memory SHALL be cleaned up when views are removed
 
 ### Requirement: MIP Rotation Control Interface
+
 The application layer SHALL expose a type-safe interface to update MIP rotation for a specific view index without requiring callers to downcast view types.
 
 #### Scenario: Set MIP Rotation From UI
@@ -31,8 +39,16 @@ The application layer SHALL expose a type-safe interface to update MIP rotation 
 - **THEN** the application routes the request through a single AppView method
 - **AND** only MIP views apply the rotation update while other view types are unaffected
 
-#### Scenario: Error Recovery in Application Layer
-- **WHEN** application-level errors occur (e.g., invalid file load, state corruption)
-- **THEN** errors SHALL be handled gracefully without crashing
-- **AND** user SHALL receive clear, actionable error messages
-- **AND** system SHALL maintain valid state despite errors
+### Requirement: Error Recovery in Application Layer
+
+Application-level errors SHALL be handled gracefully without crashing and SHALL preserve a valid application state.
+
+#### Scenario: Invalid file load
+- **WHEN** a file load fails due to invalid input or corruption
+- **THEN** the application SHALL show a clear, actionable error
+- **AND** the application SHALL remain usable without restart
+
+#### Scenario: State corruption detected
+- **WHEN** application state validation detects invalid invariants
+- **THEN** the application SHALL prevent unsafe operations
+- **AND** the error SHALL be logged with enough detail to diagnose the issue

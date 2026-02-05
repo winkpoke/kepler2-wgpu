@@ -12,6 +12,7 @@ pub mod application;
 pub mod core;
 pub mod data;
 pub mod rendering;
+pub mod acquisition;
 
 // All modules now properly organized according to the new architecture
 
