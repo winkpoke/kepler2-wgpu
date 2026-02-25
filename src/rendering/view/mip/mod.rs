@@ -4,6 +4,7 @@ use crate::data::volume_encoding::VolumeEncoding;
 use crate::rendering::view::layout::compute_aspect_fit;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::{Renderable, View};
+use crate::core::{WindowLevel,KeplerResult};
 use glam::{Mat4, Vec3};
 use std::{any::Any, sync::Arc};
 use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, Queue, RenderPipeline};
@@ -13,6 +14,14 @@ use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, Queue, Rend
 /// while delivering core MIP functionality.
 #[derive(Debug, Clone)]
 pub struct MipConfig {
+    /// Step size for ray marching in mm
+    pub ray_step_size: f32,
+    /// Maximum number of steps for ray marching
+    pub max_steps: f32,
+    /// Lower threshold for MIP rendering in HU
+    pub lower_threshold: f32,
+    /// Upper threshold for MIP rendering in HU
+    pub upper_threshold: f32,
     /// Slab thickness for MIP rendering in mm
     pub slab_thickness: f32,
     /// MIP rendering mode (0: MIP, 1: MinIP, 2: AvgIP)
@@ -24,6 +33,10 @@ impl Default for MipConfig {
     /// These values provide a good balance between quality and performance for medical imaging.
     fn default() -> Self {
         Self {
+            ray_step_size: 0.005, // Default 0.005mm step size
+            max_steps: 1000.0,    // Default 1000 steps
+            lower_threshold: -1024.0, // Default lower threshold
+            upper_threshold: 3071.0,  // Default upper threshold
             slab_thickness: 10.0, // Default 10mm slab
             mip_mode: 0,              // Default to Maximum Intensity Projection
         }
@@ -310,6 +323,8 @@ pub struct MipView {
     rotation_radians: [f32; 3],
     /// Content dimensions in world space
     content_dimensions: (f32, f32),
+    /// Window/level parameters for CT display
+    window_level: WindowLevel,
 }
 
 impl MipView {
@@ -320,10 +335,11 @@ impl MipView {
             config: MipConfig::default(),
             position: (0, 0),
             dimensions: (800, 600),
-            scale: 1.0,
+            scale: 1.5, // Default zoom to 1.5 to crop out CT scanner ring
             pan: [0.0, 0.0, 0.0],
             rotation_radians: [0.0, 0.0, 0.0],
             content_dimensions: (1.0, 1.0),
+            window_level: WindowLevel::new(),
         }
     }
 
@@ -341,33 +357,30 @@ impl MipView {
 
     /// Helper to get render parameters (W/L, Thresholds) based on mode.
     /// Returns (window, level, lower_threshold, upper_threshold).
-    fn get_render_params(mip_mode: u32) -> (f32, f32, f32, f32) {
+    fn get_render_params(&mut self, mip_mode: u32) {
         match mip_mode {
             1 => {
                 // MinIP: Lung Window, full range to include air
-                let (w, l) = crate::core::window_level::WindowLevel::DEFAULT_LUNG;
-                (w, l, -1024.0, 300.0)
+                self.config.ray_step_size = 0.004;
+                self.config.max_steps = 1500.0;
+                self.config.lower_threshold = -1024.0;
+                self.config.upper_threshold = 300.0;
             }
             2 => {
                 // AvgIP: Soft Tissue Window, full range
-                let (w, l) = crate::core::window_level::WindowLevel::DEFAULT_SOFT_TISSUE;
-                (w, l, -200.0, 300.0)
+                self.config.ray_step_size = 0.003;
+                self.config.max_steps = 2000.0;
+                self.config.lower_threshold = -200.0;
+                self.config.upper_threshold = 300.0;
             }
             _ => {
                 // MIP: Bone Window, full range
-                let (w, l) = crate::core::window_level::WindowLevel::DEFAULT_BONE;
-                (w, l, -1024.0, 3071.0)
-            }
-        }
-    }
+                self.config.ray_step_size = 0.005;
+                self.config.max_steps = 1000.0;
+                self.config.lower_threshold = -1024.0;
+                self.config.upper_threshold = 3071.0;
 
-    /// Helper to get quality parameters (step size, max steps) based on mode.
-    /// Returns (ray_step_size, max_steps).
-    fn get_quality_params(mip_mode: u32) -> (f32, f32) {
-        match mip_mode {
-            2 => (0.003, 2000.0), // AvgIP 高质量采样
-            1 => (0.004, 1500.0), // MinIP 中等采样
-            _ => (0.005, 1000.0), // MIP 默认
+            }
         }
     }
 
@@ -384,6 +397,19 @@ impl MipView {
         let clamped_x = dx.clamp(-MAX_PAN_DISTANCE, MAX_PAN_DISTANCE);
         let clamped_y = dy.clamp(-MAX_PAN_DISTANCE, MAX_PAN_DISTANCE);
         self.pan = [clamped_x, clamped_y, 0.0];
+    }
+
+    /// Set MIP window.
+    pub fn set_window_level(&mut self, window: f32) -> KeplerResult<()> {
+        let _ = self.window_level.set_window_level(window);
+        log::info!("MIP window set to {:.3}", window);
+        Ok(())
+    }
+
+    pub fn set_window_width(&mut self, window_width: f32) -> KeplerResult<()> {
+        let _ = self.window_level.set_window_width(window_width);
+        log::info!("MIP window width set to {:.3}", window_width);
+        Ok(())
     }
 
     /// Set MIP rendering mode.
@@ -424,6 +450,10 @@ impl MipView {
     pub fn get_rotation_radians(&self) -> [f32; 3] {
         self.rotation_radians
     }
+
+    pub fn get_window_level(&self) -> [f32; 2] {
+        [self.window_level.window_level(), self.window_level.window_width()]
+    }
 }
 
 impl Renderable for MipView {
@@ -433,11 +463,8 @@ impl Renderable for MipView {
         // Derive texture format flag for shader decoding
         let decode_params = self.wgpu_impl.render_content().decode_parameters();
 
-        // Automatically determine Window/Level and Thresholds based on mode
-        let (window, level, lower_threshold, upper_threshold) = Self::get_render_params(self.config.mip_mode);
-        
-        // Determine quality settings
-        let (ray_step_size, max_steps) = Self::get_quality_params(self.config.mip_mode);
+        // Get render parameters based on MIP mode
+        self.get_render_params(self.config.mip_mode);
 
         // Create uniforms
         let rotation = Self::build_rotation_matrix(
@@ -455,30 +482,34 @@ impl Renderable for MipView {
         let sz = self.config.slab_thickness;
         let w_mm = w_vol * 1.0;
         let h_mm = h_vol * 1.0;
-        let d_mm = d_vol * sz;
-        let diag = (w_mm * w_mm + h_mm * h_mm + d_mm * d_mm).sqrt();
-        let cw = diag;
-        let ch = diag;
+        let _d_mm = d_vol * sz; // Unused for viewport sizing to prevent zoom-out on deep volumes
+
+        // Optimize: Use width/height max as base dimension to "move view inside".
+        // Using diagonal or including depth causes excessive zoom-out, revealing artifacts.
+        // Fitting to Transverse dimensions ensures the ROI fills the screen.
+        let base_dim = w_mm.max(h_mm);
+        let cw = base_dim;
+        let ch = base_dim;
         self.content_dimensions = (cw, ch);
 
         // Construct Composite Matrix for Shader
         let scale_viewport = Mat4::from_scale(Vec3::new(cw, ch, cw));
-        let scale_texture = Mat4::from_scale(Vec3::new(1.0 / w_mm, 1.0 / h_mm, 1.0 / d_mm));
+        let scale_texture = Mat4::from_scale(Vec3::new(1.0 / w_mm, 1.0 / h_mm, 1.0 / _d_mm));
         let final_matrix = scale_texture * rotation * scale_viewport;
 
         let uniforms = MipUniforms {
-            ray_step_size,
-            max_steps,
+            ray_step_size: self.config.ray_step_size,
+            max_steps: self.config.max_steps,
             is_packed_rg8: decode_params.is_packed_flag as f32,
             bias: decode_params.bias,
-            window,
-            level,
+            window: self.window_level.window_width(),
+            level: self.window_level.window_level(),
             pan_x: self.pan[0],
             pan_y: self.pan[1],
             scale: self.scale,
             mip_mode: self.config.mip_mode as f32,
-            lower_threshold,
-            upper_threshold,
+            lower_threshold : self.config.lower_threshold,
+            upper_threshold : self.config.upper_threshold,
             rotation: final_matrix.to_cols_array(),
         };
 
@@ -487,7 +518,7 @@ impl Renderable for MipView {
 
         log::trace!(
             "[MIP_UPDATE] Uniforms set: mip_mode={}, window={}, level={}, lower={}, upper={}",
-            uniforms.mip_mode, window, level, lower_threshold, upper_threshold
+            uniforms.mip_mode, uniforms.window, uniforms.level, uniforms.lower_threshold, uniforms.upper_threshold
         );
     }
 
