@@ -199,33 +199,33 @@ impl DicomRepo {
             Some(pos_str) => PatientPosition::from_str(pos_str),
             None => PatientPosition::HFS, // Default to HFS if no position specified
         };
-        let (flip_x, flip_y, flip_z) = PatientPosition::get_coordinate_transform(&patient_position);
+        // let (flip_x, flip_y, flip_z) = PatientPosition::get_coordinate_transform(&patient_position);
 
         // Row and column direction vectors
-        let mut row_direction = (
+        let row_direction = (
             image_orientation_patient.0,
             image_orientation_patient.1,
             image_orientation_patient.2,
         );
-        let mut column_direction = (
+        let column_direction = (
             image_orientation_patient.3,
             image_orientation_patient.4,
             image_orientation_patient.5,
         );
 
-        // Apply coordinate transformations based on patient position
-        if flip_x {
-            row_direction.0 = -row_direction.0;
-            column_direction.0 = -column_direction.0;
-        }
-        if flip_y {
-            row_direction.1 = -row_direction.1;
-            column_direction.1 = -column_direction.1;
-        }
-        if flip_z {
-            row_direction.2 = -row_direction.2;
-            column_direction.2 = -column_direction.2;
-        }
+        // // Apply coordinate transformations based on patient position
+        // if flip_x {
+        //     row_direction.0 = -row_direction.0;
+        //     column_direction.0 = -column_direction.0;
+        // }
+        // if flip_y {
+        //     row_direction.1 = -row_direction.1;
+        //     column_direction.1 = -column_direction.1;
+        // }
+        // if flip_z {
+        //     row_direction.2 = -row_direction.2;
+        //     column_direction.2 = -column_direction.2;
+        // }
 
         // Slice direction (cross product of row and column directions)
         let slice_direction = (

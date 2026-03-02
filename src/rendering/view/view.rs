@@ -194,7 +194,7 @@ impl Orientation {
     /// and DICOM coordinate system conventions.
     pub fn build_base(&self, vol: &CTVolume) -> Base {
         match self {
-            Orientation::Oblique => GeometryBuilder::build_oblique_base(vol),
+            Orientation::Oblique => GeometryBuilder::build_transverse_base(vol),
             Orientation::Sagittal => GeometryBuilder::build_sagittal_base(vol),
             Orientation::Coronal => GeometryBuilder::build_coronal_base(vol),
             Orientation::Transverse => GeometryBuilder::build_transverse_base(vol),

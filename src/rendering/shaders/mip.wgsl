@@ -62,7 +62,8 @@ fn intersect_volume(ray_origin: vec3<f32>, ray_dir: vec3<f32>) -> vec2<f32> {
 
 fn sample_volume(coords: vec3<f32>) -> f32 {
     if (any(coords < vec3<f32>(0.0)) || any(coords > vec3<f32>(1.0))) {
-        return 0.0;
+        // Return a low value (Air) instead of 0.0 (Water) to avoid artifacts at boundaries
+        return -1024.0;
     }
     let sampled_value = textureSample(t_volume, s_volume, coords);
     var value: f32;

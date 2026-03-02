@@ -82,10 +82,6 @@ impl RenderApp {
 
         event_loop.run(move |event, target| {
             match event {
-                // Event::UserEvent(UserEvent::SetSliceSpeed(index, speed)) => {
-                //     state.set_slice_speed(index, speed);
-                //     log::info!("Slice speed set to: {}", speed);
-                // }
                 Event::UserEvent(UserEvent::SetWindowLevel(index, window_level)) => {
                     state.set_window_level(index, window_level);
                     log::info!("Window level set to: {}", window_level);
@@ -195,10 +191,6 @@ impl RenderApp {
                     state.set_render_mode(mode, save_mesh, crop, sx,sy,sz,lx,ly,lz, mesh_index,index,iso_min,iso_max,mip_index,orientation_index);
                     log::info!("SetRenderMode toggled at runtime: mode={mode}, mip={:?}, mesh_index={:?}, index={:?}, orientation_index={orientation_index}", mip_index, mesh_index, index);
                 }
-                Event::UserEvent(UserEvent::SetCenterAtPointInMM(index, x_mm, y_mm, z_mm)) => {
-                    state.set_center_at_point_in_mm(index, x_mm, y_mm, z_mm);
-                    log::info!("CenterAtPointInMM set to: x_mm={x_mm}, y_mm={y_mm}, z_mm={z_mm}");
-                }
                 //mip control events
                 Event::UserEvent(UserEvent::SetMipMode(index, mode)) => {
                     state.set_mip_mode(index, mode);
@@ -212,6 +204,20 @@ impl RenderApp {
                     state.set_mip_rotation_angle_degrees(index, roll_deg, yaw_deg, pitch_deg);
                     log::info!(
                         "MipRotationAngleDeg set to: index={index}, roll_deg={roll_deg}, yaw_deg={yaw_deg}, pitch_deg={pitch_deg}"
+                    );
+                }
+                Event::UserEvent(UserEvent::SetObliqueNormal(index, normal, in_plane_radians)) => {
+                    state.set_oblique_normal(index, normal, in_plane_radians);
+                    log::info!(
+                        "ObliqueNormal set to: index={index}, normal={:?}, in_plane={}",
+                        normal, in_plane_radians
+                    );
+                }
+                Event::UserEvent(UserEvent::SetObliqueRotation(index, horizontal_radians, vertical_radians, in_plane_radians)) => {
+                    state.set_oblique_rotation_radians(index, horizontal_radians, vertical_radians, in_plane_radians);
+                    log::info!(
+                        "ObliqueRotation set to: index={index}, horizontal={:?}, vertical={:?}, in_plane={:?}",
+                        horizontal_radians, vertical_radians, in_plane_radians
                     );
                 }
                 // Mesh control events
@@ -287,6 +293,15 @@ impl RenderApp {
                         log::error!("Failed to send GetWindowLevel result for window {}", index);
                     } else {
                         log::info!("Sent GetWindowLevel result for window {}: {:?}", index, result);
+                    }
+                }
+                #[cfg(target_arch = "wasm32")]
+                Event::UserEvent(UserEvent::GetObliqueNormal(index, sender)) => {
+                    let result = state.get_oblique_normal(index);
+                    if let Err(_) = sender.send(result) {
+                        log::error!("Failed to send GetObliqueNormal result for window {}", index);
+                    } else {
+                        log::info!("Sent GetObliqueNormal result for window {}: {:?}", index, result);
                     }
                 }
                 #[cfg(target_arch = "wasm32")]
@@ -465,6 +480,42 @@ impl RenderApp {
                                 event:
                                     KeyEvent {
                                         state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyH),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(3), 300.0, 400.0, None, 3);
+                                state.set_oblique_normal(3, [-1.0, 0.0, 0.0], 90f32.to_radians());
+                            }
+                            WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyO),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(3), 300.0, 400.0, None, 3);
+                                state.set_oblique_normal(3, [0.0, 0.0, 1.0], 0f32);
+                            }
+                            WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyP),
+                                        ..
+                                    },
+                                ..
+                            } => {
+                                state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(3), 300.0, 400.0, None, 3);
+                                state.set_oblique_normal(3, [0.0, 1.0, 0.0], 0f32);
+                            }
+                            WindowEvent::KeyboardInput {
+                                event:
+                                    KeyEvent {
+                                        state: ElementState::Pressed,
                                         physical_key: PhysicalKey::Code(KeyCode::KeyS),
                                         ..
                                     },
@@ -477,7 +528,7 @@ impl RenderApp {
                                 event:
                                     KeyEvent {
                                         state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyH),
+                                        physical_key: PhysicalKey::Code(KeyCode::KeyU),
                                         ..
                                     },
                                 ..

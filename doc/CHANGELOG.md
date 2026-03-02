@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-02-26T00-00-00
+- **Oblique MPR View Rotation Controls (Slicer-style)**
+  - Added oblique plane control via normal vector + in-plane rotation (supports Horizontal/Vertical/In-Plane style control mapping).
+  - Added new geometry helpers to build oblique screen base and rotation from a normal vector.
+  - Updated MPR oblique transformation to use a controllable rotation matrix and preserve oblique state across layout changes.
+  - Updated cross-view linking for oblique to compute slice displacement along the oblique normal (projection), instead of defaulting to Z.
+  - Added new UI event/API routes for oblique control (GLCanvas → UserEvent → App → MprView).
+  - Files:
+    - `src/core/geometry.rs`
+    - `src/rendering/view/mpr/mpr_view.rs`
+    - `src/application/app.rs`
+    - `src/application/appview.rs`
+    - `src/application/gl_canvas.rs`
+    - `src/application/render_app.rs`
+
 ## 2026-02-03T13-47-02
 - **Remedy Serial Retry in WASM**
   - Added retry state tracking in `src/acquisition/remedy.rs` for NAK/timeout resend support.

@@ -10,7 +10,6 @@ use futures::channel::oneshot;
 
 #[derive(Debug)]
 pub enum UserEvent {
-    SetSliceSpeed(usize, f32),
     SetWindowLevel(usize, f32),
     SetWindowWidth(usize, f32),
     SetSliceMM(usize, f32),
@@ -28,9 +27,27 @@ pub enum UserEvent {
     ReloadShaders,
     /// Manually trigger pipeline cache invalidation without any other action.
     InvalidatePipelines,
-    SetRenderMode(usize, bool, bool, f32, f32, f32, f32, f32, f32, Option<usize>, Option<usize>, f32, f32, Option<usize>, usize),
+    SetRenderMode(
+        usize,
+        bool,
+        bool,
+        f32,
+        f32,
+        f32,
+        f32,
+        f32,
+        f32,
+        Option<usize>,
+        Option<usize>,
+        f32,
+        f32,
+        Option<usize>,
+        usize,
+    ),
     SetMipMode(usize, u32),
     SetOneCellLayout(usize, usize),
+    #[cfg(target_arch = "wasm32")]
+    GetObliqueNormal(usize, oneshot::Sender<[f32; 3]>),
     #[cfg(target_arch = "wasm32")]
     GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     #[cfg(target_arch = "wasm32")]
@@ -39,14 +56,14 @@ pub enum UserEvent {
     GetPan(usize, oneshot::Sender<[f32; 3]>),
     #[cfg(target_arch = "wasm32")]
     WorldCoordToScreen(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
-    SetCenterAtPointInMM(usize, f32, f32, f32), // screen coords
     SetSlabThickness(usize, f32),
     SetMipRotationAngleDeg(usize, f32, f32, f32),
     ViewClick(usize, f32, f32, f32), // view_index, screen_x, screen_y, screen_z
+    SetObliqueNormal(usize,[f32;3],f32),
+    SetObliqueRotation(usize, Option<f32>, Option<f32>, Option<f32>),
     #[cfg(target_arch = "wasm32")]
     /// View click with reply; returns [x_mm, y_mm, slice_mm, reserved]
     ViewClickGet(usize, f32, f32, f32, oneshot::Sender<[f32; 4]>),
-    // ... add more events as needed
     // Mesh control events
     SetMeshRotationEnabled(usize, bool),
     SetMeshOpacity(usize, f32),
@@ -213,6 +230,27 @@ impl GLCanvas {
                 mode,
                 orientation_index
             );
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn get_oblique_normal(&self, index: usize) -> Result<Box<[f32]>, String> {
+        let (tx, rx) = oneshot::channel();
+
+        if let Err(e) = self.proxy.send_event(UserEvent::GetObliqueNormal(index, tx)) {
+            log::error!(
+                "Failed to send GetObliqueNormal event for window {}: {:?}",
+                index,
+                e
+            );
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+
+        log::info!("Sent GetObliqueNormal event for window {}", index);
+
+        match rx.await {
+            Ok(result) => Ok(result.into()),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
         }
     }
 
@@ -432,6 +470,26 @@ impl GLCanvas {
             log::info!("Sent SetMeshRotation event for window {}", index);
         }
     }
+
+    pub fn set_oblique_normal(&self, index: usize, normal: Vec<f32>, in_plane_radians: f32) {
+        if normal.len() != 3 {
+            log::error!(
+                "set_mesh_rotation expected 16 floats, got {}",
+                normal.len()
+            );
+            return;
+        }
+        let mut arr = [0.0; 3];
+        arr.copy_from_slice(&normal);
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::SetObliqueNormal(index, arr, in_plane_radians))
+        {
+            log::error!("Failed to send SetObliqueNormal event: {:?}", e);
+        } else {
+            log::info!("Sent SetObliqueNormal event for window {}", index);
+        }
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -440,7 +498,6 @@ pub struct GLCanvas {
 }
 
 impl_user_event_senders_for_glcanvas! {
-    set_slice_speed => SetSliceSpeed(speed: f32),
     set_window_level => SetWindowLevel(window_level: f32),
     set_window_width => SetWindowWidth(window_width: f32),
     set_slice_mm => SetSliceMM(slice: f32),
@@ -448,8 +505,8 @@ impl_user_event_senders_for_glcanvas! {
     set_translate_in_screen_coord => SetTranslateInScreenCoord(x: f32, y: f32, z: f32),
     set_pan => SetPan(dx: f32, dy: f32),
     set_pan_mm => SetPanMM(dx_mm: f32, dy_mm: f32),
-    set_center_at_point_in_mm => SetCenterAtPointInMM(x_mm: f32, y_mm: f32, z_mm: f32),
     handle_view_click => ViewClick(screen_x: f32, screen_y: f32, screen_z: f32),
+    set_oblique_rotation_radians => SetObliqueRotation(horizontal_radians: Option<f32>, vertical_radians: Option<f32>, in_plane_radians: Option<f32>),
     // Mip controls
     set_mip_mode => SetMipMode(mode: u32),
     set_slab_thickness => SetSlabThickness(thickness: f32),

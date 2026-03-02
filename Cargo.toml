@@ -1,6 +1,6 @@
 [package]
 name = "kepler-wgpu"
-version = "0.6.0"
+version = "0.9.0"
 edition = "2021"
 
 [package.metadata.wasm-pack.profile.release]
@@ -15,7 +15,6 @@ env_logger = "0.11.5"
 log = "0.4"
 wgpu = "23.0.0"
 pollster = "0.4.0"
-# data type cast
 bytemuck = { version = "1.16", features = [ "derive" ] }
 cfg-if = "1"
 num = "0.4"
@@ -44,7 +43,12 @@ crossbeam-channel = "0.5"
 hex = "0.4"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+axum = { version = "0.7", features = ["ws"] }
+tower = { version = "0.4", features = ["util"] }
+tower-http = { version = "0.5", features = ["fs", "trace", "cors"] }
 serialport = "4.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt"] }
 uuid = { version = "1.18.1", features = ["rng-getrandom"] }
 tokio = { version = "1.47.1", features = ["full"] }
 tokio-serial = "5"
