@@ -160,22 +160,20 @@ impl App {
             );
         }
         log::info!("Resizing to: {}, {}", safe_width, safe_height);
-        
+
         if safe_width > 0 && safe_height > 0 {
             // self.size = new_size;
             self.graphics_mut().surface_config.width = safe_width;
             self.graphics_mut().surface_config.height = safe_height;
 
-            self.app_view
-                .layout
-                .resize((safe_width, safe_height));
+            self.app_view.layout.resize((safe_width, safe_height));
 
             #[cfg(target_arch = "wasm32")]
             {
                 // sets the style width and height of the window canvas
-                let _ = self.window().request_inner_size(
-                    winit::dpi::PhysicalSize::new(safe_width, safe_height)
-                );
+                let _ = self
+                    .window()
+                    .request_inner_size(winit::dpi::PhysicalSize::new(safe_width, safe_height));
             }
             self.graphics()
                 .surface
@@ -512,7 +510,8 @@ impl App {
                     if mesh.vertices.is_empty() {
                         log::warn!(
                             "Generated mesh is empty (ISO: {}-{}). Injecting dummy triangle.",
-                            iso_min, iso_max
+                            iso_min,
+                            iso_max
                         );
                         let dummy = crate::rendering::view::mesh::mesh::MeshVertex {
                             position: [0.0, 0.0, 0.0],
@@ -524,7 +523,7 @@ impl App {
                     }
                     self.cached_mesh = Some(mesh);
                 }
-            } 
+            }
 
             if let Some(idx) = index {
                 self.saved_states[idx] = orientation_index;
@@ -582,7 +581,6 @@ impl App {
                         &vol,
                         self.saved_states,
                         mip_index,
-                        orientation_index,
                         mesh_index,
                         self.cached_mesh.clone(),
                     );
@@ -595,20 +593,6 @@ impl App {
                 "MPR/MIP layout requested without loaded volume; will apply on next data load."
             );
         }
-    }
-    
-    /// Function-level comment: Calculate position and size for a view at the specified index.
-    fn calculate_view_position_and_size(&self, index: usize) -> ((i32, i32), (u32, u32)) {
-        let total_views = self.app_view.layout.views().len() as u32;
-        let parent_dim = (
-            self.graphics().surface_config.width,
-            self.graphics().surface_config.height,
-        );
-        self.app_view.layout.strategy().calculate_position_and_size(
-            index as u32,
-            total_views,
-            parent_dim,
-        )
     }
 
     pub fn set_window_level(&mut self, index: usize, window_level: f32) {
@@ -723,9 +707,22 @@ impl App {
         }
     }
 
-    pub fn set_mip_rotation_angle_degrees(&mut self, index: usize, roll_deg: f32, yaw_deg: f32, pitch_deg: f32) {
-        if let Err(e) = self.app_view.set_mip_rotation_angle_degrees(index, roll_deg, yaw_deg, pitch_deg) {
-            log::warn!("set_mip_rotation_angle_degrees failed on view {}: {}", index, e);
+    pub fn set_mip_rotation_angle_degrees(
+        &mut self,
+        index: usize,
+        roll_deg: f32,
+        yaw_deg: f32,
+        pitch_deg: f32,
+    ) {
+        if let Err(e) = self
+            .app_view
+            .set_mip_rotation_angle_degrees(index, roll_deg, yaw_deg, pitch_deg)
+        {
+            log::warn!(
+                "set_mip_rotation_angle_degrees failed on view {}: {}",
+                index,
+                e
+            );
         } else {
             log::info!(
                 "View {} set_mip_rotation_angle_degrees: roll_deg={}, yaw_deg={}, pitch_deg={}",
@@ -734,6 +731,69 @@ impl App {
                 yaw_deg,
                 pitch_deg
             );
+        }
+    }
+
+    pub fn get_oblique_normal(&self, index: usize)->[f32; 3]{
+        let view = self.app_view.layout.views().get(index).unwrap();
+        if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
+            [mpr_view.get_oblique_normal()[0],mpr_view.get_oblique_normal()[1],mpr_view.get_oblique_normal()[3]]
+        } else {
+            [f32::NAN, f32::NAN, f32::NAN]
+        }
+    }
+
+    pub fn set_oblique_normal(
+        &mut self, 
+        index: usize, 
+        normal: [f32; 3], 
+        in_plane_radians: f32
+    ) {
+        if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                if let Err(e) = mpr_view.set_oblique_normal(normal, in_plane_radians) {
+                    log::warn!("set_oblique_normal failed on view {}: {}", index, e);
+                } else {
+                    log::info!(
+                        "View {} set_oblique_normal: normal={:?}, in_plane={}",
+                        index,
+                        normal,
+                        in_plane_radians
+                    );
+                }
+            }
+        }
+    }
+
+    pub fn set_oblique_rotation_radians(
+        &mut self,
+        index: usize,
+        horizontal_radians: Option<f32>,
+        vertical_radians: Option<f32>,
+        in_plane_radians: Option<f32>,
+    ) {
+        if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                if let Err(e) = mpr_view.set_oblique_rotation_radians(
+                    horizontal_radians,
+                    vertical_radians,
+                    in_plane_radians,
+                ) {
+                    log::warn!(
+                        "set_oblique_rotation_radians failed on view {}: {}",
+                        index,
+                        e
+                    );
+                } else {
+                    log::info!(
+                        "View {} set_oblique_rotation_radians: horizontal={:?}, vertical={:?}, in_plane={:?}",
+                        index,
+                        horizontal_radians,
+                        vertical_radians,
+                        in_plane_radians
+                    );
+                }
+            }
         }
     }
 
@@ -816,12 +876,8 @@ impl App {
                     Orientation::Coronal => shift[1],    // Y axis for coronal
                     Orientation::Sagittal => shift[0],   // X axis for sagittal
                     Orientation::Oblique => {
-                        // Oblique: fall back to Z-axis for slice; consider improving with normal projection
-                        log::warn!(
-                            "Oblique orientation: defaulting slice to Z-axis value for view {}",
-                            index
-                        );
-                        shift[2]
+                        let n = mpr_view.get_oblique_normal();
+                        n.x * shift[0] + n.y * shift[1] + n.z * shift[2]
                     }
                 };
                 result[index] = slice_position;
@@ -942,11 +998,7 @@ impl App {
     }
 
     /// Set mesh rotation angle in degrees for the first MeshView.
-    pub fn set_mesh_rotation_angle_degrees(
-        &mut self,
-        degrees_x: f32,
-        degrees_y: f32
-    ) {
+    pub fn set_mesh_rotation_angle_degrees(&mut self, degrees_x: f32, degrees_y: f32) {
         self.apply_to_mesh_view(|mesh_view| {
             mesh_view.set_rotation_angle_degrees(degrees_x, degrees_y);
         });

@@ -4,19 +4,19 @@
 //! State will hold AppView and forward calls, keeping existing render loop intact.
 
 use crate::rendering::view::mesh::mesh::Mesh;
+use crate::rendering::view::mesh::mesh_view::MeshView;
+use crate::rendering::view::mip::MipConfig;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::ViewFactory;
 use crate::rendering::view::{
     DefaultViewFactory, DynamicLayout, MipView, MprView, Orientation, View, ViewState,
     ALL_ORIENTATIONS,
 };
-use crate::rendering::view::mip::MipConfig;
-use crate::rendering::view::mesh::mesh_view::MeshView;
 use crate::rendering::StatefulView;
 use crate::rendering::{GridLayout, LayoutContainer, OneCellLayout};
 use crate::CTVolume;
-use std::sync::Arc;
 use glam::Mat4;
+use std::sync::Arc;
 
 /// Encapsulated state for a view, including its orientation and rendering parameters.
 #[derive(Debug, Clone)]
@@ -68,7 +68,8 @@ impl AppView {
     /// (e.g. when switching between Single and Multi-view modes).
     pub fn save_view_states(&mut self) {
         // Collect current view states first to avoid borrowing conflicts
-        let current_states: Vec<CapturedViewState> = self.layout
+        let current_states: Vec<CapturedViewState> = self
+            .layout
             .views()
             .iter()
             .enumerate()
@@ -104,9 +105,13 @@ impl AppView {
         // Merge current states into saved_states
         for new_state in current_states {
             match &new_state {
-                CapturedViewState::Mpr { view_index: new_i, orientation: new_o, .. } => {
+                CapturedViewState::Mpr {
+                    view_index: new_i,
+                    orientation: new_o,
+                    ..
+                } => {
                     if let Some(existing) = self.saved_states.iter_mut().find(|s| {
-                        matches!(s, CapturedViewState::Mpr { view_index: old_i, orientation: old_o, .. } 
+                        matches!(s, CapturedViewState::Mpr { view_index: old_i, orientation: old_o, .. }
                             if *old_i == *new_i && old_o == new_o)
                     }) {
                         *existing = new_state;
@@ -115,18 +120,22 @@ impl AppView {
                     }
                 }
                 CapturedViewState::Mip { .. } => {
-                    if let Some(existing) = self.saved_states.iter_mut().find(|s| {
-                        matches!(s, CapturedViewState::Mip { .. })
-                    }) {
+                    if let Some(existing) = self
+                        .saved_states
+                        .iter_mut()
+                        .find(|s| matches!(s, CapturedViewState::Mip { .. }))
+                    {
                         *existing = new_state;
                     } else {
                         self.saved_states.push(new_state);
                     }
                 }
                 CapturedViewState::Mesh { .. } => {
-                    if let Some(existing) = self.saved_states.iter_mut().find(|s| {
-                        matches!(s, CapturedViewState::Mesh { .. })
-                    }) {
+                    if let Some(existing) = self
+                        .saved_states
+                        .iter_mut()
+                        .find(|s| matches!(s, CapturedViewState::Mesh { .. }))
+                    {
                         *existing = new_state;
                     } else {
                         self.saved_states.push(new_state);
@@ -143,24 +152,29 @@ impl AppView {
     pub fn restore_view_states(&mut self) {
         // Clone states to avoid borrowing self.saved_states while mutating self.layout
         let states = self.saved_states.clone();
-        
+
         for (i, view) in self.layout.views_mut().iter_mut().enumerate() {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
                 // Match by BOTH view index and orientation
-                // This ensures:
-                // 1. Different positions (indices) are saved independently
-                // 2. Different orientations at the same position are saved independently (re-initializes if changed)
-                if let Some(CapturedViewState::Mpr { state, .. }) = states
-                    .iter()
-                    .find(|s| matches!(s, CapturedViewState::Mpr { view_index: idx, orientation: o, .. } 
-                        if *idx == i && *o == *mpr_view.get_orientation()))
-                {
+                if let Some(CapturedViewState::Mpr {
+                    state,
+                    ..
+                }) = states.iter().find(|s| {
+                    matches!(s, CapturedViewState::Mpr { view_index: idx, orientation: o, .. }
+                        if *idx == i && *o == *mpr_view.get_orientation())
+                }) {
                     mpr_view.restore_state(state);
                 }
             }
             // Handle MIP Views
             else if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
-                if let Some(CapturedViewState::Mip { config, scale, pan, window, rotation_radians }) = states
+                if let Some(CapturedViewState::Mip {
+                    config,
+                    scale,
+                    pan,
+                    window,
+                    rotation_radians,
+                }) = states
                     .iter()
                     .find(|s| matches!(s, CapturedViewState::Mip { .. }))
                 {
@@ -170,18 +184,27 @@ impl AppView {
                     mip_view.set_pan(pan[0], pan[1]);
                     let _ = mip_view.set_window_level(window[0]);
                     let _ = mip_view.set_window_width(window[1]);
-                    mip_view.set_rotation_radians(rotation_radians[0],rotation_radians[1],rotation_radians[2]);
+                    mip_view.set_rotation_radians(
+                        rotation_radians[0],
+                        rotation_radians[1],
+                        rotation_radians[2],
+                    );
                 }
             }
             // Handle Mesh Views
             else if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
-                if let Some(CapturedViewState::Mesh { rotation, scale, pan, opacity }) = states
+                if let Some(CapturedViewState::Mesh {
+                    rotation,
+                    scale,
+                    pan,
+                    opacity,
+                }) = states
                     .iter()
                     .find(|s| matches!(s, CapturedViewState::Mesh { .. }))
                 {
                     mesh_view.set_rotation(*rotation);
                     mesh_view.set_scale_factor(*scale);
-                    mesh_view.set_pan(pan[0],pan[1]);
+                    mesh_view.set_pan(pan[0], pan[1]);
                     mesh_view.set_opacity(*opacity);
                 }
             }
@@ -401,7 +424,6 @@ impl AppView {
         vol: &CTVolume,
         indices: [usize; 4],
         mip: Option<usize>,
-        orientation_index: usize,
         mesh_index: Option<usize>,
         cached_mesh: Option<crate::mesh::mesh::Mesh>,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -425,7 +447,6 @@ impl AppView {
                 self.view_factory
                     .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))?;
             LayoutContainer::replace_view_at(&mut self.layout, mip.unwrap(), mip_view);
-            // let _ = self.set_mip_mode(mip.unwrap(), orientation_index as u32);
         }
 
         if mesh_index.is_some() {
@@ -475,7 +496,6 @@ impl AppView {
                     (0, 0),
                 )?;
                 LayoutContainer::add_view(&mut self.layout, mip_view);
-                // let _ = self.set_mip_mode(0, orientation_index as u32);
             }
             _ => {
                 // Default to MPR for unsupported modes
@@ -522,13 +542,12 @@ impl AppView {
                     .set_window_width(window_width)
                     .map_err(|e| e.to_string())?;
                 Ok(())
-            }else if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
+            } else if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
                 mip_view
                     .set_window_width(window_width)
                     .map_err(|e| e.to_string())?;
                 Ok(())
-            }
-            else {
+            } else {
                 Err(format!("View {} is not an MPR view", index))
             }
         } else {
