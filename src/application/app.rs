@@ -468,7 +468,7 @@ impl App {
         orientation_index: usize,
     ) {
         // Save current view states before layout switch
-        self.app_view.save_view_states();
+        // self.app_view.save_view_states();
 
         // Prepare cropping region if requested
         let world_min = crop.then_some([sx, sy, sz]);
@@ -541,7 +541,7 @@ impl App {
                         orientation_index,
                     );
 
-                    self.app_view.restore_view_states();
+                    // self.app_view.restore_view_states();
                 }
 
                 // === MIP ===
@@ -554,7 +554,7 @@ impl App {
                         orientation_index,
                     );
 
-                    self.app_view.restore_view_states();
+                    // self.app_view.restore_view_states();
                 }
 
                 // === Mesh ===
@@ -573,7 +573,7 @@ impl App {
                         .expect("Failed to create mesh view");
 
                     self.app_view.layout.add_view(mesh_view);
-                    self.app_view.restore_view_states();
+                    // self.app_view.restore_view_states();
                 }
                 _ => {
                     let _ = self.app_view.configure_mesh_layout(
@@ -585,7 +585,7 @@ impl App {
                         self.cached_mesh.clone(),
                     );
 
-                    self.app_view.restore_view_states();
+                    // self.app_view.restore_view_states();
                 }
             }
         } else {
