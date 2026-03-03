@@ -43,6 +43,7 @@ pub struct MprView {
     slice: f32,
     /// Screen-space coordinate system base
     base_screen: Mat4,
+    base_screen_raw : Mat4,
     /// Oblique rotation matrix
     oblique_rotation: Quat,
     /// Oblique rotation normal
@@ -173,6 +174,7 @@ impl MprView {
         let base_uv_legacy = GeometryBuilder::build_uv_base(vol);
 
         let base_screen = base_screen_legacy.matrix;
+        let base_screen_raw = base_screen;
         let base_uv = base_uv_legacy.matrix;
         let oblique_rotation = Quat::IDENTITY;
         let oblique_normal = Vec3::Z;
@@ -230,6 +232,7 @@ impl MprView {
             wgpu_impl,
             slice,
             base_screen,
+            base_screen_raw,
             oblique_rotation,
             oblique_normal,
             oblique_in_plane,
@@ -731,6 +734,7 @@ impl MprView {
         &mut self,
         normal: [f32; 3],
         in_plane_radians: f32,
+        is_rotation: bool,
     ) -> KeplerResult<()> {
         let n = Vec3::from_array(normal).normalize_or_zero();
         if !n.is_finite() || n.length_squared() == 0.0 {
@@ -761,7 +765,11 @@ impl MprView {
         let old_center_world = self.get_base().transform_point3(screen_center);
         let t1 = Mat4::from_translation(-old_center_world);
         let t2 = Mat4::from_translation(old_center_world);
-        self.base_screen = t2 * r * t1 * self.base_screen;
+        if is_rotation {
+            self.base_screen = t2 * r * t1 * self.base_screen;
+        } else {
+            self.base_screen = t2 * r * t1 * self.base_screen_raw;
+        }
 
         // update state
         self.oblique_rotation = q_final;
@@ -801,7 +809,7 @@ impl MprView {
 
         let n_new= (q_delta * self.oblique_normal).normalize_or_zero();
 
-        let _ = self.set_oblique_normal(n_new.to_array(), in_plane);
+        let _ = self.set_oblique_normal(n_new.to_array(), in_plane, true);
         Ok(())
     }
 
@@ -947,13 +955,6 @@ impl MprView {
             "set_center_at_point_in_mm: transformation result={}",
             result
         );
-
-        // Update pan values with bounds checking
-        // let new_pan = [
-        //     self.pan[0] + result[0],
-        //     self.pan[1] + result[1],
-        //     self.pan[2] + result[2],
-        // ];
 
         let new_pan = Vec3::new(result.x / self.scale, result.y / self.scale, result.z);
 

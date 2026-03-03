@@ -137,7 +137,7 @@ pub fn verify_checksum(frame: &[u8]) -> bool {
 
 pub struct RemedyProtocol {
     buffer: Vec<u8>,
-    is_standby: bool,
+    pub is_standby: bool,
     pub system_state: SystemState,
     retry_state: RetryState,
 }

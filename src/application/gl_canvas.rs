@@ -234,7 +234,7 @@ impl GLCanvas {
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub async fn get_oblique_normal(&self, index: usize) -> Result<Box<[f32]>, String> {
+    pub async fn get_oblique_normal(&self, index: usize) -> Result<String, String> {
         let (tx, rx) = oneshot::channel();
 
         if let Err(e) = self.proxy.send_event(UserEvent::GetObliqueNormal(index, tx)) {
@@ -249,7 +249,7 @@ impl GLCanvas {
         log::info!("Sent GetObliqueNormal event for window {}", index);
 
         match rx.await {
-            Ok(result) => Ok(result.into()),
+            Ok(result) => serde_json::to_string(&result).map_err(|e| format!("JSON serialization error: {}", e)),
             Err(e) => Err(format!("Failed to receive result: {:?}", e)),
         }
     }
@@ -474,7 +474,7 @@ impl GLCanvas {
     pub fn set_oblique_normal(&self, index: usize, normal: Vec<f32>, in_plane_radians: f32) {
         if normal.len() != 3 {
             log::error!(
-                "set_mesh_rotation expected 16 floats, got {}",
+                "set_oblique_normal expected 3 floats, got {}",
                 normal.len()
             );
             return;

@@ -498,7 +498,7 @@ impl RenderApp {
                                 ..
                             } => {
                                 state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(3), 300.0, 400.0, None, 3);
-                                state.set_oblique_normal(3, [0.0, 0.0, 1.0], 0f32);
+                                state.set_oblique_normal(3, [-0.574, 0.0, 0.819], 0f32);
                             }
                             WindowEvent::KeyboardInput {
                                 event:

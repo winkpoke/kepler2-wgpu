@@ -737,7 +737,8 @@ impl App {
     pub fn get_oblique_normal(&self, index: usize)->[f32; 3]{
         let view = self.app_view.layout.views().get(index).unwrap();
         if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
-            [mpr_view.get_oblique_normal()[0],mpr_view.get_oblique_normal()[1],mpr_view.get_oblique_normal()[3]]
+            let n = mpr_view.get_oblique_normal();
+            [n[0], n[1], n[2]]
         } else {
             [f32::NAN, f32::NAN, f32::NAN]
         }
@@ -751,7 +752,7 @@ impl App {
     ) {
         if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                if let Err(e) = mpr_view.set_oblique_normal(normal, in_plane_radians) {
+                if let Err(e) = mpr_view.set_oblique_normal(normal, in_plane_radians, false) {
                     log::warn!("set_oblique_normal failed on view {}: {}", index, e);
                 } else {
                     log::info!(

@@ -199,7 +199,7 @@
           <div class="grid">
             <div>
               <span id="mode-label">mode:</span></br>
-              <input type="number" id="mode" step="1" value="2" min="0" max="1">
+              <input type="number" id="mode" step="1" value="3" min="0" max="1">
             </div>
             <div>
               <span id="index-label">index:</span>
@@ -247,6 +247,39 @@
           </div>
           <div class="row" style="margin-top:8px">
             <button id="mesh">应用视图</button>
+          </div>
+        </fieldset>
+        <fieldset class="pill" style="margin-bottom:10px">
+          <legend>Oblique control</legend>
+          <div>
+            <span>Reset to:</span>
+            <select id="resetOptions" style="width: 100px">
+              <option value="T">transverse</option>
+              <option value="C">coronal</option>
+              <option value="S">sagittal</option>
+            </select>
+            <button id="oblique-reset-submit">submit</button>
+          </div>
+          <div>
+            <label>Normal:</label>
+            <input type="number" id="oblique-nx" step="0.001" value="0">
+            <input type="number" id="oblique-ny" step="0.001" value="0">
+            <input type="number" id="oblique-nz" step="0.001" value="1">
+            <span>In-plane:</span>
+            <input type="number" id="oblique-inplane" step="0.001" value="0">
+            <button id="oblique-normal-apply">apply</button>
+          </div>
+          <div>
+            <button id="oblique-normal-lr">LR</button>
+            <button id="oblique-normal-pa">PA</button>
+            <button id="oblique-normal-is">IS</button>
+          </div>
+          <div>
+            <label>Rotation:</label>
+            <span>Horizontal:</span><input type="number" id="rotation-x" step="0.01" value="0"><br>
+            <span>Vertical  :</span><input type="number" id="rotation-y" step="0.01" value="0""><br>
+            <span>In-plane  :</span><input type="number" id="rotation-z" sstep="0.01" value="0">
+            <button id="submit-rot">submit</button>
           </div>
         </fieldset>
       </div>
@@ -364,8 +397,8 @@
                 <option value="1">MinIP</option>
                 <option value="2">AvgIP</option>
               </select></br>
-              <span id="mip-rotation-label">MIP旋转:</span></br>
-              <span id="mip-rotation-x-label">roll:</span><input type="number" id="mip-rotation-x" step="15" value="-90" min="0" max="360">
+              <span id="mip-rotation-label">旋转:</span></br>
+              <span id="mip-rotation-x-label">roll:</span><input type="number" id="mip-rotation-x" step="15" value="0" min="0" max="360">
               <span id="mip-rotation-y-label">yaw:</span><input type="number" id="mip-rotation-y" step="15" value="0" min="0" max="360">
               <span id="mip-rotation-z-label">pitch:</span><input type="number" id="mip-rotation-z" step="15" value="0" min="0" max="360">
               <button id="mip-submit-rot">旋转</button>
@@ -668,7 +701,7 @@
       });
     });
 
-    byId('trans-get').addEventListener('click', () => {
+    byId('trans-get').addEventListener('click',  () => {
       const input_index = byId('index-input');
       const indexValue = parseInt(input_index.value);
       if (!gl_canvas) {
@@ -680,6 +713,80 @@
       }).catch((err) => {
         console.error('get_pan error:', err);
       });
+    });
+
+    byId("submit-rot").addEventListener('click',async () => {
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+
+      const horizontal = parseFloat(byId('rotation-x').value);
+      const vertical = parseFloat(byId('rotation-y').value);
+      const in_plane = parseFloat(byId('rotation-z').value);
+
+      if ([horizontal, vertical, in_plane].some((v) => Number.isNaN(v))) {
+        alert('Rotation: Please enter valid numbers');
+        return;
+      }
+
+      gl_canvas.set_oblique_rotation_radians(state.index, horizontal, vertical, in_plane);
+      const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
+      setNormalPreset(normal[0], normal[1], normal[2], 0.0);
+    });
+
+    byId('oblique-normal-apply').addEventListener('click', () => {
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+
+      const nx = parseFloat(byId('oblique-nx').value);
+      const ny = parseFloat(byId('oblique-ny').value);
+      const nz = parseFloat(byId('oblique-nz').value);
+      const in_plane = parseFloat(byId('oblique-inplane').value);
+
+      if ([nx, ny, nz, in_plane].some((v) => Number.isNaN(v))) {
+        alert('Normal: Please enter valid numbers');
+        return;
+      }
+      console.log('normal:', nx, ny, nz, in_plane);
+
+      gl_canvas.set_oblique_normal(state.index, [nx, ny, nz], in_plane);
+    });
+
+    function setNormalPreset(nx, ny, nz, p) {
+      byId('oblique-nx').value = String(nx);
+      byId('oblique-ny').value = String(ny);
+      byId('oblique-nz').value = String(nz);
+      byId('oblique-inplane').value = String(p);
+      byId('oblique-normal-apply').click();
+    }
+
+    byId('oblique-normal-lr').addEventListener('click', () => setNormalPreset(-1, 0, 0, 0));
+    byId('oblique-normal-pa').addEventListener('click', () => setNormalPreset(0, -1, 0, 0));
+    byId('oblique-normal-is').addEventListener('click', () => setNormalPreset(0, 0, 1, 0));
+
+    byId('oblique-reset-submit').addEventListener('click', async () => {
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+
+      const opt = byId('resetOptions').value;
+      if (opt == "T"){
+        gl_canvas.set_oblique_normal(state.index, [0.0, 0.0, 1.0], 0.0);
+        const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
+        setNormalPreset(normal[0], normal[1], normal[2], 0.0);
+      } else if (opt == "C"){
+        gl_canvas.set_oblique_normal(state.index, [0.0, 1.0, 0.0], 0.0);
+        const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
+        setNormalPreset(normal[0], normal[1], normal[2], 0.0);
+      }else if (opt == "S"){
+        gl_canvas.set_oblique_normal(state.index, [-1.0, 0.0, 0.0], 1.5707964);
+        const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
+        setNormalPreset(normal[0], normal[1], normal[2], 1.5707964);
+      }
     });
 
     byId('mesh').addEventListener('click', () => {
@@ -1030,7 +1137,6 @@
           repo = await state.wasmModule.parse_dcm_files_wasm(fileArray);
           // 获取所有患者信息
           let patients = JSON.parse(repo.get_all_patients());
-          console.log("???",patients);
           let patient_list = [];
           for (const patient of patients) {
             let patient_data = {
