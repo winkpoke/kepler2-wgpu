@@ -261,6 +261,10 @@
             <button id="oblique-reset-submit">submit</button>
           </div>
           <div>
+            <label>Center:</label>
+            <input type="number" id="oblique-cx" step="0.001" value="0.5">
+            <input type="number" id="oblique-cy" step="0.001" value="0.5">
+            <input type="number" id="oblique-cz" step="0.001" value="0">
             <label>Normal:</label>
             <input type="number" id="oblique-nx" step="0.001" value="0">
             <input type="number" id="oblique-ny" step="0.001" value="0">
@@ -268,11 +272,6 @@
             <span>In-plane:</span>
             <input type="number" id="oblique-inplane" step="0.001" value="0">
             <button id="oblique-normal-apply">apply</button>
-          </div>
-          <div>
-            <button id="oblique-normal-lr">LR</button>
-            <button id="oblique-normal-pa">PA</button>
-            <button id="oblique-normal-is">IS</button>
           </div>
           <div>
             <label>Rotation:</label>
@@ -721,14 +720,24 @@
         return;
       }
 
-      const horizontal = parseFloat(byId('rotation-x').value);
-      const vertical = parseFloat(byId('rotation-y').value);
-      const in_plane = parseFloat(byId('rotation-z').value);
+      let horizontal = parseFloat(byId('rotation-x').value);
+      if (horizontal == 0){
+        horizontal = null;
+      }
+      let vertical = parseFloat(byId('rotation-y').value);
+      if (vertical == 0){
+        vertical = null;
+      }
+      let in_plane = parseFloat(byId('rotation-z').value);
+      if (in_plane == 0){
+        in_plane = null;
+      }
 
       if ([horizontal, vertical, in_plane].some((v) => Number.isNaN(v))) {
         alert('Rotation: Please enter valid numbers');
         return;
       }
+      console.log('rotation:', horizontal, vertical, in_plane);
 
       gl_canvas.set_oblique_rotation_radians(state.index, horizontal, vertical, in_plane);
       const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
@@ -741,18 +750,21 @@
         return;
       }
 
+      const cx = parseFloat(byId('oblique-cx').value);
+      const cy = parseFloat(byId('oblique-cy').value);
+      const cz = parseFloat(byId('oblique-cz').value);
+
       const nx = parseFloat(byId('oblique-nx').value);
       const ny = parseFloat(byId('oblique-ny').value);
       const nz = parseFloat(byId('oblique-nz').value);
       const in_plane = parseFloat(byId('oblique-inplane').value);
 
-      if ([nx, ny, nz, in_plane].some((v) => Number.isNaN(v))) {
+      if ([cx, cy, cz, nx, ny, nz, in_plane].some((v) => Number.isNaN(v))) {
         alert('Normal: Please enter valid numbers');
         return;
       }
-      console.log('normal:', nx, ny, nz, in_plane);
 
-      gl_canvas.set_oblique_normal(state.index, [nx, ny, nz], in_plane);
+      gl_canvas.set_oblique_normal(state.index, [cx, cy, cz], [nx, ny, nz], in_plane);
     });
 
     function setNormalPreset(nx, ny, nz, p) {
@@ -760,12 +772,7 @@
       byId('oblique-ny').value = String(ny);
       byId('oblique-nz').value = String(nz);
       byId('oblique-inplane').value = String(p);
-      byId('oblique-normal-apply').click();
     }
-
-    byId('oblique-normal-lr').addEventListener('click', () => setNormalPreset(-1, 0, 0, 0));
-    byId('oblique-normal-pa').addEventListener('click', () => setNormalPreset(0, -1, 0, 0));
-    byId('oblique-normal-is').addEventListener('click', () => setNormalPreset(0, 0, 1, 0));
 
     byId('oblique-reset-submit').addEventListener('click', async () => {
       if (!gl_canvas) {
@@ -775,15 +782,15 @@
 
       const opt = byId('resetOptions').value;
       if (opt == "T"){
-        gl_canvas.set_oblique_normal(state.index, [0.0, 0.0, 1.0], 0.0);
+        gl_canvas.set_oblique_normal(state.index, [0.5,0.5,0.0], [0.0, 0.0, 1.0], 0.0);
         const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
         setNormalPreset(normal[0], normal[1], normal[2], 0.0);
       } else if (opt == "C"){
-        gl_canvas.set_oblique_normal(state.index, [0.0, 1.0, 0.0], 0.0);
+        gl_canvas.set_oblique_normal(state.index, [0.5,0.5,0.0],[0.0, 1.0, 0.0], 1.5707964);
         const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
-        setNormalPreset(normal[0], normal[1], normal[2], 0.0);
+        setNormalPreset(normal[0], normal[1], normal[2], 1.5707964);
       }else if (opt == "S"){
-        gl_canvas.set_oblique_normal(state.index, [-1.0, 0.0, 0.0], 1.5707964);
+        gl_canvas.set_oblique_normal(state.index, [0.5,0.5,0.0],[-1.0, 0.0, 0.0], 1.5707964);
         const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
         setNormalPreset(normal[0], normal[1], normal[2], 1.5707964);
       }

@@ -59,7 +59,7 @@ pub enum UserEvent {
     SetSlabThickness(usize, f32),
     SetMipRotationAngleDeg(usize, f32, f32, f32),
     ViewClick(usize, f32, f32, f32), // view_index, screen_x, screen_y, screen_z
-    SetObliqueNormal(usize,[f32;3],f32),
+    SetObliqueNormal(usize, [f32; 3], [f32; 3], f32),
     SetObliqueRotation(usize, Option<f32>, Option<f32>, Option<f32>),
     #[cfg(target_arch = "wasm32")]
     /// View click with reply; returns [x_mm, y_mm, slice_mm, reserved]
@@ -471,7 +471,7 @@ impl GLCanvas {
         }
     }
 
-    pub fn set_oblique_normal(&self, index: usize, normal: Vec<f32>, in_plane_radians: f32) {
+    pub fn set_oblique_normal(&self, index: usize, center: Vec<f32>, normal: Vec<f32>, in_plane_radians: f32) {
         if normal.len() != 3 {
             log::error!(
                 "set_oblique_normal expected 3 floats, got {}",
@@ -481,9 +481,11 @@ impl GLCanvas {
         }
         let mut arr = [0.0; 3];
         arr.copy_from_slice(&normal);
+        let mut center_arr = [0.0; 3];
+        center_arr.copy_from_slice(&center);
         if let Err(e) = self
             .proxy
-            .send_event(UserEvent::SetObliqueNormal(index, arr, in_plane_radians))
+            .send_event(UserEvent::SetObliqueNormal(index, center_arr, arr, in_plane_radians))
         {
             log::error!("Failed to send SetObliqueNormal event: {:?}", e);
         } else {

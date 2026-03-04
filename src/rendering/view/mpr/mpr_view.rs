@@ -1,7 +1,5 @@
 use std::sync::Arc;
-
-use glam::{Mat3, Mat4, Quat, Vec3, Vec4};
-
+use glam::{Mat4, Quat, Vec3, Vec4};
 use crate::{
     core::{
         error::{KeplerResult, MprError},
@@ -11,7 +9,6 @@ use crate::{
     rendering::{Orientation, RenderContent, StatefulView, ViewState},
     Renderable, View,
 };
-
 use super::{MprRenderContext, MprViewWgpuImpl};
 use crate::rendering::view::layout::compute_aspect_fit;
 
@@ -43,6 +40,7 @@ pub struct MprView {
     slice: f32,
     /// Screen-space coordinate system base
     base_screen: Mat4,
+    /// Original unrotated basis coordinates
     base_screen_raw : Mat4,
     /// Oblique rotation matrix
     oblique_rotation: Quat,
@@ -77,6 +75,10 @@ impl MprView {
     const MIN_SCALE: f32 = 0.01; // 1% zoom minimum
     const MAX_SCALE: f32 = 100.0; // 100x zoom maximum
     const MAX_PAN_DISTANCE: f32 = 10000.0; // Maximum pan distance in mm
+    const MAX_POSITION: i32 = 100_000;
+    const MIN_POSITION: i32 = -100_000;
+    const MAX_DIMENSION: u32 = 16384;
+    const MIN_DIMENSION: u32 = 1;
 
     /// Validate and clamp medical imaging parameters for safety and correctness
     fn validate_and_clamp_params(
@@ -112,19 +114,15 @@ impl MprView {
         };
 
         // Validate position bounds
-        const MAX_POSITION: i32 = 100_000;
-        const MIN_POSITION: i32 = -100_000;
         let validated_pos = (
-            pos.0.clamp(MIN_POSITION, MAX_POSITION),
-            pos.1.clamp(MIN_POSITION, MAX_POSITION),
+            pos.0.clamp(Self::MIN_POSITION, Self::MAX_POSITION),
+            pos.1.clamp(Self::MIN_POSITION, Self::MAX_POSITION),
         );
 
         // Validate dimensions
-        const MAX_DIMENSION: u32 = 16384;
-        const MIN_DIMENSION: u32 = 1;
         let validated_dim = (
-            dim.0.clamp(MIN_DIMENSION, MAX_DIMENSION),
-            dim.1.clamp(MIN_DIMENSION, MAX_DIMENSION),
+            dim.0.clamp(Self::MIN_DIMENSION, Self::MAX_DIMENSION),
+            dim.1.clamp(Self::MIN_DIMENSION, Self::MAX_DIMENSION),
         );
 
         (
@@ -167,61 +165,31 @@ impl MprView {
         let translate_vec = Vec3::from_array(translate);
 
         // Validate and clamp all input parameters
-        let ((validated_scale, validated_translate), validated_pos, validated_dim) =
-            Self::validate_and_clamp_params(scale, translate_vec, pos, dim);
+        let ((scale, pan), pos, dim) = Self::validate_and_clamp_params(scale, translate_vec, pos, dim);
+        
         // Build coordinate system bases for this orientation
         let base_screen_legacy = orientation.build_base(vol);
         let base_uv_legacy = GeometryBuilder::build_uv_base(vol);
-
         let base_screen = base_screen_legacy.matrix;
-        let base_screen_raw = base_screen;
         let base_uv = base_uv_legacy.matrix;
-        let oblique_rotation = Quat::IDENTITY;
-        let oblique_normal = Vec3::Z;
-        let oblique_in_plane = 0.0;
-
-        // Initialize view state with validated parameters
-        let pan = validated_translate;
-        let slice = 0.0; // Start at center slice
 
         // Create screen-space transformation matrix
-        // Apply transformations in reverse order (matrix multiplication)
-        // M_final = M_initial * T_pan * T_center * S_scale * T_uncenter
-        let t_pan = Mat4::from_translation(-pan);
-        let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
-        let s_scale = Mat4::from_scale(Vec3::splat(validated_scale).with_z(1.0));
-        let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
-
-        let transform_matrix_screen = base_screen * t_pan * t_center * s_scale * t_uncenter;
+        let transform_matrix_screen = base_uv.inverse()
+            * base_screen
+            * Mat4::from_scale(Vec3::splat(scale).with_z(1.0))
+            * Mat4::from_translation(-pan);
 
         // Create final transformation matrix from screen to UV coordinates
         let transform_matrix = base_uv.inverse() * transform_matrix_screen;
 
         // Create WGPU implementation with shared context
         let wgpu_impl = MprViewWgpuImpl::new(render_context, device, texture, transform_matrix);
-
         log::info!("Created MprView with orientation: {:?}, scale: {:?}, translate: {:?}, pos: {:?}, dim: {:?}",
-            orientation, validated_scale, validated_translate, validated_pos, validated_dim);
+            orientation, scale, pan, pos, dim);
 
-        // Compute physical in-plane content size in millimeters for aspect fitting
-        let (nx, ny, nz) = (
-            vol.dimensions.0 as f32,
-            vol.dimensions.1 as f32,
-            vol.dimensions.2 as f32,
-        );
-        let (nx, ny, nz) = (
-            nx * vol.voxel_spacing.0,
-            ny * vol.voxel_spacing.1,
-            nz * vol.voxel_spacing.2,
-        );
-        let d = (nx + ny + nz) / 3.0;
-        // Use voxel counts to match isotropic in-plane scaling of current geometry bases
-        let (content_w_mm, content_h_mm) = match orientation {
-            Orientation::Transverse => (d, d),
-            Orientation::Coronal => (d, d),
-            Orientation::Sagittal => (d, d),
-            Orientation::Oblique => (d, d),
-        };
+        let mm = vol.dimensions;
+        let sp = vol.voxel_spacing;
+        let (content_w_mm, content_h_mm) = ((mm.0 as f32 * sp.0), (mm.1 as f32 * sp.1));
         log::info!(
             "[{:?}]: Content size in mm: {:?}",
             orientation,
@@ -230,17 +198,17 @@ impl MprView {
 
         Self {
             wgpu_impl,
-            slice,
+            slice: 0.0,
             base_screen,
-            base_screen_raw,
-            oblique_rotation,
-            oblique_normal,
-            oblique_in_plane,
+            base_screen_raw: base_screen,
+            oblique_rotation: Quat::IDENTITY,
+            oblique_normal: Vec3::Z,
+            oblique_in_plane: 0.0,
             base_uv,
-            scale: validated_scale,
+            scale,
             pan,
-            pos: validated_pos,
-            dim: validated_dim,
+            pos,
+            dim,
             window_level, // Use provided WindowLevel with configured bias
             orientation,  // Store orientation for cross-sectional linking
             content_w_mm,
@@ -268,7 +236,6 @@ impl MprView {
         let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
         let s_scale = Mat4::from_scale(Vec3::splat(self.scale).with_z(1.0));
         let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
-
         let transform_matrix_screen = self.base_screen * t_pan * t_center * s_scale * t_uncenter;
 
         // Create final transformation matrix and update GPU uniforms
@@ -276,6 +243,118 @@ impl MprView {
 
         // Set the transformation matrix using the new architecture
         self.wgpu_impl.set_matrix(transform_matrix.to_cols_array());
+    }
+
+    /// 
+    /// Oblique Rotation Control
+    /// 
+    /// Sets the oblique normal vector and in-plane rotation angle
+    ///
+    /// # Parameters
+    /// - `center`: Screen center coordinates (typically [0.5, 0.5, 0.0])
+    /// - `normal`: New plane normal vector
+    /// - `in_plane_radians`: In-plane rotation angle
+    /// - `is_rotation`: If true, rotates on current basis; otherwise rotates from original reference
+    pub fn set_oblique_normal(
+        &mut self,
+        center: [f32; 3],
+        normal: [f32; 3],
+        in_plane_radians: f32,
+        is_rotation: bool,
+    ) -> KeplerResult<()> {
+        let n = Vec3::from_array(normal).normalize_or_zero();
+        if !n.is_finite() || n.length_squared() == 0.0 {
+            return Err(MprError::InvalidTransformation.into());
+        }
+
+        // Ensure the Z-axis is aligned and construct a stable "up" direction
+        let up_ref = if n.dot(Vec3::Y).abs() > 0.99 {
+            Vec3::X
+        } else {
+            Vec3::Y
+        };
+
+        // Construct a planar coordinate basis
+        let x_axis = up_ref.cross(n).normalize(); // X轴 = up × n
+        let y_axis = n.cross(x_axis).normalize(); // Y轴 = n × X
+
+        // Apply in-plane rotation (and correct the Y-axis direction to match Slicer)
+        let c = in_plane_radians.cos();
+        let s = in_plane_radians.sin();
+        let x_rot =  x_axis * c - y_axis * s;
+        let y_rot =  x_axis * s + y_axis * c;
+
+        // Construct the final rotation matrix (columns as basis vectors)
+        let r = Mat4::from_cols(
+            -x_rot.extend(0.0),
+            -y_rot.extend(0.0),
+            n.extend(0.0),
+            Vec4::W,
+        );
+
+        // Keep the current screen center position from drifting
+        let screen_center = Vec3::new(center[0], center[1], center[2]); 
+        let old_center_world = self.get_base().transform_point3(screen_center); 
+        let t1 = Mat4::from_translation(-old_center_world); 
+        let t2 = Mat4::from_translation(old_center_world); 
+        if is_rotation {
+            self.base_screen = t2 * r * t1 * self.base_screen; 
+        } else {
+            self.base_screen = t2 * r * t1 * self.base_screen_raw; 
+        }
+
+        // update state
+        // self.oblique_rotation = q_final;
+        self.oblique_normal = r.transform_vector3(Vec3::Z).normalize_or_zero();
+        self.oblique_in_plane = in_plane_radians;
+
+        Ok(())
+    }
+
+    pub fn set_oblique_rotation_radians(
+        &mut self,
+        horizontal_radians: Option<f32>,
+        vertical_radians: Option<f32>,
+        in_plane_radians: Option<f32>,
+    ) -> KeplerResult<()> {
+        if !matches!(self.orientation, Orientation::Oblique) {
+            return Ok(());
+        }
+
+        let mut in_plane = self.oblique_in_plane;
+        let q_current = Quat::from_rotation_arc(Vec3::Z, self.oblique_normal);
+        let local_x = q_current * Vec3::X;
+        let local_y = q_current * Vec3::Y;
+        let local_z = q_current * Vec3::Z;
+
+        let mut q_delta = Quat::IDENTITY;
+        if let Some(h) = horizontal_radians.filter(|a| a.is_finite()) {
+            q_delta = Quat::from_axis_angle(local_x, h) * q_delta;
+        }
+        if let Some(v) = vertical_radians.filter(|a| a.is_finite()) {
+            q_delta = Quat::from_axis_angle(local_y, v) * q_delta;
+        }
+        if let Some(p) = in_plane_radians.filter(|a| a.is_finite()) {
+            q_delta = Quat::from_axis_angle(local_z, p) * q_delta;
+            in_plane += p;
+        }
+
+        let n_new= (q_delta * self.oblique_normal).normalize_or_zero();
+
+        let _ = self.set_oblique_normal([0.5, 0.5, 0.0],n_new.to_array(), in_plane, true);
+        Ok(())
+    }
+
+    /// Return the current screen base matrix (including translation, scaling)
+    pub fn get_base(&self) -> Mat4 {
+        // Apply the same transformation chain as update_transform_matrix
+        // Note: Transformations are applied in reverse order due to matrix multiplication
+        let t_pan = Mat4::from_translation(-self.pan);
+        let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
+        let s_scale = Mat4::from_scale(Vec3::splat(self.scale).with_z(1.0));
+        let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
+
+        self.base_screen * t_pan * t_center * s_scale * t_uncenter
     }
 }
 
@@ -730,100 +809,6 @@ impl MprView {
         self.oblique_normal
     }
 
-    pub fn set_oblique_normal(
-        &mut self,
-        normal: [f32; 3],
-        in_plane_radians: f32,
-        is_rotation: bool,
-    ) -> KeplerResult<()> {
-        let n = Vec3::from_array(normal).normalize_or_zero();
-        if !n.is_finite() || n.length_squared() == 0.0 {
-            return Err(MprError::InvalidTransformation.into());
-        }
-
-        // Compute the Rodrigues rotation (from Z-axis alignment to n)
-        let z = Vec3::Z;
-        let dot = z.dot(n).clamp(-1.0, 1.0);
-        let angle = dot.acos();
-        let axis = z.cross(n);
-        let q_align = if axis.length_squared() < 1e-8 {
-            if dot > 0.0 {
-                Quat::IDENTITY
-            } else {
-                Quat::from_rotation_x(std::f32::consts::PI)
-            }
-        } else {
-            Quat::from_axis_angle(axis.normalize(), angle)
-        };
-
-        // Rotate in-plane around the new normal axis
-        let q_final = Quat::from_axis_angle(n, in_plane_radians) * q_align;
-        let r = Mat4::from_quat(q_final);
-
-        // Keep the current screen center position from drifting
-        let screen_center = Vec3::new(0.5, 0.5, 0.0);
-        let old_center_world = self.get_base().transform_point3(screen_center);
-        let t1 = Mat4::from_translation(-old_center_world);
-        let t2 = Mat4::from_translation(old_center_world);
-        if is_rotation {
-            self.base_screen = t2 * r * t1 * self.base_screen;
-        } else {
-            self.base_screen = t2 * r * t1 * self.base_screen_raw;
-        }
-
-        // update state
-        self.oblique_rotation = q_final;
-        self.oblique_normal = r.transform_vector3(Vec3::Z).normalize_or_zero();
-        self.oblique_in_plane = in_plane_radians;
-
-        Ok(())
-    }
-
-    pub fn set_oblique_rotation_radians(
-        &mut self,
-        horizontal_radians: Option<f32>,
-        vertical_radians: Option<f32>,
-        in_plane_radians: Option<f32>,
-    ) -> KeplerResult<()> {
-        if !matches!(self.orientation, Orientation::Oblique) {
-            return Ok(());
-        }
-
-        let mut in_plane = self.oblique_in_plane;
-        let q_current = Quat::from_rotation_arc(Vec3::Z, self.oblique_normal);
-        let local_x = q_current * Vec3::X;
-        let local_y = q_current * Vec3::Y;
-        let local_z = q_current * Vec3::Z;
-
-        let mut q_delta = Quat::IDENTITY;
-        if let Some(h) = horizontal_radians.filter(|a| a.is_finite()) {
-            q_delta = Quat::from_axis_angle(local_x, h) * q_delta;
-        }
-        if let Some(v) = vertical_radians.filter(|a| a.is_finite()) {
-            q_delta = Quat::from_axis_angle(local_y, v) * q_delta;
-        }
-        if let Some(p) = in_plane_radians.filter(|a| a.is_finite()) {
-            q_delta = Quat::from_axis_angle(local_z, p) * q_delta;
-            in_plane += p;
-        }
-
-        let n_new= (q_delta * self.oblique_normal).normalize_or_zero();
-
-        let _ = self.set_oblique_normal(n_new.to_array(), in_plane, true);
-        Ok(())
-    }
-
-    pub fn get_base(&self) -> Mat4 {
-        // Apply the same transformation chain as update_transform_matrix
-        // Note: Transformations are applied in reverse order due to matrix multiplication
-        let t_pan = Mat4::from_translation(-self.pan);
-        let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
-        let s_scale = Mat4::from_scale(Vec3::splat(self.scale).with_z(1.0));
-        let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
-
-        self.base_screen * t_pan * t_center * s_scale * t_uncenter
-    }
-
     /// Convert logical screen coordinates [0,1] to millimeters using the complete transform chain.
     ///
     /// This function applies the same transformation sequence as `update_transform_matrix`
@@ -1026,8 +1011,6 @@ impl StatefulView for MprView {
         // Restoring them would override the layout's resizing (e.g. when switching from multi-view to single-view).
         // self.move_to(state.position);
         // self.resize(state.dimensions);
-
-        // Note: Transform matrix will be updated in the next update() call
 
         log::debug!(
             "Restored MPR view state: window_level={}, window_width={}, scale={}, slice_mm={}",

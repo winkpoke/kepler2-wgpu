@@ -206,11 +206,11 @@ impl RenderApp {
                         "MipRotationAngleDeg set to: index={index}, roll_deg={roll_deg}, yaw_deg={yaw_deg}, pitch_deg={pitch_deg}"
                     );
                 }
-                Event::UserEvent(UserEvent::SetObliqueNormal(index, normal, in_plane_radians)) => {
-                    state.set_oblique_normal(index, normal, in_plane_radians);
+                Event::UserEvent(UserEvent::SetObliqueNormal(index, center, normal, in_plane_radians)) => {
+                    state.set_oblique_normal(index, center, normal, in_plane_radians);
                     log::info!(
-                        "ObliqueNormal set to: index={index}, normal={:?}, in_plane={}",
-                        normal, in_plane_radians
+                        "ObliqueNormal set to: index={index}, center={:?}, normal={:?}, in_plane={}",
+                        center, normal, in_plane_radians
                     );
                 }
                 Event::UserEvent(UserEvent::SetObliqueRotation(index, horizontal_radians, vertical_radians, in_plane_radians)) => {
@@ -486,7 +486,7 @@ impl RenderApp {
                                 ..
                             } => {
                                 state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(3), 300.0, 400.0, None, 3);
-                                state.set_oblique_normal(3, [-1.0, 0.0, 0.0], 90f32.to_radians());
+                                // state.set_oblique_normal(3, [-1.0, 0.0, 0.0], 90f32.to_radians());
                             }
                             WindowEvent::KeyboardInput {
                                 event:
@@ -498,7 +498,7 @@ impl RenderApp {
                                 ..
                             } => {
                                 state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(3), 300.0, 400.0, None, 3);
-                                state.set_oblique_normal(3, [-0.574, 0.0, 0.819], 0f32);
+                                // state.set_oblique_normal(3, [-0.574, 0.0, 0.819], 0f32);
                             }
                             WindowEvent::KeyboardInput {
                                 event:
@@ -510,7 +510,7 @@ impl RenderApp {
                                 ..
                             } => {
                                 state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(3), 300.0, 400.0, None, 3);
-                                state.set_oblique_normal(3, [0.0, 1.0, 0.0], 0f32);
+                                state.set_oblique_rotation_radians(3, None, Some(20.0), None);
                             }
                             WindowEvent::KeyboardInput {
                                 event:

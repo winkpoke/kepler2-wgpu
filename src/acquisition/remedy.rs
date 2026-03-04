@@ -32,8 +32,8 @@ pub enum RemedyEvent {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SystemState {
-    pub kv: String,
-    pub ma: String,
+    pub kv_flk: String,
+    pub ma_flm: String,
     pub ms: String,
     pub mx: String,
     pub status: String,
@@ -49,8 +49,8 @@ pub struct SystemState {
 impl Default for SystemState {
     fn default() -> Self {
         Self {
-            kv: "N/A".to_string(),
-            ma: "N/A".to_string(),
+            kv_flk: "N/A".to_string(),
+            ma_flm: "N/A".to_string(),
             ms: "N/A".to_string(),
             mx: "N/A".to_string(),
             status: "N/A".to_string(),
@@ -245,6 +245,25 @@ impl RemedyProtocol {
                             });
                         }
                     }
+                    else if msg_str.starts_with("FLR") {
+                        reply_needed = true;
+                        let status = &msg_str[2..];
+                        if status == "1" {
+                            self.is_standby = false;
+                            let log_text = format!(">>> [Step 1] Switch Pressed (FLR1) - Waiting for Ready...");
+                            
+                            events.push(RemedyEvent::Log {
+                                text: log_text,
+                                color: LogColor::Rx
+                            });
+                        } else if status == "0" {
+                            self.is_standby = true;
+                            events.push(RemedyEvent::Log {
+                                text: format!("<<< [Reset] Back to Standby (FLR0)"),
+                                color: LogColor::Rx,
+                            });
+                        }
+                    }
                     // Exposure XR
                     else if msg_str.starts_with("XR") {
                         reply_needed = true;
@@ -264,6 +283,23 @@ impl RemedyProtocol {
                         } else {
                             events.push(RemedyEvent::Log {
                                 text: format!("!!! [Step 2] Exposure Maintaining (XR1) ..."),
+                                color: LogColor::Alert,
+                            });
+                        }
+                    }
+                    else if msg_str.starts_with("FLX") {
+                        reply_needed = true;
+                        self.is_standby = false;
+                        let status = &msg_str[2..];
+                        if status == "0" {
+                            self.is_standby = true;
+                            events.push(RemedyEvent::Log {
+                                text: format!("<<< [End] Exposure Complete (FLX0)"),
+                                color: LogColor::Rx,
+                            });
+                        } else if status == "1" {
+                            events.push(RemedyEvent::Log {
+                                text: format!("!!! [Step 2] Exposing (FLX1) !!!"),
                                 color: LogColor::Alert,
                             });
                         }
@@ -288,8 +324,6 @@ impl RemedyProtocol {
                     }
                     // Warning ER/EW
                     else if msg_str.starts_with("ER") || msg_str.starts_with("EW") {
-                        // reply_needed = true; // Do not echo errors to prevent potential loop
-                        
                         let code_str = &msg_str[2..];
                         let desc = if let Ok(code) = code_str.parse::<u16>() {
                             super::error::get_error_message(code)
@@ -310,7 +344,6 @@ impl RemedyProtocol {
                                 color: LogColor::Rx,
                             });
                         }
-
                         // Parse data for UI update
                         if msg_str.len() > 2 {
                             let prefix = &msg_str[0..2];
@@ -352,13 +385,15 @@ impl RemedyProtocol {
     fn update_data(&mut self, key: &str, val: &str) {
         let s = &mut self.system_state;
         match key {
-            "KV" => s.kv = val.to_string(),
+            "KV" => s.kv_flk = val.to_string(),
+            "FLK" => s.kv_flk = val.to_string(),
             "MA" | "MS" | "MX" | "AP" | "AT" => {
                 // These values are 1/10, need conversion
                 if let Ok(num) = val.parse::<f32>() {
                     let formatted = format!("{:.1}", num / 10.0);
                     match key {
-                        "MA" => s.ma = formatted,
+                        "MA" => s.ma_flm = formatted,
+                        "FLM" => s.ma_flm = formatted,
                         "MS" => s.ms = formatted,
                         "MX" => s.mx = formatted,
                         "AP" => s.post_mas = formatted,
@@ -385,15 +420,15 @@ impl RemedyProtocol {
             "ST" => s.status = match val {
                 "001" => "Init".to_string(), // 初始化
                 "002" => "Standby".to_string(), // 待机
-                "003" => "Prep".to_string(), // 准备
-                "004" => "Ready".to_string(), // 就绪
-                "005" => "Exposure".to_string(), // 曝光
+                "003" => "Prep".to_string(), // RAD准备
+                "004" => "Ready".to_string(), // RAD就绪
+                "005" => "Exposure".to_string(), // RAD曝光
                 "006" => "Calibration".to_string(), // 校准
                 "007" => "HangOver".to_string(), // 验证
                 "008" => "Error".to_string(), // 错误
-                "009" => "ST_FLUORO_PREP".to_string(),
-                "010" => "ST_FLUORO".to_string(),
-                "011" => "ST_PULSED_FLUORO".to_string(),
+                "009" => "ST_FLUORO_PREP".to_string(),// 透视准备状态
+                "010" => "ST_FLUORO".to_string(),// 透视状态
+                "011" => "ST_PULSED_FLUORO".to_string(),// 脉冲透视状态
                 _ => val.to_string(),
             },
             _ => {}
