@@ -60,7 +60,7 @@ pub enum UserEvent {
     SetMipRotationAngleDeg(usize, f32, f32, f32),
     ViewClick(usize, f32, f32, f32), // view_index, screen_x, screen_y, screen_z
     SetObliqueNormal(usize, [f32; 3], [f32; 3], f32),
-    SetObliqueRotation(usize, Option<f32>, Option<f32>, Option<f32>),
+    SetObliqueRotation(usize, f32, f32, f32),
     #[cfg(target_arch = "wasm32")]
     /// View click with reply; returns [x_mm, y_mm, slice_mm, reserved]
     ViewClickGet(usize, f32, f32, f32, oneshot::Sender<[f32; 4]>),
@@ -508,7 +508,7 @@ impl_user_event_senders_for_glcanvas! {
     set_pan => SetPan(dx: f32, dy: f32),
     set_pan_mm => SetPanMM(dx_mm: f32, dy_mm: f32),
     handle_view_click => ViewClick(screen_x: f32, screen_y: f32, screen_z: f32),
-    set_oblique_rotation_radians => SetObliqueRotation(horizontal_radians: Option<f32>, vertical_radians: Option<f32>, in_plane_radians: Option<f32>),
+    set_oblique_rotation_radians => SetObliqueRotation(horizontal_radians: f32, vertical_radians: f32, in_plane_radians: f32),
     // Mip controls
     set_mip_mode => SetMipMode(mode: u32),
     set_slab_thickness => SetSlabThickness(thickness: f32),

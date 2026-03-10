@@ -753,7 +753,7 @@ impl App {
     ) {
         if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                if let Err(e) = mpr_view.set_oblique_normal(center, normal, in_plane_radians, false) {
+                if let Err(e) = mpr_view.set_oblique_normal(center, normal, in_plane_radians) {
                     log::warn!("set_oblique_normal failed on view {}: {}", index, e);
                 } else {
                     log::info!(
@@ -770,9 +770,9 @@ impl App {
     pub fn set_oblique_rotation_radians(
         &mut self,
         index: usize,
-        horizontal_radians: Option<f32>,
-        vertical_radians: Option<f32>,
-        in_plane_radians: Option<f32>,
+        horizontal_radians: f32,
+        vertical_radians: f32,
+        in_plane_radians: f32,
     ) {
         if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {

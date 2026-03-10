@@ -43,11 +43,9 @@ pub struct MprView {
     /// Original unrotated basis coordinates
     base_screen_raw : Mat4,
     /// Oblique rotation matrix
-    oblique_rotation: Quat,
+    oblique_rotation: Mat4,
     /// Oblique rotation normal
     oblique_normal: Vec3,
-    /// Oblique rotation in-plane
-    oblique_in_plane: f32,
     /// UV texture coordinate system base
     base_uv: Mat4,
     /// Current zoom scale factor
@@ -201,9 +199,8 @@ impl MprView {
             slice: 0.0,
             base_screen,
             base_screen_raw: base_screen,
-            oblique_rotation: Quat::IDENTITY,
+            oblique_rotation: Mat4::IDENTITY,
             oblique_normal: Vec3::Z,
-            oblique_in_plane: 0.0,
             base_uv,
             scale,
             pan,
@@ -260,88 +257,98 @@ impl MprView {
         center: [f32; 3],
         normal: [f32; 3],
         in_plane_radians: f32,
-        is_rotation: bool,
     ) -> KeplerResult<()> {
-        let n = Vec3::from_array(normal).normalize_or_zero();
-        if !n.is_finite() || n.length_squared() == 0.0 {
+        if !matches!(self.orientation, Orientation::Oblique) {
+            return Ok(());
+        }
+
+        let new_n = Vec3::from_array(normal).normalize_or_zero();
+        if !new_n.is_finite() || new_n.length_squared() == 0.0 {
             return Err(MprError::InvalidTransformation.into());
         }
 
-        // Ensure the Z-axis is aligned and construct a stable "up" direction
-        let up_ref = if n.dot(Vec3::Y).abs() > 0.99 {
-            Vec3::X
-        } else {
-            Vec3::Y
-        };
-
-        // Construct a planar coordinate basis
-        let x_axis = up_ref.cross(n).normalize(); // X轴 = up × n
-        let y_axis = n.cross(x_axis).normalize(); // Y轴 = n × X
-
-        // Apply in-plane rotation (and correct the Y-axis direction to match Slicer)
-        let c = in_plane_radians.cos();
-        let s = in_plane_radians.sin();
-        let x_rot =  x_axis * c - y_axis * s;
-        let y_rot =  x_axis * s + y_axis * c;
-
-        // Construct the final rotation matrix (columns as basis vectors)
-        let r = Mat4::from_cols(
-            -x_rot.extend(0.0),
-            -y_rot.extend(0.0),
-            n.extend(0.0),
-            Vec4::W,
-        );
-
-        // Keep the current screen center position from drifting
-        let screen_center = Vec3::new(center[0], center[1], center[2]); 
-        let old_center_world = self.get_base().transform_point3(screen_center); 
-        let t1 = Mat4::from_translation(-old_center_world); 
-        let t2 = Mat4::from_translation(old_center_world); 
-        if is_rotation {
-            self.base_screen = t2 * r * t1 * self.base_screen; 
-        } else {
-            self.base_screen = t2 * r * t1 * self.base_screen_raw; 
+        // ---------- Rodrigues: old normal -> new normal ----------
+        let old_n = Vec3::Z;
+        let mut r = Mat4::IDENTITY;
+        let axis = old_n.cross(new_n);
+        let dot = old_n.dot(new_n).clamp(-1.0, 1.0);
+        let angle = dot.acos();
+        if axis.length_squared() > 1e-6 && angle.is_finite() {
+            let q = Quat::from_axis_angle(axis.normalize(), angle);
+            let rot = Mat4::from_quat(q);
+            r = rot * r;
         }
 
-        // update state
-        // self.oblique_rotation = q_final;
+        // ---------- in-plane ----------
+        let delta_in_plane: f32 = in_plane_radians;
+        if delta_in_plane.abs() > 1e-6 {
+            let z_axis = r.transform_vector3(Vec3::Z);
+            let q = Quat::from_axis_angle(z_axis.normalize(), delta_in_plane);
+            let rot = Mat4::from_quat(q);
+            r = rot * r;
+        }
+
+        // ---------- center ----------
+        let screen_center = Vec3::from_array(center);
+        let old_center_world = self.get_base().transform_point3(screen_center);
+        let t1 = Mat4::from_translation(-old_center_world);
+        let t2 = Mat4::from_translation(old_center_world);
+        self.base_screen = t2 * r * t1 * self.base_screen_raw;
+
+        // ---------- update ----------
+        self.oblique_rotation = r;
         self.oblique_normal = r.transform_vector3(Vec3::Z).normalize_or_zero();
-        self.oblique_in_plane = in_plane_radians;
 
         Ok(())
     }
 
     pub fn set_oblique_rotation_radians(
         &mut self,
-        horizontal_radians: Option<f32>,
-        vertical_radians: Option<f32>,
-        in_plane_radians: Option<f32>,
+        horizontal_radians: f32,
+        vertical_radians: f32,
+        in_plane_radians: f32,
     ) -> KeplerResult<()> {
-        if !matches!(self.orientation, Orientation::Oblique) {
-            return Ok(());
+        let mut r = self.oblique_rotation;
+        let mut x_axis = r.transform_vector3(Vec3::X);
+        let mut y_axis = r.transform_vector3(Vec3::Y);
+        let mut z_axis = r.transform_vector3(Vec3::Z);
+
+        // ---------- horizontal (slice X) ----------
+        if horizontal_radians.is_finite() {
+            let q = Quat::from_axis_angle(x_axis.normalize(), horizontal_radians);
+            let rot = Mat4::from_quat(q);
+            r = rot * r;
+            y_axis = rot.transform_vector3(y_axis);
+            z_axis = rot.transform_vector3(z_axis);
         }
 
-        let mut in_plane = self.oblique_in_plane;
-        let q_current = Quat::from_rotation_arc(Vec3::Z, self.oblique_normal);
-        let local_x = q_current * Vec3::X;
-        let local_y = q_current * Vec3::Y;
-        let local_z = q_current * Vec3::Z;
-
-        let mut q_delta = Quat::IDENTITY;
-        if let Some(h) = horizontal_radians.filter(|a| a.is_finite()) {
-            q_delta = Quat::from_axis_angle(local_x, h) * q_delta;
-        }
-        if let Some(v) = vertical_radians.filter(|a| a.is_finite()) {
-            q_delta = Quat::from_axis_angle(local_y, v) * q_delta;
-        }
-        if let Some(p) = in_plane_radians.filter(|a| a.is_finite()) {
-            q_delta = Quat::from_axis_angle(local_z, p) * q_delta;
-            in_plane += p;
+        // ---------- vertical (slice Y) ----------
+        if vertical_radians.is_finite() {
+            let q = Quat::from_axis_angle(y_axis.normalize(), vertical_radians);
+            let rot = Mat4::from_quat(q);
+            r = rot * r;
+            x_axis = rot.transform_vector3(x_axis);
+            z_axis = rot.transform_vector3(z_axis);
         }
 
-        let n_new= (q_delta * self.oblique_normal).normalize_or_zero();
+        // ---------- in-plane (slice Z) ----------
+        if in_plane_radians.is_finite() {
+            let q = Quat::from_axis_angle(z_axis.normalize(), in_plane_radians);
+            let rot = Mat4::from_quat(q);
+            r = rot * r;
+        }
 
-        let _ = self.set_oblique_normal([0.5, 0.5, 0.0],n_new.to_array(), in_plane, true);
+        // -------- screen center --------
+        let screen_center = Vec3::new(0.5, 0.5, 0.0);
+        let old_center_world = self.get_base().transform_point3(screen_center);
+        let t1 = Mat4::from_translation(-old_center_world);
+        let t2 = Mat4::from_translation(old_center_world);
+        self.base_screen = t2 * r * t1 * self.base_screen_raw;
+
+        // -------- update status --------
+        self.oblique_rotation = r;
+        self.oblique_normal = self.oblique_rotation.transform_vector3(Vec3::Z).normalize_or_zero();
+
         Ok(())
     }
 

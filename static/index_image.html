@@ -275,9 +275,9 @@
           </div>
           <div>
             <label>Rotation:</label>
-            <span>Horizontal:</span><input type="number" id="rotation-x" step="0.01" value="0"><br>
-            <span>Vertical  :</span><input type="number" id="rotation-y" step="0.01" value="0""><br>
-            <span>In-plane  :</span><input type="number" id="rotation-z" sstep="0.01" value="0">
+            <span>Horizontal:</span><input type="number" id="rotation-x" step="15" value="0" min="0" max="360"><br>
+            <span>Vertical  :</span><input type="number" id="rotation-y" step="15" value="0" min="0" max="360""><br>
+            <span>In-plane  :</span><input type="number" id="rotation-z" step="15" value="0" min="0" max="360">
             <button id="submit-rot">submit</button>
           </div>
         </fieldset>
@@ -452,6 +452,8 @@
 
     // ========= 快捷选择器 =========
     const byId = (id) => document.getElementById(id);
+    const deg2rad = (d) => d * Math.PI / 180;
+    const rad2deg = (r) => r * 180 / Math.PI;
 
     // ========= 状态管理 =========
     var repo;
@@ -473,6 +475,7 @@
       index : null,
       enable_rotation: false,
       mesh_rotation: [],
+      oblique_rotation: [0, 0, 0],
     };
 
     let gl_canvas = null;
@@ -720,28 +723,30 @@
         return;
       }
 
-      let horizontal = parseFloat(byId('rotation-x').value);
-      if (horizontal == 0){
-        horizontal = null;
-      }
-      let vertical = parseFloat(byId('rotation-y').value);
-      if (vertical == 0){
-        vertical = null;
-      }
-      let in_plane = parseFloat(byId('rotation-z').value);
-      if (in_plane == 0){
-        in_plane = null;
-      }
+      const x_abs = parseFloat(byId("rotation-x").value) || 0;
+      const y_abs = parseFloat(byId("rotation-y").value) || 0;
+      const z_abs = parseFloat(byId("rotation-z").value) || 0;
+      
+      const dx_deg = x_abs - state.oblique_rotation[0];
+      const dy_deg = y_abs - state.oblique_rotation[1];
+      const dz_deg = z_abs - state.oblique_rotation[2];
 
-      if ([horizontal, vertical, in_plane].some((v) => Number.isNaN(v))) {
-        alert('Rotation: Please enter valid numbers');
-        return;
-      }
-      console.log('rotation:', horizontal, vertical, in_plane);
+      state.oblique_rotation[0] = x_abs;
+      state.oblique_rotation[1] = y_abs;
+      state.oblique_rotation[2] = z_abs;
 
-      gl_canvas.set_oblique_rotation_radians(state.index, horizontal, vertical, in_plane);
+      const dx = deg2rad(dx_deg);
+      const dy = deg2rad(dy_deg);
+      const dz = deg2rad(dz_deg);
+
+      gl_canvas.set_oblique_rotation_radians(
+        state.index, 
+        dx || null, 
+        dy || null,
+        dz || null
+      );
       const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
-      setNormalPreset(normal[0], normal[1], normal[2], 0.0);
+      setNormalPreset(normal[0], normal[1], normal[2], dz_deg);
     });
 
     byId('oblique-normal-apply').addEventListener('click', () => {
@@ -764,7 +769,7 @@
         return;
       }
 
-      gl_canvas.set_oblique_normal(state.index, [cx, cy, cz], [nx, ny, nz], in_plane);
+      gl_canvas.set_oblique_normal(state.index, [cx, cy, cz], [nx, ny, nz], deg2rad(in_plane));
     });
 
     function setNormalPreset(nx, ny, nz, p) {
@@ -782,17 +787,20 @@
 
       const opt = byId('resetOptions').value;
       if (opt == "T"){
-        gl_canvas.set_oblique_normal(state.index, [0.5,0.5,0.0], [0.0, 0.0, 1.0], 0.0);
+        gl_canvas.set_oblique_normal(state.index, [0.5,0.5,0.0],[0.0, 0.0, 1.0], 0.0);
         const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
         setNormalPreset(normal[0], normal[1], normal[2], 0.0);
+        state.oblique_rotation = [0,0,0]
       } else if (opt == "C"){
-        gl_canvas.set_oblique_normal(state.index, [0.5,0.5,0.0],[0.0, 1.0, 0.0], 1.5707964);
+        gl_canvas.set_oblique_normal(state.index, [0.5,0.5,0.0],[0.0, 1.0, 0.0], 0.0);
         const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
-        setNormalPreset(normal[0], normal[1], normal[2], 1.5707964);
+        setNormalPreset(normal[0], normal[1], normal[2], 0.0);
+        state.oblique_rotation = [0,0,0]
       }else if (opt == "S"){
-        gl_canvas.set_oblique_normal(state.index, [0.5,0.5,0.0],[-1.0, 0.0, 0.0], 1.5707964);
+        gl_canvas.set_oblique_normal(state.index, [0.5,0.5,0.0],[-1.0, 0.0, 0.0], deg2rad(90.0));
         const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
-        setNormalPreset(normal[0], normal[1], normal[2], 1.5707964);
+        setNormalPreset(normal[0], normal[1], normal[2], 90.0);
+        state.oblique_rotation = [0,0,0]
       }
     });
 
