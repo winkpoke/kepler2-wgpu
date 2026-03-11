@@ -261,10 +261,6 @@
             <button id="oblique-reset-submit">submit</button>
           </div>
           <div>
-            <label>Center:</label>
-            <input type="number" id="oblique-cx" step="0.001" value="0.5">
-            <input type="number" id="oblique-cy" step="0.001" value="0.5">
-            <input type="number" id="oblique-cz" step="0.001" value="0">
             <label>Normal:</label>
             <input type="number" id="oblique-nx" step="0.001" value="0">
             <input type="number" id="oblique-ny" step="0.001" value="0">
@@ -275,9 +271,9 @@
           </div>
           <div>
             <label>Rotation:</label>
-            <span>Horizontal:</span><input type="number" id="rotation-x" step="15" value="0" min="0" max="360"><br>
-            <span>Vertical  :</span><input type="number" id="rotation-y" step="15" value="0" min="0" max="360""><br>
-            <span>In-plane  :</span><input type="number" id="rotation-z" step="15" value="0" min="0" max="360">
+            <span>Horizontal:</span><input type="number" id="rotation-x" step="15" value="0" min="0" max="360" class="reset_input"><br>
+            <span>Vertical :</span><input type="number" id="rotation-y" step="15" value="0" min="0" max="360" class="reset_input"><br>
+            <span>In-plane :</span><input type=" number" id="rotation-z" step="15" value="0" min="0" max="360" class="reset_input"><br>
             <button id="submit-rot">submit</button>
           </div>
         </fieldset>
@@ -397,9 +393,12 @@
                 <option value="2">AvgIP</option>
               </select></br>
               <span id="mip-rotation-label">旋转:</span></br>
-              <span id="mip-rotation-x-label">roll:</span><input type="number" id="mip-rotation-x" step="15" value="0" min="0" max="360">
-              <span id="mip-rotation-y-label">yaw:</span><input type="number" id="mip-rotation-y" step="15" value="0" min="0" max="360">
-              <span id="mip-rotation-z-label">pitch:</span><input type="number" id="mip-rotation-z" step="15" value="0" min="0" max="360">
+              <span id="mip-rotation-x-label">roll:</span><input type="number"  id="mip-rotation-x"
+                step="15" value="0" min="0" max="360">
+              <span id="mip-rotation-y-label">yaw:</span><input type="number" id="mip-rotation-y"
+                step="15" value="0" min="0" max="360">
+              <span id="mip-rotation-z-label">pitch:</span><input type="number"  id="mip-rotation-z"
+                step="15" value="0" min="0" max="360">
               <button id="mip-submit-rot">旋转</button>
             </div>
           </div>
@@ -426,9 +425,12 @@
             </div>
             <div>
               <span id="3d-rotation-label">angle:</span></br>
-              <span id="3d-rotation-x-label">x:</span><input type="number" id="3d-rotation-x" step="15" value="0" min="0" max="360"></br>
-              <span id="3d-rotation-y-label">y:</span><input type="number" id="3d-rotation-y" step="15" value="0" min="0" max="360"></br>
-              <span id="3d-rotation-z-label">z:</span><input type="number" id="3d-rotation-z" step="15" value="0" min="0" max="360">
+              <span id="3d-rotation-x-label">x:</span><input type="number" id="3d-rotation-x" step="15" value="0"
+                min="0" max="360"></br>
+              <span id="3d-rotation-y-label">y:</span><input type="number" id="3d-rotation-y" step="15" value="0"
+                min="0" max="360"></br>
+              <span id="3d-rotation-z-label">z:</span><input type="number" id="3d-rotation-z" step="15" value="0"
+                min="0" max="360">
             </div>
           </div>
           <div class="row" style="margin-top:8px">
@@ -459,7 +461,7 @@
     var repo;
     const state = {
       files: [],
-      dat:null,
+      dat: null,
       mhd: null,
       raw: null,
       raws: [],
@@ -469,10 +471,10 @@
       len: null,
       render_app: null,
       spacing: [],
-      dim:[],
+      dim: [],
       mip: null,
       mesh_index: null,
-      index : null,
+      index: null,
       enable_rotation: false,
       mesh_rotation: [],
       oblique_rotation: [0, 0, 0],
@@ -492,7 +494,7 @@
         state.wasmModule = await import('/pkg/kepler_wgpu.js');
         await state.wasmModule.default(); // 初始化WASM
 
-        console.log("WASM模块导出的函数:", Object.keys(state.wasmModule).filter(key => 
+        console.log("WASM模块导出的函数:", Object.keys(state.wasmModule).filter(key =>
           typeof state.wasmModule[key] === 'function' && key !== 'default'
         ));
         log("WASM模块加载完成", "ok");
@@ -501,9 +503,9 @@
     }
 
     function toUint8Array(obj) {
-        const json = JSON.stringify(obj);
-        const enc = new TextEncoder();
-        return enc.encode(json);
+      const json = JSON.stringify(obj);
+      const enc = new TextEncoder();
+      return enc.encode(json);
     }
     const info = {
       kv: 100.0,
@@ -514,7 +516,7 @@
       modality: "CT",
     }
     const infoUint8 = toUint8Array(info);
-    
+
     // ========= 文件选择处理 =========
     byId("mhxInput").addEventListener("change", async (e) => {
       state.files = Array.from(e.target.files);
@@ -522,7 +524,7 @@
       state.mhd = state.files.find((f) => /\.mhd$/i.test(f.name)) || null;
       state.raw = state.files.find((f) => /\.raw$/i.test(f.name)) || null;
       state.mhx = state.mha || state.mhd || null;
-      
+
       byId("analyzeBtn").disabled = !state.mhx;
       log(state.mhx ? "重建文件已选择，可以解析" : "请选择重建文件");
     });
@@ -562,7 +564,7 @@
         log("重建完成！", "ok");
       } catch (err) {
         console.error(err);
-        log( "重建失败：" + err.message, "error");
+        log("重建失败：" + err.message, "error");
       }
     });
 
@@ -570,19 +572,19 @@
     byId('rerender').addEventListener('click', async () => {
       log("开始渲染！")
       if (!state.mhx) {
-          alert('请先选择重建文件！');
+        alert('请先选择重建文件！');
       }
 
       await ensureWasm();
       volume = await state.wasmModule.parse_common_files_wasm(state.files, infoUint8);
-      if (state.render_app == null){
+      if (state.render_app == null) {
         state.render_app = await state.wasmModule.get_render_app();
         gl_canvas = state.render_app.get_glcanvas();
         gl_canvas.load_data_from_ct_volume(volume);
         gl_canvas = state.render_app.get_glcanvas();
         state.render_app.run();
       }
-      else{
+      else {
         console.log('render_app:', state.render_app);
         gl_canvas.set_window_by_div_id('render_app', volume);
       }
@@ -595,14 +597,14 @@
 
       const indexValue = parseInt(input_index.value);
       if (isNaN(sliceValue)) {
-          alert('Please enter a valid number');
-          return;
+        alert('Please enter a valid number');
+        return;
       }
       if (!gl_canvas) {
-          alert('Please select a series first!');
-          return;
+        alert('Please select a series first!');
+        return;
       }
-        gl_canvas.set_slice_mm(indexValue, sliceValue);
+      gl_canvas.set_slice_mm(indexValue, sliceValue);
     })
 
     byId('slab-thickness-submit').addEventListener('click', () => {
@@ -611,14 +613,14 @@
 
       const indexValue = parseInt(input_index.value);
       if (isNaN(thicknessValue)) {
-          alert('Please enter a valid number');
-          return;
+        alert('Please enter a valid number');
+        return;
       }
       if (!gl_canvas) {
-          alert('Please select a series first!');
-          return;
+        alert('Please select a series first!');
+        return;
       }
-        gl_canvas.set_slab_thickness(indexValue, thicknessValue);
+      gl_canvas.set_slab_thickness(indexValue, thicknessValue);
     })
 
     byId('set-center').addEventListener('click', async () => {
@@ -644,20 +646,35 @@
       }
     });
 
+// const inputs = document.querySelectorAll('.reset_input');
+
+// inputs.forEach((input, i) => {
+
+//   input.addEventListener('input', () => {
+
+//     inputs.forEach((item, j) => {
+//       if (i !== j) {
+//         item.value = 0;
+//       }
+//     });
+
+//   });
+
+// });
     byId('scale-submit').addEventListener('click', () => {
-        const input = byId('scale-input');
-        scaleValue = parseFloat(input.value);
-        const input_index = byId('index-input');
-        const indexValue = parseInt(input_index.value);
-        if (isNaN(scaleValue)) {
-          alert('Please enter a valid number');
-          return;
-        }
-        if (!gl_canvas) {
-          alert('Please select a series first!');
-          return;
-        }
-        gl_canvas.set_scale(indexValue, scaleValue);
+      const input = byId('scale-input');
+      scaleValue = parseFloat(input.value);
+      const input_index = byId('index-input');
+      const indexValue = parseInt(input_index.value);
+      if (isNaN(scaleValue)) {
+        alert('Please enter a valid number');
+        return;
+      }
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+      gl_canvas.set_scale(indexValue, scaleValue);
     });
 
     byId('trans-submit').addEventListener('click', () => {
@@ -685,8 +702,8 @@
         alert('Please select a series first!');
         return;
       }
-        win && gl_canvas.set_window_width(indexValue, win);
-        lev && gl_canvas.set_window_level(indexValue, lev);
+      win && gl_canvas.set_window_width(indexValue, win);
+      lev && gl_canvas.set_window_level(indexValue, lev);
     });
 
     byId('winlev-get').addEventListener('click', () => {
@@ -703,7 +720,7 @@
       });
     });
 
-    byId('trans-get').addEventListener('click',  () => {
+    byId('trans-get').addEventListener('click', () => {
       const input_index = byId('index-input');
       const indexValue = parseInt(input_index.value);
       if (!gl_canvas) {
@@ -717,7 +734,7 @@
       });
     });
 
-    byId("submit-rot").addEventListener('click',async () => {
+    byId("submit-rot").addEventListener('click', async () => {
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
@@ -726,7 +743,7 @@
       const x_abs = parseFloat(byId("rotation-x").value) || 0;
       const y_abs = parseFloat(byId("rotation-y").value) || 0;
       const z_abs = parseFloat(byId("rotation-z").value) || 0;
-      
+
       const dx_deg = x_abs - state.oblique_rotation[0];
       const dy_deg = y_abs - state.oblique_rotation[1];
       const dz_deg = z_abs - state.oblique_rotation[2];
@@ -740,10 +757,10 @@
       const dz = deg2rad(dz_deg);
 
       gl_canvas.set_oblique_rotation_radians(
-        state.index, 
-        dx || null, 
-        dy || null,
-        dz || null
+        state.index,
+        dx,
+        dy,
+        dz
       );
       const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
       setNormalPreset(normal[0], normal[1], normal[2], dz_deg);
@@ -755,21 +772,17 @@
         return;
       }
 
-      const cx = parseFloat(byId('oblique-cx').value);
-      const cy = parseFloat(byId('oblique-cy').value);
-      const cz = parseFloat(byId('oblique-cz').value);
-
       const nx = parseFloat(byId('oblique-nx').value);
       const ny = parseFloat(byId('oblique-ny').value);
       const nz = parseFloat(byId('oblique-nz').value);
       const in_plane = parseFloat(byId('oblique-inplane').value);
 
-      if ([cx, cy, cz, nx, ny, nz, in_plane].some((v) => Number.isNaN(v))) {
+      if ([nx, ny, nz, in_plane].some((v) => Number.isNaN(v))) {
         alert('Normal: Please enter valid numbers');
         return;
       }
 
-      gl_canvas.set_oblique_normal(state.index, [cx, cy, cz], [nx, ny, nz], deg2rad(in_plane));
+      gl_canvas.set_oblique_normal(state.index, [nx, ny, nz], deg2rad(in_plane));
     });
 
     function setNormalPreset(nx, ny, nz, p) {
@@ -786,21 +799,21 @@
       }
 
       const opt = byId('resetOptions').value;
-      if (opt == "T"){
-        gl_canvas.set_oblique_normal(state.index, [0.5,0.5,0.0],[0.0, 0.0, 1.0], 0.0);
+      if (opt == "T") {
+        gl_canvas.set_oblique_normal(state.index, [0.0, 0.0, 1.0], 0.0);
         const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
         setNormalPreset(normal[0], normal[1], normal[2], 0.0);
-        state.oblique_rotation = [0,0,0]
-      } else if (opt == "C"){
-        gl_canvas.set_oblique_normal(state.index, [0.5,0.5,0.0],[0.0, 1.0, 0.0], 0.0);
+        state.oblique_rotation = [0, 0, 0]
+      } else if (opt == "C") {
+        gl_canvas.set_oblique_normal(state.index, [0.0, 1.0, 0.0], 0.0);
         const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
         setNormalPreset(normal[0], normal[1], normal[2], 0.0);
-        state.oblique_rotation = [0,0,0]
-      }else if (opt == "S"){
-        gl_canvas.set_oblique_normal(state.index, [0.5,0.5,0.0],[-1.0, 0.0, 0.0], deg2rad(90.0));
+        state.oblique_rotation = [0, 0, 0]
+      } else if (opt == "S") {
+        gl_canvas.set_oblique_normal(state.index, [-1.0, 0.0, 0.0], deg2rad(90.0));
         const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
         setNormalPreset(normal[0], normal[1], normal[2], 90.0);
-        state.oblique_rotation = [0,0,0]
+        state.oblique_rotation = [0, 0, 0]
       }
     });
 
@@ -812,21 +825,21 @@
 
       if (checkboxChangeMeshIndex) {
         state.mesh_index = parseInt(byId('mesh_index').value, 10);
-        console.log('meshclick_mesh_index:',state.mesh_index);
-      }else{
+        console.log('meshclick_mesh_index:', state.mesh_index);
+      } else {
         state.mesh_index = null;
       }
-      
+
       if (checkboxChangeMip) {
         state.mip = parseInt(byId('mip').value, 10);
-        console.log('meshclick_mip:',state.mip);
-      }else{
+        console.log('meshclick_mip:', state.mip);
+      } else {
         state.mip = null;
       }
 
       if (checkboxChangeIndex) {
         state.index = parseInt(byId('index').value, 10);
-      }else{
+      } else {
         state.index = null;
       }
       const index_orientation = parseInt(byId('index-orientation').value, 10);
@@ -856,8 +869,8 @@
         return;
       }
 
-      gl_canvas.set_render_mode(mode, checkbox3d, checkboxCrop, sx,sy,sz,lx,ly,lz, state.mesh_index,state.index,iso_min,iso_max,state.mip,index_orientation)
-      
+      gl_canvas.set_render_mode(mode, checkbox3d, checkboxCrop, sx, sy, sz, lx, ly, lz, state.mesh_index, state.index, iso_min, iso_max, state.mip, index_orientation)
+
       if (checkbox3d) {
         gl_canvas.set_mesh_rotation(mesh_index, state.mesh_rotation);
       }
@@ -872,13 +885,13 @@
 
       const mip_mode = parseInt(byId('mip-mode').value, 10);
       gl_canvas.set_mip_mode(indexValue, mip_mode);
-      
+
       const rotation_x = parseFloat(byId('mip-rotation-x').value);
       const rotation_y = parseFloat(byId('mip-rotation-y').value);
       const rotation_z = parseFloat(byId('mip-rotation-z').value);
       gl_canvas.set_mip_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
     })
-    
+
     byId('3d-submit').addEventListener('click', async () => {
       const indexValue = parseInt(byId('index-input').value, 10);
       if (!gl_canvas) {
@@ -902,7 +915,7 @@
       } else {
         log('mesh opacity 方法未导出，已跳过', 'warn');
       }
-      
+
       gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y);
       state.mesh_rotation = await gl_canvas.get_mesh_rotation(indexValue);
       console.log('3d-submit:', state.mesh_rotation);
@@ -921,8 +934,8 @@
     });
 
     byId('3d-reset').addEventListener('click', () => {
-        const indexValue = parseInt(byId('index-input').value, 10);
-        gl_canvas.reset_mesh(indexValue);
+      const indexValue = parseInt(byId('index-input').value, 10);
+      gl_canvas.reset_mesh(indexValue);
     });
 
     document.getElementById('resize-submit').addEventListener('click', () => {
@@ -930,12 +943,12 @@
       const height = document.getElementById('height').value;
       const input_index = document.getElementById('index-input');
       if (isNaN(width) || isNaN(height)) {
-          alert('Please enter a valid number');
-          return;
+        alert('Please enter a valid number');
+        return;
       }
       if (!gl_canvas) {
-          alert('Please select a series first!');
-          return;
+        alert('Please select a series first!');
+        return;
       }
       gl_canvas.resize(width, height);
     })
@@ -998,9 +1011,9 @@
         byId("progress").value = 30;
 
         // 更新UI显示解析结果
-        byId("mhxName").textContent = state.mhx?.name|| "—";
+        byId("mhxName").textContent = state.mhx?.name || "—";
         byId("elemType").textContent = header.element_type;
-        state.dim = [header.dim_x, header.dim_y,header.dim_z];
+        state.dim = [header.dim_x, header.dim_y, header.dim_z];
         byId("dimSize").textContent = `${header.dim_x} × ${header.dim_y} × ${header.dim_z}`;
         byId("spacing").textContent = `${header.spacing_x.toFixed(2)}, ${header.spacing_y.toFixed(2)}, ${header.spacing_z.toFixed(2)}`;
 
@@ -1022,7 +1035,7 @@
     // ========= 转换并导出 =========
     byId("convertBtn").addEventListener("click", async () => {
       const option = document.getElementById("exportOptions").value;
-      log("你选择了导出："+option);
+      log("你选择了导出：" + option);
       try {
         await ensureWasm();
         log("生成 CT 体数据 ...");
@@ -1030,7 +1043,7 @@
         if (!state.wasmModule.build_ct_dicom_wasm) {
           log("build_ct_dicom_wasm 函数未在 WASM 模块中导出");
         }
-        else{
+        else {
           log("build_ct_dicom_wasm 函数已在 WASM 模块中导出");
         }
         byId("progress").value = 25;
@@ -1081,7 +1094,7 @@
             if (!state.raw) {
               log("未找到 raw 文件");
             }
-            else{
+            else {
               log("已找到 raw 文件");
               const mhxFile = state.raw;
               const arrayBuffer = await mhxFile.arrayBuffer();
@@ -1095,16 +1108,16 @@
               studyUint8,
               infoUint8
             );
-            
+
             const files = result.files;
             console.log("Series UID:", result.series_uid);
 
-            const zip = new JSZip(); 
-            files.forEach(file => { 
-              const arr = new Uint8Array(file.data); 
-              zip.file(file.filename, arr); 
-            }); 
-            
+            const zip = new JSZip();
+            files.forEach(file => {
+              const arr = new Uint8Array(file.data);
+              zip.file(file.filename, arr);
+            });
+
             const blob = await zip.generateAsync({ type: "blob" });
             downloadBlob(blob, "dicoms.zip");
 
@@ -1142,7 +1155,7 @@
       }
     });
 
-  
+
     // ========= 显示DICOM =========
     function get_tree(fileArray) {
       return new Promise(async (resolve, reject) => {
@@ -1185,8 +1198,8 @@
           }
           resolve(patient_list)
         } catch (error) {
-            reject(error);
-            console.error("Error parsing DICOM files:", error);
+          reject(error);
+          console.error("Error parsing DICOM files:", error);
         }
       })
     }
@@ -1209,45 +1222,45 @@
         isRoot && li.classList.add('series'); // 给最外层 li 添加 class
         // 如果有子节点，则递归创建树
         if (item.children) {
-            const childUl = createTree(item.children, false);
-            childUl.style.display = 'none'; // 初始隐藏子节点
-            li.appendChild(childUl);
-            // 添加点击事件来切换显示
-            toggle.addEventListener('click', () => {
-                const isHidden = childUl.style.display === 'none';
-                childUl.style.display = isHidden ? 'block' : 'none';
-                expandIcon.innerHTML = isHidden ? '▼' : '▶'; // 更新图标
-                if (isHidden) {
-                    expandIcon.classList.remove('collapsed');
-                } else {
-                    expandIcon.classList.add('collapsed');
-                }
-            });
+          const childUl = createTree(item.children, false);
+          childUl.style.display = 'none'; // 初始隐藏子节点
+          li.appendChild(childUl);
+          // 添加点击事件来切换显示
+          toggle.addEventListener('click', () => {
+            const isHidden = childUl.style.display === 'none';
+            childUl.style.display = isHidden ? 'block' : 'none';
+            expandIcon.innerHTML = isHidden ? '▼' : '▶'; // 更新图标
+            if (isHidden) {
+              expandIcon.classList.remove('collapsed');
+            } else {
+              expandIcon.classList.add('collapsed');
+            }
+          });
         } else {
-            toggle.addEventListener('click', async () => {
-                series_id = toggle.innerHTML;
-                byId("ImageSeries").textContent = series_id;
-                log(`选择序列: ${series_id}`);
-                let vol = repo.generate_ct_volume(series_id);
-                volume = vol;
-                if (flag == true) {
-                  if (state.render_app == null) {
-                    state.render_app = await state.wasmModule.get_render_app();
-                    gl_canvas = state.render_app.get_glcanvas();
-                    gl_canvas.load_data_from_ct_volume(volume);
-                    gl_canvas = state.render_app.get_glcanvas();
-                    state.render_app.run();
-                  } else {
-                    console.log('render_app:', state.render_app);
-                    gl_canvas.set_window_by_div_id('render_app', volume);
-                    console.log(vol);
-                  }
-                  flag = false;
-                } else {
-                  gl_canvas.load_data_from_ct_volume(volume);
-                }
+          toggle.addEventListener('click', async () => {
+            series_id = toggle.innerHTML;
+            byId("ImageSeries").textContent = series_id;
+            log(`选择序列: ${series_id}`);
+            let vol = repo.generate_ct_volume(series_id);
+            volume = vol;
+            if (flag == true) {
+              if (state.render_app == null) {
+                state.render_app = await state.wasmModule.get_render_app();
+                gl_canvas = state.render_app.get_glcanvas();
+                gl_canvas.load_data_from_ct_volume(volume);
+                gl_canvas = state.render_app.get_glcanvas();
+                state.render_app.run();
+              } else {
+                console.log('render_app:', state.render_app);
+                gl_canvas.set_window_by_div_id('render_app', volume);
+                console.log(vol);
+              }
+              flag = false;
+            } else {
+              gl_canvas.load_data_from_ct_volume(volume);
+            }
 
-            })
+          })
         }
 
         ul.appendChild(li);
@@ -1256,4 +1269,5 @@
     }
   </script>
 </body>
+
 </html>

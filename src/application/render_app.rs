@@ -206,11 +206,11 @@ impl RenderApp {
                         "MipRotationAngleDeg set to: index={index}, roll_deg={roll_deg}, yaw_deg={yaw_deg}, pitch_deg={pitch_deg}"
                     );
                 }
-                Event::UserEvent(UserEvent::SetObliqueNormal(index, center, normal, in_plane_radians)) => {
-                    state.set_oblique_normal(index, center, normal, in_plane_radians);
+                Event::UserEvent(UserEvent::SetObliqueNormal(index, normal, in_plane_radians)) => {
+                    state.set_oblique_normal(index, normal, in_plane_radians);
                     log::info!(
-                        "ObliqueNormal set to: index={index}, center={:?}, normal={:?}, in_plane={}",
-                        center, normal, in_plane_radians
+                        "ObliqueNormal set to: index={index}, normal={:?}, in_plane={}",
+                        normal, in_plane_radians
                     );
                 }
                 Event::UserEvent(UserEvent::SetObliqueRotation(index, horizontal_radians, vertical_radians, in_plane_radians)) => {

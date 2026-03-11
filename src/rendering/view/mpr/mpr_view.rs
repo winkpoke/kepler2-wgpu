@@ -254,7 +254,6 @@ impl MprView {
     /// - `is_rotation`: If true, rotates on current basis; otherwise rotates from original reference
     pub fn set_oblique_normal(
         &mut self,
-        center: [f32; 3],
         normal: [f32; 3],
         in_plane_radians: f32,
     ) -> KeplerResult<()> {
@@ -288,16 +287,9 @@ impl MprView {
             r = rot * r;
         }
 
-        // ---------- center ----------
-        let screen_center = Vec3::from_array(center);
-        let old_center_world = self.get_base().transform_point3(screen_center);
-        let t1 = Mat4::from_translation(-old_center_world);
-        let t2 = Mat4::from_translation(old_center_world);
-        self.base_screen = t2 * r * t1 * self.base_screen_raw;
-
         // ---------- update ----------
         self.oblique_rotation = r;
-        self.oblique_normal = r.transform_vector3(Vec3::Z).normalize_or_zero();
+        self.oblique_center_world();
 
         Ok(())
     }
@@ -338,18 +330,19 @@ impl MprView {
             r = rot * r;
         }
 
-        // -------- screen center --------
-        let screen_center = Vec3::new(0.5, 0.5, 0.0);
-        let old_center_world = self.get_base().transform_point3(screen_center);
-        let t1 = Mat4::from_translation(-old_center_world);
-        let t2 = Mat4::from_translation(old_center_world);
-        self.base_screen = t2 * r * t1 * self.base_screen_raw;
-
         // -------- update status --------
         self.oblique_rotation = r;
-        self.oblique_normal = self.oblique_rotation.transform_vector3(Vec3::Z).normalize_or_zero();
+        self.oblique_center_world();
 
         Ok(())
+    }
+
+    fn oblique_center_world(&mut self) {
+        let center = self.base_screen_raw.transform_point3(Vec3::new(0.5, 0.5, 0.0));
+        let t1 = Mat4::from_translation(-center);
+        let t2 = Mat4::from_translation(center);
+        self.base_screen = t2 * self.oblique_rotation * t1 * self.base_screen_raw;
+        self.oblique_normal = self.oblique_rotation.transform_vector3(Vec3::Z).normalize_or_zero();
     }
 
     /// Return the current screen base matrix (including translation, scaling)

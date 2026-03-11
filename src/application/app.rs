@@ -747,13 +747,12 @@ impl App {
     pub fn set_oblique_normal(
         &mut self, 
         index: usize, 
-        center: [f32; 3],
         normal: [f32; 3], 
         in_plane_radians: f32
     ) {
         if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                if let Err(e) = mpr_view.set_oblique_normal(center, normal, in_plane_radians) {
+                if let Err(e) = mpr_view.set_oblique_normal(normal, in_plane_radians) {
                     log::warn!("set_oblique_normal failed on view {}: {}", index, e);
                 } else {
                     log::info!(
