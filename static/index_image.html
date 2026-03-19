@@ -191,6 +191,7 @@
             <button id="btn">重建</button>
             <button id="analyzeBtn">分析文件</button>
             <button id="rerender">视图显示</button>
+            <button id="points">画点</button>
           </div>
         </fieldset>
 
@@ -252,6 +253,7 @@
         <fieldset class="pill" style="margin-bottom:10px">
           <legend>Oblique control</legend>
           <div>
+            <span>index:</span><input type="number" id="oblique-index" step="1.0" value="0.0"><br>
             <span>Reset to:</span>
             <select id="resetOptions" style="width: 100px">
               <option value="T">transverse</option>
@@ -261,19 +263,10 @@
             <button id="oblique-reset-submit">submit</button>
           </div>
           <div>
-            <label>Normal:</label>
-            <input type="number" id="oblique-nx" step="0.001" value="0">
-            <input type="number" id="oblique-ny" step="0.001" value="0">
-            <input type="number" id="oblique-nz" step="0.001" value="1">
-            <span>In-plane:</span>
-            <input type="number" id="oblique-inplane" step="0.001" value="0">
-            <button id="oblique-normal-apply">apply</button>
-          </div>
-          <div>
             <label>Rotation:</label>
-            <span>Horizontal:</span><input type="number" id="rotation-x" step="15" value="0" min="0" max="360" class="reset_input"><br>
-            <span>Vertical :</span><input type="number" id="rotation-y" step="15" value="0" min="0" max="360" class="reset_input"><br>
-            <span>In-plane :</span><input type=" number" id="rotation-z" step="15" value="0" min="0" max="360" class="reset_input"><br>
+            <span>Horizontal:</span><input type="number" id="rotation-x" step="15" value="0" min="0" max="360"><br>
+            <span>Vertical :</span><input type="number" id="rotation-y" step="15" value="0" min="0" max="360"><br>
+            <span>In-plane :</span><input type=" number" id="rotation-z" step="15" value="0" min="0" max="360"><br>
             <button id="submit-rot">submit</button>
           </div>
         </fieldset>
@@ -590,6 +583,14 @@
       }
     })
 
+    function drawPoint(ctx, x, y, radius = 3, color = 'red') {
+        ctx.beginPath();
+        // 使用 arc 画圆：参数依次为 x, y, 半径, 起始角度, 结束角度(2*PI代表一整圈)
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.closePath();
+    }
     // 切层
     byId('slice-submit').addEventListener('click', () => {
       const sliceValue = byId('slice-input').value;
@@ -646,21 +647,39 @@
       }
     });
 
-// const inputs = document.querySelectorAll('.reset_input');
+    byId('points').addEventListener('click', () => {
+        const canvas = document.querySelector('canvas');
+        if (!canvas) return;
 
-// inputs.forEach((input, i) => {
+        const parent = canvas.parentElement;
+        if (window.getComputedStyle(parent).position === 'static') {
+            parent.style.position = 'relative';
+        }
 
-//   input.addEventListener('input', () => {
+        const oldCanvas = document.getElementById('points-canvas');
+        if (oldCanvas) oldCanvas.remove();
 
-//     inputs.forEach((item, j) => {
-//       if (i !== j) {
-//         item.value = 0;
-//       }
-//     });
+        const newCanvas = document.createElement('canvas');
+        newCanvas.id = 'points-canvas';
+        newCanvas.style.position = 'absolute';
+        newCanvas.style.left = canvas.offsetLeft + 'px';
+        newCanvas.style.top = canvas.offsetTop + 'px';
+        newCanvas.style.pointerEvents = 'none';
+        newCanvas.style.backgroundColor = 'transparent';
+        newCanvas.style.zIndex = '100';
 
-//   });
+        parent.appendChild(newCanvas);
+        newCanvas.width = 800;
+        newCanvas.height = 800;
+        
+        const ctx = newCanvas.getContext('2d');
+        ctx.clearRect(0, 0, 800, 800);
+        drawPoint(ctx, 200, 200);
+        drawPoint(ctx, 600, 200);
+        drawPoint(ctx, 200, 600);
+        drawPoint(ctx, 600, 600);
+    })
 
-// });
     byId('scale-submit').addEventListener('click', () => {
       const input = byId('scale-input');
       scaleValue = parseFloat(input.value);
@@ -755,42 +774,12 @@
       const dx = deg2rad(dx_deg);
       const dy = deg2rad(dy_deg);
       const dz = deg2rad(dz_deg);
+      console.log('oblique_rotation:', dx_deg, dy_deg, dz_deg);
 
-      gl_canvas.set_oblique_rotation_radians(
-        state.index,
-        dx,
-        dy,
-        dz
-      );
-      const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
-      setNormalPreset(normal[0], normal[1], normal[2], dz_deg);
+      gl_canvas.set_oblique_rotation_radians(state.index, dx, dy, dz);
+      const rotation = JSON.parse(await gl_canvas.get_oblique_rotation(state.index))
+      console.log('oblique_rotation:', rotation);
     });
-
-    byId('oblique-normal-apply').addEventListener('click', () => {
-      if (!gl_canvas) {
-        alert('Please select a series first!');
-        return;
-      }
-
-      const nx = parseFloat(byId('oblique-nx').value);
-      const ny = parseFloat(byId('oblique-ny').value);
-      const nz = parseFloat(byId('oblique-nz').value);
-      const in_plane = parseFloat(byId('oblique-inplane').value);
-
-      if ([nx, ny, nz, in_plane].some((v) => Number.isNaN(v))) {
-        alert('Normal: Please enter valid numbers');
-        return;
-      }
-
-      gl_canvas.set_oblique_normal(state.index, [nx, ny, nz], deg2rad(in_plane));
-    });
-
-    function setNormalPreset(nx, ny, nz, p) {
-      byId('oblique-nx').value = String(nx);
-      byId('oblique-ny').value = String(ny);
-      byId('oblique-nz').value = String(nz);
-      byId('oblique-inplane').value = String(p);
-    }
 
     byId('oblique-reset-submit').addEventListener('click', async () => {
       if (!gl_canvas) {
@@ -799,20 +788,18 @@
       }
 
       const opt = byId('resetOptions').value;
+      state.index = parseInt(byId('oblique-index').value, 10);
       if (opt == "T") {
-        gl_canvas.set_oblique_normal(state.index, [0.0, 0.0, 1.0], 0.0);
-        const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
-        setNormalPreset(normal[0], normal[1], normal[2], 0.0);
+        gl_canvas.set_oblique_rotation_quat(state.index, [0, 0, 0, 1]);
+        gl_canvas.set_oblique_rotation_radians(state.index, 0, 0, 0);
         state.oblique_rotation = [0, 0, 0]
       } else if (opt == "C") {
-        gl_canvas.set_oblique_normal(state.index, [0.0, 1.0, 0.0], 0.0);
-        const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
-        setNormalPreset(normal[0], normal[1], normal[2], 0.0);
+        gl_canvas.set_oblique_rotation_quat(state.index, [0, 0, 0, 1]);
+        gl_canvas.set_oblique_rotation_radians(state.index, deg2rad(-90), 0, 0);
         state.oblique_rotation = [0, 0, 0]
       } else if (opt == "S") {
-        gl_canvas.set_oblique_normal(state.index, [-1.0, 0.0, 0.0], deg2rad(90.0));
-        const normal = JSON.parse(await gl_canvas.get_oblique_normal(state.index))
-        setNormalPreset(normal[0], normal[1], normal[2], 90.0);
+        gl_canvas.set_oblique_rotation_quat(state.index, [0, 0, 0, 1]);
+        gl_canvas.set_oblique_rotation_radians(state.index, deg2rad(90), deg2rad(-180), deg2rad(-90));
         state.oblique_rotation = [0, 0, 0]
       }
     });
@@ -870,6 +857,7 @@
       }
 
       gl_canvas.set_render_mode(mode, checkbox3d, checkboxCrop, sx, sy, sz, lx, ly, lz, state.mesh_index, state.index, iso_min, iso_max, state.mip, index_orientation)
+      state.oblique_rotation = [0, 0, 0]
 
       if (checkbox3d) {
         gl_canvas.set_mesh_rotation(mesh_index, state.mesh_rotation);
@@ -1053,16 +1041,16 @@
         // 构造 patient / study 对象
         const patient = {
           patient_id: "P001",
-          name: "zhangsan",
-          birthdate: "19800101",
-          sex: "M"
+          name: "DemoPatient",
+          birthdate: "",
+          sex: ""
         };
         const study = {
           study_uid: "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.365120",
           study_id: "STUDY001",
           patient_id: "P001",
-          date: "20250908",
-          description: "zhutiCT"
+          date: "20260308",
+          description: ""
         };
 
         function toUint8Array(obj) {
@@ -1078,15 +1066,16 @@
         console.log(infoUint8);
         byId("progress").value = 50;
 
-        const arrayBuffer = await mhxFile.arrayBuffer();
-        const mhxUint8Array = new Uint8Array(arrayBuffer);
-        log(`Uint8Array长度: ${mhxUint8Array.length}`);
-        log("开始DICOM转换...");
-        byId("progress").value = 75;
-
         // ========= 分支逻辑 =========
         switch (option) {
           case "dicom":
+            if (!mhxFile) {
+                log("未选择输入文件", "error");
+                return;
+            }
+            const arrayBuffer = await mhxFile.arrayBuffer();
+            const mhxUint8Array = new Uint8Array(arrayBuffer);
+            log(`Uint8Array长度: ${mhxUint8Array.length}`);
             log("开始 DICOM 转换...");
             byId("progress").value = 75;
 
@@ -1124,10 +1113,30 @@
             log("✅ DICOM 导出成功！");
             break;
 
-          case "mha":
-            log("开始导出 MHA ...");
-            downloadBlob(new Blob([mhxUint8Array]), "CT_volume.mha");
-            log("✅ MHA 导出成功！");
+            case "mhx":
+            case "mha":
+                log("开始导出 MHA/MHX ...");
+                if (volume) {
+                    console.log("开始将内存中的 DICOM 数据导出为 MHA...");
+                    // 调用我们刚写的 Rust WASM 方法
+                    const mhaBytes = volume.export_mha();
+                    // 生成 Blob 并下载
+                    const blob = new Blob([mhaBytes], { type: "application/octet-stream" });
+                    downloadBlob(blob, "exported_from_dicom.mha");
+                    console.log("✅ DICOM 到 MHA 导出成功！");
+                    log("✅ DICOM 到 MHA 导出成功！");
+                } else {
+                    const mhxFile = state.mhx;
+                    if (mhxFile) {
+                        const arrayBuffer = await mhxFile.arrayBuffer();
+                        const mhxUint8Array = new Uint8Array(arrayBuffer);
+                        downloadBlob(new Blob([mhxUint8Array]), "CT_volume.mha");
+                        log("✅ MHA 导出成功！");
+                    } else {
+                        log("❌ 导出失败：未加载 DICOM 序列或 MHA 文件", "error");
+                        alert("请先加载 DICOM 序列或 MHA 文件");
+                    }
+                }
             break;
 
           case "png":

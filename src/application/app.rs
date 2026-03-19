@@ -734,33 +734,23 @@ impl App {
         }
     }
 
-    pub fn get_oblique_normal(&self, index: usize)->[f32; 3]{
+    pub fn get_oblique_rotation(&self, index: usize)->[f32; 4]{
         let view = self.app_view.layout.views().get(index).unwrap();
         if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
-            let n = mpr_view.get_oblique_normal();
-            [n[0], n[1], n[2]]
+            let n = mpr_view.get_oblique_rotation();
+            [n.x, n.y, n.z, n.w]
         } else {
-            [f32::NAN, f32::NAN, f32::NAN]
+            [f32::NAN, f32::NAN, f32::NAN, f32::NAN]
         }
     }
 
-    pub fn set_oblique_normal(
-        &mut self, 
-        index: usize, 
-        normal: [f32; 3], 
-        in_plane_radians: f32
-    ) {
+    pub fn set_oblique_rotation(&mut self, index: usize, q: [f32; 4]) {
         if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                if let Err(e) = mpr_view.set_oblique_normal(normal, in_plane_radians) {
-                    log::warn!("set_oblique_normal failed on view {}: {}", index, e);
+                if let Err(e) = mpr_view.set_oblique_rotation(q) {
+                    log::warn!("set_oblique_rotation failed on view {}: {}", index, e);
                 } else {
-                    log::info!(
-                        "View {} set_oblique_normal: normal={:?}, in_plane={}",
-                        index,
-                        normal,
-                        in_plane_radians
-                    );
+                    log::info!("View {} set_oblique_rotation: {:?}", index, q);
                 }
             }
         }
@@ -787,7 +777,7 @@ impl App {
                     );
                 } else {
                     log::info!(
-                        "View {} set_oblique_rotation_radians: horizontal={:?}, vertical={:?}, in_plane={:?}",
+                        "View {} set_oblique_rotation_radians: horizontal={:?}, vertical={:?}, in_plane={:?},",
                         index,
                         horizontal_radians,
                         vertical_radians,

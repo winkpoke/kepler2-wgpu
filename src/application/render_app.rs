@@ -206,13 +206,6 @@ impl RenderApp {
                         "MipRotationAngleDeg set to: index={index}, roll_deg={roll_deg}, yaw_deg={yaw_deg}, pitch_deg={pitch_deg}"
                     );
                 }
-                Event::UserEvent(UserEvent::SetObliqueNormal(index, normal, in_plane_radians)) => {
-                    state.set_oblique_normal(index, normal, in_plane_radians);
-                    log::info!(
-                        "ObliqueNormal set to: index={index}, normal={:?}, in_plane={}",
-                        normal, in_plane_radians
-                    );
-                }
                 Event::UserEvent(UserEvent::SetObliqueRotation(index, horizontal_radians, vertical_radians, in_plane_radians)) => {
                     state.set_oblique_rotation_radians(index, horizontal_radians, vertical_radians, in_plane_radians);
                     log::info!(
@@ -248,6 +241,10 @@ impl RenderApp {
                 Event::UserEvent(UserEvent::SetMeshRotation(_index, rotation)) => {
                     state.set_mesh_rotation(rotation);
                     log::debug!("Mesh rotation set to {:?}", rotation);
+                }
+                Event::UserEvent(UserEvent::SetObliqueRotationQuat(index, q)) => {
+                    state.set_oblique_rotation(index, q);
+                    log::debug!("Oblique rotation set to {:?}", q);
                 }
                 Event::UserEvent(UserEvent::SetMeshRotationDegrees(_index, roll_deg, yaw_deg, pitch_deg)) => {
                     state.set_mesh_rotation_degrees(roll_deg, yaw_deg, pitch_deg);
@@ -296,12 +293,12 @@ impl RenderApp {
                     }
                 }
                 #[cfg(target_arch = "wasm32")]
-                Event::UserEvent(UserEvent::GetObliqueNormal(index, sender)) => {
-                    let result = state.get_oblique_normal(index);
+                Event::UserEvent(UserEvent::GetObliqueRotation(index, sender)) => {
+                    let result = state.get_oblique_rotation(index);
                     if let Err(_) = sender.send(result) {
-                        log::error!("Failed to send GetObliqueNormal result for window {}", index);
+                        log::error!("Failed to send GetObliqueRotation result for window {}", index);
                     } else {
-                        log::info!("Sent GetObliqueNormal result for window {}: {:?}", index, result);
+                        log::info!("Sent GetObliqueRotation result for window {}: {:?}", index, result);
                     }
                 }
                 #[cfg(target_arch = "wasm32")]

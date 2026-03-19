@@ -43,7 +43,7 @@ pub struct MprView {
     /// Original unrotated basis coordinates
     base_screen_raw : Mat4,
     /// Oblique rotation matrix
-    oblique_rotation: Mat4,
+    oblique_rotation: Quat,
     /// Oblique rotation normal
     oblique_normal: Vec3,
     /// UV texture coordinate system base
@@ -199,7 +199,7 @@ impl MprView {
             slice: 0.0,
             base_screen,
             base_screen_raw: base_screen,
-            oblique_rotation: Mat4::IDENTITY,
+            oblique_rotation: Quat::IDENTITY,
             oblique_normal: Vec3::Z,
             base_uv,
             scale,
@@ -242,107 +242,50 @@ impl MprView {
         self.wgpu_impl.set_matrix(transform_matrix.to_cols_array());
     }
 
-    /// 
-    /// Oblique Rotation Control
-    /// 
-    /// Sets the oblique normal vector and in-plane rotation angle
-    ///
-    /// # Parameters
-    /// - `center`: Screen center coordinates (typically [0.5, 0.5, 0.0])
-    /// - `normal`: New plane normal vector
-    /// - `in_plane_radians`: In-plane rotation angle
-    /// - `is_rotation`: If true, rotates on current basis; otherwise rotates from original reference
-    pub fn set_oblique_normal(
-        &mut self,
-        normal: [f32; 3],
-        in_plane_radians: f32,
-    ) -> KeplerResult<()> {
-        if !matches!(self.orientation, Orientation::Oblique) {
-            return Ok(());
-        }
-
-        let new_n = Vec3::from_array(normal).normalize_or_zero();
-        if !new_n.is_finite() || new_n.length_squared() == 0.0 {
-            return Err(MprError::InvalidTransformation.into());
-        }
-
-        // ---------- Rodrigues: old normal -> new normal ----------
-        let old_n = Vec3::Z;
-        let mut r = Mat4::IDENTITY;
-        let axis = old_n.cross(new_n);
-        let dot = old_n.dot(new_n).clamp(-1.0, 1.0);
-        let angle = dot.acos();
-        if axis.length_squared() > 1e-6 && angle.is_finite() {
-            let q = Quat::from_axis_angle(axis.normalize(), angle);
-            let rot = Mat4::from_quat(q);
-            r = rot * r;
-        }
-
-        // ---------- in-plane ----------
-        let delta_in_plane: f32 = in_plane_radians;
-        if delta_in_plane.abs() > 1e-6 {
-            let z_axis = r.transform_vector3(Vec3::Z);
-            let q = Quat::from_axis_angle(z_axis.normalize(), delta_in_plane);
-            let rot = Mat4::from_quat(q);
-            r = rot * r;
-        }
-
-        // ---------- update ----------
-        self.oblique_rotation = r;
-        self.oblique_center_world();
-
-        Ok(())
-    }
-
     pub fn set_oblique_rotation_radians(
         &mut self,
         horizontal_radians: f32,
         vertical_radians: f32,
         in_plane_radians: f32,
     ) -> KeplerResult<()> {
-        let mut r = self.oblique_rotation;
-        let mut x_axis = r.transform_vector3(Vec3::X);
-        let mut y_axis = r.transform_vector3(Vec3::Y);
-        let mut z_axis = r.transform_vector3(Vec3::Z);
+        let mut q = self.oblique_rotation;
+
+        let x_axis = q * Vec3::X;
+        let y_axis = q * Vec3::Y;
+        let z_axis = q * Vec3::Z;
 
         // ---------- horizontal (slice X) ----------
         if horizontal_radians.is_finite() {
-            let q = Quat::from_axis_angle(x_axis.normalize(), horizontal_radians);
-            let rot = Mat4::from_quat(q);
-            r = rot * r;
-            y_axis = rot.transform_vector3(y_axis);
-            z_axis = rot.transform_vector3(z_axis);
+            let dq = Quat::from_axis_angle(x_axis.normalize(), horizontal_radians);
+            q = dq * q;
         }
 
         // ---------- vertical (slice Y) ----------
         if vertical_radians.is_finite() {
-            let q = Quat::from_axis_angle(y_axis.normalize(), vertical_radians);
-            let rot = Mat4::from_quat(q);
-            r = rot * r;
-            x_axis = rot.transform_vector3(x_axis);
-            z_axis = rot.transform_vector3(z_axis);
+            let dq = Quat::from_axis_angle(y_axis.normalize(), vertical_radians);
+            q = dq * q;
         }
 
         // ---------- in-plane (slice Z) ----------
         if in_plane_radians.is_finite() {
-            let q = Quat::from_axis_angle(z_axis.normalize(), in_plane_radians);
-            let rot = Mat4::from_quat(q);
-            r = rot * r;
+            let dq = Quat::from_axis_angle(z_axis.normalize(), in_plane_radians);
+            q = dq * q;
         }
 
         // -------- update status --------
-        self.oblique_rotation = r;
+        self.oblique_rotation = q.normalize();
         self.oblique_center_world();
 
         Ok(())
     }
 
     fn oblique_center_world(&mut self) {
+        let r = Mat4::from_quat(self.oblique_rotation);
         let center = self.base_screen_raw.transform_point3(Vec3::new(0.5, 0.5, 0.0));
         let t1 = Mat4::from_translation(-center);
         let t2 = Mat4::from_translation(center);
-        self.base_screen = t2 * self.oblique_rotation * t1 * self.base_screen_raw;
-        self.oblique_normal = self.oblique_rotation.transform_vector3(Vec3::Z).normalize_or_zero();
+        self.base_screen = t2 * r * t1 * self.base_screen_raw;
+        self.oblique_normal = r.transform_vector3(Vec3::Z).normalize_or_zero();
     }
 
     /// Return the current screen base matrix (including translation, scaling)
@@ -809,6 +752,16 @@ impl MprView {
         self.oblique_normal
     }
 
+    pub fn get_oblique_rotation(&self) -> Quat {
+        self.oblique_rotation
+    }
+
+    pub fn set_oblique_rotation(&mut self, q: [f32; 4]) -> KeplerResult<()> {
+        self.oblique_rotation = Quat::from_array(q);
+        self.oblique_center_world();
+        Ok(())
+    }
+
     /// Convert logical screen coordinates [0,1] to millimeters using the complete transform chain.
     ///
     /// This function applies the same transformation sequence as `update_transform_matrix`
@@ -941,7 +894,7 @@ impl MprView {
             result
         );
 
-        let new_pan = Vec3::new(result.x / self.scale, result.y / self.scale, result.z);
+        let new_pan = Vec3::new(result.x * self.scale, result.y * self.scale, result.z);
 
         // Validate new pan values
         if !new_pan.is_finite() {

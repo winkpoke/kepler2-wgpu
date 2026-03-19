@@ -47,7 +47,7 @@ pub enum UserEvent {
     SetMipMode(usize, u32),
     SetOneCellLayout(usize, usize),
     #[cfg(target_arch = "wasm32")]
-    GetObliqueNormal(usize, oneshot::Sender<[f32; 3]>),
+    GetObliqueRotation(usize, oneshot::Sender<[f32; 4]>),
     #[cfg(target_arch = "wasm32")]
     GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     #[cfg(target_arch = "wasm32")]
@@ -59,8 +59,8 @@ pub enum UserEvent {
     SetSlabThickness(usize, f32),
     SetMipRotationAngleDeg(usize, f32, f32, f32),
     ViewClick(usize, f32, f32, f32), // view_index, screen_x, screen_y, screen_z
-    SetObliqueNormal(usize, [f32; 3], f32),
     SetObliqueRotation(usize, f32, f32, f32),
+    SetObliqueRotationQuat(usize, [f32; 4]),
     #[cfg(target_arch = "wasm32")]
     /// View click with reply; returns [x_mm, y_mm, slice_mm, reserved]
     ViewClickGet(usize, f32, f32, f32, oneshot::Sender<[f32; 4]>),
@@ -234,19 +234,19 @@ impl GLCanvas {
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub async fn get_oblique_normal(&self, index: usize) -> Result<String, String> {
+    pub async fn get_oblique_rotation(&self, index: usize) -> Result<String, String> {
         let (tx, rx) = oneshot::channel();
 
-        if let Err(e) = self.proxy.send_event(UserEvent::GetObliqueNormal(index, tx)) {
+        if let Err(e) = self.proxy.send_event(UserEvent::GetObliqueRotation(index, tx)) {
             log::error!(
-                "Failed to send GetObliqueNormal event for window {}: {:?}",
+                "Failed to send GetObliqueRotation event for window {}: {:?}",
                 index,
                 e
             );
             return Err(format!("Failed to send event: {:?}", e));
         }
 
-        log::info!("Sent GetObliqueNormal event for window {}", index);
+        log::info!("Sent GetObliqueRotation event for window {}", index);
 
         match rx.await {
             Ok(result) => serde_json::to_string(&result).map_err(|e| format!("JSON serialization error: {}", e)),
@@ -471,23 +471,23 @@ impl GLCanvas {
         }
     }
 
-    pub fn set_oblique_normal(&self, index: usize, normal: Vec<f32>, in_plane_radians: f32) {
-        if normal.len() != 3 {
+    pub fn set_oblique_rotation_quat(&self, index: usize, quat: Vec<f32>) {
+        if quat.len() != 4 {
             log::error!(
-                "set_oblique_normal expected 3 floats, got {}",
-                normal.len()
+                "set_oblique_rotation_quat expected 4 floats, got {}",
+                quat.len()
             );
             return;
         }
-        let mut arr = [0.0; 3];
-        arr.copy_from_slice(&normal);
+        let mut arr = [0.0; 4];
+        arr.copy_from_slice(&quat);
         if let Err(e) = self
             .proxy
-            .send_event(UserEvent::SetObliqueNormal(index, arr, in_plane_radians))
+            .send_event(UserEvent::SetObliqueRotationQuat(index, arr))
         {
-            log::error!("Failed to send SetObliqueNormal event: {:?}", e);
+            log::error!("Failed to send SetObliqueRotationQuat event: {:?}", e);
         } else {
-            log::info!("Sent SetObliqueNormal event for window {}", index);
+            log::info!("Sent SetObliqueRotationQuat event for window {}", index);
         }
     }
 }
