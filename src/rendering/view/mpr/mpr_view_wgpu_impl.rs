@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
-use std::sync::Arc;
-use crate::rendering::view::render_content::RenderContent;
 use super::mpr_render_context::MprRenderContext;
+use crate::rendering::view::render_content::RenderContent;
+use std::sync::Arc;
 
 /// Uniform data structures for MPR rendering
 #[repr(C)]
@@ -36,38 +36,38 @@ pub struct Uniforms {
 pub struct MprViewWgpuImpl {
     /// Reference to shared global GPU state
     pub render_context: Arc<MprRenderContext>,
-    
+
     /// Reference to shared texture content
     pub render_content: Arc<RenderContent>,
-    
+
     /// View-specific texture bind group
     pub texture_bind_group: wgpu::BindGroup,
-    
+
     /// View-specific vertex uniform buffer
     pub uniform_vert_buffer: wgpu::Buffer,
-    
+
     /// View-specific vertex uniform bind group
     pub uniform_vert_bind_group: wgpu::BindGroup,
-    
+
     /// View-specific fragment uniform buffer
     pub uniform_frag_buffer: wgpu::Buffer,
-    
+
     /// View-specific fragment uniform bind group
     pub uniform_frag_bind_group: wgpu::BindGroup,
-    
+
     /// Current uniform values for this view
     pub uniforms: Uniforms,
 }
 
 impl MprViewWgpuImpl {
     /// Create a new MprViewWgpuImpl with view-specific GPU resources
-    /// 
+    ///
     /// # Arguments
     /// * `render_context` - Shared global GPU state
     /// * `device` - WGPU device for creating GPU resources
     /// * `render_content` - Shared texture content
     /// * `transform_matrix` - 4x4 matrix for view transforms
-    /// 
+    ///
     /// # Returns
     /// A new MprViewWgpuImpl with initialized per-view resources
     pub fn new(
@@ -80,7 +80,7 @@ impl MprViewWgpuImpl {
         let u_vert_data = UniformsVert {
             ..Default::default()
         };
-        
+
         let decode_params = render_content.decode_parameters();
         let u_frag_data = UniformsFrag {
             window_width: 350.,
@@ -91,14 +91,14 @@ impl MprViewWgpuImpl {
             mat: transform_matrix.to_cols_array(),
             ..Default::default()
         };
-        
+
         log::info!(
             "MprViewWgpuImpl defaults => window_width: {:.1}, window_level: {:.1}, is_packed_rg8: {}",
             u_frag_data.window_width,
             u_frag_data.window_level,
             decode_params.is_packed_flag
         );
-        
+
         let uniforms = Uniforms {
             vert: u_vert_data,
             frag: u_frag_data,
@@ -121,12 +121,19 @@ impl MprViewWgpuImpl {
         });
 
         // Create view-specific vertex uniform buffer and bind group
-        let (uniform_vert_buffer, uniform_vert_bind_group) = 
-            Self::create_vertex_uniform_bind_group(device, &render_context.vertex_bind_group_layout, &uniforms.vert);
+        let (uniform_vert_buffer, uniform_vert_bind_group) = Self::create_vertex_uniform_bind_group(
+            device,
+            &render_context.vertex_bind_group_layout,
+            &uniforms.vert,
+        );
 
         // Create view-specific fragment uniform buffer and bind group
-        let (uniform_frag_buffer, uniform_frag_bind_group) = 
-            Self::create_fragment_uniform_bind_group(device, &render_context.fragment_bind_group_layout, &uniforms.frag);
+        let (uniform_frag_buffer, uniform_frag_bind_group) =
+            Self::create_fragment_uniform_bind_group(
+                device,
+                &render_context.fragment_bind_group_layout,
+                &uniforms.frag,
+            );
 
         log::debug!("MprViewWgpuImpl created with view-specific GPU resources");
 
@@ -143,19 +150,19 @@ impl MprViewWgpuImpl {
     }
 
     /// Set the uniform values for this view
-    /// 
+    ///
     /// # Arguments
     /// * `new_uniforms` - New uniform values to set
     pub fn set_uniforms(&mut self, new_uniforms: Uniforms) {
         // Use the separate set methods for better modularity and consistency
         self.set_vertex_uniforms(new_uniforms.vert);
         self.set_fragment_uniforms(new_uniforms.frag);
-        
+
         log::trace!("Set both vertex and fragment uniform values");
     }
 
     /// Set transformation matrix
-    /// 
+    ///
     /// # Arguments
     /// * `matrix` - New transformation matrix
     pub fn set_matrix(&mut self, matrix: [f32; 16]) {
@@ -163,7 +170,7 @@ impl MprViewWgpuImpl {
     }
 
     /// Set slice position
-    /// 
+    ///
     /// # Arguments
     /// * `slice` - New slice position
     pub fn set_slice(&mut self, slice: f32) {
@@ -171,7 +178,7 @@ impl MprViewWgpuImpl {
     }
 
     /// Set window level only
-    /// 
+    ///
     /// # Arguments
     /// * `window_level` - New window level value
     pub fn set_window_level(&mut self, window_level: f32) {
@@ -179,7 +186,7 @@ impl MprViewWgpuImpl {
     }
 
     /// Set window width only
-    /// 
+    ///
     /// # Arguments
     /// * `window_width` - New window width value
     pub fn set_window_width(&mut self, window_width: f32) {
@@ -187,28 +194,28 @@ impl MprViewWgpuImpl {
     }
 
     /// Set only the vertex uniform values
-    /// 
+    ///
     /// # Arguments
     /// * `vertex_uniforms` - New vertex uniform values to set
     pub fn set_vertex_uniforms(&mut self, vertex_uniforms: UniformsVert) {
         self.uniforms.vert = vertex_uniforms;
-        
+
         log::trace!("Set vertex uniform values");
     }
 
     /// Set only the fragment uniform values
-    /// 
+    ///
     /// # Arguments
     /// * `fragment_uniforms` - New fragment uniform values to set
     pub fn set_fragment_uniforms(&mut self, fragment_uniforms: UniformsFrag) {
         self.uniforms.frag = fragment_uniforms;
-        
+
         log::trace!("Set fragment uniform values with window_width: {:.1}, window_level: {:.1}, slice: {:.1}", 
                    fragment_uniforms.window_width, fragment_uniforms.window_level, fragment_uniforms.slice);
     }
 
     /// Update vertex uniform buffer with current uniform values
-    /// 
+    ///
     /// # Arguments
     /// * `queue` - WGPU queue for buffer updates
     pub fn update_vertex_uniforms_buffer(&self, queue: &wgpu::Queue) {
@@ -217,12 +224,12 @@ impl MprViewWgpuImpl {
             0,
             bytemuck::cast_slice(&[self.uniforms.vert]),
         );
-        
+
         log::trace!("Updated vertex uniform buffer");
     }
 
     /// Update fragment uniform buffer with current uniform values
-    /// 
+    ///
     /// # Arguments
     /// * `queue` - WGPU queue for buffer updates
     pub fn update_fragment_uniforms_buffer(&self, queue: &wgpu::Queue) {
@@ -231,19 +238,19 @@ impl MprViewWgpuImpl {
             0,
             bytemuck::cast_slice(&[self.uniforms.frag]),
         );
-        
+
         log::trace!("Updated fragment uniform buffer with window_width: {:.1}, window_level: {:.1}, slice: {:.1}", 
                    self.uniforms.frag.window_width, self.uniforms.frag.window_level, self.uniforms.frag.slice);
     }
 
     /// Update both uniform buffers with current uniform values
-    /// 
+    ///
     /// # Arguments
     /// * `queue` - WGPU queue for buffer updates
     pub fn update_uniforms_buffers(&self, queue: &wgpu::Queue) {
         self.update_vertex_uniforms_buffer(queue);
         self.update_fragment_uniforms_buffer(queue);
-        
+
         log::trace!("Updated both vertex and fragment uniform buffers");
     }
 
@@ -254,7 +261,7 @@ impl MprViewWgpuImpl {
         uniforms: &UniformsVert,
     ) -> (wgpu::Buffer, wgpu::BindGroup) {
         use wgpu::util::DeviceExt;
-        
+
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("MPR Vertex Uniform Buffer"),
             contents: bytemuck::cast_slice(&[*uniforms]),
@@ -280,7 +287,7 @@ impl MprViewWgpuImpl {
         uniforms: &UniformsFrag,
     ) -> (wgpu::Buffer, wgpu::BindGroup) {
         use wgpu::util::DeviceExt;
-        
+
         let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("MPR Fragment Uniform Buffer"),
             contents: bytemuck::cast_slice(&[*uniforms]),

@@ -1,0 +1,29 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup Rust (nightly)
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+
+      - name: Build Project
+        run: cargo build --release
+
+      - name: Build with wasm-pack
+        run: |
+          cargo install wasm-pack
+          wasm-pack build --release --target web
+          mkdir -p build/
+          cp pkg/*.wasm build/

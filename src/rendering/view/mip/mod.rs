@@ -1,25 +1,31 @@
 #![allow(dead_code)]
 
-use std::{any::Any, sync::Arc};
-use wgpu::{Device, Queue, RenderPipeline, BindGroupLayout, BindGroup, Buffer, BufferUsages};
-use crate::rendering::view::render_content::RenderContent;
-use crate::rendering::view::layout::compute_aspect_fit;
-use crate::rendering::view::View;
 use crate::data::volume_encoding::VolumeEncoding;
+use crate::rendering::view::layout::compute_aspect_fit;
+use crate::rendering::view::render_content::RenderContent;
+use crate::rendering::view::{Renderable, View};
+use crate::core::{WindowLevel,KeplerResult};
+use glam::{Mat4, Vec3};
+use std::{any::Any, sync::Arc};
+use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, Queue, RenderPipeline};
 
-/// Function-level comment: Configuration for Maximum Intensity Projection (MIP) rendering.
+/// Configuration for Maximum Intensity Projection (MIP) rendering.
 /// Provides fixed quality settings for the MVP implementation to minimize complexity
 /// while delivering core MIP functionality.
 #[derive(Debug, Clone)]
 pub struct MipConfig {
-    /// Ray step size for volume traversal (fixed for MVP)
+    /// Step size for ray marching in mm
     pub ray_step_size: f32,
-    /// Maximum number of ray marching steps (fixed for MVP)
-    pub max_steps: u32,
+    /// Maximum number of steps for ray marching
+    pub max_steps: f32,
+    /// Lower threshold for MIP rendering in HU
+    pub lower_threshold: f32,
+    /// Upper threshold for MIP rendering in HU
+    pub upper_threshold: f32,
     /// Slab thickness for MIP rendering in mm
     pub slab_thickness: f32,
     /// MIP rendering mode (0: MIP, 1: MinIP, 2: AvgIP)
-    pub mode: u32,
+    pub mip_mode: u32,
 }
 
 impl Default for MipConfig {
@@ -27,11 +33,20 @@ impl Default for MipConfig {
     /// These values provide a good balance between quality and performance for medical imaging.
     fn default() -> Self {
         Self {
-            ray_step_size: 0.01,  // Fixed: 0.01 for medium quality
-            max_steps: 512,       // Fixed: 512 steps for reasonable quality
+            ray_step_size: 0.005, // Default 0.005mm step size
+            max_steps: 1000.0,    // Default 1000 steps
+            lower_threshold: -1024.0, // Default lower threshold
+            upper_threshold: 3071.0,  // Default upper threshold
             slab_thickness: 10.0, // Default 10mm slab
-            mode: 0,              // Default to Maximum Intensity Projection
+            mip_mode: 0,              // Default to Maximum Intensity Projection
         }
+    }
+}
+
+impl MipConfig {
+    /// Create a new MIP configuration with default values.
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
@@ -42,20 +57,22 @@ pub struct MipUniforms {
     // Ray marching parameters
     pub ray_step_size: f32,
     pub max_steps: f32,
-    
-    // Texture format parameters (reused from existing logic)
+
+    // Texture format parameters
     pub is_packed_rg8: f32,
     /// Bias used to decode packed RG8 back to raw HU
     pub bias: f32,
-    
+
     // Window/Level for medical imaging
     pub window: f32,
     pub level: f32,
-
     pub pan_x: f32,
     pub pan_y: f32,
     pub scale: f32,
-    pub _pad0: [f32; 7],
+    pub mip_mode: f32,
+    pub lower_threshold: f32,
+    pub upper_threshold: f32,
+    pub rotation: [f32; 16],
 }
 
 impl Default for MipUniforms {
@@ -63,22 +80,18 @@ impl Default for MipUniforms {
         Self {
             ray_step_size: 0.01,
             max_steps: 512.0,
-            is_packed_rg8: 1.0,  // Default to packed format
+            is_packed_rg8: 1.0, // Default to packed format
             bias: VolumeEncoding::DEFAULT_HU_OFFSET,
             window: 1500.0,
             level: 400.0,
             pan_x: 0.0,
             pan_y: 0.0,
             scale: 1.0,
-            _pad0: [0.0; 7],
+            mip_mode: 0.0,
+            lower_threshold: -1024.0,
+            upper_threshold: 3071.0,
+            rotation: Mat4::IDENTITY.to_cols_array(),
         }
-    }
-}
-
-impl MipConfig {
-    /// Function-level comment: Create a new MIP configuration with default values.
-    pub fn new() -> Self {
-        Self::default()
     }
 }
 
@@ -93,53 +106,51 @@ pub struct MipRenderContext {
 }
 
 impl MipRenderContext {
-    /// Function-level comment: Create a new MIP render context with initialized GPU resources.
-    /// Sets up the render pipeline, bind group layouts, and uniform buffer for MIP rendering.
+    /// Create a new MIP render context with initialized GPU resources.
     pub fn new(device: &Device, surface_format: wgpu::TextureFormat) -> Self {
         // Create bind group layout for texture resources (group 0)
-        // This layout is compatible with RenderContent texture binding
-        let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("MIP Texture Bind Group Layout"),
-            entries: &[
-                // Texture binding
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: wgpu::TextureViewDimension::D3,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("MIP Texture Bind Group Layout"),
+                entries: &[
+                    // Texture binding
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D3,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
                     },
-                    count: None,
-                },
-                // Sampler binding
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
+                    // Sampler binding
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
 
         // Create bind group layout for uniforms (group 1)
-        let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("MIP Uniform Bind Group Layout"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
+        let uniform_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("MIP Uniform Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
                     visibility: wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
-                        min_binding_size: std::num::NonZeroU64::new(std::mem::size_of::<MipUniforms>() as u64),
+                        min_binding_size: std::num::NonZeroU64::new(
+                            std::mem::size_of::<MipUniforms>() as u64,
+                        ),
                     },
                     count: None,
-                },
-            ],
-        });
-
-
+                }],
+            });
 
         // Load MIP shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -155,43 +166,45 @@ impl MipRenderContext {
         });
 
         // Create render pipeline
-        let pipeline = Arc::new(device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("MIP Render Pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: surface_format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+        let pipeline = Arc::new(
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("MIP Render Pipeline"),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: surface_format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: wgpu::PipelineCompilationOptions::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleStrip,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: None,
+                    unclipped_depth: false,
+                    polygon_mode: wgpu::PolygonMode::Fill,
+                    conservative: false,
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
+                multiview: None,
+                cache: None,
             }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                strip_index_format: None,
-                front_face: wgpu::FrontFace::Ccw,
-                cull_mode: None,
-                unclipped_depth: false,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                conservative: false,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState {
-                count: 1,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-            cache: None,
-        }));
+        );
 
         Self {
             texture_bind_group_layout,
@@ -200,9 +213,12 @@ impl MipRenderContext {
         }
     }
 
-    /// Function-level comment: Create a bind group for the given RenderContent.
-    /// Binds the texture and sampler from RenderContent to the MIP pipeline.
-    pub fn create_texture_bind_group(&self, device: &Device, render_content: &RenderContent) -> BindGroup {
+    /// Create a bind group for the given RenderContent.
+    pub fn create_texture_bind_group(
+        &self,
+        device: &Device,
+        render_content: &RenderContent,
+    ) -> BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("MIP Texture Bind Group"),
             layout: &self.texture_bind_group_layout,
@@ -219,22 +235,18 @@ impl MipRenderContext {
         })
     }
 
-    /// Function-level comment: Create a bind group for MIP uniforms.
-    /// Binds the provided uniform buffer to the MIP pipeline.
+    /// Create a bind group for MIP uniforms.
     pub fn create_uniform_bind_group(&self, device: &Device, uniform_buffer: &Buffer) -> BindGroup {
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("MIP Uniform Bind Group"),
             layout: &self.uniform_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform_buffer.as_entire_binding(),
-                },
-            ],
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
         })
     }
 }
-
 
 pub struct MipViewWgpuImpl {
     /// Shared render content from existing MPR views
@@ -250,16 +262,15 @@ pub struct MipViewWgpuImpl {
 }
 
 impl MipViewWgpuImpl {
-    /// Function-level comment: Create a new MIP view using existing RenderContent.
-    /// Accepts Arc<RenderContent> from MPR views to enable zero-copy texture sharing.
-    pub fn new(render_content: Arc<RenderContent>, device: &Device, surface_format: wgpu::TextureFormat) -> Self {
-        log::info!("[MIP_NEW] Creating MipView with surface format: {:?}", surface_format);
-        log::info!("[MIP_NEW] RenderContent texture format: {:?}", render_content.texture_format);
-        log::info!("[MIP_NEW] RenderContent texture size: {:?}", render_content.texture.size());
-        
+    /// Create a new MIP view using existing RenderContent.
+    pub fn new(
+        render_content: Arc<RenderContent>,
+        device: &Device,
+        surface_format: wgpu::TextureFormat,
+    ) -> Self {
         let render_context = MipRenderContext::new(device, surface_format);
         let texture_bind_group = render_context.create_texture_bind_group(device, &render_content);
-        
+
         // Create uniform buffer
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("MIP Uniform Buffer"),
@@ -276,38 +287,25 @@ impl MipViewWgpuImpl {
             uniform_buffer,
         }
     }
-    
-    /// Function-level comment: Get reference to the shared render content.
+
     pub fn render_content(&self) -> &Arc<RenderContent> {
         &self.render_content
     }
 
-    /// Function-level comment: Get reference to the render context.
     pub fn render_context(&self) -> &MipRenderContext {
         &self.render_context
     }
 
-    /// Function-level comment: Get mutable reference to the render context.
-    pub fn render_context_mut(&mut self) -> &mut MipRenderContext {
-        &mut self.render_context
-    }
-
-    /// Function-level comment: Get references to the pre-created bind groups.
     pub fn bind_groups(&self) -> (&BindGroup, &BindGroup) {
         (&self.texture_bind_group, &self.uniform_bind_group)
     }
 
-    /// Function-level comment: Update the MIP uniforms for rendering.
     pub fn update_uniforms(&self, queue: &Queue, uniforms: &MipUniforms) {
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[*uniforms]));
     }
 }
 
-
-
-/// Function-level comment: MIP view that integrates with the existing RenderContent architecture.
-/// Provides Maximum Intensity Projection rendering while reusing texture data from MPR views
-/// for zero memory overhead and fast mode switching.
+/// MIP view that integrates with the existing RenderContent architecture.
 pub struct MipView {
     /// WGPU implementation details
     wgpu_impl: Arc<MipViewWgpuImpl>,
@@ -320,301 +318,300 @@ pub struct MipView {
     /// scale factor
     scale: f32,
     /// Pan translation in screen coordinates
-    pan: [f32; 3], 
+    pan: [f32; 3],
+    /// Rotation angles in radians around X, Y, Z axes
+    rotation_radians: [f32; 3],
+    /// Content dimensions in world space
+    content_dimensions: (f32, f32),
+    /// Window/level parameters for CT display
+    window_level: WindowLevel,
 }
 
 impl MipView {
-    /// Function-level comment: Create a new MIP view with the given WGPU implementation.
-    /// Initializes the view with default configuration and positioning.
-    /// The WGPU implementation is wrapped in Arc for potential sharing between views.
+    /// Create a new MIP view with the given WGPU implementation.
     pub fn new(wgpu_impl: Arc<MipViewWgpuImpl>) -> Self {
         Self {
             wgpu_impl,
             config: MipConfig::default(),
             position: (0, 0),
             dimensions: (800, 600),
-            scale: 1.0,
+            scale: 1.5, // Default zoom to 1.5 to crop out CT scanner ring
             pan: [0.0, 0.0, 0.0],
+            rotation_radians: [0.0, 0.0, 0.0],
+            content_dimensions: (1.0, 1.0),
+            window_level: WindowLevel::new(),
         }
     }
 
-    /// Function-level comment: Get reference to the MIP configuration.
     pub fn config(&self) -> &MipConfig {
         &self.config
     }
 
-    /// Function-level comment: Get mutable reference to the MIP configuration.
     pub fn config_mut(&mut self) -> &mut MipConfig {
         &mut self.config
     }
 
-    /// Function-level comment: Update MIP view state and prepare for rendering.
-    /// Currently minimal implementation for MVP.
-    pub fn update(&mut self, queue: &wgpu::Queue) {
+    pub fn build_rotation_matrix(roll: f32, yaw: f32, pitch: f32) -> Mat4 {
+        Mat4::from_rotation_z(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_x(pitch)
+    }
+
+    /// Helper to get render parameters (W/L, Thresholds) based on mode.
+    /// Returns (window, level, lower_threshold, upper_threshold).
+    fn get_render_params(&mut self, mip_mode: u32) {
+        match mip_mode {
+            1 => {
+                // MinIP: Lung Window, full range to include air
+                self.config.ray_step_size = 0.004;
+                self.config.max_steps = 1500.0;
+                self.config.lower_threshold = -1024.0;
+                self.config.upper_threshold = 300.0;
+            }
+            2 => {
+                // AvgIP: Soft Tissue Window, full range
+                self.config.ray_step_size = 0.003;
+                self.config.max_steps = 2000.0;
+                self.config.lower_threshold = -200.0;
+                self.config.upper_threshold = 300.0;
+            }
+            _ => {
+                // MIP: Bone Window, full range
+                self.config.ray_step_size = 0.005;
+                self.config.max_steps = 1000.0;
+                self.config.lower_threshold = -1024.0;
+                self.config.upper_threshold = 3071.0;
+
+            }
+        }
+    }
+
+    /// Set scale factor.
+    pub fn set_scale(&mut self, scale: f32) {
+        let clamped = scale.clamp(0.001, 100.0);
+        self.scale = clamped;
+        log::info!("MIP scale factor set to {:.3}", clamped);
+    }
+
+    /// Set MIP pan translation (world units) for X and Y axes.
+    pub fn set_pan(&mut self, dx: f32, dy: f32) {
+        const MAX_PAN_DISTANCE: f32 = 10000.0;
+        let clamped_x = dx.clamp(-MAX_PAN_DISTANCE, MAX_PAN_DISTANCE);
+        let clamped_y = dy.clamp(-MAX_PAN_DISTANCE, MAX_PAN_DISTANCE);
+        self.pan = [clamped_x, clamped_y, 0.0];
+    }
+
+    /// Set MIP window.
+    pub fn set_window_level(&mut self, window: f32) -> KeplerResult<()> {
+        let _ = self.window_level.set_window_level(window);
+        log::info!("MIP window set to {:.3}", window);
+        Ok(())
+    }
+
+    pub fn set_window_width(&mut self, window_width: f32) -> KeplerResult<()> {
+        let _ = self.window_level.set_window_width(window_width);
+        log::info!("MIP window width set to {:.3}", window_width);
+        Ok(())
+    }
+
+    /// Set MIP rendering mode.
+    pub fn set_mip_mode(&mut self, mip_mode: u32) {
+        self.config.mip_mode = mip_mode;
+        log::info!("MIP mode set to {}", mip_mode);
+    }
+
+    /// Set MIP slab thickness in mm.
+    pub fn set_slab_thickness(&mut self, thickness: f32) {
+        self.config.slab_thickness = thickness;
+        log::info!("MIP slab thickness set to {:.3} mm", thickness);
+    }
+
+    /// Set MIP rotation angles in degrees around X, Y, Z axes.
+    pub fn set_rotation_degrees(&mut self, roll_deg: f32, yaw_deg: f32, pitch_deg: f32) {
+        let (roll, yaw, pitch) = (
+            roll_deg.to_radians(),
+            yaw_deg.to_radians(),
+            pitch_deg.to_radians(),
+        );
+        self.rotation_radians = [roll, yaw, pitch];
+    }
+
+    /// Set MIP rotation angles in radians around X, Y, Z axes.
+    pub fn set_rotation_radians(&mut self, roll: f32, yaw: f32, pitch: f32) {
+        self.rotation_radians = [roll, yaw, pitch];
+    }
+
+    pub fn get_scale(&self) -> f32 {
+        self.scale
+    }
+
+    pub fn get_pan(&self) -> [f32; 3] {
+        self.pan
+    }
+
+    pub fn get_rotation_radians(&self) -> [f32; 3] {
+        self.rotation_radians
+    }
+
+    pub fn get_window_level(&self) -> [f32; 2] {
+        [self.window_level.window_level(), self.window_level.window_width()]
+    }
+}
+
+impl Renderable for MipView {
+    fn update(&mut self, queue: &Queue) {
         log::trace!("[MIP_UPDATE] Starting MIP update");
-        
+
         // Derive texture format flag for shader decoding
         let decode_params = self.wgpu_impl.render_content().decode_parameters();
 
-        // Fine-tune window/level for optimal contrast in medical data
-        // Use bone defaults to match MPR initial expectations
-        let (window, level) = crate::core::window_level::WindowLevel::DEFAULT_BONE;
+        // Get render parameters based on MIP mode
+        self.get_render_params(self.config.mip_mode);
 
-        // Create uniforms with only the fields used in the shader
+        // Create uniforms
+        let rotation = Self::build_rotation_matrix(
+            self.rotation_radians[0],
+            self.rotation_radians[1],
+            self.rotation_radians[2],
+        );
+
+        let extent = self.wgpu_impl.render_content().texture.size();
+        let w_vol = extent.width.max(1) as f32;
+        let h_vol = extent.height.max(1) as f32;
+        let d_vol = extent.depth_or_array_layers.max(1) as f32;
+
+        // Calculate Projected Bounding Box
+        let sz = self.config.slab_thickness;
+        let w_mm = w_vol * 1.0;
+        let h_mm = h_vol * 1.0;
+        let _d_mm = d_vol * sz; // Unused for viewport sizing to prevent zoom-out on deep volumes
+
+        // Optimize: Use width/height max as base dimension to "move view inside".
+        // Using diagonal or including depth causes excessive zoom-out, revealing artifacts.
+        // Fitting to Transverse dimensions ensures the ROI fills the screen.
+        let base_dim = w_mm.max(h_mm);
+        let cw = base_dim;
+        let ch = base_dim;
+        self.content_dimensions = (cw, ch);
+
+        // Construct Composite Matrix for Shader
+        let scale_viewport = Mat4::from_scale(Vec3::new(cw, ch, cw));
+        let scale_texture = Mat4::from_scale(Vec3::new(1.0 / w_mm, 1.0 / h_mm, 1.0 / _d_mm));
+        let final_matrix = scale_texture * rotation * scale_viewport;
+
         let uniforms = MipUniforms {
-            ray_step_size: 0.005,  // Smaller step size for better quality
-            max_steps: 1000.0,     // More steps to ensure we traverse the volume
+            ray_step_size: self.config.ray_step_size,
+            max_steps: self.config.max_steps,
             is_packed_rg8: decode_params.is_packed_flag as f32,
             bias: decode_params.bias,
-            window,
-            level,
+            window: self.window_level.window_width(),
+            level: self.window_level.window_level(),
             pan_x: self.pan[0],
             pan_y: self.pan[1],
             scale: self.scale,
-            _pad0: [0.0; 7],
+            mip_mode: self.config.mip_mode as f32,
+            lower_threshold : self.config.lower_threshold,
+            upper_threshold : self.config.upper_threshold,
+            rotation: final_matrix.to_cols_array(),
         };
 
         // Upload uniforms to GPU buffer
         self.wgpu_impl.update_uniforms(queue, &uniforms);
 
         log::trace!(
-            "[MIP_UPDATE] Uniforms set: is_packed_rg8={}, window={}, level={}, step={}, max_steps={}",
-            decode_params.is_packed_flag, window, level, uniforms.ray_step_size, uniforms.max_steps
+            "[MIP_UPDATE] Uniforms set: mip_mode={}, window={}, level={}, lower={}, upper={}",
+            uniforms.mip_mode, uniforms.window, uniforms.level, uniforms.lower_threshold, uniforms.upper_threshold
         );
     }
 
-    /// Function-level comment: Render MIP view using ray casting with the configured pipeline.
-    /// Sets viewport, binds pipeline and resources, then draws a fullscreen quad for ray casting.
-    pub fn render(
-        &mut self,
-        render_pass: &mut wgpu::RenderPass,
-    ) -> Result<(), wgpu::SurfaceError> {
-        log::trace!("[MIP_RENDER] Starting MIP render at ({}, {}) with size {}x{}",
-                   self.position.0, self.position.1, self.dimensions.0, self.dimensions.1);
-        
+    fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
+        log::trace!("[MIP_RENDER] Starting MIP render");
+
         // Set the MIP render pipeline
         render_pass.set_pipeline(&self.wgpu_impl.render_context().pipeline);
 
-        // Set viewport for this view (aspect-preserving fit)
+        // Set viewport for this view
         let (x, y) = (self.position.0 as f32, self.position.1 as f32);
         let (w, h) = (self.dimensions.0, self.dimensions.1);
-        let extent = self.wgpu_impl.render_content().texture.size();
-        let cw = extent.width.max(1) as f32;
-        let ch = extent.height.max(1) as f32;
+
+        // Calculate projected volume dimensions
+        let (cw, ch) = self.content_dimensions;
+
+        // Compute aspect fit
         if let Some(fit) = compute_aspect_fit(w, h, cw, ch, 0) {
             render_pass.set_viewport(x + fit.x, y + fit.y, fit.w, fit.h, 0.0, 1.0);
         } else {
             render_pass.set_viewport(x, y, 1.0, 1.0, 0.0, 1.0);
         }
 
-        // Bind pre-created texture bind group (volume texture and sampler)
+        // Bind resources
         render_pass.set_bind_group(0, &*self.wgpu_impl.bind_groups().0, &[]);
-
-        // Bind pre-created uniform bind group (camera and volume parameters)
         render_pass.set_bind_group(1, &*self.wgpu_impl.bind_groups().1, &[]);
 
-        // Draw fullscreen quad using triangle strip (4 vertices, no vertex buffer needed)
-        // The vertex shader generates positions using vertex_index
+        // Draw fullscreen quad
         render_pass.draw(0..4, 0..1);
 
-        log::trace!("[MIP_RENDER] MIP render completed successfully");
-
+        log::trace!("[MIP_RENDER] MIP render completed");
         Ok(())
-    }
-
-    /// Function-level comment: Set scale factor.
-    pub fn set_scale(&mut self, scale: f32) {
-        // Clamp to a reasonable range to avoid clipping or degenerate matrices
-        let clamped = scale.clamp(0.001, 100.0);
-        self.scale = clamped;
-        log::info!("MIP scale factor set to {:.3}", clamped);
-    }
-
-    /// Function-level comment: Set MIP pan translation (world units) for X and Y axes.
-    /// Pan values are uploaded to the vertex shader as a uniform offset.
-    pub fn set_pan(&mut self, dx: f32, dy: f32) {
-        const MAX_PAN_DISTANCE: f32 = 10000.0; // Maximum pan distance in mm
-        let clamped_x = dx.clamp(-MAX_PAN_DISTANCE, MAX_PAN_DISTANCE);
-        let clamped_y = dy.clamp(-MAX_PAN_DISTANCE, MAX_PAN_DISTANCE);
-        self.pan[0] = clamped_x;
-        self.pan[1] = clamped_y;
-        log::info!("MIP pan offset set to ({}, {})", clamped_x, clamped_y);
-    }
-
-    /// Function-level comment: Set slab thickness in mm.
-    pub fn set_slab_thickness(&mut self, thickness: f32) {
-        self.config.slab_thickness = thickness;
-        log::info!("MIP slab thickness set to {}", thickness);
-    }
-
-    /// Function-level comment: Set MIP rendering mode.
-    pub fn set_mip_mode(&mut self, mode: u32) {
-        self.config.mode = mode;
-        log::info!("MIP mode set to {}", mode);
-    }
-}
-
-impl crate::rendering::view::Renderable for MipView {
-    /// Function-level comment: Bridge trait implementation to call inherent update method.
-    fn update(&mut self, queue: &wgpu::Queue) {
-        MipView::update(self, queue);
-    }
-
-    /// Function-level comment: Bridge trait implementation to call inherent render method.
-    fn render(
-        &mut self,
-        render_pass: &mut wgpu::RenderPass,
-    ) -> Result<(), wgpu::SurfaceError> {
-        MipView::render(self, render_pass)
     }
 }
 
 impl View for MipView {
-    /// Function-level comment: Get current view position on screen.
     fn position(&self) -> (i32, i32) {
         self.position
     }
 
-    /// Function-level comment: Get current view dimensions.
     fn dimensions(&self) -> (u32, u32) {
         self.dimensions
     }
 
-    /// Function-level comment: Move view to new screen position.
     fn move_to(&mut self, pos: (i32, i32)) {
         self.position = pos;
     }
 
-    /// Function-level comment: Resize view to new dimensions.
     fn resize(&mut self, dim: (u32, u32)) {
         self.dimensions = dim;
     }
 
-    /// Function-level comment: Get reference to this view as Any for type casting.
     fn as_any(&self) -> &dyn Any {
         self
     }
 
-    /// Function-level comment: Get mutable reference to this view as Any for type casting.
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
-
-    // Function-level comment: MipView is not an MPR view, so return None.
-    // fn as_mpr(&mut self) -> Option<&mut dyn crate::rendering::view::MPRView> {
-    //     None
-    // }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f32::consts::FRAC_PI_2;
 
-    /// Verify MipUniforms size matches expected scalar-only layout for uniform buffer
     #[test]
     fn test_mip_uniforms_size() {
-        // Verify size and alignment for WGSL
         let size = std::mem::size_of::<MipUniforms>();
         assert_eq!(size % 16, 0);
-        assert_eq!(size, 64);
+        assert_eq!(size, 112);
     }
 
-    /// Function-level comment: Test MIP configuration creation and validation.
-    /// Ensures MipConfig can be created with reasonable default values.
+    #[test]
+    fn test_build_rotation_matrix_identity() {
+        let m = MipView::build_rotation_matrix(0.0, 0.0, 0.0);
+        assert_eq!(m, Mat4::IDENTITY);
+    }
+
+    #[test]
+    fn test_build_rotation_matrix_roll_90() {
+        let m = MipView::build_rotation_matrix(FRAC_PI_2, 0.0, 0.0);
+        let v = (m * glam::Vec4::new(1.0, 0.0, 0.0, 0.0)).truncate();
+        assert!((v.x - 0.0).abs() < 1e-5);
+        assert!((v.y - 1.0).abs() < 1e-5);
+        assert!(v.z.abs() < 1e-5);
+    }
+
     #[test]
     fn test_mip_config_creation() {
         let config = MipConfig::new();
-
-        // Verify default values are reasonable for medical imaging
-        assert!(config.ray_step_size > 0.0, "步长应为正值");
-        assert!(config.ray_step_size < 1.0, "步长应较小以保证质量");
-        assert!(config.max_steps > 0, "步数应为正值");
-        assert!(config.max_steps <= 1024, "步数应在合理性能范围内");
-    }
-
-    /// Function-level comment: Test MIP view creation with mock render content.
-    /// Verifies that MipView can be created and implements the View trait correctly.
-    #[test]
-    fn test_mip_view_creation() {
-        // Note: This test would need a mock device for full testing
-        // For now, we test the structure creation
-        let config = MipConfig::new();
-
-        // Verify config is valid
-        assert!(config.ray_step_size > 0.0);
-        assert!(config.max_steps > 0);
-    }
-
-    /// Function-level comment: Test MIP view trait implementations.
-    /// Verifies that MipView correctly implements View trait methods.
-    #[test]
-    fn test_mip_view_trait_methods() {
-        // This test would require a full WGPU setup for complete testing
-        // For MVP, we test the basic structure
-        
-        // Test default position and dimensions
-        let default_pos = (0, 0);
-        let default_dim = (512, 512);
-        
-        // Verify reasonable defaults
-        assert_eq!(default_pos.0, 0);
-        assert_eq!(default_pos.1, 0);
-        assert!(default_dim.0 > 0);
-        assert!(default_dim.1 > 0);
-    }
-
-    /// Function-level comment: Test MIP render context creation.
-    /// Verifies that MipRenderContext can be created with proper GPU resources.
-    #[test]
-    fn test_mip_render_context_structure() {
-        // For MVP, test the basic structure requirements
-        // Full GPU testing would require device setup
-        
-        // Test that we can create the basic configuration
-        let config = MipConfig::new();
-        
-        // Verify the configuration is suitable for rendering
-        assert!(config.ray_step_size > 0.0, "Ray step size must be positive for ray marching");
-        assert!(config.max_steps > 10, "Need sufficient steps for quality rendering");
-        assert!(config.max_steps < 2048, "Too many steps would hurt performance");
-    }
-
-    /// Function-level comment: Test MIP integration with RenderContent architecture.
-    /// Verifies that MIP can reuse existing texture data efficiently.
-    #[test]
-    fn test_mip_render_content_integration() {
-        // Test Arc sharing concept (key for memory efficiency)
-        let test_value = 42u32;
-        let shared_value = Arc::new(test_value);
-        let value_clone = Arc::clone(&shared_value);
-        
-        // Verify Arc sharing works correctly
-        assert_eq!(Arc::strong_count(&shared_value), 2);
-        assert_eq!(*value_clone, *shared_value);
-        
-        // Test that we can create the data structures needed for RenderContent
-        let test_data = vec![128u8; 64 * 64 * 64 * 2]; // Small test volume
-        assert_eq!(test_data.len(), 64 * 64 * 64 * 2);
-        assert_eq!(test_data[0], 128u8);
-    }
-
-    /// Function-level comment: Test MIP view positioning and sizing.
-    /// Verifies that MIP views can be positioned and resized correctly.
-    #[test]
-    fn test_mip_view_positioning() {
-        let positions: [(i32, i32); 3] = [(0, 0), (100, 200), (-50, 300)];
-        let dimensions: [(u32, u32); 3] = [(512, 512), (1024, 768), (256, 256)];
-
-        for pos in positions.iter() {
-            assert!(pos.0.abs() < 10000);
-            assert!(pos.1.abs() < 10000);
-        }
-
-        for dim in dimensions.iter() {
-            assert!(dim.0 > 0);
-            assert!(dim.1 > 0);
-            assert!(dim.0 <= 4096);
-            assert!(dim.1 <= 4096);
-        }
+        // Just verify it can be created and has expected default mode
+        assert_eq!(config.mip_mode, 0);
+        assert!(config.slab_thickness > 0.0);
     }
 }

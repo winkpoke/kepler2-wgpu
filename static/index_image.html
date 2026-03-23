@@ -31,7 +31,7 @@
 
     main {
       display: grid;
-      grid-template-columns: 520px 1fr;
+      grid-template-columns: 340px 1fr 320px;
       gap: var(--gap);
       padding: var(--gap)
     }
@@ -60,7 +60,7 @@
     }
 
     input[type="number"] {
-      width: 120px;
+      width: 80px;
     }
 
     label {
@@ -123,7 +123,7 @@
 
     .grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       gap: 8px
     }
 
@@ -174,9 +174,6 @@
 </head>
 
 <body>
-  <header>
-    <h1>三维重建</h1>
-  </header>
   <main>
     <section class="card">
       <h2>1) 选择文件</h2>
@@ -190,20 +187,11 @@
           <label>输入重建文件：</label>
           <input id="mhxInput" type="file" multiple accept=".mha,.mhd,.raw" />
           <div class="row" style="margin-top:8px">
-            <button id="btn">运行重建</button>
+            <button onclick="window.location.href='remedy.html'" class="nav-link">采图</button>
+            <button id="btn">重建</button>
             <button id="analyzeBtn">分析文件</button>
             <button id="rerender">视图显示</button>
-          </div>
-        </fieldset>
-
-        <fieldset class="pill" style="margin-bottom:10px">
-          <legend>视图模式</legend>
-          <div class="row">
-            <span id="mode-label">模式:</span>
-            <input type="number" id="mode" step="1" value="0" min="0" max="2">
-            <span id="orientation_index-label">方向索引:</span>
-            <input type="number" id="orientation_index" step="1" value="0" min="0" max="2">
-            <button id="one-cell-submit">应用</button>
+            <button id="points">画点</button>
           </div>
         </fieldset>
 
@@ -211,144 +199,83 @@
           <legend>视图切换</legend>
           <div class="grid">
             <div>
-              <span id="3d-label">3D:</span>
-              <input type="number" id="mesh_index" step="1.0" value="0.0">
-              <input type="checkbox" id="3d" />
+              <span id="mode-label">mode:</span></br>
+              <input type="number" id="mode" step="1" value="3" min="0" max="1">
             </div>
             <div>
-              <span id="downsample-label">Downsample:</span>
-              <input type="number" id="downsample" step="1.0" value="3.0">
-            </div>
-            <div>
-              <span id="iso-value-label">Iso Value:</span>
-              <input type="number" id="iso-value" step="1.0" value="100.0">
-            </div>
-            <div>
-              <span id="change_mpr-label">change_mpr</span>
-              <input type="checkbox" id="change_mpr" />
-            </div>
-            <div>
-              <span id="index-1-label">index-1:</span>
-              <input type="number" id="index-1" step="1.0" value="0.0">
-            </div>
-            <div>
-              <span id="index-2-label">index-2:</span>
-              <input type="number" id="index-2" step="1.0" value="0.0">
+              <span id="index-label">index:</span>
+              <input type="checkbox" id="change_index" />
+              <input type="number" id="index" step="1.0" value="0.0">
             </div>
             <div>
               <span id="mipSpan">mip:</span>
-              <input type="number" id="mip" step="1.0" value="0.0">
               <input type="checkbox" id="change_mip" />
+              <input type="number" id="mip" step="1.0" value="0.0">
             </div>
             <div>
-              <span id="index-3-label">index-3:</span>
-              <input type="number" id="index-3" step="1.0" value="0.0">
+              <span id="orientation-label">orientation:</span>
+              <input type="number" id="index-orientation" step="1.0" value="0.0">
             </div>
             <div>
-              <span id="index-4-label">index-4:</span>
-              <input type="number" id="index-4" step="1.0" value="0.0">
+              <span id="mesh_index-label">mesh_index:</span>
+              <input type="checkbox" id="change_mesh_index" />
+              <input type="number" id="mesh_index" step="1.0" value="0.0">
+            </div>
+            <div>
+              <span id="crop_mesh-label">crop_mesh:</span>
+              <input type="checkbox" id="crop_mesh" />
+              <span id="save_mesh-label">save_mesh:</span>
+              <input type="checkbox" id="save_mesh" />
+            </div>
+            <div>
+              <span id="iso-min-label">Iso Min:</span>
+              <input type="number" id="iso-min" step="1.0" value="100.0"></br>
+              <span id="iso-max-label">Iso Max:</span>
+              <input type="number" id="iso-max" step="1.0" value="400.0">
+            </div>
+            <div>
+              <span id="roi-min-label">ROI Min:</span>
+              <input type="number" id="roi-min-x" step="1.0" value="-158.50882">
+              <input type="number" id="roi-min-y" step="1.0" value="-92.941345">
+              <input type="number" id="roi-min-z" step="1.0" value="-1160.3865">
+            </div>
+            <div>
+              <span id="roi-max-label">ROI Max:</span>
+              <input type="number" id="roi-max-x" step="1.0" value="134.81229">
+              <input type="number" id="roi-max-y" step="1.0" value="125.87259">
+              <input type="number" id="roi-max-z" step="1.0" value="-1035.0465">
             </div>
           </div>
           <div class="row" style="margin-top:8px">
             <button id="mesh">应用视图</button>
           </div>
         </fieldset>
-
         <fieldset class="pill" style="margin-bottom:10px">
-          <legend>操作视图窗口</legend>
-          <div class="row">
-            <span id="index-input-label">窗口索引:</span>
-            <input type="number" id="index-input" step="1.0" value="0.0">
+          <legend>Oblique control</legend>
+          <div>
+            <span>index:</span><input type="number" id="oblique-index" step="1.0" value="0.0"><br>
+            <span>Reset to:</span>
+            <select id="resetOptions" style="width: 100px">
+              <option value="T">transverse</option>
+              <option value="C">coronal</option>
+              <option value="S">sagittal</option>
+            </select>
+            <button id="oblique-reset-submit">submit</button>
           </div>
-          <div class="grid" style="margin-top:8px">
-            <div>
-              <label for="slice-input">slice</label>
-              <input type="number" id="slice-input" step="0.5" value="0.0">
-              <button id="slice-submit">应用</button>
-            </div>
-            <div>
-              <label for="scale-input">Scale</label>
-              <input type="number" id="scale-input" step="10.0" value="1.0">
-              <button id="scale-submit">应用</button>
-            </div>
-            <div>
-              <label for="translate-input">Translate</label>
-              <div class="row">
-                <span id="trans-x-label">x:</span>
-                <input type="number" id="trans-x" step="10.0" value="0.0">
-                <span id="trans-y-label">y:</span>
-                <input type="number" id="trans-y" step="10.0" value="0.0">
-              </div>
-              <button id="trans-submit">应用</button>
-              <button id="trans-get">获取</button>
-            </div>
-            <div>
-              <label>Window/Level</label>
-              <div class="row">
-                <span id="window-label">width:</span>
-                <input type="number" id="window" step="10.0" value="0.0">
-                <span id="level-label">level:</span>
-                <input type="number" id="level" step="10.0" value="0.0">
-              </div>
-              <div class="row" style="margin-top:6px">
-                <button id="winlev-submit">应用</button>
-                <button id="winlev-get">获取</button>
-              </div>
-            </div>
-            <div>
-              <label for="resize-input">Resize</label>
-              <div class="row">
-                <span id="width-label">width:</span>
-                <input type="number" id="width" step="10.0" value="0.0" placeholder="800">
-                <span id="height-label">height:</span>
-                <input type="number" id="height" step="10.0" value="0.0" placeholder="800">
-              </div>
-              <button id="resize-submit">应用</button>
-            </div>
-            <div>
-              <label>Center</label>
-              <div class="row">
-                <span id="center-x-label">x:</span>
-                <input type="number" id="center-x" step="0.1" value="0.0" placeholder="x">
-                <span id="center-y-label">y:</span>
-                <input type="number" id="center-y" step="0.1" value="0.0" placeholder="y">
-                <span id="center-z-label">z:</span>
-                <input type="number" id="center-z" step="0.1" value="0.0" placeholder="z">
-              </div>
-              <button id="set-center">应用</button>
-            </div>
+          <div>
+            <label>Rotation:</label>
+            <span>Horizontal:</span><input type="number" id="rotation-x" step="15" value="0" min="0" max="360"><br>
+            <span>Vertical :</span><input type="number" id="rotation-y" step="15" value="0" min="0" max="360"><br>
+            <span>In-plane :</span><input type="number" id="rotation-z" step="15" value="0" min="0" max="360"><br>
+            <button id="submit-rot">submit</button>
           </div>
-        </fieldset>
-
-        <fieldset class="pill">
-          <legend>3D 网格</legend>
-          <div class="grid">
-            <div>
-              <span id="3d-scale-label">scale:</span>
-              <input type="number" id="3d-scale" step="0.1" value="1.0">
-            </div>
-            <div>
-              <span id="3d-pan-label">pan_x:</span>
-              <input type="number" id="3d-pan-x" step="0.1" value="0.0">
-            </div>
-            <div>
-              <span id="3d-pan-label">pan_y:</span>
-              <input type="number" id="3d-pan-y" step="0.1" value="0.0">
-            </div>
-            <div>
-              <span id="3d-opacity-label">opacity:</span>
-              <input type="number" id="3d-opacity" step="0.1" value="1.0" min="0" max="1">
-            </div>
-            <div>
-              <span id="3d-rotation-label">angle:</span>
-              <input type="number" id="3d-rotation-x" step="15" value="-90" min="0" max="360">
-              <input type="number" id="3d-rotation-y" step="15" value="0" min="0" max="360">
-              <input type="number" id="3d-rotation-z" step="15" value="0" min="0" max="360">
-            </div>
-          </div>
-          <div class="row" style="margin-top:8px">
-            <button id="3d-submit">应用</button>
-            <button id="3d-reset">重置</button>
+          <div>
+            <label>Rotation Quat:</label>
+            <span>x:</span><input type="number" id="quat-x" step="0.01" value="0"><br>
+            <span>y:</span><input type="number" id="quat-y" step="0.01" value="0"><br>
+            <span>z:</span><input type="number" id="quat-z" step="0.01" value="0"><br>
+            <span>w:</span><input type="number" id="quat-w" step="0.01" value="0"><br>
+            <button id="submit-quat">submit</button>
           </div>
         </fieldset>
       </div>
@@ -390,7 +317,133 @@
         <div id="render_app"></div>
       </div>
     </section>
+
+    <section class="card">
+      <h2>3) 视图操作</h2>
+      <div class="content">
+        <fieldset class="pill" style="margin-bottom:10px">
+          <legend>操作视图窗口</legend>
+          <div class="row">
+            <span id="index-input-label">窗口索引:</span>
+            <input type="number" id="index-input" step="1.0" value="0.0">
+          </div>
+          <div class="grid" style="margin-top:8px">
+            <div>
+              <label for="slice-input">slice</label>
+              <input type="number" id="slice-input" step="0.5" value="0.0">
+              <button id="slice-submit">应用</button>
+            </div>
+            <div>
+              <label for="slab-thickness-input">slab thickness</label>
+              <input type="number" id="slab-thickness" step="0.5" value="0.0">
+              <button id="slab-thickness-submit">应用</button>
+            </div>
+            <div>
+              <label for="scale-input">Scale</label>
+              <input type="number" id="scale-input" step="1.0" value="1.0">
+              <button id="scale-submit">应用</button>
+            </div>
+            <div>
+              <label for="translate-input">Translate</label>
+              <div class="row">
+                <span id="trans-x-label">x:</span>
+                <input type="number" id="trans-x" step="10.0" value="0.0"></br>
+                <span id="trans-y-label">y:</span>
+                <input type="number" id="trans-y" step="10.0" value="0.0"></br>
+              </div>
+              <button id="trans-submit">应用</button>
+              <button id="trans-get">获取</button>
+            </div>
+            <div>
+              <label>Window/Level</label>
+              <div class="row">
+                <span id="window-label">width:</span>
+                <input type="number" id="window" step="10.0" value="0.0">
+                <span id="level-label">level:</span>
+                <input type="number" id="level" step="10.0" value="0.0">
+              </div>
+              <div class="row" style="margin-top:6px">
+                <button id="winlev-submit">应用</button>
+                <button id="winlev-get">获取</button>
+              </div>
+            </div>
+            <div>
+              <label for="resize-input">Resize</label>
+              <div class="row">
+                <span id="width-label">width:</span>
+                <input type="number" id="width" step="10.0" value="0.0" placeholder="800">
+                <span id="height-label">height:</span>
+                <input type="number" id="height" step="10.0" value="0.0" placeholder="800">
+              </div>
+              <button id="resize-submit">应用</button>
+            </div>
+            <div>
+              <label>Center</label>
+              <div class="row">
+                <input type="number" id="center-x" step="0.1" value="0.0" placeholder="x">
+                <input type="number" id="center-y" step="0.1" value="0.0" placeholder="y">
+                <input type="number" id="center-z" step="0.1" value="0.0" placeholder="z">
+              </div>
+              <button id="set-center">应用</button>
+            </div>
+            <div>
+              <span id="mip-mode-label">MIP Mode:</span>
+              <select id="mip-mode">
+                <option value="0">MIP</option>
+                <option value="1">MinIP</option>
+                <option value="2">AvgIP</option>
+              </select></br>
+              <span id="mip-rotation-label">旋转:</span></br>
+              <span id="mip-rotation-x-label">roll:</span><input type="number"  id="mip-rotation-x"
+                step="15" value="0" min="0" max="360">
+              <span id="mip-rotation-y-label">yaw:</span><input type="number" id="mip-rotation-y"
+                step="15" value="0" min="0" max="360">
+              <span id="mip-rotation-z-label">pitch:</span><input type="number"  id="mip-rotation-z"
+                step="15" value="0" min="0" max="360">
+              <button id="mip-submit-rot">旋转</button>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset class="pill">
+          <legend>3D 网格</legend>
+          <div class="grid">
+            <div>
+              <span id="3d-scale-label">scale:</span>
+              <input type="number" id="3d-scale" step="0.1" value="1.0">
+            </div>
+            <div>
+              <span id="3d-pan-label">pan_x:</span>
+              <input type="number" id="3d-pan-x" step="0.1" value="0.0">
+            </div>
+            <div>
+              <span id="3d-pan-label">pan_y:</span>
+              <input type="number" id="3d-pan-y" step="0.1" value="0.0">
+            </div>
+            <div>
+              <span id="3d-opacity-label">opacity:</span>
+              <input type="number" id="3d-opacity" step="0.1" value="1.0" min="0" max="1">
+            </div>
+            <div>
+              <span id="3d-rotation-label">angle:</span></br>
+              <span id="3d-rotation-x-label">x:</span><input type="number" id="3d-rotation-x" step="15" value="0"
+                min="0" max="360"></br>
+              <span id="3d-rotation-y-label">y:</span><input type="number" id="3d-rotation-y" step="15" value="0"
+                min="0" max="360"></br>
+              <span id="3d-rotation-z-label">z:</span><input type="number" id="3d-rotation-z" step="15" value="0"
+                min="0" max="360">
+            </div>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <button id="3d-submit">应用</button>
+            <button id="3d-rot">旋转</button>
+            <button id="3d-reset">重置</button>
+          </div>
+        </fieldset>
+      </div>
+    </section>
   </main>
+
   <script type="module">
     // ========= 日志函数 =========
     const log = (msg, level = "info") => {
@@ -402,12 +455,14 @@
 
     // ========= 快捷选择器 =========
     const byId = (id) => document.getElementById(id);
+    const deg2rad = (d) => d * Math.PI / 180;
+    const rad2deg = (r) => r * 180 / Math.PI;
 
     // ========= 状态管理 =========
     var repo;
     const state = {
       files: [],
-      dat:null,
+      dat: null,
       mhd: null,
       raw: null,
       raws: [],
@@ -417,11 +472,13 @@
       len: null,
       render_app: null,
       spacing: [],
-      dim:[],
+      dim: [],
       mip: null,
-      mesh: false,
       mesh_index: null,
+      index: null,
       enable_rotation: false,
+      mesh_rotation: [],
+      oblique_rotation: [0, 0, 0],
     };
 
     let gl_canvas = null;
@@ -438,7 +495,7 @@
         state.wasmModule = await import('/pkg/kepler_wgpu.js');
         await state.wasmModule.default(); // 初始化WASM
 
-        console.log("WASM模块导出的函数:", Object.keys(state.wasmModule).filter(key => 
+        console.log("WASM模块导出的函数:", Object.keys(state.wasmModule).filter(key =>
           typeof state.wasmModule[key] === 'function' && key !== 'default'
         ));
         log("WASM模块加载完成", "ok");
@@ -447,18 +504,20 @@
     }
 
     function toUint8Array(obj) {
-        const json = JSON.stringify(obj);
-        const enc = new TextEncoder();
-        return enc.encode(json);
+      const json = JSON.stringify(obj);
+      const enc = new TextEncoder();
+      return enc.encode(json);
     }
     const info = {
       kv: 100.0,
       mAs: 70.0,
       slope: 1612.903,
       intercept: - 1016.129,
+      patient_position: "HFS",
+      modality: "CT",
     }
     const infoUint8 = toUint8Array(info);
-    
+
     // ========= 文件选择处理 =========
     byId("mhxInput").addEventListener("change", async (e) => {
       state.files = Array.from(e.target.files);
@@ -466,7 +525,7 @@
       state.mhd = state.files.find((f) => /\.mhd$/i.test(f.name)) || null;
       state.raw = state.files.find((f) => /\.raw$/i.test(f.name)) || null;
       state.mhx = state.mha || state.mhd || null;
-      
+
       byId("analyzeBtn").disabled = !state.mhx;
       log(state.mhx ? "重建文件已选择，可以解析" : "请选择重建文件");
     });
@@ -506,7 +565,7 @@
         log("重建完成！", "ok");
       } catch (err) {
         console.error(err);
-        log( "重建失败：" + err.message, "error");
+        log("重建失败：" + err.message, "error");
       }
     });
 
@@ -514,24 +573,32 @@
     byId('rerender').addEventListener('click', async () => {
       log("开始渲染！")
       if (!state.mhx) {
-          alert('请先选择重建文件！');
+        alert('请先选择重建文件！');
       }
 
       await ensureWasm();
       volume = await state.wasmModule.parse_common_files_wasm(state.files, infoUint8);
-      if (state.render_app == null){
+      if (state.render_app == null) {
         state.render_app = await state.wasmModule.get_render_app();
         gl_canvas = state.render_app.get_glcanvas();
         gl_canvas.load_data_from_ct_volume(volume);
         gl_canvas = state.render_app.get_glcanvas();
         state.render_app.run();
       }
-      else{
+      else {
         console.log('render_app:', state.render_app);
         gl_canvas.set_window_by_div_id('render_app', volume);
       }
     })
 
+    function drawPoint(ctx, x, y, radius = 3, color = 'red') {
+        ctx.beginPath();
+        // 使用 arc 画圆：参数依次为 x, y, 半径, 起始角度, 结束角度(2*PI代表一整圈)
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.closePath();
+    }
     // 切层
     byId('slice-submit').addEventListener('click', () => {
       const sliceValue = byId('slice-input').value;
@@ -539,14 +606,30 @@
 
       const indexValue = parseInt(input_index.value);
       if (isNaN(sliceValue)) {
-          alert('Please enter a valid number');
-          return;
+        alert('Please enter a valid number');
+        return;
       }
       if (!gl_canvas) {
-          alert('Please select a series first!');
-          return;
+        alert('Please select a series first!');
+        return;
       }
-        gl_canvas.set_slice_mm(indexValue, sliceValue);
+      gl_canvas.set_slice_mm(indexValue, sliceValue);
+    })
+
+    byId('slab-thickness-submit').addEventListener('click', () => {
+      const thicknessValue = byId('slab-thickness').value;
+      const input_index = byId('index-input');
+
+      const indexValue = parseInt(input_index.value);
+      if (isNaN(thicknessValue)) {
+        alert('Please enter a valid number');
+        return;
+      }
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+      gl_canvas.set_slab_thickness(indexValue, thicknessValue);
     })
 
     byId('set-center').addEventListener('click', async () => {
@@ -572,20 +655,53 @@
       }
     });
 
+    byId('points').addEventListener('click', () => {
+        const canvas = document.querySelector('canvas');
+        if (!canvas) return;
+
+        const parent = canvas.parentElement;
+        if (window.getComputedStyle(parent).position === 'static') {
+            parent.style.position = 'relative';
+        }
+
+        const oldCanvas = document.getElementById('points-canvas');
+        if (oldCanvas) oldCanvas.remove();
+
+        const newCanvas = document.createElement('canvas');
+        newCanvas.id = 'points-canvas';
+        newCanvas.style.position = 'absolute';
+        newCanvas.style.left = canvas.offsetLeft + 'px';
+        newCanvas.style.top = canvas.offsetTop + 'px';
+        newCanvas.style.pointerEvents = 'none';
+        newCanvas.style.backgroundColor = 'transparent';
+        newCanvas.style.zIndex = '100';
+
+        parent.appendChild(newCanvas);
+        newCanvas.width = 800;
+        newCanvas.height = 800;
+        
+        const ctx = newCanvas.getContext('2d');
+        ctx.clearRect(0, 0, 800, 800);
+        drawPoint(ctx, 200, 200);
+        drawPoint(ctx, 600, 200);
+        drawPoint(ctx, 200, 600);
+        drawPoint(ctx, 600, 600);
+    })
+
     byId('scale-submit').addEventListener('click', () => {
-        const input = byId('scale-input');
-        scaleValue = parseFloat(input.value);
-        const input_index = byId('index-input');
-        const indexValue = parseInt(input_index.value);
-        if (isNaN(scaleValue)) {
-          alert('Please enter a valid number');
-          return;
-        }
-        if (!gl_canvas) {
-          alert('Please select a series first!');
-          return;
-        }
-        gl_canvas.set_scale(indexValue, scaleValue);
+      const input = byId('scale-input');
+      scaleValue = parseFloat(input.value);
+      const input_index = byId('index-input');
+      const indexValue = parseInt(input_index.value);
+      if (isNaN(scaleValue)) {
+        alert('Please enter a valid number');
+        return;
+      }
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+      gl_canvas.set_scale(indexValue, scaleValue);
     });
 
     byId('trans-submit').addEventListener('click', () => {
@@ -613,8 +729,8 @@
         alert('Please select a series first!');
         return;
       }
-        win && gl_canvas.set_window_width(indexValue, win);
-        lev && gl_canvas.set_window_level(indexValue, lev);
+      win && gl_canvas.set_window_width(indexValue, win);
+      lev && gl_canvas.set_window_level(indexValue, lev);
     });
 
     byId('winlev-get').addEventListener('click', () => {
@@ -645,68 +761,155 @@
       });
     });
 
-    byId('mesh').addEventListener('click', () => {
-      const checkbox3d = byId('3d').checked;
-      const checkboxChangeMpr = byId('change_mpr').checked;
-      const checkboxChangeMip = byId('change_mip').checked;
+    byId("submit-rot").addEventListener('click', async () => {
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
 
-      if (checkbox3d){
-        state.mesh = true;
+      const x_abs = parseFloat(byId("rotation-x").value) || 0;
+      const y_abs = parseFloat(byId("rotation-y").value) || 0;
+      const z_abs = parseFloat(byId("rotation-z").value) || 0;
+
+      const dx_deg = x_abs - state.oblique_rotation[0];
+      const dy_deg = y_abs - state.oblique_rotation[1];
+      const dz_deg = z_abs - state.oblique_rotation[2];
+
+      state.oblique_rotation[0] = x_abs;
+      state.oblique_rotation[1] = y_abs;
+      state.oblique_rotation[2] = z_abs;
+
+      const dx = deg2rad(dx_deg);
+      const dy = deg2rad(dy_deg);
+      const dz = deg2rad(dz_deg);
+      console.log('oblique_rotation:', dx_deg, dy_deg, dz_deg);
+
+      gl_canvas.set_oblique_rotation_radians(state.index, dx, dy, dz);
+      const rotation = JSON.parse(await gl_canvas.get_oblique_rotation(state.index))
+      console.log('oblique_rotation:', rotation);
+    });
+
+    byId('submit-quat').addEventListener('click', async () => {
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+      state.index = parseInt(byId('oblique-index').value, 10);
+
+      const x = parseFloat(byId("quat-x").value) || 0;
+      const y = parseFloat(byId("quat-y").value) || 0;
+      const z = parseFloat(byId("quat-z").value) || 0;
+      const w = parseFloat(byId("quat-w").value) || 0;
+
+      gl_canvas.set_oblique_rotation_quat(state.index, [x, y, z, w]);
+    });
+
+    byId('oblique-reset-submit').addEventListener('click', async () => {
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+
+      const opt = byId('resetOptions').value;
+      state.index = parseInt(byId('oblique-index').value, 10);
+      if (opt == "T") {
+        gl_canvas.set_oblique_rotation_quat(state.index, [0, 0, 0, 1]);
+        gl_canvas.set_oblique_rotation_radians(state.index, 0, 0, 0);
+        state.oblique_rotation = [0, 0, 0]
+      } else if (opt == "C") {
+        gl_canvas.set_oblique_rotation_quat(state.index, [0, 0, 0, 1]);
+        gl_canvas.set_oblique_rotation_radians(state.index, deg2rad(-90), 0, 0);
+        state.oblique_rotation = [0, 0, 0]
+      } else if (opt == "S") {
+        gl_canvas.set_oblique_rotation_quat(state.index, [0, 0, 0, 1]);
+        gl_canvas.set_oblique_rotation_radians(state.index, deg2rad(90), deg2rad(-180), deg2rad(-90));
+        state.oblique_rotation = [0, 0, 0]
+      }
+    });
+
+    byId('mesh').addEventListener('click', () => {
+      const checkboxChangeMip = byId('change_mip').checked;
+      const checkboxChangeIndex = byId('change_index').checked;
+      const checkboxChangeMeshIndex = byId('change_mesh_index').checked;
+      const mode = parseInt(byId('mode').value, 10); // Mode: 0=MPR, 1=MIP
+
+      if (checkboxChangeMeshIndex) {
         state.mesh_index = parseInt(byId('mesh_index').value, 10);
-      }else{
-        state.mesh = false;
+        console.log('meshclick_mesh_index:', state.mesh_index);
+      } else {
         state.mesh_index = null;
       }
-      
-      // Indices: convert to numbers for downstream logic
+
       if (checkboxChangeMip) {
         state.mip = parseInt(byId('mip').value, 10);
-        console.log('meshclick_mip:',state.mip);
-      }else{
+        console.log('meshclick_mip:', state.mip);
+      } else {
         state.mip = null;
       }
-      const index_1 = parseInt(byId('index-1').value, 10);
-      const index_2 = parseInt(byId('index-2').value, 10);
-      const index_3 = parseInt(byId('index-3').value, 10);
-      const index_4 = parseInt(byId('index-4').value, 10);
-      const downsample = parseInt(byId('downsample').value, 10);
-      const iso_value = parseFloat(byId('iso-value').value);
 
-      console.log('meshclick:', state.mesh_index, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, downsample, iso_value);
+      if (checkboxChangeIndex) {
+        state.index = parseInt(byId('index').value, 10);
+      } else {
+        state.index = null;
+      }
+      const index_orientation = parseInt(byId('index-orientation').value, 10);
+      const sx = parseInt(byId('roi-min-x').value);
+      const sy = parseInt(byId('roi-min-y').value);
+      const sz = parseInt(byId('roi-min-z').value);
+      const lx = parseInt(byId('roi-max-x').value);
+      const ly = parseInt(byId('roi-max-y').value);
+      const lz = parseInt(byId('roi-max-z').value);
+      const checkbox3d = byId('save_mesh').checked;
+      const checkboxCrop = byId('crop_mesh').checked;
+      const iso_min = parseFloat(byId('iso-min').value);
+      const iso_max = parseFloat(byId('iso-max').value);
 
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
 
-      gl_canvas.enable_mesh(state.mesh_index, state.mip, checkboxChangeMpr, index_1, index_2, index_3, index_4, iso_value, null);
-    });
-
-    byId('one-cell-submit').addEventListener('click', () => {
-      const mode = parseInt(byId('mode').value, 10); // Mode: 0=MPR, 1=MIP, 2=MESH
-      const orientation_index = parseInt(byId('orientation_index').value, 10);
-      const downsample = parseInt(byId('downsample').value, 10);
-      const iso_value = parseFloat(byId('iso-value').value);
-      console.log('meshclick:', mode, orientation_index, iso_value, null);
-
-      if (mode === 2){
-        state.mesh = true;
-      }else{
-        state.mesh = false;
+      if ([sx, sy, sz, lx, ly, lz].some(v => Number.isNaN(v))) {
+        alert('Please enter a valid number');
+        return;
       }
 
-      gl_canvas.set_one_cell_layout(mode, orientation_index, iso_value, null);
+      if (sx >= lx || sy >= ly || sz >= lz) {
+        alert('ROI min must be less than max');
+        return;
+      }
+
+      gl_canvas.set_render_mode(mode, checkbox3d, checkboxCrop, sx, sy, sz, lx, ly, lz, state.mesh_index, state.index, iso_min, iso_max, state.mip, index_orientation)
+      state.oblique_rotation = [0, 0, 0]
+
+      if (checkbox3d) {
+        gl_canvas.set_mesh_rotation(mesh_index, state.mesh_rotation);
+      }
     });
-    
-    byId('3d-submit').addEventListener('click', () => {
+
+    byId('mip-submit-rot').addEventListener('click', () => {
       const indexValue = parseInt(byId('index-input').value, 10);
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
 
-      // state.enable_rotation = !state.enable_rotation;
-      // console.log('Mesh rotation', state.enable_rotation);
+      const mip_mode = parseInt(byId('mip-mode').value, 10);
+      gl_canvas.set_mip_mode(indexValue, mip_mode);
+
+      const rotation_x = parseFloat(byId('mip-rotation-x').value);
+      const rotation_y = parseFloat(byId('mip-rotation-y').value);
+      const rotation_z = parseFloat(byId('mip-rotation-z').value);
+      gl_canvas.set_mip_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
+    })
+
+    byId('3d-submit').addEventListener('click', async () => {
+      const indexValue = parseInt(byId('index-input').value, 10);
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+
       gl_canvas.set_mesh_rotation_enabled(indexValue, state.enable_rotation);
 
       const scale = parseFloat(byId('3d-scale').value);
@@ -715,25 +918,51 @@
       const opacity = parseFloat(byId('3d-opacity').value);
       const rotation_x = parseFloat(byId('3d-rotation-x').value);
       const rotation_y = parseFloat(byId('3d-rotation-y').value);
-      const rotation_z = parseFloat(byId('3d-rotation-z').value);
 
-      if (state.mesh){
-        console.log('3d-submit:', scale, pan_x, pan_y, opacity, rotation_x, rotation_y, rotation_z);
-        gl_canvas.set_mesh_scale(indexValue, scale);
-        gl_canvas.set_mesh_pan(indexValue, pan_x, pan_y);
-        if (typeof gl_canvas.set_mesh_opacity === 'function') {
-          gl_canvas.set_mesh_opacity(indexValue, Math.max(0, Math.min(1, opacity)));
-        } else {
-          log('mesh opacity 方法未导出，已跳过', 'warn');
-        }
-        gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
+      gl_canvas.set_mesh_scale(indexValue, scale);
+      gl_canvas.set_mesh_pan(indexValue, pan_x, pan_y);
+      if (typeof gl_canvas.set_mesh_opacity === 'function') {
+        gl_canvas.set_mesh_opacity(indexValue, Math.max(0, Math.min(1, opacity)));
+      } else {
+        log('mesh opacity 方法未导出，已跳过', 'warn');
       }
+
+      gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y);
+      state.mesh_rotation = await gl_canvas.get_mesh_rotation(indexValue);
+      console.log('3d-submit:', state.mesh_rotation);
+    });
+
+    byId('3d-rot').addEventListener('click', () => {
+      const indexValue = parseInt(byId('index-input').value, 10);
+      const rotation_x = parseFloat(byId('3d-rotation-x').value);
+      const rotation_y = parseFloat(byId('3d-rotation-y').value);
+      const rotation_z = parseFloat(byId('3d-rotation-z').value);
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+      gl_canvas.set_mesh_rotation_degrees(indexValue, rotation_x, rotation_y, rotation_z);
     });
 
     byId('3d-reset').addEventListener('click', () => {
-        const indexValue = parseInt(byId('index-input').value, 10);
-        gl_canvas.reset_mesh(indexValue);
+      const indexValue = parseInt(byId('index-input').value, 10);
+      gl_canvas.reset_mesh(indexValue);
     });
+
+    document.getElementById('resize-submit').addEventListener('click', () => {
+      const width = document.getElementById('width').value;
+      const height = document.getElementById('height').value;
+      const input_index = document.getElementById('index-input');
+      if (isNaN(width) || isNaN(height)) {
+        alert('Please enter a valid number');
+        return;
+      }
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+      gl_canvas.resize(width, height);
+    })
 
     // ========= MHX文件解析函数 =========
     async function parseMHXContent(mhxText) {
@@ -793,9 +1022,9 @@
         byId("progress").value = 30;
 
         // 更新UI显示解析结果
-        byId("mhxName").textContent = state.mhx?.name|| "—";
+        byId("mhxName").textContent = state.mhx?.name || "—";
         byId("elemType").textContent = header.element_type;
-        state.dim = [header.dim_x, header.dim_y,header.dim_z];
+        state.dim = [header.dim_x, header.dim_y, header.dim_z];
         byId("dimSize").textContent = `${header.dim_x} × ${header.dim_y} × ${header.dim_z}`;
         byId("spacing").textContent = `${header.spacing_x.toFixed(2)}, ${header.spacing_y.toFixed(2)}, ${header.spacing_z.toFixed(2)}`;
 
@@ -817,7 +1046,7 @@
     // ========= 转换并导出 =========
     byId("convertBtn").addEventListener("click", async () => {
       const option = document.getElementById("exportOptions").value;
-      log("你选择了导出："+option);
+      log("你选择了导出：" + option);
       try {
         await ensureWasm();
         log("生成 CT 体数据 ...");
@@ -825,26 +1054,26 @@
         if (!state.wasmModule.build_ct_dicom_wasm) {
           log("build_ct_dicom_wasm 函数未在 WASM 模块中导出");
         }
-        else{
+        else {
           log("build_ct_dicom_wasm 函数已在 WASM 模块中导出");
         }
         byId("progress").value = 25;
 
         const mhxFile = state.mhx;
 
-        const sop_uid = "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.365119";
         // 构造 patient / study 对象
         const patient = {
           patient_id: "P001",
-          name: "zhangsan",
-          birthdate: "19800101",
-          sex: "M"
+          name: "DemoPatient",
+          birthdate: "",
+          sex: ""
         };
         const study = {
+          study_uid: "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.365120",
           study_id: "STUDY001",
           patient_id: "P001",
-          date: "20250908",
-          description: "zhutiCT"
+          date: "20260308",
+          description: ""
         };
 
         function toUint8Array(obj) {
@@ -855,18 +1084,21 @@
 
         const patientUint8 = toUint8Array(patient);
         const studyUint8 = toUint8Array(study);
+        console.log(patientUint8);
+        console.log(studyUint8);
+        console.log(infoUint8);
         byId("progress").value = 50;
-
-        const arrayBuffer = await mhxFile.arrayBuffer();
-        const mhxUint8Array = new Uint8Array(arrayBuffer);
-        log(`ArrayBuffer大小: ${arrayBuffer.byteLength} bytes`);
-        log(`Uint8Array长度: ${mhxUint8Array.length}`);
-        log("开始DICOM转换...");
-        byId("progress").value = 75;
 
         // ========= 分支逻辑 =========
         switch (option) {
           case "dicom":
+            if (!mhxFile) {
+                log("未选择输入文件", "error");
+                return;
+            }
+            const arrayBuffer = await mhxFile.arrayBuffer();
+            const mhxUint8Array = new Uint8Array(arrayBuffer);
+            log(`Uint8Array长度: ${mhxUint8Array.length}`);
             log("开始 DICOM 转换...");
             byId("progress").value = 75;
 
@@ -874,15 +1106,14 @@
             if (!state.raw) {
               log("未找到 raw 文件");
             }
-            else{
+            else {
               log("已找到 raw 文件");
               const mhxFile = state.raw;
               const arrayBuffer = await mhxFile.arrayBuffer();
               dataUint8Array = new Uint8Array(arrayBuffer);
             }
-            console.log(dataUint8Array);
 
-            const files = await state.wasmModule.build_ct_dicom_wasm(
+            const result = await state.wasmModule.build_ct_dicom_wasm(
               mhxUint8Array,
               dataUint8Array,
               patientUint8,
@@ -890,22 +1121,45 @@
               infoUint8
             );
 
-            const zip = new JSZip(); 
-            files.forEach(file => { 
-              const arr = new Uint8Array(file.data); 
-              zip.file(file.filename, arr); 
-            }); 
-            
+            const files = result.files;
+            console.log("Series UID:", result.series_uid);
+
+            const zip = new JSZip();
+            files.forEach(file => {
+              const arr = new Uint8Array(file.data);
+              zip.file(file.filename, arr);
+            });
+
             const blob = await zip.generateAsync({ type: "blob" });
             downloadBlob(blob, "dicoms.zip");
 
             log("✅ DICOM 导出成功！");
             break;
 
-          case "mha":
-            log("开始导出 MHA ...");
-            downloadBlob(new Blob([mhxUint8Array]), "CT_volume.mha");
-            log("✅ MHA 导出成功！");
+            case "mhx":
+            case "mha":
+                log("开始导出 MHA/MHX ...");
+                if (volume) {
+                    console.log("开始将内存中的 DICOM 数据导出为 MHA...");
+                    // 调用我们刚写的 Rust WASM 方法
+                    const mhaBytes = volume.export_mha();
+                    // 生成 Blob 并下载
+                    const blob = new Blob([mhaBytes], { type: "application/octet-stream" });
+                    downloadBlob(blob, "exported_from_dicom.mha");
+                    console.log("✅ DICOM 到 MHA 导出成功！");
+                    log("✅ DICOM 到 MHA 导出成功！");
+                } else {
+                    const mhxFile = state.mhx;
+                    if (mhxFile) {
+                        const arrayBuffer = await mhxFile.arrayBuffer();
+                        const mhxUint8Array = new Uint8Array(arrayBuffer);
+                        downloadBlob(new Blob([mhxUint8Array]), "CT_volume.mha");
+                        log("✅ MHA 导出成功！");
+                    } else {
+                        log("❌ 导出失败：未加载 DICOM 序列或 MHA 文件", "error");
+                        alert("请先加载 DICOM 序列或 MHA 文件");
+                    }
+                }
             break;
 
           case "png":
@@ -933,7 +1187,7 @@
       }
     });
 
-  
+
     // ========= 显示DICOM =========
     function get_tree(fileArray) {
       return new Promise(async (resolve, reject) => {
@@ -964,11 +1218,10 @@
                   label: serie.uid,
                   images: []
                 };
-                byId("PatientPosition").textContent = serie.patient_position || "—";
-                log(`选择患者位置: ${serie.patient_position}`);
                 // 获取序列的图像（images）
                 let images_id = JSON.parse(repo.get_images_by_series(serie.uid));
                 serie_data.images = images_id; // 添加图像数据
+                byId("PatientPosition").textContent = images_id[0].patient_position || "—";
                 study_data.children.push(serie_data); // 添加序列数据
               }
               patient_data.children.push(study_data); // 添加研究数据
@@ -977,8 +1230,8 @@
           }
           resolve(patient_list)
         } catch (error) {
-            reject(error);
-            console.error("Error parsing DICOM files:", error);
+          reject(error);
+          console.error("Error parsing DICOM files:", error);
         }
       })
     }
@@ -1001,45 +1254,45 @@
         isRoot && li.classList.add('series'); // 给最外层 li 添加 class
         // 如果有子节点，则递归创建树
         if (item.children) {
-            const childUl = createTree(item.children, false);
-            childUl.style.display = 'none'; // 初始隐藏子节点
-            li.appendChild(childUl);
-            // 添加点击事件来切换显示
-            toggle.addEventListener('click', () => {
-                const isHidden = childUl.style.display === 'none';
-                childUl.style.display = isHidden ? 'block' : 'none';
-                expandIcon.innerHTML = isHidden ? '▼' : '▶'; // 更新图标
-                if (isHidden) {
-                    expandIcon.classList.remove('collapsed');
-                } else {
-                    expandIcon.classList.add('collapsed');
-                }
-            });
+          const childUl = createTree(item.children, false);
+          childUl.style.display = 'none'; // 初始隐藏子节点
+          li.appendChild(childUl);
+          // 添加点击事件来切换显示
+          toggle.addEventListener('click', () => {
+            const isHidden = childUl.style.display === 'none';
+            childUl.style.display = isHidden ? 'block' : 'none';
+            expandIcon.innerHTML = isHidden ? '▼' : '▶'; // 更新图标
+            if (isHidden) {
+              expandIcon.classList.remove('collapsed');
+            } else {
+              expandIcon.classList.add('collapsed');
+            }
+          });
         } else {
-            toggle.addEventListener('click', async () => {
-                series_id = toggle.innerHTML;
-                byId("ImageSeries").textContent = series_id;
-                log(`选择序列: ${series_id}`);
-                let vol = repo.generate_ct_volume(series_id);
-                volume = vol;
-                if (flag == true) {
-                  if (state.render_app == null) {
-                    state.render_app = await state.wasmModule.get_render_app();
-                    gl_canvas = state.render_app.get_glcanvas();
-                    gl_canvas.load_data_from_ct_volume(volume);
-                    gl_canvas = state.render_app.get_glcanvas();
-                    state.render_app.run();
-                  } else {
-                    console.log('render_app:', state.render_app);
-                    gl_canvas.set_window_by_div_id('render_app', volume);
-                    console.log(vol);
-                  }
-                  flag = false;
-                } else {
-                  gl_canvas.load_data_from_ct_volume(volume);
-                }
+          toggle.addEventListener('click', async () => {
+            series_id = toggle.innerHTML;
+            byId("ImageSeries").textContent = series_id;
+            log(`选择序列: ${series_id}`);
+            let vol = repo.generate_ct_volume(series_id);
+            volume = vol;
+            if (flag == true) {
+              if (state.render_app == null) {
+                state.render_app = await state.wasmModule.get_render_app();
+                gl_canvas = state.render_app.get_glcanvas();
+                gl_canvas.load_data_from_ct_volume(volume);
+                gl_canvas = state.render_app.get_glcanvas();
+                state.render_app.run();
+              } else {
+                console.log('render_app:', state.render_app);
+                gl_canvas.set_window_by_div_id('render_app', volume);
+                console.log(vol);
+              }
+              flag = false;
+            } else {
+              gl_canvas.load_data_from_ct_volume(volume);
+            }
 
-            })
+          })
         }
 
         ul.appendChild(li);
@@ -1048,4 +1301,5 @@
     }
   </script>
 </body>
+
 </html>

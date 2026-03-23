@@ -1,11 +1,10 @@
+use crate::core::timing::Instant;
+use std::collections::HashMap;
 /// Render pass management system for separating 2D and 3D rendering
-/// 
+///
 /// This module implements the architecture described in render-architecture-design.md
 /// with separate passes for mesh (3D with depth) and slice (2D without depth) rendering.
-
 use wgpu;
-use std::collections::HashMap;
-use crate::core::timing::Instant;
 
 use crate::rendering::mesh::mesh_texture_pool::MeshTexturePool;
 
@@ -44,7 +43,7 @@ impl PassDescriptor {
     pub fn mesh_pass(surface_format: wgpu::TextureFormat, use_depth: bool) -> Self {
         Self {
             name: "MeshPass".to_string(),
-            is_offscreen: false,  // Renders directly to surface
+            is_offscreen: false, // Renders directly to surface
             color_format: surface_format,
             clear_color: wgpu::Color {
                 r: 0.1,
@@ -142,32 +141,46 @@ impl PassRegistry {
     }
 
     /// Build a pass plan based on view presence in the layout
-    /// 
+    ///
     /// # Arguments
     /// * `has_mesh_view` - Whether there is a mesh view present in the layout
     /// * `has_mip_view` - Whether there is a MIP view present in the layout
     /// * `has_mpr_view` - Whether there is an MPR view present in the layout
-    /// 
+    ///
     /// Render order follows the architecture design:
     /// 1. MeshPass (3D) renders first with Clear operation to establish base scene
     /// 2. MipPass (volume projection) renders second for 3D volume visualization
     /// 3. SlicePass (2D) renders third with Load operation to overlay on existing content
-    pub fn build_pass_plan(&self, has_mesh_view: bool, has_mip_view: bool, has_mpr_view: bool) -> PassPlan {
+    pub fn build_pass_plan(
+        &self,
+        has_mesh_view: bool,
+        has_mip_view: bool,
+        has_mpr_view: bool,
+    ) -> PassPlan {
         let mut plan = PassPlan::new();
 
         // Add mesh pass first for 3D rendering (base layer with Clear)
         if has_mesh_view {
-            plan.add_pass(PassId::MeshPass, PassDescriptor::mesh_pass(self.surface_format, true));
+            plan.add_pass(
+                PassId::MeshPass,
+                PassDescriptor::mesh_pass(self.surface_format, true),
+            );
         }
 
         // Add MIP pass second for volume projection rendering
         if has_mip_view {
-            plan.add_pass(PassId::MipPass, PassDescriptor::mip_pass(self.surface_format));
+            plan.add_pass(
+                PassId::MipPass,
+                PassDescriptor::mip_pass(self.surface_format),
+            );
         }
 
         // Add slice pass third for 2D rendering (overlay with Load) - always present for MPR views
         if has_mpr_view {
-            plan.add_pass(PassId::SlicePass, PassDescriptor::slice_pass(self.surface_format));
+            plan.add_pass(
+                PassId::SlicePass,
+                PassDescriptor::slice_pass(self.surface_format),
+            );
         }
 
         plan
@@ -191,7 +204,11 @@ pub struct PassContext<'a> {
 
 impl<'a> PassContext<'a> {
     /// Create a new pass context
-    pub fn new(pass: &'a mut wgpu::RenderPass<'a>, descriptor: &'a PassDescriptor, pass_id: PassId) -> Self {
+    pub fn new(
+        pass: &'a mut wgpu::RenderPass<'a>,
+        descriptor: &'a PassDescriptor,
+        pass_id: PassId,
+    ) -> Self {
         Self {
             pass,
             descriptor,
@@ -228,9 +245,13 @@ pub enum PassExecutionError {
 impl std::fmt::Display for PassExecutionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            PassExecutionError::MissingDescriptor(msg) => write!(f, "Missing pass descriptor: {}", msg),
+            PassExecutionError::MissingDescriptor(msg) => {
+                write!(f, "Missing pass descriptor: {}", msg)
+            }
             PassExecutionError::TextureError(msg) => write!(f, "Texture error: {}", msg),
-            PassExecutionError::RenderPassCreationFailed(msg) => write!(f, "Render pass creation failed: {}", msg),
+            PassExecutionError::RenderPassCreationFailed(msg) => {
+                write!(f, "Render pass creation failed: {}", msg)
+            }
             PassExecutionError::RenderingFailed(msg) => write!(f, "Rendering failed: {}", msg),
             PassExecutionError::CleanupFailed(msg) => write!(f, "Cleanup failed: {}", msg),
         }
@@ -277,18 +298,18 @@ impl PassExecutor {
     pub fn update_surface_format(&mut self, format: wgpu::TextureFormat) {
         self.registry.update_surface_format(format);
     }
-    
+
     /// Function-level comment: Get execution statistics for monitoring and debugging.
     pub fn get_stats(&self) -> &PassExecutionStats {
         &self.stats
     }
-    
+
     /// Function-level comment: Check if the executor is in a healthy state.
     pub fn is_healthy(&self) -> bool {
-        self.stats.consecutive_failures < 10 && 
-        self.last_success_time.elapsed().as_secs_f64() < 60.0
+        self.stats.consecutive_failures < 10
+            && self.last_success_time.elapsed().as_secs_f64() < 60.0
     }
-    
+
     /// Function-level comment: Reset error state and re-enable disabled passes.
     pub fn reset_error_state(&mut self) {
         self.stats.consecutive_failures = 0;
@@ -296,12 +317,12 @@ impl PassExecutor {
         self.stats.last_error_time = None;
         log::info!("PassExecutor error state reset");
     }
-    
+
     /// Function-level comment: Handle pass execution errors and determine recovery strategy.
     fn handle_pass_error(&mut self, pass_id: PassId, error: PassExecutionError) {
         self.stats.consecutive_failures += 1;
         self.stats.last_error_time = Some(Instant::now());
-        
+
         match pass_id {
             PassId::MeshPass => {
                 self.stats.mesh_pass_failures += 1;
@@ -310,7 +331,11 @@ impl PassExecutor {
                     self.mesh_pass_disabled = true;
                     log::warn!("Mesh pass disabled due to repeated failures: {}", error);
                 } else {
-                    log::warn!("Mesh pass error (attempt {}): {}", self.stats.consecutive_failures, error);
+                    log::warn!(
+                        "Mesh pass error (attempt {}): {}",
+                        self.stats.consecutive_failures,
+                        error
+                    );
                 }
             }
             PassId::SlicePass => {
@@ -324,27 +349,31 @@ impl PassExecutor {
             }
         }
     }
-    
+
     /// Function-level comment: Record successful pass execution.
     fn record_success(&mut self) {
         self.stats.total_frames += 1;
         self.last_success_time = Instant::now();
-        
+
         // Reset consecutive failures on success
         if self.stats.consecutive_failures > 0 {
-            log::info!("PassExecutor recovered after {} consecutive failures", self.stats.consecutive_failures);
+            log::info!(
+                "PassExecutor recovered after {} consecutive failures",
+                self.stats.consecutive_failures
+            );
             self.stats.consecutive_failures = 0;
         }
-        
+
         // Re-enable mesh pass if it was disabled and we've had some successful frames
-        if self.mesh_pass_disabled && self.stats.total_frames % 300 == 0 { // Try every 5 seconds at 60fps
+        if self.mesh_pass_disabled && self.stats.total_frames % 300 == 0 {
+            // Try every 5 seconds at 60fps
             log::info!("Attempting to re-enable mesh pass after recovery period");
             self.mesh_pass_disabled = false;
         }
     }
 
     /// Execute render passes for a frame
-    /// 
+    ///
     /// # Arguments
     /// * `encoder` - Command encoder for recording render commands
     /// * `frame_view` - Surface texture view for final output
@@ -375,21 +404,27 @@ impl PassExecutor {
         let frame_start_time = Instant::now();
         log::trace!("[FRAME_EXEC] Starting frame execution - Surface: {}x{}, Has mesh view: {}, Has MIP view: {}, Has MPR view: {}", 
                     surface_width, surface_height, has_mesh_view, has_mip_view, has_mpr_view);
-        
+
         // Build the pass plan for this frame
         let effective_has_mesh_view = has_mesh_view && !self.mesh_pass_disabled;
-        let plan = self.registry.build_pass_plan(effective_has_mesh_view, has_mip_view, has_mpr_view);
+        let plan =
+            self.registry
+                .build_pass_plan(effective_has_mesh_view, has_mip_view, has_mpr_view);
         let mut frame_success = true;
-        
-        log::trace!("[FRAME_EXEC] Pass plan: {} passes scheduled, Effective mesh view enabled: {}", 
-                    plan.passes.len(), effective_has_mesh_view);
+
+        log::trace!(
+            "[FRAME_EXEC] Pass plan: {} passes scheduled, Effective mesh view enabled: {}",
+            plan.passes.len(),
+            effective_has_mesh_view
+        );
         if self.mesh_pass_disabled {
             log::warn!("[FRAME_EXEC] Mesh pass is currently DISABLED due to previous errors");
         }
 
         // Execute each pass in order
         for &pass_id in &plan.passes {
-            let descriptor = plan.get_descriptor(pass_id)
+            let descriptor = plan
+                .get_descriptor(pass_id)
                 .ok_or("Missing pass descriptor")?;
 
             let pass_name = match pass_id {
@@ -397,7 +432,11 @@ impl PassExecutor {
                 PassId::SlicePass => "SLICE",
                 PassId::MipPass => "MIP",
             };
-            log::trace!("[FRAME_EXEC] Executing {} pass: '{}'", pass_name, descriptor.name);
+            log::trace!(
+                "[FRAME_EXEC] Executing {} pass: '{}'",
+                pass_name,
+                descriptor.name
+            );
 
             let pass_result = match pass_id {
                 PassId::MeshPass => {
@@ -406,33 +445,63 @@ impl PassExecutor {
                         log::trace!("Skipping mesh pass - disabled due to previous errors");
                         continue;
                     }
-                    
-                    self.execute_mesh_pass(encoder, frame_view, texture_pool, device, surface_width, surface_height, descriptor, &mut render_fn)
-                        .map_err(|e| PassExecutionError::RenderingFailed(e.to_string()))
+
+                    self.execute_mesh_pass(
+                        encoder,
+                        frame_view,
+                        texture_pool,
+                        device,
+                        surface_width,
+                        surface_height,
+                        descriptor,
+                        &mut render_fn,
+                    )
+                    .map_err(|e| PassExecutionError::RenderingFailed(e.to_string()))
                 }
-                PassId::SlicePass => {
-                    self.execute_slice_pass(encoder, frame_view, texture_pool, descriptor, &mut render_fn)
-                        .map_err(|e| PassExecutionError::RenderingFailed(e.to_string()))
-                }
-                PassId::MipPass => {
-                    self.execute_mip_pass(encoder, frame_view, texture_pool, descriptor, &mut render_fn)
-                        .map_err(|e| PassExecutionError::RenderingFailed(e.to_string()))
-                }
+                PassId::SlicePass => self
+                    .execute_slice_pass(
+                        encoder,
+                        frame_view,
+                        texture_pool,
+                        descriptor,
+                        &mut render_fn,
+                    )
+                    .map_err(|e| PassExecutionError::RenderingFailed(e.to_string())),
+                PassId::MipPass => self
+                    .execute_mip_pass(
+                        encoder,
+                        frame_view,
+                        texture_pool,
+                        descriptor,
+                        &mut render_fn,
+                    )
+                    .map_err(|e| PassExecutionError::RenderingFailed(e.to_string())),
             };
 
             match &pass_result {
                 Ok(_) => {
-                    log::trace!("[FRAME_EXEC] {} pass '{}' completed successfully", pass_name, descriptor.name);
+                    log::trace!(
+                        "[FRAME_EXEC] {} pass '{}' completed successfully",
+                        pass_name,
+                        descriptor.name
+                    );
                 }
                 Err(error) => {
-                    log::error!("[FRAME_EXEC] {} pass '{}' failed: {}", pass_name, descriptor.name, error);
+                    log::error!(
+                        "[FRAME_EXEC] {} pass '{}' failed: {}",
+                        pass_name,
+                        descriptor.name,
+                        error
+                    );
                     frame_success = false;
                     self.handle_pass_error(pass_id, error.clone());
-                    
+
                     // For slice pass errors, we still try to continue since 2D rendering is critical
                     if matches!(pass_id, PassId::SlicePass) {
                         log::error!("Critical slice pass failure - this may affect 2D rendering");
-                        return Err(Box::new(PassExecutionError::RenderingFailed("Slice pass failed".to_string())));
+                        return Err(Box::new(PassExecutionError::RenderingFailed(
+                            "Slice pass failed".to_string(),
+                        )));
                     }
                 }
             }
@@ -440,11 +509,15 @@ impl PassExecutor {
 
         if frame_success {
             self.record_success();
-            log::trace!("[FRAME_EXEC] Frame execution completed successfully in {:.2}ms", 
-                        frame_start_time.elapsed().as_millis_f64());
+            log::trace!(
+                "[FRAME_EXEC] Frame execution completed successfully in {:.2}ms",
+                frame_start_time.elapsed().as_millis_f64()
+            );
         } else {
-            log::warn!("[FRAME_EXEC] Frame execution completed with errors in {:.2}ms", 
-                       frame_start_time.elapsed().as_millis_f64());
+            log::warn!(
+                "[FRAME_EXEC] Frame execution completed with errors in {:.2}ms",
+                frame_start_time.elapsed().as_millis_f64()
+            );
         }
 
         Ok(())
@@ -474,30 +547,41 @@ impl PassExecutor {
         // Prepare depth texture if needed (only depth, no offscreen color texture)
         let depth_view_opt = if descriptor.uses_depth {
             let texture_start = Instant::now();
-            texture_pool.ensure_textures(device, surface_width, surface_height, descriptor.uses_depth);
-            log::trace!("[MESH_PASS] Depth texture preparation completed in {:.2}ms", 
-                        texture_start.elapsed().as_millis_f64());
+            texture_pool.ensure_textures(
+                device,
+                surface_width,
+                surface_height,
+                descriptor.uses_depth,
+            );
+            log::trace!(
+                "[MESH_PASS] Depth texture preparation completed in {:.2}ms",
+                texture_start.elapsed().as_millis_f64()
+            );
 
             let view_start = Instant::now();
             // Get just the depth view from get_mesh_views, ignoring the color view
             let (_, depth_view_opt) = texture_pool.get_mesh_views(
-                device, 
-                surface_width, 
-                surface_height, 
-                wgpu::TextureFormat::Bgra8UnormSrgb, 
-                true
+                device,
+                surface_width,
+                surface_height,
+                wgpu::TextureFormat::Bgra8UnormSrgb,
+                true,
             );
-            log::trace!("[MESH_PASS] Depth view acquisition completed in {:.2}ms", 
-                        view_start.elapsed().as_millis_f64());
+            log::trace!(
+                "[MESH_PASS] Depth view acquisition completed in {:.2}ms",
+                view_start.elapsed().as_millis_f64()
+            );
             depth_view_opt
         } else {
             None
         };
-        
+
         // Log depth attachment status
         match &depth_view_opt {
-            Some(_) => log::trace!("[MESH_PASS] Depth attachment: ENABLED (format: {:?})", 
-                                   get_mesh_depth_format()),
+            Some(_) => log::trace!(
+                "[MESH_PASS] Depth attachment: ENABLED (format: {:?})",
+                get_mesh_depth_format()
+            ),
             None => log::trace!("[MESH_PASS] Depth attachment: DISABLED - rendering without depth"),
         }
 
@@ -506,7 +590,7 @@ impl PassExecutor {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(&descriptor.name),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: frame_view,  // Render directly to surface
+                view: frame_view, // Render directly to surface
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load, // Preserve existing content from previous passes (e.g., mesh rendering)
@@ -530,8 +614,10 @@ impl PassExecutor {
             occlusion_query_set: None,
             timestamp_writes: None,
         });
-        log::trace!("[MESH_PASS] Render pass creation completed in {:.2}ms", 
-                    render_pass_start.elapsed().as_millis_f64());
+        log::trace!(
+            "[MESH_PASS] Render pass creation completed in {:.2}ms",
+            render_pass_start.elapsed().as_millis_f64()
+        );
 
         // Execute rendering
         let rendering_start = Instant::now();
@@ -541,21 +627,26 @@ impl PassExecutor {
 
         match &render_result {
             Ok(_) => {
-                log::trace!("[MESH_PASS] Rendering completed successfully in {:.2}ms", rendering_time);
-                log::trace!("[MESH_PASS] Total execution time: {:.2}ms", 
-                            start_time.elapsed().as_millis_f64());
+                log::trace!(
+                    "[MESH_PASS] Rendering completed successfully in {:.2}ms",
+                    rendering_time
+                );
+                log::trace!(
+                    "[MESH_PASS] Total execution time: {:.2}ms",
+                    start_time.elapsed().as_millis_f64()
+                );
             }
             Err(e) => {
-                log::error!("[MESH_PASS] Rendering failed after {:.2}ms: {}", rendering_time, e);
+                log::error!(
+                    "[MESH_PASS] Rendering failed after {:.2}ms: {}",
+                    rendering_time,
+                    e
+                );
             }
         }
 
         render_result
     }
-
-
-
-
 
     /// Execute the slice pass (onscreen without depth)
     fn execute_slice_pass<F>(
@@ -570,10 +661,15 @@ impl PassExecutor {
         F: FnMut(PassContext) -> Result<(), Box<dyn std::error::Error>>,
     {
         let start_time = Instant::now();
-        log::trace!("[SLICE_PASS] Starting execution - Pass: '{}', Target: Surface (onscreen)", 
-                    descriptor.name);
-        log::trace!("[SLICE_PASS] Clear color: {:?}, Clear depth: {}", 
-                    descriptor.clear_color, descriptor.clear_depth);
+        log::trace!(
+            "[SLICE_PASS] Starting execution - Pass: '{}', Target: Surface (onscreen)",
+            descriptor.name
+        );
+        log::trace!(
+            "[SLICE_PASS] Clear color: {:?}, Clear depth: {}",
+            descriptor.clear_color,
+            descriptor.clear_depth
+        );
 
         // Begin slice render pass (renders directly to surface, preserving mesh content)
         let render_pass_start = Instant::now();
@@ -591,8 +687,10 @@ impl PassExecutor {
             occlusion_query_set: None,
             timestamp_writes: None,
         });
-        log::trace!("[SLICE_PASS] Render pass creation completed in {:.2}ms", 
-                    render_pass_start.elapsed().as_millis_f64());
+        log::trace!(
+            "[SLICE_PASS] Render pass creation completed in {:.2}ms",
+            render_pass_start.elapsed().as_millis_f64()
+        );
         log::trace!("[SLICE_PASS] Depth attachment: DISABLED (2D slice rendering)");
 
         // Execute rendering
@@ -603,12 +701,21 @@ impl PassExecutor {
 
         match &render_result {
             Ok(_) => {
-                log::trace!("[SLICE_PASS] Rendering completed successfully in {:.2}ms", rendering_time);
-                log::trace!("[SLICE_PASS] Total execution time: {:.2}ms", 
-                            start_time.elapsed().as_millis_f64());
+                log::trace!(
+                    "[SLICE_PASS] Rendering completed successfully in {:.2}ms",
+                    rendering_time
+                );
+                log::trace!(
+                    "[SLICE_PASS] Total execution time: {:.2}ms",
+                    start_time.elapsed().as_millis_f64()
+                );
             }
             Err(e) => {
-                log::error!("[SLICE_PASS] Rendering failed after {:.2}ms: {}", rendering_time, e);
+                log::error!(
+                    "[SLICE_PASS] Rendering failed after {:.2}ms: {}",
+                    rendering_time,
+                    e
+                );
             }
         }
 
@@ -628,10 +735,15 @@ impl PassExecutor {
         F: FnMut(PassContext) -> Result<(), Box<dyn std::error::Error>>,
     {
         let start_time = Instant::now();
-        log::trace!("[MIP_PASS] Starting execution - Pass: '{}', Target: Surface (onscreen)", 
-                    descriptor.name);
-        log::trace!("[MIP_PASS] Clear color: {:?}, Clear depth: {}", 
-                    descriptor.clear_color, descriptor.clear_depth);
+        log::trace!(
+            "[MIP_PASS] Starting execution - Pass: '{}', Target: Surface (onscreen)",
+            descriptor.name
+        );
+        log::trace!(
+            "[MIP_PASS] Clear color: {:?}, Clear depth: {}",
+            descriptor.clear_color,
+            descriptor.clear_depth
+        );
 
         // Begin MIP render pass (renders directly to surface)
         let render_pass_start = Instant::now();
@@ -649,8 +761,10 @@ impl PassExecutor {
             occlusion_query_set: None,
             timestamp_writes: None,
         });
-        log::trace!("[MIP_PASS] Render pass creation completed in {:.2}ms", 
-                    render_pass_start.elapsed().as_millis_f64());
+        log::trace!(
+            "[MIP_PASS] Render pass creation completed in {:.2}ms",
+            render_pass_start.elapsed().as_millis_f64()
+        );
         log::trace!("[MIP_PASS] Depth attachment: DISABLED (MIP rendering)");
 
         // Execute rendering
@@ -661,12 +775,21 @@ impl PassExecutor {
 
         match &render_result {
             Ok(_) => {
-                log::trace!("[MIP_PASS] Rendering completed successfully in {:.2}ms", rendering_time);
-                log::trace!("[MIP_PASS] Total execution time: {:.2}ms", 
-                            start_time.elapsed().as_millis_f64());
+                log::trace!(
+                    "[MIP_PASS] Rendering completed successfully in {:.2}ms",
+                    rendering_time
+                );
+                log::trace!(
+                    "[MIP_PASS] Total execution time: {:.2}ms",
+                    start_time.elapsed().as_millis_f64()
+                );
             }
             Err(e) => {
-                log::error!("[MIP_PASS] Rendering failed after {:.2}ms: {}", rendering_time, e);
+                log::error!(
+                    "[MIP_PASS] Rendering failed after {:.2}ms: {}",
+                    rendering_time,
+                    e
+                );
             }
         }
 
@@ -690,7 +813,15 @@ mod tests {
         let mip = PassDescriptor::mip_pass(fmt);
         assert_eq!(mip.name, "MipPass");
         assert!(!mip.uses_depth);
-        assert_eq!(mip.clear_color, wgpu::Color{r:0.0,g:0.0,b:0.0,a:1.0});
+        assert_eq!(
+            mip.clear_color,
+            wgpu::Color {
+                r: 0.0,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0
+            }
+        );
 
         let slice = PassDescriptor::slice_pass(fmt);
         assert_eq!(slice.name, "SlicePass");

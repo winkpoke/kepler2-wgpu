@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-Kepler WGPU is a high-performance, cross-platform medical imaging framework built in Rust using WebGPU for real-time visualization of CT (Computed Tomography) data. The framework provides advanced medical imaging capabilities including Multi-Planar Reconstruction (MPR), Maximum Intensity Projection (MIP), and 3D mesh visualization, supporting both native desktop and web-based deployment through WebAssembly.
+Kepler WGPU is a high-performance, cross-platform medical imaging framework built in Rust using WebGPU for real-time visualization of CT (Computed Tomography) data. The framework provides advanced medical imaging capabilities including Multi-Planar Reconstruction (MPR), intensity projection (MIP/MinIP/AvgIP), and 3D mesh visualization, supporting both native desktop and web-based deployment through WebAssembly.
 
 ## Product Vision
 
@@ -34,10 +34,12 @@ To deliver a state-of-the-art medical imaging visualization platform that combin
 - **Window/Level Controls**: Adjustable brightness and contrast for different tissue types
 - **Slice Thickness**: Configurable slice thickness for optimal visualization
 
-#### Maximum Intensity Projection (MIP)
-- **3D Volume Rendering**: Maximum intensity projection through volumetric data
+#### Intensity Projection (MIP/MinIP/AvgIP)
+- **3D Volume Rendering**: Ray-marched projection through volumetric data
+- **Projection Modes**: MIP (maximum), MinIP (minimum), AvgIP (average)
 - **Viewing Angles**: Multiple projection angles (front, side, top, custom)
 - **Opacity Control**: Adjustable transparency for tissue visualization
+- **Precision Rotation**: Manual roll, yaw, and pitch controls for precise orientation
 - **Real-time Rotation**: Interactive 3D volume rotation and manipulation
 
 #### 3D Mesh Visualization
@@ -169,6 +171,11 @@ To deliver a state-of-the-art medical imaging visualization platform that combin
 - **HL7 Support**: Health Level 7 messaging standard support
 - **EMR Integration**: Electronic Medical Record system integration
 - **API Availability**: RESTful API for system integration
+
+### Remedy Hardware Integration
+- **Serial Communication**: Remedy device control via serial protocol
+- **Web Support**: Browser integration using Web Serial API and WASM
+- **Native Support**: Platform serial interface with identical protocol framing
 
 ### Development Integration
 - **Library Distribution**: Available as Rust library crate

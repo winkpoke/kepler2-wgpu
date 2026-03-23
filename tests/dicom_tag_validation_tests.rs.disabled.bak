@@ -1,0 +1,398 @@
+//! DICOM tag validation tests
+//! Tests for VR (Value Representation) parsing, transfer syntax validation,
+//! private tag handling, tag sequence validation, and VR mismatch detection.
+
+use crate::common::format::create_test_dicom_bytes;
+
+/// VR (Value Representation) type definitions per DICOM standard
+#[derive(Debug, Clone, Copy)]
+enum VRType {
+    // String VR types
+    AE, // Application Entity
+    AS, // Age String
+    AT, // Attribute Tag
+    CS, // Code String
+    DA, // Date
+    DT, // Date Time
+    FL, // Floating Point Single
+    FD, // Floating Point Double
+    IS, // Integer String
+    LO, // Long String
+    LT, // Long Text
+    PN, // Person Name
+    SH, // Short String
+    SL, // Signed Long
+    SS, // Signed Short
+    ST, // Short Text
+    TM, // Time
+    UI, // Unique Identifier (UID)
+    UL, // Unsigned Long
+    US, // Unsigned Short
+    UT, // Unlimited Text
+    // Sequence VR types
+    SQ, // Sequence of Items
+}
+
+fn parse_vr_type(tag_str: &str) -> Option<VRType> {
+    match tag_str {
+        "AE" => Some(VRType::AE),
+        "AS" => Some(VRType::AS),
+        "AT" => Some(VRType::AT),
+        "CS" => Some(VRType::CS),
+        "DA" => Some(VRType::DA),
+        "DT" => Some(VRType::DT),
+        "FL" => Some(VRType::FL),
+        "FD" => Some(VRType::FD),
+        "IS" => Some(VRType::IS),
+        "LO" => Some(VRType::LO),
+        "LT" => Some(VRType::LT),
+        "PN" => Some(VRType::PN),
+        "SH" => Some(VRType::SH),
+        "SL" => Some(VRType::SL),
+        "SS" => Some(VRType::SS),
+        "ST" => Some(VRType::ST),
+        "TM" => Some(VRType::TM),
+        "UI" => Some(VRType::UI),
+        "UL" => Some(VRType::UL),
+        "US" => Some(VRType::US),
+        "UT" => Some(VRType::UT),
+        "SQ" => Some(VRType::SQ),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod vr_parsing_tests {
+    use super::*;
+
+    #[test]
+    [ignore]
+    fn test_vr_parsing_valid_types() {
+        // Test all standard VR types can be parsed
+        let valid_vrs = [
+            "AE", "AS", "AT", "CS", "DA", "DT", "FL", "FD", "IS", "LO", "LT", "PN", "SH", "SL",
+            "SS", "ST", "TM", "UI", "UL", "US", "UT", "SQ",
+        ];
+
+        for vr in valid_vrs.iter() {
+            assert!(
+                parse_vr_type(vr).is_some(),
+                "VR type '{}' should be recognized as valid",
+                vr
+            );
+        }
+    }
+
+    #[test]
+    [ignore]
+    fn test_vr_parsing_invalid_types() {
+        // Test invalid VR types are rejected
+        let invalid_vrs = ["XX", "YY", "ZZ", "INVALID"];
+
+        for vr in invalid_vrs.iter() {
+            assert!(
+                parse_vr_type(vr).is_none(),
+                "VR type '{}' should be rejected as invalid",
+                vr
+            );
+        }
+    }
+
+    #[test]
+    [ignore]
+    fn test_vr_parsing_case_sensitive() {
+        // Test VR parsing is case-sensitive (standard is uppercase)
+        assert!(parse_vr_type("SH").is_some());
+        assert!(parse_vr_type("sh").is_none());
+        assert!(parse_vr_type("Sh").is_none());
+    }
+}
+
+#[cfg(test)]
+mod transfer_syntax_tests {
+    use super::*;
+
+    #[test]
+    [ignore]
+    fn test_transfer_syntax_explicit_vr() {
+        // Test explicit VR transfer syntax detection
+        // In explicit VR, VR is specified in the tag
+        let explicit_vr_tags = ["(0008,0016)SH", "(0028,0010)US", "(0028,1053)FL"];
+
+        for tag in explicit_vr_tags.iter() {
+            let vr_part = tag.split(')').nth(1).unwrap();
+            assert!(
+                parse_vr_type(vr_part).is_some(),
+                "Tag '{}' should have valid explicit VR",
+                tag
+            );
+        }
+    }
+
+    #[test]
+    [ignore]
+    fn test_transfer_syntax_implicit_vr() {
+        // Test implicit VR transfer syntax (VR derived from dictionary)
+        // Implicit VR tags don't have VR in the tag specification
+        let implicit_vr_tags = [
+            "(0008,0016)", // SOP Class UID - should be UI
+            "(0008,0018)", // SOP Instance UID - should be UI
+            "(0028,0010)", // Rows - should be US
+        ];
+
+        for _tag in implicit_vr_tags.iter() {
+            // In implicit VR, we need to look up the VR from a dictionary
+            // For now, just verify the tag format is correct (no VR suffix)
+            // TODO: Add VR dictionary lookup for implicit VR
+        }
+    }
+}
+
+#[cfg(test)]
+mod private_tag_tests {
+    use super::*;
+
+    #[test]
+    [ignore]
+    fn test_private_tag_detection() {
+        // Test private tags are identified (odd group numbers)
+        let private_tags = [
+            "(0009,0010)", // Group 0009 (odd) - private
+            "(0009,1001)", // Group 0009 (odd) - private element
+            "(0019,0010)", // Group 0019 (odd) - private
+        ];
+
+        for tag in private_tags.iter() {
+            let group_part = tag.split(',').nth(0).unwrap();
+            let group_num = group_part
+                .trim_start_matches('(')
+                .trim_end_matches(')')
+                .parse::<u16>()
+                .unwrap();
+
+            assert!(
+                group_num % 2 == 1,
+                "Tag '{}' should have odd group number indicating private tag",
+                tag
+            );
+        }
+    }
+
+    #[test]
+    [ignore]
+    fn test_standard_tag_not_private() {
+        // Test standard tags have even group numbers
+        let standard_tags = [
+            "(0008,0010)", // Group 0008 (even) - standard
+            "(0028,0010)", // Group 0028 (even) - standard
+            "(0020,000E)", // Group 0020 (even) - standard
+        ];
+
+        for tag in standard_tags.iter() {
+            let group_part = tag.split(',').nth(0).unwrap();
+            let group_num = group_part
+                .trim_start_matches('(')
+                .trim_end_matches(')')
+                .parse::<u16>()
+                .unwrap();
+
+            assert!(
+                group_num % 2 == 0,
+                "Tag '{}' should have even group number indicating standard tag",
+                tag
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod tag_sequence_tests {
+    use super::*;
+
+    #[test]
+    [ignore]
+    fn test_tag_sequence_structure() {
+        // Test nested DICOM group sequences are handled correctly
+        // DICOM sequences are items containing other tags
+        let sequence_items = [
+            "(FFFE,E000)", // Item tag (sequence delimiter)
+            "(FFFE,E00D)", // Item Delimitation Item
+            "(FFFE,E0DD)", // Sequence Delimitation Item
+        ];
+
+        for item in sequence_items.iter() {
+            // Sequence items should use group FFFE
+            assert!(
+                item.starts_with("(FFFE"),
+                "Sequence item '{}' should use group FFFE",
+                item
+            );
+        }
+    }
+
+    #[test]
+    [ignore]
+    fn test_nested_sequence_depth() {
+        // Test deeply nested sequences don't cause stack overflow
+        // DICOM allows arbitrarily nested sequences (e.g., in RT Structure Sets)
+        let max_nesting_depth = 10;
+        let mut tag = "(0008,1140)".to_string(); // RT ROI Observations Sequence
+
+        for _ in 0..max_nesting_depth {
+            // Simulate nesting
+            tag = format!("(FFFE,E000){}", tag);
+        }
+
+        // This test verifies the structure is valid, not that we handle it
+        // Actual nesting handling depends on DICOM parser implementation
+        assert!(
+            !tag.is_empty(),
+            "Nested sequence should generate valid tag structure"
+        );
+    }
+}
+
+#[cfg(test)]
+mod vr_mismatch_tests {
+    use super::*;
+
+    #[test]
+    [ignore]
+    fn test_vr_type_mismatch_detection() {
+        // Test VR mismatches between tag and value are detected
+        let mismatch_cases = [
+            // Tag says US (Unsigned Short) but value is float
+            (("0028,0010)", "US"), 512.5f32),
+            // Tag says SH (Short String) but value is too long
+            (("0008,0016)", "SH"), "THIS_VALUE_IS_WAY_TOO_LONG_FOR_SH"),
+            // Tag says FL (Float) but value is integer
+            (("0028,1053)", "FL"), "1024"),
+        ];
+
+        for ((tag, expected_vr), value) in mismatch_cases.iter() {
+            let actual_vr = parse_vr_type(expected_vr).unwrap();
+
+            // Check if value type matches VR type
+            let is_compatible = match actual_vr {
+                VRType::US => matches!(value, u16 | i16),
+                VRType::FL => matches!(value, f32 | f64),
+                VRType::SH => {
+                    if let Some(s) = value.downcast_ref::<String>() {
+                        s.len() <= 16 // SH has max length 16
+                    } else {
+                        false
+                    }
+                }
+                _ => true, // Other VRs for now
+            };
+
+            if !is_compatible {
+                // In real implementation, this would trigger an error
+                panic!(
+                    "VR mismatch detected: tag '{}' expects {} but value '{:?}' is incompatible",
+                    tag, expected_vr, value
+                );
+            }
+        }
+    }
+
+    #[test]
+    [ignore]
+    fn test_vr_value_range_validation() {
+        // Test VR value ranges are enforced
+        // US: 0-65535, SS: -32768-32767, etc.
+        let range_cases: &[(&str, std::ops::RangeInclusive<i32>)] = &[
+            ("US", 0..=65535),
+            ("SS", -32768..=32767),
+            ("UL", 0..=4294967295),
+        ];
+
+        for (vr, range) in range_cases.iter() {
+            // Test values in range
+            assert!(range.contains(&0), "VR {} should include value 0", vr);
+            assert!(
+                range.contains(&range.end()),
+                "VR {} should include max value",
+                vr
+            );
+
+            // Test values outside range
+            if *vr == "US" || *vr == "UL" {
+                assert!(
+                    !range.contains(&-1),
+                    "VR {} (unsigned) should reject negative values",
+                    vr
+                );
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod dicom_tag_validation_integration_tests {
+    use super::*;
+
+    #[test]
+    [ignore]
+    fn test_dicom_with_all_standard_tags() {
+        // Test DICOM file with all standard mandatory tags is accepted
+        let dicom_data = create_test_dicom_bytes(
+            Some("1.2.840.113619.2.55.3.603610938272815658.20190101.120000.1.2"),
+            Some("1.2.840.113619.2.55.3.603610938272815658.20190101.120000"),
+            Some("512"),
+            Some("512"),
+            Some("1"),
+        );
+
+        let result = CTImage::from_bytes(&dicom_data);
+        assert!(
+            result.is_ok(),
+            "DICOM with all standard mandatory tags should parse successfully"
+        );
+
+        let ct_image = result.unwrap();
+        assert_eq!(ct_image.rows, 512);
+        assert_eq!(ct_image.columns, 512);
+        assert!(!ct_image.pixel_data.is_empty());
+    }
+
+    #[test]
+    [ignore]
+    fn test_dicom_with_private_tags() {
+        // Test DICOM file with private tags is handled correctly
+        // Private tags should be allowed but not affect core parsing
+        let dicom_data = create_test_dicom_bytes(
+            Some("1.2.840.113619.2.55.3.603610938272815658.20190101.120000.1.2"),
+            Some("1.2.840.113619.2.55.3.603610938272815658.20190101.120000"),
+            Some("512"),
+            Some("512"),
+            Some("1"),
+        );
+
+        let result = CTImage::from_bytes(&dicom_data);
+        assert!(
+            result.is_ok(),
+            "DICOM with private tags should still parse successfully"
+        );
+    }
+
+    #[test]
+    [ignore]
+    fn test_dicom_missing_mandatory_tag() {
+        // Test DICOM file missing mandatory tag fails validation
+        // Missing SOPInstanceUID (0008,0018)
+        let dicom_data = create_test_dicom_bytes(
+            None, // Missing SOPInstanceUID
+            Some("1.2.840.113619.2.55.3.603610938272815658.20190101.120000"),
+            Some("512"),
+            Some("512"),
+            Some("1"),
+        );
+
+        let result = CTImage::from_bytes(&dicom_data);
+        assert!(
+            result.is_err(),
+            "DICOM missing mandatory SOPInstanceUID should fail parsing"
+        );
+    }
+}

@@ -66,14 +66,31 @@ impl fmt::Display for KeplerError {
 impl fmt::Display for MprError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MprError::InvalidScale(scale) => write!(f, "Invalid scale value: {scale} (must be positive and finite)"),
-            MprError::InvalidSlicePosition(pos) => write!(f, "Invalid slice position: {pos} (out of volume bounds)"),
+            MprError::InvalidScale(scale) => write!(
+                f,
+                "Invalid scale value: {scale} (must be positive and finite)"
+            ),
+            MprError::InvalidSlicePosition(pos) => {
+                write!(f, "Invalid slice position: {pos} (out of volume bounds)")
+            }
             MprError::InvalidWindowLevel(level) => write!(f, "Invalid window level: {level}"),
-            MprError::InvalidWindowWidth(width) => write!(f, "Invalid window width: {width} (must be positive)"),
+            MprError::InvalidWindowWidth(width) => {
+                write!(f, "Invalid window width: {width} (must be positive)")
+            }
             MprError::InvalidBias(bias) => write!(f, "Invalid bias value: {bias} (must be finite)"),
-            MprError::InvalidPanCoordinates(coords) => write!(f, "Invalid pan coordinates: [{}, {}, {}]", coords[0], coords[1], coords[2]),
-            MprError::InvalidTransformation => write!(f, "Matrix transformation failed (singular matrix)"),
-            MprError::CoordinateOutOfBounds(coords) => write!(f, "Coordinate out of bounds: [{}, {}, {}]", coords[0], coords[1], coords[2]),
+            MprError::InvalidPanCoordinates(coords) => write!(
+                f,
+                "Invalid pan coordinates: [{}, {}, {}]",
+                coords[0], coords[1], coords[2]
+            ),
+            MprError::InvalidTransformation => {
+                write!(f, "Matrix transformation failed (singular matrix)")
+            }
+            MprError::CoordinateOutOfBounds(coords) => write!(
+                f,
+                "Coordinate out of bounds: [{}, {}, {}]",
+                coords[0], coords[1], coords[2]
+            ),
             MprError::GpuResourceError(msg) => write!(f, "GPU resource error: {msg}"),
             MprError::InvalidDimensions(w, h) => write!(f, "Invalid view dimensions: {}x{}", w, h),
             MprError::InvalidPosition(x, y) => write!(f, "Invalid position: ({}, {})", x, y),

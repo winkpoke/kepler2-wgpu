@@ -1,5 +1,67 @@
 # Changelog
 
+## 2026-02-26T00-00-00
+- **Oblique MPR View Rotation Controls (Slicer-style)**
+  - Added oblique plane control via normal vector + in-plane rotation (supports Horizontal/Vertical/In-Plane style control mapping).
+  - Added new geometry helpers to build oblique screen base and rotation from a normal vector.
+  - Updated MPR oblique transformation to use a controllable rotation matrix and preserve oblique state across layout changes.
+  - Updated cross-view linking for oblique to compute slice displacement along the oblique normal (projection), instead of defaulting to Z.
+  - Added new UI event/API routes for oblique control (GLCanvas → UserEvent → App → MprView).
+  - Files:
+    - `src/core/geometry.rs`
+    - `src/rendering/view/mpr/mpr_view.rs`
+    - `src/application/app.rs`
+    - `src/application/appview.rs`
+    - `src/application/gl_canvas.rs`
+    - `src/application/render_app.rs`
+
+## 2026-02-03T13-47-02
+- **Remedy Serial Retry in WASM**
+  - Added retry state tracking in `src/acquisition/remedy.rs` for NAK/timeout resend support.
+  - Exposed WASM APIs for retry-aware sending and timeout handling.
+  - Updated `static/remedy.html` to use the retry-aware send path.
+
+## 2026-01-30T10-30-00
+- **Added Remedy Serial Communication for Web**
+  - **Feature**: Implemented full stack support for Remedy hardware control via Web Serial API.
+  - **Rust**: Refactored `remedy.rs` into a pure logic module (`src/acquisition/remedy.rs`) with WASM bindings.
+  - **WASM**: Exposed protocol handling and state management to JavaScript using `serde-wasm-bindgen`.
+  - **Web**: Created `static/remedy.html` interface for serial connection, monitoring, and control.
+  - **Documentation**: Added `doc/acquisition/remedy-serial-web.md`.
+
+## 2026-01-29T11-00-00
+- **View State Persistence**
+  - Refactored `AppView` to internally manage view states (`saved_states`).
+  - Implemented `save_view_states` and `restore_view_states` to support MPR, MIP, and Mesh views.
+  - Enabled seamless state preservation (orientation, scale, pan, window/level) when switching between single-view and multi-view layouts.
+
+## 2026-01-28T11-45-20
+- **Added MinIP and AvgIP Rendering Modes**
+  - Extended MIP shader and uniforms to support minimum and average intensity projections.
+  - MIP mode selection now supports 0 (MIP), 1 (MinIP), and 2 (AvgIP).
+
+## 2026-01-19T10-30-00
+- **Fixed MIP Orthographic Projection Clipping**
+  - **Bug Fix**: Corrected the Z-axis scaling in `MipView` projection matrix calculation.
+  - Previously, the Z-scale was set to 1.0, which positioned the orthographic camera plane inside the volume (at z=-1.0 relative to center, while volume extends to z=-0.5), causing the front half of the volume to be clipped.
+  - Changed Z-scale to use the diagonal length (`cw`), moving the camera safely outside the volume bounds.
+  - This ensures the entire volume is visible in the orthographic projection regardless of rotation.
+
+## 2026-01-16T11-59-23
+- **Added MIP Spin Control (Roll/Yaw/Pitch)**
+  - Extended MIP uniforms to include a rotation matrix for GPU-side ray setup.
+  - Updated MIP shader to support rotated rays with ray-box intersection against the unit volume.
+  - Routed rotation control through App → AppView via a new user event for indexed MIP views.
+
+## 2025-12-29T10-30-00
+- **Fixed MPR Slice Count Off-by-One Error**
+  - **Critical Fix**: Modified `build_uv_base` in `src/core/geometry.rs` to use the full slice count (N) for the scaling matrix instead of N-1.
+  - This resolves the issue where MPR views displayed one less slice than the original DICOM volume (e.g., 130 instead of 131).
+  - Updated `core::geometry::tests::test_uv_base` to verify the correct scaling behavior.
+- **Fixed DICOM Tests**
+  - Resolved compilation errors in `tests/dicom_tests.rs` by adding missing imports (`anyhow::Result`, `dicom_core::Tag`, `bytemuck::cast_slice`, `dicom_object::from_reader`) and removing unused `mut`.
+  - Verified all DICOM tests pass.
+
 ## 2025-12-19T11-30-00
 - **Complete Removal of Matrix4x4 and Vector3**
   - **Breaking Change**: Removed `Matrix4x4` and `Vector3` structs from `src/core/coord/mod.rs`. Use `glam::Mat4` and `glam::Vec3` instead.

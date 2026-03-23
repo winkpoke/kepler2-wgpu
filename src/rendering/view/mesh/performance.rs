@@ -1,6 +1,6 @@
+use crate::core::timing::Instant;
 /// Performance monitoring and automatic quality adjustment for mesh rendering
 use std::time::Duration;
-use crate::core::timing::Instant;
 
 /// Function-level comment: Performance targets and thresholds for automatic quality adjustment
 #[derive(Debug, Clone)]
@@ -20,9 +20,9 @@ pub struct PerformanceTargets {
 impl Default for PerformanceTargets {
     fn default() -> Self {
         Self {
-            target_frame_time_ms: 16.67,  // 60fps
-            max_frame_time_ms: 20.0,      // 50fps
-            min_frame_time_ms: 13.33,     // 75fps
+            target_frame_time_ms: 16.67, // 60fps
+            max_frame_time_ms: 20.0,     // 50fps
+            min_frame_time_ms: 13.33,    // 75fps
             quality_reduction_threshold: 5,
             quality_increase_threshold: 60, // Wait longer before increasing quality
         }
@@ -176,14 +176,14 @@ impl FrameTimer {
     /// Function-level comment: End frame timing and record the duration
     pub fn end_frame(&mut self) -> f32 {
         let frame_time = self.frame_start.elapsed().as_millis_f32();
-        
+
         if self.frame_times.len() < self.max_samples {
             self.frame_times.push(frame_time);
         } else {
             self.frame_times[self.current_index] = frame_time;
             self.current_index = (self.current_index + 1) % self.max_samples;
         }
-        
+
         frame_time
     }
 
@@ -200,12 +200,12 @@ impl FrameTimer {
         if self.frame_times.is_empty() {
             return 0.0;
         }
-        
+
         let mut sorted_times = self.frame_times.clone();
         sorted_times.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        
-        let index = ((sorted_times.len() as f32 * percentile / 100.0) as usize)
-            .min(sorted_times.len() - 1);
+
+        let index =
+            ((sorted_times.len() as f32 * percentile / 100.0) as usize).min(sorted_times.len() - 1);
         sorted_times[index]
     }
 }
@@ -252,7 +252,7 @@ impl QualityController {
     /// Function-level comment: End frame timing and potentially adjust quality
     pub fn end_frame(&mut self) -> Option<QualityLevel> {
         let frame_time = self.frame_timer.end_frame();
-        
+
         // Check if we're in cooldown period
         if self.last_adjustment_time.elapsed() < self.adjustment_cooldown {
             return None;
@@ -262,13 +262,17 @@ impl QualityController {
         if frame_time > self.targets.max_frame_time_ms {
             self.consecutive_slow_frames += 1;
             self.consecutive_fast_frames = 0;
-            
+
             // Reduce quality if we've had too many slow frames
             if self.consecutive_slow_frames >= self.targets.quality_reduction_threshold {
                 let new_quality = self.current_quality.decrease();
                 if new_quality != self.current_quality {
-                    log::warn!("Reducing quality from {:?} to {:?} due to slow frames ({}ms avg)", 
-                        self.current_quality, new_quality, self.frame_timer.get_average_frame_time());
+                    log::warn!(
+                        "Reducing quality from {:?} to {:?} due to slow frames ({}ms avg)",
+                        self.current_quality,
+                        new_quality,
+                        self.frame_timer.get_average_frame_time()
+                    );
                     self.current_quality = new_quality;
                     self.consecutive_slow_frames = 0;
                     self.last_adjustment_time = Instant::now();
@@ -278,13 +282,17 @@ impl QualityController {
         } else if frame_time < self.targets.min_frame_time_ms {
             self.consecutive_fast_frames += 1;
             self.consecutive_slow_frames = 0;
-            
+
             // Increase quality if we've had many fast frames
             if self.consecutive_fast_frames >= self.targets.quality_increase_threshold {
                 let new_quality = self.current_quality.increase();
                 if new_quality != self.current_quality {
-                    log::info!("Increasing quality from {:?} to {:?} due to fast frames ({}ms avg)", 
-                        self.current_quality, new_quality, self.frame_timer.get_average_frame_time());
+                    log::info!(
+                        "Increasing quality from {:?} to {:?} due to fast frames ({}ms avg)",
+                        self.current_quality,
+                        new_quality,
+                        self.frame_timer.get_average_frame_time()
+                    );
                     self.current_quality = new_quality;
                     self.consecutive_fast_frames = 0;
                     self.last_adjustment_time = Instant::now();

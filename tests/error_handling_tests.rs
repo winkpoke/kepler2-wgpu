@@ -1,17 +1,16 @@
 /// Error handling and recovery tests
-/// 
+///
 /// This module provides comprehensive testing for error handling and recovery
 /// mechanisms in the mesh rendering system, ensuring robust operation under
 /// various failure conditions.
 
 mod error_handling_tests {
     use kepler_wgpu::mesh::{
-        MeshRenderError, MeshView, BasicMeshContext,
-        QualityLevel, mesh::Mesh,
+        mesh::Mesh, BasicMeshContext, MeshRenderError, MeshView, QualityLevel,
     };
     use kepler_wgpu::rendering::mesh::mesh_view::FallbackMode;
 
-    use wgpu::{Instance, Backends, DeviceDescriptor, Features, Limits};
+    use wgpu::{Backends, DeviceDescriptor, Features, Instance, Limits};
 
     /// Helper function to create a test device
     async fn create_test_device() -> (wgpu::Device, wgpu::Queue) {
@@ -46,31 +45,31 @@ mod error_handling_tests {
     #[test]
     fn test_mesh_render_error_types() {
         // Test different types of MeshRenderError
-        let buffer_error = MeshRenderError::BufferValidationFailed("Invalid buffer size".to_string());
-        let pipeline_error = MeshRenderError::PipelineError("Shader compilation failed".to_string());
-        let viewport_error = MeshRenderError::ViewportError("Invalid viewport dimensions".to_string());
-        
+        let buffer_error =
+            MeshRenderError::BufferValidationFailed("Invalid buffer size".to_string());
+        let pipeline_error =
+            MeshRenderError::PipelineError("Shader compilation failed".to_string());
+        let viewport_error =
+            MeshRenderError::ViewportError("Invalid viewport dimensions".to_string());
+
         // Test error display
         assert!(format!("{}", buffer_error).contains("Invalid buffer size"));
         assert!(format!("{}", pipeline_error).contains("Shader compilation failed"));
         assert!(format!("{}", viewport_error).contains("Invalid viewport dimensions"));
-        
+
         // Test error debug
         assert!(format!("{:?}", buffer_error).contains("BufferValidationFailed"));
         assert!(format!("{:?}", pipeline_error).contains("PipelineError"));
         assert!(format!("{:?}", viewport_error).contains("ViewportError"));
     }
 
-
-
     #[test]
     fn test_error_chain_handling() {
         /// Test handling of error chains and nested errors
         let base_error = MeshRenderError::BufferValidationFailed("Base error".to_string());
-        let chained_error = MeshRenderError::PipelineError(
-            format!("Render failed due to: {}", base_error)
-        );
-        
+        let chained_error =
+            MeshRenderError::PipelineError(format!("Render failed due to: {}", base_error));
+
         let error_msg = format!("{}", chained_error);
         assert!(error_msg.contains("Render failed due to"));
         assert!(error_msg.contains("Base error"));
@@ -83,15 +82,18 @@ mod error_handling_tests {
 
         // Since BasicMeshContext::new doesn't return Result, we'll test error types directly
         // Test different error scenarios
-        let buffer_error = MeshRenderError::BufferValidationFailed("Empty vertices provided".to_string());
-        let pipeline_error = MeshRenderError::PipelineError("Failed to create render pipeline".to_string());
-        let resource_error = MeshRenderError::ResourceError("Insufficient memory for buffers".to_string());
-        
+        let buffer_error =
+            MeshRenderError::BufferValidationFailed("Empty vertices provided".to_string());
+        let pipeline_error =
+            MeshRenderError::PipelineError("Failed to create render pipeline".to_string());
+        let resource_error =
+            MeshRenderError::ResourceError("Insufficient memory for buffers".to_string());
+
         // Test error message formatting
         assert!(format!("{}", buffer_error).contains("Buffer validation failed"));
         assert!(format!("{}", pipeline_error).contains("Pipeline error"));
         assert!(format!("{}", resource_error).contains("Resource error"));
-        
+
         // Test error debug formatting
         assert!(format!("{:?}", buffer_error).contains("BufferValidationFailed"));
         assert!(format!("{:?}", pipeline_error).contains("PipelineError"));
@@ -105,36 +107,44 @@ mod error_handling_tests {
 
         // Test that MeshView can be created successfully
         let mesh_view = MeshView::new();
-        assert!(mesh_view.is_healthy(), "MeshView should be healthy after creation");
+        assert!(
+            mesh_view.is_healthy(),
+            "MeshView should be healthy after creation"
+        );
     }
 
     #[test]
     fn test_error_recovery_mechanisms() {
         /// Test error recovery mechanisms in MeshView
         // Removed async device creation to avoid hanging
-
         let mut mesh_view = MeshView::new();
 
         // Test that MeshView is healthy initially
-        assert!(mesh_view.is_healthy(), "MeshView should be healthy initially");
+        assert!(
+            mesh_view.is_healthy(),
+            "MeshView should be healthy initially"
+        );
 
         // Test error recovery by resetting error state
         mesh_view.reset_error_state();
-        assert!(mesh_view.is_healthy(), "MeshView should remain healthy after reset");
+        assert!(
+            mesh_view.is_healthy(),
+            "MeshView should remain healthy after reset"
+        );
     }
 
     #[test]
     fn test_graceful_degradation() {
         /// Test graceful degradation under error conditions
         // Removed async device creation to avoid hanging
-        
+
         // Create mesh view for testing degradation
         let mut mesh_view = MeshView::new();
-        
+
         // Test fallback mode activation
         mesh_view.set_fallback_mode(FallbackMode::Wireframe);
         assert_eq!(mesh_view.get_fallback_mode(), FallbackMode::Wireframe);
-        
+
         // Test quality level reduction
         mesh_view.set_quality_level(QualityLevel::Low);
         assert_eq!(mesh_view.get_quality_level(), QualityLevel::Low);
@@ -148,11 +158,11 @@ mod error_handling_tests {
         // Create a scenario that will test error handling
         // Since BasicMeshContext::new doesn't return Result, we'll test error types directly
         let error = MeshRenderError::BufferValidationFailed("Test error for logging".to_string());
-        
+
         // Test that error can be converted to string for logging
         let error_msg = format!("{}", error);
         assert!(!error_msg.is_empty(), "Error message should not be empty");
-        
+
         // Test that error has proper debug formatting
         let debug_msg = format!("{:?}", error);
         assert!(!debug_msg.is_empty(), "Debug message should not be empty");
@@ -163,11 +173,11 @@ mod error_handling_tests {
         /// Test handling of memory pressure scenarios
         // Test that we can handle multiple mesh views without hanging
         let mesh_views: Vec<MeshView> = (0..2).map(|_| MeshView::new()).collect();
-        
+
         for mesh_view in &mesh_views {
             assert!(mesh_view.is_healthy(), "All mesh views should be healthy");
         }
-        
+
         // Test cleanup - this should not hang
         drop(mesh_views);
     }
@@ -176,11 +186,13 @@ mod error_handling_tests {
     fn test_error_propagation() {
         /// Test that errors are properly propagated through the system
         // Removed async device creation to avoid hanging
-
         let mesh_view = MeshView::new();
 
         // Test that MeshView is healthy and functional
-        assert!(mesh_view.is_healthy(), "MeshView should be healthy after creation");
+        assert!(
+            mesh_view.is_healthy(),
+            "MeshView should be healthy after creation"
+        );
     }
 
     #[test]
@@ -188,19 +200,29 @@ mod error_handling_tests {
         /// Test that error messages are informative and helpful
         let errors = vec![
             MeshRenderError::BufferValidationFailed("Empty vertex buffer provided".to_string()),
-            MeshRenderError::BufferValidationFailed("Failed to allocate 1MB vertex buffer".to_string()),
-            MeshRenderError::ResourceError("System has insufficient memory for 4K texture".to_string()),
+            MeshRenderError::BufferValidationFailed(
+                "Failed to allocate 1MB vertex buffer".to_string(),
+            ),
+            MeshRenderError::ResourceError(
+                "System has insufficient memory for 4K texture".to_string(),
+            ),
         ];
-        
+
         for error in errors {
             let message = format!("{}", error);
-            
+
             // Error messages should be descriptive
             assert!(message.len() > 10, "Error message should be descriptive");
-            
+
             // Should not contain debug artifacts
-            assert!(!message.contains("Debug"), "Error message should not contain debug artifacts");
-            assert!(!message.contains("{{"), "Error message should not contain template artifacts");
+            assert!(
+                !message.contains("Debug"),
+                "Error message should not contain debug artifacts"
+            );
+            assert!(
+                !message.contains("{{"),
+                "Error message should not contain template artifacts"
+            );
         }
     }
 }

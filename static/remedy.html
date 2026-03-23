@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Remedy Serial Control</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background-color: #121212; color: #e0e0e0; }
+        .container { display: flex; flex-direction: column; gap: 20px; max-width: 1000px; margin: 0 auto; }
+        .controls { display: flex; gap: 10px; align-items: center; background: #1e1e1e; padding: 15px; border-radius: 8px; }
+        .log-panel { 
+            height: 400px; 
+            overflow-y: scroll; 
+            background: #000; 
+            color: #ccc; 
+            padding: 10px; 
+            border: 1px solid #333;
+            font-family: 'Consolas', monospace;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+        .log-info { color: white; }
+        .log-rx { color: #4caf50; }
+        .log-tx { color: #2196f3; }
+        .log-alert { color: #f44336; }
+        
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+        .status-box {
+            background: #1e1e1e;
+            border: 1px solid #333;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        h1, h3 { margin-top: 0; }
+        .field { margin-bottom: 10px; display: flex; align-items: center; }
+        label { display: inline-block; width: 120px; font-weight: bold; color: #aaa; }
+        span.val { font-weight: bold; color: #fff; }
+        
+        button { 
+            padding: 8px 16px; 
+            cursor: pointer; 
+            background: #333; 
+            color: white; 
+            border: 1px solid #555; 
+            border-radius: 4px; 
+            transition: background 0.2s;
+        }
+        button:hover { background: #444; }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        button.primary { background: #0d47a1; border-color: #0d47a1; }
+        button.danger { background: #b71c1c; border-color: #b71c1c; }
+        
+        input[type="text"], input[type="number"] { 
+            padding: 8px; 
+            background: #2d2d2d; 
+            border: 1px solid #444; 
+            color: white; 
+            border-radius: 4px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Remedy 串口控制台</h1>
+    
+    <div class="container">
+        <!-- Connection Controls -->
+        <div class="controls">
+            <button id="btn-connect" class="primary">连接串口</button>
+            <button id="btn-disconnect" disabled>断开连接</button>
+            <button onclick="window.location.href='index_image.html'" class="nav-link">返回主页</button>
+            <span style="margin: 0 10px;">波特率</span>
+            <select id="baud-rate" class="cmd-control">
+                <option value="9600">9600</option>
+                <option value="19200">19200</option>
+                <option value="38400">38400</option>
+                <option value="57600">57600</option>
+                <option value="115200">115200</option>
+            </select>
+            <span id="connection-status" style="color: gray; margin-left: auto;">● 未连接</span>
+        </div>
+
+        <div class="status-grid">
+            <!-- Left Column: Controls -->
+            <div class="status-box">
+                <h3>参数控制</h3>
+                <div class="field">
+                    <label>KV:</label>
+                    <input type="text" id="input-kv" class="cmd-control" placeholder="40-150">
+                    <button id="btn-set-kv" class="cmd-control">设</button>
+                    <button id="btn-get-kv" class="cmd-control">查</button>
+                </div>
+                <div class="field">
+                    <label>MA(0.1):</label>
+                    <input type="text" id="input-ma" class="cmd-control" placeholder="10-500">
+                    <button id="btn-set-ma" class="cmd-control">设</button>
+                    <button id="btn-get-ma" class="cmd-control">查</button>
+                </div>
+                <div class="field">
+                    <label>MS(0.1):</label>
+                    <input type="text" id="input-ms" class="cmd-control" placeholder="1-10000">
+                    <button id="btn-set-ms" class="cmd-control">设</button>
+                    <button id="btn-get-ms" class="cmd-control">查</button>
+                </div>
+                <hr style="border-color: #333; margin: 20px 0;">
+                <h3>常用指令</h3>
+                <div class="field" style="gap: 10px; flex-wrap: wrap;">
+                    <button id="btn-reset" class="cmd-control">复位 (RE)</button>
+                    <button id="btn-refresh-system" class="cmd-control">刷新系统 (RS)</button>
+                    <button id="btn-refresh-shot" class="cmd-control">刷新拍片 (RR)</button>
+                </div>
+                <hr style="border-color: #333; margin: 20px 0;">
+                <h3>高级查询</h3>
+                <div class="field" style="gap: 10px; flex-wrap: wrap;">
+                    <button id="btn-query-mx" class="cmd-control">MX查询</button>
+                    <button id="btn-query-he" class="cmd-control">阳极热容量</button>
+                    <button id="btn-query-hh" class="cmd-control">管套热容量</button>
+                    <button id="btn-query-ap" class="cmd-control">曝光后mAs</button>
+                    <button id="btn-query-at" class="cmd-control">曝光后时间</button>
+                    <button id="btn-query-ws" class="cmd-control">工作站</button>
+                    <button id="btn-query-fo" class="cmd-control">焦点</button>
+                    <button id="btn-query-et" class="cmd-control">曝光技术</button>
+                </div>
+            </div>
+
+            <!-- Right Column: Status -->
+            <div class="status-box">
+                <h3>系统状态监控</h3>
+                <div class="field"><label>KV:</label> <span id="val-kv" class="val">N/A</span></div>
+                <div class="field"><label>MA:</label> <span id="val-ma" class="val">N/A</span></div>
+                <div class="field"><label>MS:</label> <span id="val-ms" class="val">N/A</span></div>
+                <div class="field"><label>mAs:</label> <span id="val-mx" class="val">N/A</span></div>
+                <div class="field"><label>Status:</label> <span id="val-status" class="val">N/A</span></div>
+                <div class="field"><label>Tech:</label> <span id="val-technique" class="val">N/A</span></div>
+                <div class="field"><label>Focus:</label> <span id="val-focus" class="val">N/A</span></div>
+                <div class="field"><label>Station:</label> <span id="val-workstation" class="val">N/A</span></div>
+                <div class="field"><label>Anode Heat:</label> <span id="val-anode-heat" class="val">N/A</span></div>
+                <div class="field"><label>Housing Heat:</label> <span id="val-housing-heat" class="val">N/A</span></div>
+                <div class="field"><label>Post mAs:</label> <span id="val-post-mas" class="val">N/A</span></div>
+                <div class="field"><label>Post Time:</label> <span id="val-post-time" class="val">N/A</span></div>
+                <hr style="border-color: #333; margin: 20px 0;">
+                <div class="field" style="gap: 10px; flex-wrap: wrap;">
+                    <button id="btn-PR1" class="cmd-control">手闸(PR1)</button>
+                    <button id="btn-PR2" class="cmd-control">启动(PR2)</button>
+                    <button id="btn-XR2" class="cmd-control">曝光(XR2)</button>
+                    <button id="btn-PR0" class="cmd-control">待机(PR0)</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Log Panel -->
+        <div class="log-panel" id="log-container"></div>
+    </div>
+
+    <script type="module">
+        import init, { RemedyWasm } from '../pkg/kepler_wgpu.js';
+
+        let remedy = null;
+        let port = null;
+        let reader = null;
+        let keepReading = false;
+        let heartbeatInterval = null;
+        let retryTimeoutId = null;
+
+        async function main() {
+            try {
+                await init();
+                remedy = new RemedyWasm();
+                log("WASM Initialized. Ready to connect.", "Info");
+            } catch (e) {
+                console.error("WASM Init Failed:", e);
+                log("WASM Init Failed: " + e, "Alert");
+            }
+        }
+
+        main();
+
+        const btnConnect = document.getElementById('btn-connect');
+        const btnDisconnect = document.getElementById('btn-disconnect');
+        const statusLabel = document.getElementById('connection-status');
+        const logContainer = document.getElementById('log-container');
+        const cmdControls = document.querySelectorAll('.cmd-control');
+
+        function log(text, colorType) {
+            const div = document.createElement('div');
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+            div.className = `log-${colorType.toLowerCase()}`;
+            logContainer.appendChild(div);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function updateUI(state) {
+            document.getElementById('val-kv').textContent = state.kv;
+            document.getElementById('val-ma').textContent = state.ma;
+            document.getElementById('val-ms').textContent = state.ms;
+            document.getElementById('val-mx').textContent = state.mx;
+            document.getElementById('val-status').textContent = state.status;
+            document.getElementById('val-technique').textContent = state.technique;
+            document.getElementById('val-focus').textContent = state.focus;
+            document.getElementById('val-workstation').textContent = state.workstation;
+            document.getElementById('val-anode-heat').textContent = state.anode_heat;
+            document.getElementById('val-housing-heat').textContent = state.housing_heat;
+            document.getElementById('val-post-mas').textContent = state.post_mas;
+            document.getElementById('val-post-time').textContent = state.post_time;
+        }
+
+        function setConnectedState(connected) {
+            cmdControls.forEach((el) => {
+                el.disabled = !connected;
+            });
+        }
+
+        setConnectedState(false);
+
+        function clearRetryTimeout() {
+            if (retryTimeoutId) {
+                clearTimeout(retryTimeoutId);
+                retryTimeoutId = null;
+            }
+        }
+
+        function scheduleRetryTimeout() {
+            if (!remedy) return;
+            clearRetryTimeout();
+            const timeoutMs = remedy.get_retry_timeout_ms ? remedy.get_retry_timeout_ms() : 9000;
+            retryTimeoutId = setTimeout(async () => {
+                if (!remedy) return;
+                const retryPacket = remedy.retry_on_timeout ? remedy.retry_on_timeout() : [];
+                if (retryPacket && retryPacket.length > 0) {
+                    await sendToSerial(new Uint8Array(retryPacket));
+                    scheduleRetryTimeout();
+                }
+            }, timeoutMs);
+        }
+
+        function startHeartbeat() {
+            if (heartbeatInterval) clearInterval(heartbeatInterval);
+            heartbeatInterval = setInterval(async () => {
+                // Check if remedy has is_standby method (requires WASM update)
+                if (remedy && port && port.writable && remedy.is_standby && remedy.is_standby()) {
+                    try {
+                         const packet = remedy.build_command("ST");
+                         // Send directly to avoid logging
+                         await sendToSerial(new Uint8Array(packet));
+                    } catch (e) {
+                        console.error("Heartbeat error:", e);
+                    }
+                }
+            }, 1000);
+        }
+
+        function stopHeartbeat() {
+            if (heartbeatInterval) {
+                clearInterval(heartbeatInterval);
+                heartbeatInterval = null;
+            }
+        }
+
+        btnConnect.addEventListener('click', async () => {
+            if (!("serial" in navigator)) {
+                alert("Web Serial API not supported in this browser.");
+                return;
+            }
+
+            try {
+                // Get selected baud rate
+                const baudRateSelect = document.getElementById('baud-rate');
+                const selectedBaudRate = parseInt(baudRateSelect.value, 10);
+
+                port = await navigator.serial.requestPort();
+                await port.open({ baudRate: selectedBaudRate });
+
+                keepReading = true;
+                btnConnect.disabled = true;
+                baudRateSelect.disabled = true; // Disable baud rate selection while connected
+                btnDisconnect.disabled = false;
+                statusLabel.textContent = "● Connected";
+                statusLabel.style.color = "#4caf50";
+                setConnectedState(true);
+                
+                log("Serial Port Connected", "Info");
+                log("--- 串口已连接，智能心跳已启动 ---", "Info");
+
+                startHeartbeat();
+                readLoop();
+
+            } catch (err) {
+                console.error(err);
+                log("Connection Failed: " + err, "Alert");
+            }
+        });
+
+        btnDisconnect.addEventListener('click', async () => {
+            clearRetryTimeout();
+            stopHeartbeat();
+            keepReading = false;
+            if (reader) {
+                await reader.cancel();
+            }
+            if (port) {
+                await port.close();
+                port = null;
+            }
+            btnConnect.disabled = false;
+            document.getElementById('baud-rate').disabled = false; // Re-enable baud rate selection
+            btnDisconnect.disabled = true;
+            statusLabel.textContent = "● Not Connected";
+            statusLabel.style.color = "gray";
+            setConnectedState(false);
+            log("Disconnected", "Info");
+            log("--- 串口已断开，智能心跳已停止 ---", "Info");
+        });
+
+        async function readLoop() {
+            while (port.readable && keepReading) {
+                reader = port.readable.getReader();
+                try {
+                    while (true) {
+                        const { value, done } = await reader.read();
+                        if (done) {
+                            break;
+                        }
+                        if (value) {
+                            if (remedy) {
+                                const result = remedy.process_input(value);
+                                handleProcessResult(result);
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error(error);
+                    log("Read Error: " + error, "Alert");
+                } finally {
+                    reader.releaseLock();
+                }
+            }
+        }
+
+        async function handleProcessResult(result) {
+            if (result.events) {
+                for (const event of result.events) {
+                    if (event.Log) {
+                        log(event.Log.text, event.Log.color);
+                    } else if (event.DataUpdate) {
+                    } else if (event.Error) {
+                         log("Error: " + event.Error, "Alert");
+                    }
+                }
+                const state = remedy.get_state();
+                updateUI(state);
+                if (result.events.length > 0) {
+                    clearRetryTimeout();
+                    if (remedy && remedy.confirm_response) {
+                        remedy.confirm_response();
+                    }
+                }
+            }
+
+            if (result.replies) {
+                for (const packet of result.replies) {
+                     await sendToSerial(new Uint8Array(packet));
+                }
+            }
+        }
+
+        async function sendToSerial(data) {
+            if (port && port.writable) {
+                const writer = port.writable.getWriter();
+                try {
+                    await writer.write(data);
+                } finally {
+                    writer.releaseLock();
+                }
+            }
+        }
+
+        async function sendCommand(cmdStr) {
+            if (!remedy) return;
+            const packet = remedy.send_command_with_retry ? remedy.send_command_with_retry(cmdStr) : remedy.build_command(cmdStr);
+            await sendToSerial(new Uint8Array(packet));
+            log("Send: " + cmdStr, "Tx");
+            if (remedy.send_command_with_retry) {
+                scheduleRetryTimeout();
+            }
+        }
+
+        function formatNumber(value, width) {
+            const num = Number.parseInt(value, 10);
+            if (Number.isNaN(num)) return null;
+            return num.toString().padStart(width, '0');
+        }
+
+        document.getElementById('btn-set-kv').addEventListener('click', () => {
+            const val = document.getElementById('input-kv').value;
+            const formatted = formatNumber(val, 3);
+            if (formatted) sendCommand("KV" + formatted);
+        });
+        document.getElementById('btn-set-ma').addEventListener('click', () => {
+            const val = document.getElementById('input-ma').value;
+            const formatted = formatNumber(val, 5);
+            if (formatted) sendCommand("MA" + formatted);
+        });
+        document.getElementById('btn-set-ms').addEventListener('click', () => {
+            const val = document.getElementById('input-ms').value;
+            const formatted = formatNumber(val, 5);
+            if (formatted) sendCommand("MS" + formatted);
+        });
+        document.getElementById('btn-get-kv').addEventListener('click', () => sendCommand("KV?"));
+        document.getElementById('btn-get-ma').addEventListener('click', () => sendCommand("MA?"));
+        document.getElementById('btn-get-ms').addEventListener('click', () => sendCommand("MS?"));
+        
+        document.getElementById('btn-reset').addEventListener('click', () => sendCommand("RE"));
+        document.getElementById('btn-refresh-system').addEventListener('click', () => sendCommand("RS"));
+        document.getElementById('btn-refresh-shot').addEventListener('click', () => sendCommand("RR"));
+
+        document.getElementById('btn-query-mx').addEventListener('click', () => sendCommand("MX?"));
+        document.getElementById('btn-query-he').addEventListener('click', () => sendCommand("HE?"));
+        document.getElementById('btn-query-hh').addEventListener('click', () => sendCommand("HH?"));
+        document.getElementById('btn-query-ap').addEventListener('click', () => sendCommand("AP?"));
+        document.getElementById('btn-query-at').addEventListener('click', () => sendCommand("AT?"));
+        document.getElementById('btn-query-ws').addEventListener('click', () => sendCommand("WS?"));
+        document.getElementById('btn-query-fo').addEventListener('click', () => sendCommand("FO?"));
+        document.getElementById('btn-query-et').addEventListener('click', () => sendCommand("ET?"));
+
+        document.getElementById('btn-PR1').addEventListener('click', () => sendCommand("PR1"));
+        document.getElementById('btn-PR2').addEventListener('click', () => sendCommand("PR2"));
+        document.getElementById('btn-PR0').addEventListener('click', () => sendCommand("PR0"));
+        document.getElementById('btn-XR2').addEventListener('click', () => sendCommand("XR2"));
+
+    </script>
+</body>
+</html>
