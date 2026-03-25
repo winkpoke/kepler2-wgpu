@@ -3,14 +3,14 @@
 use super::{
     basic_mesh_context::BasicMeshContext,
     camera::Camera,
-    mesh::{Lighting, Mesh},
+    mesh::{Mesh, MeshRenderContext, MeshUniforms},
     performance::{PerformanceStats, QualityController, QualityLevel},
 };
 use crate::{
     core::timing::Instant,
     rendering::view::{Renderable, View},
 };
-use glam::{Mat4, Quat, Vec2, Vec3};
+use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::{FRAC_PI_2, PI};
 
 /// Function-level comment: Error types specific to mesh rendering operations
@@ -76,10 +76,8 @@ impl Default for FallbackMode {
 
 pub struct MeshView {
     pub mesh: Option<Mesh>,
-    // pub material: Option<Material>,
     pub camera: Option<Camera>,
-    pub lighting: Option<Lighting>,
-    ctx: Option<std::sync::Arc<BasicMeshContext>>,
+    volume_ctx: Option<std::sync::Arc<MeshRenderContext>>,
     /// Context for the orientation cube (bottom-left gizmo)
     orientation_cube_ctx: Option<std::sync::Arc<BasicMeshContext>>,
     pos: (i32, i32),
@@ -116,10 +114,8 @@ impl Default for MeshView {
     fn default() -> Self {
         Self {
             mesh: None,
-            // material: None,
             camera: None,
-            lighting: None,
-            ctx: None,
+            volume_ctx: None,
             orientation_cube_ctx: None,
             pos: (0, 0),
             dim: (0, 0),
@@ -145,13 +141,11 @@ impl MeshView {
     pub fn new() -> Self {
         Self::default()
     }
-
-    /// Function-level comment: Attaches a basic mesh render context for GPU operations
-    pub fn attach_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
-        self.ctx = Some(ctx);
-        log::debug!("MeshView::attach_context - Basic context attached successfully");
-        // Reset error state when new context is attached
-        self.reset_error_state();
+    
+    /// Function-level comment: Attaches a volume render context for GPU operations
+    pub fn attach_context(&mut self, ctx: std::sync::Arc<MeshRenderContext>) {
+        self.volume_ctx = Some(ctx);
+        log::debug!("MeshView::attach_context - Volume context attached successfully");
     }
 
     /// Function-level comment: Attaches a basic mesh render context for the orientation cube
@@ -202,11 +196,23 @@ impl MeshView {
 
     /// Function-level comment: Get buffer memory usage statistics for monitoring and optimization.
     pub fn get_memory_stats(&self) -> (u64, u64, f32, f32) {
-        if let Some(ctx) = &self.ctx {
-            ctx.get_memory_stats()
-        } else {
-            (0, 0, 0.0, 0.0)
+        let mut used = 0;
+        let mut total = 0;
+
+        // volume
+        if let Some(vol_ctx) = &self.volume_ctx {
+            let (u, t, _, _) = vol_ctx.get_memory_stats();
+            used += u;
+            total += t;
         }
+
+        let ratio = if total > 0 {
+            used as f32 / total as f32
+        } else {
+            0.0
+        };
+
+        (used, total, ratio, 0.0)
     }
 
     /// Function-level comment: Enable or disable rotation animation.
@@ -273,14 +279,13 @@ impl MeshView {
         self.last_frame_time = Instant::now();
         log::info!("Mesh rotation set to {:?}°", self.rotation);
     }
-        
 
     pub fn set_rotation(&mut self, rotation: Mat4) {
         self.rotation = rotation;
         self.last_frame_time = Instant::now();
         log::info!("Mesh rotation set to {:?}", self.rotation);
     }
-    
+
     pub fn get_rotation(&self) -> Mat4 {
         self.rotation
     }
@@ -370,18 +375,6 @@ impl MeshView {
         camera
     }
 
-    /// Function-level comment: Create default lighting setup for basic mesh illumination.
-    /// Returns lighting with reasonable defaults for 3D mesh viewing.
-    fn create_default_lighting(&self) -> Lighting {
-        Lighting {
-            direction: [0.6, -0.7, 0.3],
-            light_color: [1.0, 1.0, 1.0],
-            light_intensity: 1.0,
-            ambient_color: [0.4, 0.4, 0.5],
-            ambient_intensity: 0.4,
-        }
-    }
-
     /// Function-level comment: Update GPU uniforms for basic mesh rendering with combined MVP matrix
     /// Includes rotation if enabled, using frame-rate independent timing
     pub fn update_uniforms(&mut self, queue: &wgpu::Queue) {
@@ -395,94 +388,39 @@ impl MeshView {
             // Auto-rotate around Global Y
             let angle_delta = self.rotation_speed * delta_time;
             let rot_delta = Quat::from_rotation_y(angle_delta);
-            self.rotation_quat = rot_delta * self.rotation_quat;
-            self.rotation_quat = self.rotation_quat.normalize();
-
-            #[cfg(feature = "trace-logging")]
-            log::trace!(
-                "[MESH_ROTATION] Auto-rotation delta: {:.3} rad",
-                angle_delta
-            );
-
+            self.rotation_quat = (rot_delta * self.rotation_quat).normalize();
             self.last_frame_time = current_time;
         }
 
-        if let Some(ctx) = &self.ctx {
-            let aspect_ratio = if self.dim.0 > 0 && self.dim.1 > 0 {
-                self.dim.0 as f32 / self.dim.1 as f32
-            } else {
-                1.0
-            };
+        if let Some(vol_ctx) = &self.volume_ctx {
+            let mut vol_uniforms = MeshUniforms::default();
 
-            log::debug!(
-                "[BASIC_MESH_UNIFORMS] Viewport dimensions: {}x{}, aspect_ratio: {:.3}",
-                self.dim.0,
-                self.dim.1,
-                aspect_ratio
-            );
-
-            // Model matrix - apply persistent rotation (if any) and uniform scale
+            let extent = vol_ctx.render_content.texture.size();
+            let w = extent.width.max(1) as f32;
+            let h = extent.height.max(1) as f32;
+            let d = extent.depth_or_array_layers.max(1) as f32;
+            let scale_viewport = Mat4::from_scale(Vec3::new(w, h, w));
+            let scale_texture = Mat4::from_scale(Vec3::new(1.0 / w, 1.0 / h, 1.0 / d));
             let rotation = self.rotation;
+            let final_matrix = scale_texture * rotation * scale_viewport;
+            vol_uniforms.rotation = final_matrix.to_cols_array();
+            
+            vol_uniforms.scale = self.scale_factor;
+            vol_uniforms.pan_x = self.pan[0];
+            vol_uniforms.pan_y = self.pan[1];
+            vol_uniforms.opacity_multiplier = self.opacity;
 
-            // Compose Model: Translation * Rotation * Scale
-            let model_matrix = Mat4::from_translation(Vec3::from(self.pan))
-                * rotation
-                * Mat4::from_scale(Vec3::splat(self.scale_factor));
-
-            // View matrix - camera positioned for optimal viewing of smaller cube
-            // Camera at (0, 0, 3.0) looking at origin, but original matrix
-            // had specific translation (0, 0, -2.0) hardcoded in the array.
-            let view_matrix = Mat4::from_translation(Vec3::new(0.0, 0.0, -2.0));
-
-            // Dynamic orthographic range adjustment
-            let base_extent = 2.0;
-            let expand_factor = 1.8;
-            let view_extent = base_extent * expand_factor;
-            let left = -view_extent;
-            let right = view_extent;
-            let bottom = -view_extent / aspect_ratio;
-            let top = view_extent / aspect_ratio;
-            let near = -view_extent * 2.0;
-            let far = view_extent * 2.0;
-
-            // Matches original OpenGL-style orthographic projection (-1 to 1 Z range)
-            let proj_matrix = Mat4::orthographic_rh(left, right, bottom, top, near, far);
-
-            // Calculate MVP: projection * view * model
-            let mvp_matrix = proj_matrix * view_matrix * model_matrix;
-
-            #[cfg(feature = "trace-logging")]
-            log::trace!("[BASIC_MESH_MATRICES] Model matrix (scale {} with rotation {:?} rad, enabled={}): {:?}", 
-                        self.scale_factor, angles, self.rotation_enabled, model_matrix.to_cols_array());
-            log::trace!(
-                "[BASIC_MESH_MATRICES] View matrix (camera at -3): {:?}",
-                view_matrix.to_cols_array()
-            );
-            log::trace!(
-                "[BASIC_MESH_MATRICES] Projection matrix (orthogonal): {:?}",
-                proj_matrix.to_cols_array()
-            );
-            log::trace!(
-                "[BASIC_MESH_MATRICES] Combined MVP matrix: {:?}",
-                mvp_matrix.to_cols_array()
-            );
-
-            // Update uniforms in BasicMeshContext with combined MVP matrix
-            // Note: The shader expects column-major matrices, and glam is column-major by default.
-
-            ctx.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
-
-            // Update lighting uniforms to ensure lighting effects are applied
-            let mut lighting_uniforms = if let Some(ref lighting) = self.lighting {
-                // Use the configured lighting and convert to BasicLightingUniforms
-                lighting.to_basic_uniforms()
+            // Extract format and bias from RenderContent decode parameters
+            let decode_params = vol_ctx.render_content.decode_parameters();
+            vol_uniforms.is_packed_rg8 = if decode_params.is_packed_flag == 1 {
+                1.0
             } else {
-                // Create default lighting if none is configured
-                let default_lighting = self.create_default_lighting();
-                default_lighting.to_basic_uniforms()
+                0.0
             };
-            lighting_uniforms.opacity = self.opacity;
-            ctx.update_lighting(queue, lighting_uniforms);
+            vol_uniforms.bias = decode_params.bias;
+
+            // update
+            vol_ctx.update_uniforms(queue, &vol_uniforms);
         }
 
         // Update Orientation Cube Uniforms
@@ -499,22 +437,8 @@ impl MeshView {
             // Unit cube diagonal is 1.73. 1.5 might clip corners if rotating.
             let extent = 2.0;
             let proj_matrix = Mat4::orthographic_rh(-extent, extent, -extent, extent, -10.0, 10.0);
-
             let mvp_matrix = proj_matrix * view_matrix * model_matrix;
-
             cube_ctx.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
-
-            // Also update lighting for cube (use same lighting)
-            let lighting_uniforms = if let Some(ref lighting) = self.lighting {
-                lighting.to_basic_uniforms()
-            } else {
-                let default_lighting = self.create_default_lighting();
-                default_lighting.to_basic_uniforms()
-            };
-            // Cube is always opaque
-            let mut cube_lighting = lighting_uniforms;
-            cube_lighting.opacity = 1.0;
-            cube_ctx.update_lighting(queue, cube_lighting);
         }
     }
 
@@ -620,18 +544,6 @@ impl MeshView {
             ));
         }
 
-        // Ensure context is available
-        let ctx = self.ctx.as_ref().ok_or_else(|| {
-            log::trace!("BasicMeshView::try_render - No context attached");
-            MeshRenderError::ContextNotAttached
-        })?;
-
-        log::trace!(
-            "BasicMeshView::try_render - Context available, vertices: {}, indices: {}",
-            ctx.num_vertices,
-            ctx.num_indices
-        );
-
         // Validate viewport dimensions
         if self.dim.0 == 0 || self.dim.1 == 0 {
             return Err(MeshRenderError::ViewportError(
@@ -652,8 +564,12 @@ impl MeshView {
             height
         );
 
-        // Use the simplified BasicMeshContext render method
-        ctx.render(render_pass);
+        // Ensure context is available
+        if let Some(vol_ctx) = &self.volume_ctx {
+            vol_ctx.render(render_pass);
+        } else {
+            log::warn!("BasicMeshView::try_render - Volume rendering requested but no volume context attached");
+        }
 
         // Render Orientation Cube (if available)
         if let Some(cube_ctx) = &self.orientation_cube_ctx {

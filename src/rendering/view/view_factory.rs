@@ -14,12 +14,13 @@ use std::sync::Arc;
 
 use crate::core::WindowLevel;
 use crate::rendering::view::mesh::basic_mesh_context::BasicMeshContext;
-use crate::rendering::view::mesh::mesh::Mesh;
+use crate::rendering::view::mesh::mesh::{Mesh, MeshRenderContext};
 use crate::rendering::view::mesh::mesh_view::MeshView;
 use crate::rendering::view::mip::{MipView, MipViewWgpuImpl};
 use crate::rendering::view::mpr::mpr_render_context::MprRenderContext;
 use crate::rendering::view::mpr::mpr_view::MprView;
 use crate::rendering::view::render_content::RenderContent;
+use crate::rendering::view::View as _;
 
 /// Factory trait for creating different types of views.
 ///
@@ -302,8 +303,6 @@ impl ViewFactory for DefaultViewFactory {
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        use crate::rendering::view::View as _;
-
         let mut mesh_view = MeshView::new();
         mesh_view.set_rotation_enabled(false);
         info!("[DefaultViewFactory] Mesh rotation enabled");
@@ -317,7 +316,7 @@ impl ViewFactory for DefaultViewFactory {
         );
         let ctx_arc = Arc::new(ctx);
 
-        mesh_view.attach_context(ctx_arc);
+        // mesh_view.attach_context(ctx_arc);
         mesh_view.move_to(pos);
         mesh_view.resize(size);
         Ok(Box::new(mesh_view))
@@ -374,8 +373,6 @@ impl ViewFactory for DefaultViewFactory {
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        use crate::rendering::view::View as _;
-
         let render_content = match self.build_render_content(vol) {
             Ok(rc) => rc,
             Err(e) => return Err(e),
@@ -440,8 +437,6 @@ impl ViewFactory for DefaultViewFactory {
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        use crate::rendering::view::View as _;
-
         let mip_wgpu_impl = MipViewWgpuImpl::new(render_content, &self.device, self.surface_format);
 
         let mut mip_view = MipView::new(Arc::new(mip_wgpu_impl));
@@ -457,13 +452,11 @@ impl ViewFactory for DefaultViewFactory {
 
     fn create_mesh_view_with_content(
         &self,
-        _render_content: Arc<RenderContent>,
+        render_content: Arc<RenderContent>,
         mesh: &Mesh,
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        use crate::rendering::view::View as _;
-
         let mut mesh_view = MeshView::new();
         mesh_view.set_rotation_enabled(false);
         info!("[DefaultViewFactory] Mesh rotation disabled for consistent inspection");
@@ -471,7 +464,10 @@ impl ViewFactory for DefaultViewFactory {
         let ctx = BasicMeshContext::new(&self.device, &self.queue, mesh, true);
         let ctx_arc = Arc::new(ctx);
 
-        mesh_view.attach_context(ctx_arc);
+        let vol_ctx = MeshRenderContext::new(&self.device, self.surface_format, render_content);
+        mesh_view.attach_context(Arc::new(vol_ctx));
+
+        // mesh_view.attach_context(ctx_arc);
         mesh_view.move_to(pos);
         mesh_view.resize(size);
 

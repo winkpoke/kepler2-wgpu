@@ -182,4 +182,24 @@ impl RenderContent {
             volume_encoding,
         )
     }
+
+    pub fn get_memory_stats(&self) -> (u64, u64, f32, f32) {
+        let size = self.texture.size();
+
+        let bytes_per_voxel = match self.texture_format {
+            wgpu::TextureFormat::R8Unorm => 1,
+            wgpu::TextureFormat::Rg8Unorm => 2,
+            wgpu::TextureFormat::R16Float => 2,
+            wgpu::TextureFormat::R32Float => 4,
+            _ => 4,
+        };
+
+        let total_bytes =
+            size.width as u64 *
+            size.height as u64 *
+            size.depth_or_array_layers as u64 *
+            bytes_per_voxel;
+
+        (total_bytes, total_bytes, 1.0, 0.0)
+    }
 }
