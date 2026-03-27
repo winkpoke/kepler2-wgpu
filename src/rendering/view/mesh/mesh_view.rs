@@ -7,7 +7,7 @@ use super::{
     performance::{PerformanceStats, QualityController, QualityLevel},
 };
 use crate::{
-    core::timing::Instant,
+    core::{WindowLevel, KeplerResult, timing::Instant},
     rendering::view::{Renderable, View},
 };
 use glam::{Mat4, Quat, Vec3};
@@ -106,8 +106,11 @@ pub struct MeshView {
     scale_factor: f32,
     /// Pan translation in world units (X, Y, Z)
     pan: [f32; 3],
-    /// Mesh opacity (0.0 transparent .. 1.0 opaque)
     opacity: f32,
+    roi_min: [f32; 3],
+    roi_max: [f32; 3],
+    window_level: WindowLevel,
+    slab_thickness: f32,
 }
 
 impl Default for MeshView {
@@ -126,13 +129,16 @@ impl Default for MeshView {
             quality_controller: QualityController::default(),
             rotation_enabled: true,
             rotation_quat: Quat::IDENTITY,
-            // Angles are stored in radians; 90°=FRAC_PI_2, 180°=PI
             rotation_speed: FRAC_PI_2, // 90 degrees per second
             rotation: Mat4::from_rotation_x(PI),
             last_frame_time: Instant::now(),
             scale_factor: 1.0,
             pan: [0.0, 0.0, 0.0],
-            opacity: 1.0,
+            opacity: 0.5,
+            roi_min: [0.0, 0.0, 0.0],
+            roi_max: [1.0, 1.0, 1.0],
+            window_level: WindowLevel::new(),
+            slab_thickness: 1.25,
         }
     }
 }
@@ -350,6 +356,28 @@ impl MeshView {
         self.opacity
     }
 
+    pub fn set_roi(&mut self, min: [f32;3], max: [f32;3]) {
+        self.roi_min = min;
+        self.roi_max = max;
+    }
+
+    pub fn reset_roi(&mut self) {
+        self.roi_min = [0.0, 0.0, 0.0];
+        self.roi_max = [1.0, 1.0, 1.0];
+    }
+
+    pub fn set_window_level(&mut self, window: f32) -> KeplerResult<()> {
+        let _ = self.window_level.set_window_level(window);
+        log::info!("MIP window set to {:.3}", window);
+        Ok(())
+    }
+
+    pub fn set_window_width(&mut self, window_width: f32) -> KeplerResult<()> {
+        let _ = self.window_level.set_window_width(window_width);
+        log::info!("MIP window width set to {:.3}", window_width);
+        Ok(())
+    }
+
     /// Function-level comment: Create a default camera compatible with orthogonal projection
     /// Ensures the entire unit cube is visible without clipping when using orthographic mode.
     fn create_default_camera(&self) -> Camera {
@@ -393,31 +421,43 @@ impl MeshView {
         }
 
         if let Some(vol_ctx) = &self.volume_ctx {
-            let mut vol_uniforms = MeshUniforms::default();
-
             let extent = vol_ctx.render_content.texture.size();
             let w = extent.width.max(1) as f32;
             let h = extent.height.max(1) as f32;
             let d = extent.depth_or_array_layers.max(1) as f32;
+            let w_mm = w * 1.0;
+            let h_mm = h * 1.0;
+            let d_mm = d * self.slab_thickness; 
             let scale_viewport = Mat4::from_scale(Vec3::new(w, h, w));
-            let scale_texture = Mat4::from_scale(Vec3::new(1.0 / w, 1.0 / h, 1.0 / d));
+            let scale_texture = Mat4::from_scale(Vec3::new(1.0 / w_mm, 1.0 / h_mm, 1.0 / d_mm));
             let rotation = self.rotation;
             let final_matrix = scale_texture * rotation * scale_viewport;
-            vol_uniforms.rotation = final_matrix.to_cols_array();
-            
-            vol_uniforms.scale = self.scale_factor;
-            vol_uniforms.pan_x = self.pan[0];
-            vol_uniforms.pan_y = self.pan[1];
-            vol_uniforms.opacity_multiplier = self.opacity;
 
             // Extract format and bias from RenderContent decode parameters
             let decode_params = vol_ctx.render_content.decode_parameters();
-            vol_uniforms.is_packed_rg8 = if decode_params.is_packed_flag == 1 {
+            let is_packed_rg8 = if decode_params.is_packed_flag == 1 {
                 1.0
             } else {
                 0.0
             };
-            vol_uniforms.bias = decode_params.bias;
+
+            let vol_uniforms = MeshUniforms {
+                ray_step_size: 0.003,
+                max_steps: 1500.0,
+                is_packed_rg8: is_packed_rg8,
+                bias: decode_params.bias,
+                window: self.window_level.window_width(),
+                level: self.window_level.window_level(),
+                pan_x: self.pan[0],
+                pan_y: self.pan[1],
+                scale: self.scale_factor,
+                roi_min: self.roi_min,
+                roi_max: self.roi_max,
+                opacity_multiplier: self.opacity,
+                light_dir: [0.5, 0.5, -1.0],
+                shading_strength: 0.0,
+                rotation: final_matrix.to_cols_array(),
+            };
 
             // update
             vol_ctx.update_uniforms(queue, &vol_uniforms);

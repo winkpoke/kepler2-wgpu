@@ -34,10 +34,11 @@ struct MeshUniforms {
     bias: f32,
     window: f32,
     level: f32,
-    _pad0: vec2<f32>,
     pan_x: f32,
     pan_y: f32,
+    roi_min: vec3<f32>,
     scale: f32,
+    roi_max: vec3<f32>,
     opacity_multiplier: f32,
     light_dir: vec3<f32>,
     shading_strength: f32,
@@ -48,7 +49,9 @@ var<uniform> u_vol: MeshUniforms;
 
 // Intersect axis-aligned unit box [0,1]^3
 fn intersect_volume(ray_origin: vec3<f32>, ray_dir: vec3<f32>) -> vec2<f32> {
-    let inv = 1.0 / ray_dir;
+    let is_zero = abs(ray_dir) < vec3<f32>(1e-6);
+    let sign_dir = select(sign(ray_dir), vec3<f32>(1.0), is_zero);
+    let inv = 1.0 / max(abs(ray_dir), vec3<f32>(1e-6)) * sign_dir;
     let t0 = (vec3<f32>(0.0) - ray_origin) * inv;
     let t1 = (vec3<f32>(1.0) - ray_origin) * inv;
 
@@ -92,38 +95,76 @@ fn apply_window_level(value: f32) -> f32 {
 
 fn transfer_function(hu: f32) -> vec4<f32> {
     let norm = apply_window_level(hu);
-    // air
-    if (hu < -500.0) {
-        return vec4<f32>(0.0, 0.0, 0.0, 0.0);
-    }
+    let visibility = pow(norm, 1.5);
 
-    // soft tissue
-    if (hu < 300.0) {
-        return vec4<f32>(norm, norm * 0.7, norm * 0.6, norm * 0.1);
-    }
+    // ========= 1. Air =========
+    let air_alpha = 1.0 - smoothstep(-1000.0, -900.0, hu);
+    let lung_t = smoothstep(-900.0, -300.0, hu);
+    let lung_alpha = lung_t * 0.05;
+    let lung_color = mix(
+        vec3<f32>(0.15, 0.15, 0.15),
+        vec3<f32>(0.25, 0.25, 0.25),
+        lung_t
+    );
 
-    // bone
-    let t = clamp((hu - 300.0) / 1000.0, 0.0, 1.0);
-    return vec4<f32>(1.0, 1.0, 1.0, t * 0.6);
+    // ========= 2. Fat =========
+    let fat_t = smoothstep(-300.0, -100.0, hu);
+    let fat_alpha = fat_t * 0.15;
+    let fat_color = mix(vec3<f32>(1.0, 0.9, 0.7),vec3<f32>(1.0, 0.8, 0.5),smoothstep(0.3, 0.7, norm)) * 0.8;
+
+    // ========= 3. Soft tissue =========
+    let soft_t = smoothstep(-100.0, 200.0, hu);
+    let soft_alpha = soft_t * smoothstep(0.2, 0.8, norm) * 0.5;
+    let soft_color = mix(vec3<f32>(0.9, 0.5, 0.4), vec3<f32>(1.0, 0.7, 0.6), soft_t)* (1.0 + 0.2 * norm);
+
+    // ========= 4. Bone =========
+    let bone_t = smoothstep(200.0, 1200.0, hu);
+    let bone_alpha = clamp(bone_t * 1.2, 0.0, 1.0);
+    let bone_color = mix(
+        vec3<f32>(0.95, 0.93, 0.88),
+        vec3<f32>(1.0, 1.0, 1.0),
+        norm
+    );
+
+    // ========= 5. 合成 =========
+    let color = lung_color * lung_alpha
+        + fat_color * fat_alpha
+        + soft_color * soft_alpha
+        + bone_color * bone_alpha
+        + vec3<f32>(0.0) * air_alpha;
+
+    var alpha = (lung_alpha + fat_alpha + soft_alpha + bone_alpha) * visibility;;
+    alpha = clamp(alpha, 0.0, 1.0);
+
+    // ========= 6. Gamma =========
+    let final_color = pow(color, vec3<f32>(0.9));
+
+    return vec4<f32>(final_color, alpha);
 }
 
-fn compute_gradient(p: vec3<f32>) -> vec3<f32> {
-    let d = 0.002;
-
-    let gx = sample_volume(p + vec3<f32>(d,0,0)) - sample_volume(p - vec3<f32>(d,0,0));
-    let gy = sample_volume(p + vec3<f32>(0,d,0)) - sample_volume(p - vec3<f32>(0,d,0));
-    let gz = sample_volume(p + vec3<f32>(0,0,d)) - sample_volume(p - vec3<f32>(0,0,d));
-
-    return normalize(vec3<f32>(gx, gy, gz));
+fn compute_gradient(pos: vec3<f32>) -> vec3<f32> {
+    let step = 1.0 / 512.0;
+    let dx = sample_volume(pos + vec3<f32>(step, 0.0, 0.0)) -
+             sample_volume(pos - vec3<f32>(step, 0.0, 0.0));
+    let dy = sample_volume(pos + vec3<f32>(0.0, step, 0.0)) -
+             sample_volume(pos - vec3<f32>(0.0, step, 0.0));
+    let dz = sample_volume(pos + vec3<f32>(0.0, 0.0, step)) -
+             sample_volume(pos - vec3<f32>(0.0, 0.0, step));
+    return normalize(vec3<f32>(dx, dy, dz));
 }
 
-fn apply_lighting(color: vec3<f32>, normal: vec3<f32>) -> vec3<f32> {
-    let L = normalize(u_vol.light_dir);
-    let diff = max(dot(normal, L), 0.0);
+fn phong_lighting(normal: vec3<f32>, view_dir: vec3<f32>, base_color: vec3<f32>) -> vec3<f32> {
+    let light_dir = normalize(vec3<f32>(0.5, 0.5, -1.0));
+    let ambient = 0.2;
 
-    let shaded = color * (0.3 + diff * 0.7);
+    // ===== diffuse =====
+    let diff = max(dot(normal, light_dir), 0.0);
 
-    return mix(color, shaded, u_vol.shading_strength);
+    // ===== specular =====
+    let reflect_dir = reflect(-light_dir, normal);
+    let spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32.0);
+    let color = base_color * (ambient + 0.8 * diff) + vec3<f32>(1.0) * spec * 0.3;
+    return color;
 }
 
 // Ray march with front-to-back accumulation
@@ -132,26 +173,47 @@ fn volume_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_e
     var alpha = 0.0;
     let step = u_vol.ray_step_size;
 
-    for (var t = t_start; t < t_end; t += step) {
+    var t = t_start;
+    var steps: u32 = 0u;
+    loop{
+        if (t > t_end || alpha > 0.98 || steps > u32(u_vol.max_steps)) {
+            break;
+        }
+
         let pos = ray_origin + t * ray_dir;
+
+        // ROI
+        if (any(pos < u_vol.roi_min) || any(pos > u_vol.roi_max)) {
+            t += step;
+            steps += 1u;
+            continue;
+        }
+
         let hu = sample_volume(pos);
         let tf = transfer_function(hu);
         var c = tf.rgb;
-        var a = tf.a * u_vol.opacity_multiplier;
+        let density_scale = 400.0;
+        let density = tf.a * u_vol.opacity_multiplier * density_scale;
+        let a = 1.0 - exp(-density * step);
 
         // Gradient lighting
-        if (a > 0.01) {
-            let n = compute_gradient(pos);
-            c = apply_lighting(c, n);
+        if (a > 0.05) {
+            let grad = compute_gradient(pos);
+            let view_dir = normalize(-ray_dir);
+            c = phong_lighting(grad, view_dir, c);
+            let edge = clamp(length(grad) * 2.0, 0.0, 1.0);
+            c *= mix(0.7, 1.3, edge);
         }
+        c = pow(c, vec3<f32>(0.85)) * 1.2;
 
         // front-to-back compositing
         color += (1.0 - alpha) * c * a;
         alpha += (1.0 - alpha) * a;
-        if (alpha > 0.98) {
-            break;
-        }
+
+        t += step;
+        steps += 1u;
     }
+
     return vec4<f32>(color, alpha);
 }
 

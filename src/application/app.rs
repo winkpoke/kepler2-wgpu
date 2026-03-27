@@ -452,27 +452,13 @@ impl App {
     pub fn set_render_mode(
         &mut self,
         mode: usize,
-        save_mesh: bool,
-        crop: bool,
-        sx: f32,
-        sy: f32,
-        sz: f32,
-        lx: f32,
-        ly: f32,
-        lz: f32,
         mesh_index: Option<usize>,
-        index: Option<usize>,
-        iso_min: f32,
-        iso_max: f32,
+        mpr_index: Option<usize>,
         mip_index: Option<usize>,
         orientation_index: usize,
     ) {
         // Save current view states before layout switch
         // self.app_view.save_view_states();
-
-        // Prepare cropping region if requested
-        let world_min = crop.then_some([sx, sy, sz]);
-        let world_max = crop.then_some([lx, ly, lz]);
 
         // Layout management
         if mode == 2 {
@@ -497,35 +483,7 @@ impl App {
                 }
             };
 
-            if let Some(_) = mesh_index {
-                self.app_model.enable_mesh = true;
-
-                // Build or reuse cached mesh
-                if !save_mesh || self.cached_mesh.is_none() {
-                    let mut mesh = crate::rendering::view::mesh::mesh::Mesh::new(
-                        &vol, iso_min, iso_max, world_min, world_max,
-                    );
-
-                    // Safety: Ensure non-empty mesh
-                    if mesh.vertices.is_empty() {
-                        log::warn!(
-                            "Generated mesh is empty (ISO: {}-{}). Injecting dummy triangle.",
-                            iso_min,
-                            iso_max
-                        );
-                        let dummy = crate::rendering::view::mesh::mesh::MeshVertex {
-                            position: [0.0, 0.0, 0.0],
-                            normal: [0.0, 0.0, 1.0],
-                            color: [0.0, 0.0, 0.0],
-                        };
-                        mesh.vertices.extend([dummy; 3]);
-                        mesh.indices.extend([0, 1, 2]);
-                    }
-                    self.cached_mesh = Some(mesh);
-                }
-            }
-
-            if let Some(idx) = index {
+            if let Some(idx) = mpr_index {
                 self.saved_states[idx] = orientation_index;
             }
 
@@ -566,7 +524,6 @@ impl App {
                         .view_factory
                         .create_mesh_view_with_content(
                             texture,
-                            self.cached_mesh.as_ref().expect("cached_mesh must exist"),
                             (0, 0),
                             (0, 0),
                         )
@@ -582,7 +539,6 @@ impl App {
                         self.saved_states,
                         mip_index,
                         mesh_index,
-                        self.cached_mesh.clone(),
                     );
 
                     // self.app_view.restore_view_states();
@@ -960,24 +916,8 @@ impl App {
             mesh_view.reset_scale_factor();
             mesh_view.reset_pan();
             mesh_view.reset_opacity();
+            mesh_view.reset_roi();
             log::info!("Mesh reset via State control");
-        });
-    }
-
-    /// Set uniform mesh scale factor for the first MeshView present.
-    pub fn set_mesh_scale(&mut self, scale: f32) {
-        self.apply_to_mesh_view(|mesh_view| {
-            mesh_view.set_scale_factor(scale);
-            log::info!("Mesh scale set to {:.3}", scale);
-        });
-    }
-
-    /// Function-level comment: Set the pan offset for the mesh view.
-    /// dx, dy: Pan offsets in normalized device coordinates (-1 to 1 range).
-    pub fn set_mesh_pan(&mut self, dx: f32, dy: f32) {
-        self.apply_to_mesh_view(|mesh_view| {
-            mesh_view.set_pan(dx, dy);
-            log::info!("Mesh pan set to ({:.3}, {:.3})", dx, dy);
         });
     }
 
@@ -985,6 +925,15 @@ impl App {
         self.apply_to_mesh_view(|mesh_view| {
             mesh_view.set_opacity(alpha);
             log::info!("Mesh opacity set to {:.3}", alpha);
+        });
+    }
+
+    pub fn set_mesh_roi(&mut self, sx: f32,sy: f32, sz: f32, lx: f32, ly: f32,lz: f32){
+        let world_min = [sx, sy, sz];
+        let world_max = [lx, ly, lz];
+        self.apply_to_mesh_view(|mesh_view| {
+            mesh_view.set_roi(world_min, world_max);
+            log::info!("Mesh roi set from {:?} to {:?}", world_min, world_max);
         });
     }
 

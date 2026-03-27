@@ -425,7 +425,6 @@ impl AppView {
         indices: [usize; 4],
         mip: Option<usize>,
         mesh_index: Option<usize>,
-        cached_mesh: Option<crate::mesh::mesh::Mesh>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.remove_all();
 
@@ -452,7 +451,6 @@ impl AppView {
         if mesh_index.is_some() {
             let mesh_view = self.view_factory.create_mesh_view_with_content(
                 texture.clone(),
-                &cached_mesh.unwrap(),
                 (0, 0),
                 (0, 0),
             )?;
@@ -526,6 +524,11 @@ impl AppView {
                     .set_window_level(window_level)
                     .map_err(|e| e.to_string())?;
                 Ok(())
+            } else if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view
+                    .set_window_level(window_level)
+                    .map_err(|e| e.to_string())?;
+                Ok(())
             } else {
                 Err(format!("View {} is not an MPR view", index))
             }
@@ -544,6 +547,11 @@ impl AppView {
                 Ok(())
             } else if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
                 mip_view
+                    .set_window_width(window_width)
+                    .map_err(|e| e.to_string())?;
+                Ok(())
+            } else if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view
                     .set_window_width(window_width)
                     .map_err(|e| e.to_string())?;
                 Ok(())
@@ -578,7 +586,11 @@ impl AppView {
                 handled = true;
             }
             if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
-                mip_view.set_scale(scale); // MipView set_scale doesn't return Result currently?
+                mip_view.set_scale(scale);
+                handled = true;
+            }
+            if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view.set_scale_factor(scale);
                 handled = true;
             }
             if handled {
@@ -621,6 +633,10 @@ impl AppView {
             }
             if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
                 mip_view.set_pan(x, y);
+                handled = true;
+            }
+            if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view.set_pan(x, y);
                 handled = true;
             }
             if handled {

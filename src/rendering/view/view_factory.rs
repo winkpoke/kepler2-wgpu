@@ -112,7 +112,6 @@ pub trait ViewFactory {
     fn create_mesh_view_with_content(
         &self,
         render_content: Arc<RenderContent>,
-        mesh: &Mesh,
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>>;
@@ -192,7 +191,6 @@ impl ViewFactory for MockViewFactory {
     fn create_mesh_view_with_content(
         &self,
         _render_content: Arc<RenderContent>,
-        _mesh: &Mesh,
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
@@ -453,7 +451,6 @@ impl ViewFactory for DefaultViewFactory {
     fn create_mesh_view_with_content(
         &self,
         render_content: Arc<RenderContent>,
-        mesh: &Mesh,
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
@@ -461,13 +458,8 @@ impl ViewFactory for DefaultViewFactory {
         mesh_view.set_rotation_enabled(false);
         info!("[DefaultViewFactory] Mesh rotation disabled for consistent inspection");
 
-        let ctx = BasicMeshContext::new(&self.device, &self.queue, mesh, true);
-        let ctx_arc = Arc::new(ctx);
-
         let vol_ctx = MeshRenderContext::new(&self.device, self.surface_format, render_content);
         mesh_view.attach_context(Arc::new(vol_ctx));
-
-        // mesh_view.attach_context(ctx_arc);
         mesh_view.move_to(pos);
         mesh_view.resize(size);
 

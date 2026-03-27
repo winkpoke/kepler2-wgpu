@@ -16,10 +16,11 @@ pub struct MeshUniforms {
     pub bias: f32,
     pub window: f32,
     pub level: f32,
-    pub _pad0: [f32; 2],
     pub pan_x: f32,
     pub pan_y: f32,
+    pub roi_min: [f32; 3],
     pub scale: f32,
+    pub roi_max: [f32; 3],
     pub opacity_multiplier: f32,
     pub light_dir: [f32; 3],
     pub shading_strength: f32,
@@ -35,10 +36,11 @@ impl Default for MeshUniforms {
             bias: VolumeEncoding::DEFAULT_HU_OFFSET,
             window: 1500.0,
             level: 400.0,
-            _pad0:[0.0, 0.0],
             pan_x: 0.0,
             pan_y: 0.0,
+            roi_min: [0.0, 0.0, 0.0],
             scale: 1.0,
+            roi_max: [1.0, 1.0, 1.0],
             opacity_multiplier: 0.05,
             light_dir: [0.5, 0.5, -1.0],
             shading_strength: 0.0,
@@ -110,7 +112,7 @@ impl MeshRenderContext {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Mesh Volume Shader"),
             source: wgpu::ShaderSource::Wgsl(
-                include_str!("../../../rendering/shaders/mesh_volume.wgsl").into(),
+                include_str!("../../shaders/mesh_volume.wgsl").into(),
             ),
         });
 
@@ -807,21 +809,6 @@ impl Mesh {
 
         Self { vertices, indices }
     }
-
-    pub fn new(
-        _ctvolume: &CTVolume,
-        _iso_min: f32,
-        _iso_max: f32,
-        _world_min: Option<[f32; 3]>,
-        _world_max: Option<[f32; 3]>,
-    ) -> Self {
-        log::info!("Surface mesh extraction is disabled. Using volume rendering.");
-        Self {
-            vertices: Vec::new(),
-            indices: Vec::new(),
-        }
-    }
-
 }
 
 impl MeshVertex {

@@ -186,10 +186,10 @@ impl RenderApp {
                     // Function-level comment: Pipeline invalidation is now handled by individual render contexts.
                     log::info!("InvalidatePipelines event: render contexts will rebuild pipelines as needed.");
                 }
-                Event::UserEvent(UserEvent::SetRenderMode(mode, save_mesh, crop, sx,sy,sz,lx,ly,lz, mesh_index,index,iso_min,iso_max,mip_index,orientation_index)) => {
+                Event::UserEvent(UserEvent::SetRenderMode(mode, mesh_index,mpr_index,mip_index,orientation_index)) => {
                     // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_render_mode(mode, save_mesh, crop, sx,sy,sz,lx,ly,lz, mesh_index,index,iso_min,iso_max,mip_index,orientation_index);
-                    log::info!("SetRenderMode toggled at runtime: mode={mode}, mip={:?}, mesh_index={:?}, index={:?}, orientation_index={orientation_index}", mip_index, mesh_index, index);
+                    state.set_render_mode(mode, mesh_index,mpr_index,mip_index,orientation_index);
+                    log::info!("SetRenderMode toggled at runtime: mode={mode}, mip={:?}, mesh_index={:?}, mpr_index={:?}, orientation_index={orientation_index}", mip_index, mesh_index, mpr_index);
                 }
                 //mip control events
                 Event::UserEvent(UserEvent::SetMipMode(index, mode)) => {
@@ -218,21 +218,17 @@ impl RenderApp {
                     state.set_mesh_rotation_enabled(enabled);
                     log::info!("Mesh rotation enabled={}", enabled);
                 }
-                Event::UserEvent(UserEvent::SetMeshPan(_index, dx, dy)) => {
-                    state.set_mesh_pan(dx, dy);
-                    log::info!("Mesh pan set to dx={:.3}, dy={:.3}", dx, dy);
-                }
                 Event::UserEvent(UserEvent::ResetMesh(_index)) => {
                     state.reset_mesh();
                     log::info!("Mesh rotation reset");
                 }
-                Event::UserEvent(UserEvent::SetMeshScale(_index, scale)) => {
-                    state.set_mesh_scale(scale);
-                    log::info!("Mesh scale set to {:.3}", scale);
-                }
                 Event::UserEvent(UserEvent::SetMeshOpacity(_index, alpha)) => {
                     state.set_mesh_opacity(alpha);
                     log::info!("Mesh opacity set to {:.3}", alpha);
+                }
+                Event::UserEvent(UserEvent::SetMeshRoi(_index, sx ,sy , sz, lx, ly, lz)) => {
+                    state.set_mesh_roi(sx ,sy , sz, lx, ly, lz);
+                    log::info!("Mesh roi set from {:?} to {:?}", [sx ,sy , sz], [lx, ly, lz]);
                 }
                 Event::UserEvent(UserEvent::SetMeshRotationAngleDeg(_index, degrees_x, degrees_y)) => {
                     state.set_mesh_rotation_angle_degrees(degrees_x, degrees_y);
@@ -380,7 +376,7 @@ impl RenderApp {
                                     },
                                 ..
                             } => {
-                                state.set_render_mode(0, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, None, 300.0, 400.0, None, 2);
+                                state.set_render_mode(0, None, None, None, 2);
                                 log::info!("KeyA pressed: mpr mode toggled to {}", true);
                             }
                             WindowEvent::KeyboardInput {
@@ -392,13 +388,16 @@ impl RenderApp {
                                     },
                                 ..
                             } => {
-                                state.set_render_mode(3, false, true, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, Some(0), None, 300.0, 400.0, None, 1);
+                                state.set_render_mode(2, Some(0), None, None, 1);
                                 state.set_mesh_rotation_angle_degrees(90.0, 0.0);
-                                state.set_mesh_rotation_angle_degrees(0.0, 90.0);
-                                state.set_mesh_rotation_angle_degrees(90.0, 0.0);
-                                state.set_mesh_scale(3.0);
-                                state.set_mesh_pan(0.2, 0.2);
-                                state.set_mesh_opacity(0.5);
+                                // state.set_mesh_rotation_angle_degrees(0.0, 90.0);
+                                // state.set_mesh_rotation_angle_degrees(90.0, 0.0);
+                                // state.set_mesh_scale(2.0);
+                                // state.set_mesh_pan(0.2, 0.2);
+                                state.set_mesh_opacity(1.0);
+                                state.set_scale(0, 2.0);
+                                state.set_window_width(0, 1500.0);
+                                state.set_window_level(0, 400.0);
                                 log::info!("KeyB pressed: 2*2 mode toggled to {}", true);
                             }
                             WindowEvent::KeyboardInput {
@@ -410,8 +409,13 @@ impl RenderApp {
                                     },
                                 ..
                             } => {
-                                state.set_render_mode(2, true, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, Some(0), None, 300.0, 400.0, None, 1);
+                                state.set_render_mode(2, Some(0), None, None, 1);
+                                state.set_mesh_rotation_angle_degrees(90.0, 0.0);
+                                // state.set_mesh_roi(0.0,0.0,0.5,1.0,1.0,1.0);
                                 state.set_mesh_opacity(1.0);
+                                state.set_scale(0, 2.0);
+                                state.set_window_width(0, -500.0);
+                                state.set_window_level(0, -40.0);
                                 log::info!("KeyC pressed: mesh mode toggled to {}", true);
                             }
                             WindowEvent::KeyboardInput {
@@ -423,7 +427,7 @@ impl RenderApp {
                                     },
                                 ..
                             } => {
-                                state.set_render_mode(3, true, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, Some(0), None, 300.0, 400.0, Some(3), 1);
+                                state.set_render_mode(3, Some(0), None, Some(3), 1);
                                 state.set_mip_mode(3,0);
                                 state.set_slab_thickness(3, 1.25);
                                 state.set_scale(3, 2.0);
@@ -440,7 +444,7 @@ impl RenderApp {
                                     },
                                 ..
                             } => {
-                                state.set_render_mode(1, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, None, 300.0, 400.0, Some(0), 1);
+                                state.set_render_mode(1, None, None, Some(0), 1);
                                 log::info!("KeyE pressed: mip mode toggled to {}", true);
                             }
                             WindowEvent::KeyboardInput {
@@ -452,12 +456,10 @@ impl RenderApp {
                                     },
                                 ..
                             } => {
-                                state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(0), 300.0, 400.0, None, 1);
+                                state.set_render_mode(3, None, Some(0), None, 1);
                                 state.set_slice_mm(0, 100.0);
                                 state.set_scale(0, 2.0);
                                 state.set_pan(1, 0.09, 0.09);
-                                state.set_mesh_scale(2.0);
-                                state.set_mesh_pan(-1.0, 1.0);
                                 log::info!("KeyF pressed: 2*2 mode toggled to {}", true);
                             }
                             WindowEvent::KeyboardInput {
@@ -469,21 +471,9 @@ impl RenderApp {
                                     },
                                 ..
                             } => {
-                                state.set_render_mode(0, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, None, 300.0, 400.0, None, 1);
+                                state.set_render_mode(0, None, None, None, 1);
                                 state.set_scale(0, 0.5);
                                 log::info!("KeyG pressed: 2*2 mode toggled to {}", true);
-                            }
-                            WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyH),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(3), 300.0, 400.0, None, 3);
-                                // state.set_oblique_normal(3, [-1.0, 0.0, 0.0], 90f32.to_radians());
                             }
                             WindowEvent::KeyboardInput {
                                 event:
@@ -494,7 +484,7 @@ impl RenderApp {
                                     },
                                 ..
                             } => {
-                                state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(3), 300.0, 400.0, None, 3);
+                                state.set_render_mode(3, None, Some(3), None, 3);
                                 // state.set_oblique_normal(3, [-0.574, 0.0, 0.819], 0f32);
                             }
                             WindowEvent::KeyboardInput {
@@ -506,7 +496,7 @@ impl RenderApp {
                                     },
                                 ..
                             } => {
-                                state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(3), 300.0, 400.0, None, 3);
+                                state.set_render_mode(3, None, Some(3), None, 3);
                                 state.set_oblique_rotation_radians(3, 0.0, 20.0, 0.0);
                             }
                             WindowEvent::KeyboardInput {
@@ -519,18 +509,6 @@ impl RenderApp {
                                 ..
                             } => {
                                 state.set_scale(0, 1.0);
-                                state.set_mesh_scale(1.0);
-                            }
-                            WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyU),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(0), 300.0, 400.0, None, 1);
                             }
                             WindowEvent::RedrawRequested => {
                                 // This tells winit that we want another frame after this one

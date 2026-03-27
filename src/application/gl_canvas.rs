@@ -27,23 +27,7 @@ pub enum UserEvent {
     ReloadShaders,
     /// Manually trigger pipeline cache invalidation without any other action.
     InvalidatePipelines,
-    SetRenderMode(
-        usize,
-        bool,
-        bool,
-        f32,
-        f32,
-        f32,
-        f32,
-        f32,
-        f32,
-        Option<usize>,
-        Option<usize>,
-        f32,
-        f32,
-        Option<usize>,
-        usize,
-    ),
+    SetRenderMode(usize,Option<usize>,Option<usize>,Option<usize>,usize),
     SetMipMode(usize, u32),
     SetOneCellLayout(usize, usize),
     #[cfg(target_arch = "wasm32")]
@@ -67,14 +51,13 @@ pub enum UserEvent {
     // Mesh control events
     SetMeshRotationEnabled(usize, bool),
     SetMeshOpacity(usize, f32),
-    SetMeshPan(usize, f32, f32),
     ResetMesh(usize),
-    SetMeshScale(usize, f32),
     SetMeshRotationAngleDeg(usize, f32, f32),
     SetMeshRotationDegrees(usize, f32, f32, f32),
     SetMeshRotation(usize, [f32; 16]),
     #[cfg(target_arch = "wasm32")]
     GetMeshRotation(usize, oneshot::Sender<[f32; 16]>),
+    SetMeshRoi(usize, f32, f32, f32, f32, f32, f32)
 }
 
 #[macro_export]
@@ -180,41 +163,21 @@ impl GLCanvas {
     pub fn set_render_mode(
         &self,
         mode: usize,
-        save_mesh: bool,
-        crop: bool,
-        sx: f32,
-        sy: f32,
-        sz: f32,
-        lx: f32,
-        ly: f32,
-        lz: f32,
         mesh_index: Option<usize>,
-        index: Option<usize>,
-        iso_min: f32,
-        iso_max: f32,
+        mpr_index: Option<usize>,
         mip_index: Option<usize>,
         orientation_index: usize,
     ) {
         if let Err(e) = self.proxy.send_event(UserEvent::SetRenderMode(
             mode,
-            save_mesh,
-            crop,
-            sx,
-            sy,
-            sz,
-            lx,
-            ly,
-            lz,
             mesh_index,
-            index,
-            iso_min,
-            iso_max,
+            mpr_index,
             mip_index,
             orientation_index,
         )) {
             log::error!("Failed to send SetRenderMode event: {:?}", e);
         } else {
-            log::info!("Sent SetRenderMode event: mode={}, save_mesh={}, crop={}, sx={}, sy={}, sz={}, lx={}, ly={}, lz={}, mesh_index={:?}, index={:?}, iso_min={}, iso_max={}, orientation_index={}", mode, save_mesh, crop, sx, sy, sz, lx, ly, lz, mesh_index, index, iso_min, iso_max, orientation_index);
+            log::info!("Sent SetRenderMode event: mode={},  mip={:?}, mesh_index={:?}, mpr_index={:?}, orientation_index={}", mode, mip_index, mesh_index, mpr_index, orientation_index);
         }
     }
 
@@ -514,9 +477,8 @@ impl_user_event_senders_for_glcanvas! {
     // Mesh controls
     set_mesh_rotation_enabled => SetMeshRotationEnabled(enabled: bool),
     set_mesh_opacity => SetMeshOpacity(alpha: f32),
-    set_mesh_pan => SetMeshPan(dx: f32, dy: f32),
     reset_mesh => ResetMesh(),
-    set_mesh_scale => SetMeshScale(scale: f32),
     set_mesh_rotation_angle_degrees => SetMeshRotationAngleDeg(degrees_x: f32, degrees_y: f32),
     set_mesh_rotation_degrees => SetMeshRotationDegrees(roll_deg: f32, yaw_deg: f32, pitch_deg: f32),
+    set_mesh_roi => SetMeshRoi(sx: f32,sy: f32, sz: f32, lx: f32, ly: f32,lz: f32)
 }
