@@ -34,6 +34,7 @@ use crate::rendering::view::layout::compute_aspect_fit;
 /// 4. **Window/Level Processing**: Applies CT display windowing
 /// 5. **Final Rendering**: Outputs the processed image to the view
 pub struct MprView {
+    view_id: usize,
     /// WGPU implementation containing per-view GPU resources
     wgpu_impl: MprViewWgpuImpl,
     /// Current slice position (internal units)
@@ -195,6 +196,7 @@ impl MprView {
         );
 
         Self {
+            view_id: 0,
             wgpu_impl,
             slice: 0.0,
             base_screen,
@@ -212,6 +214,10 @@ impl MprView {
             content_h_mm,
             padding_px: 0,
         }
+    }
+
+    pub fn view_id(&self) -> usize {
+        self.view_id
     }
 
     /// Update the transformation matrix based on current view parameters.

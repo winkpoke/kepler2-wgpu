@@ -31,7 +31,7 @@ pub enum UserEvent {
     SetMipMode(usize, u32),
     SetOneCellLayout(usize, usize),
     #[cfg(target_arch = "wasm32")]
-    GetObliqueRotation(usize, oneshot::Sender<[f32; 4]>),
+    GetRotation(usize, oneshot::Sender<[f32; 4]>),
     #[cfg(target_arch = "wasm32")]
     GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     #[cfg(target_arch = "wasm32")]
@@ -44,7 +44,7 @@ pub enum UserEvent {
     SetMipRotationAngleDeg(usize, f32, f32, f32),
     ViewClick(usize, f32, f32, f32), // view_index, screen_x, screen_y, screen_z
     SetObliqueRotation(usize, f32, f32, f32),
-    SetObliqueRotationQuat(usize, [f32; 4]),
+    SetRotationQuat(usize, [f32; 4]),
     #[cfg(target_arch = "wasm32")]
     /// View click with reply; returns [x_mm, y_mm, slice_mm, reserved]
     ViewClickGet(usize, f32, f32, f32, oneshot::Sender<[f32; 4]>),
@@ -55,8 +55,6 @@ pub enum UserEvent {
     SetMeshRotationAngleDeg(usize, f32, f32),
     SetMeshRotationDegrees(usize, f32, f32, f32),
     SetMeshRotation(usize, [f32; 16]),
-    #[cfg(target_arch = "wasm32")]
-    GetMeshRotation(usize, oneshot::Sender<[f32; 16]>),
     SetMeshRoi(usize, f32, f32, f32, f32, f32, f32)
 }
 
@@ -197,19 +195,19 @@ impl GLCanvas {
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub async fn get_oblique_rotation(&self, index: usize) -> Result<String, String> {
+    pub async fn get_rotation(&self, index: usize) -> Result<String, String> {
         let (tx, rx) = oneshot::channel();
 
-        if let Err(e) = self.proxy.send_event(UserEvent::GetObliqueRotation(index, tx)) {
+        if let Err(e) = self.proxy.send_event(UserEvent::GetRotation(index, tx)) {
             log::error!(
-                "Failed to send GetObliqueRotation event for window {}: {:?}",
+                "Failed to send GetRotation event for window {}: {:?}",
                 index,
                 e
             );
             return Err(format!("Failed to send event: {:?}", e));
         }
 
-        log::info!("Sent GetObliqueRotation event for window {}", index);
+        log::info!("Sent GetRotation event for window {}", index);
 
         match rx.await {
             Ok(result) => serde_json::to_string(&result).map_err(|e| format!("JSON serialization error: {}", e)),
@@ -393,48 +391,7 @@ impl GLCanvas {
         }
     }
 
-    #[cfg(target_arch = "wasm32")]
-    pub async fn get_mesh_rotation(&self, index: usize) -> Result<Box<[f32]>, String> {
-        let (tx, rx) = oneshot::channel();
-
-        if let Err(e) = self.proxy.send_event(UserEvent::GetMeshRotation(index, tx)) {
-            log::error!(
-                "Failed to send GetMeshRotation event for window {}: {:?}",
-                index,
-                e
-            );
-            return Err(format!("Failed to send event: {:?}", e));
-        }
-
-        log::info!("Sent GetMeshRotation event for window {}", index);
-
-        match rx.await {
-            Ok(result) => Ok(result.into()),
-            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
-        }
-    }
-
-    pub fn set_mesh_rotation(&self, index: usize, rotation: Vec<f32>) {
-        if rotation.len() != 16 {
-            log::error!(
-                "set_mesh_rotation expected 16 floats, got {}",
-                rotation.len()
-            );
-            return;
-        }
-        let mut arr = [0.0; 16];
-        arr.copy_from_slice(&rotation);
-        if let Err(e) = self
-            .proxy
-            .send_event(UserEvent::SetMeshRotation(index, arr))
-        {
-            log::error!("Failed to send SetMeshRotation event: {:?}", e);
-        } else {
-            log::info!("Sent SetMeshRotation event for window {}", index);
-        }
-    }
-
-    pub fn set_oblique_rotation_quat(&self, index: usize, quat: Vec<f32>) {
+    pub fn set_rotation_quat(&self, index: usize, quat: Vec<f32>) {
         if quat.len() != 4 {
             log::error!(
                 "set_oblique_rotation_quat expected 4 floats, got {}",
@@ -446,7 +403,7 @@ impl GLCanvas {
         arr.copy_from_slice(&quat);
         if let Err(e) = self
             .proxy
-            .send_event(UserEvent::SetObliqueRotationQuat(index, arr))
+            .send_event(UserEvent::SetRotationQuat(index, arr))
         {
             log::error!("Failed to send SetObliqueRotationQuat event: {:?}", e);
         } else {

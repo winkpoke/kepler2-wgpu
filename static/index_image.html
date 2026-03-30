@@ -305,7 +305,7 @@
           </div>
           <div class="grid" style="margin-top:8px">
             <div>
-              <span id="slice-input">slice</span>
+              <span id="slice">slice</span>
               <input type="number" id="slice-input" step="0.5" value="0.0">
               <button id="slice-submit">应用</button>
             </div>
@@ -763,7 +763,7 @@
       console.log('oblique_rotation:', dx_deg, dy_deg, dz_deg);
 
       gl_canvas.set_oblique_rotation_radians(state.index, dx, dy, dz);
-      const rotation = JSON.parse(await gl_canvas.get_oblique_rotation(state.index))
+      const rotation = JSON.parse(await gl_canvas.get_rotation(state.index))
       console.log('oblique_rotation:', rotation);
     });
 
@@ -779,7 +779,7 @@
       const z = parseFloat(byId("quat-z").value) || 0;
       const w = parseFloat(byId("quat-w").value) || 0;
 
-      gl_canvas.set_oblique_rotation_quat(state.index, [x, y, z, w]);
+      gl_canvas.set_rotation_quat(state.index, [x, y, z, w]);
     });
 
     byId('oblique-reset-submit').addEventListener('click', async () => {
@@ -791,15 +791,15 @@
       const opt = byId('resetOptions').value;
       state.index = parseInt(byId('oblique-index').value, 10);
       if (opt == "T") {
-        gl_canvas.set_oblique_rotation_quat(state.index, [0, 0, 0, 1]);
+        gl_canvas.set_rotation_quat(state.index, [0, 0, 0, 1]);
         gl_canvas.set_oblique_rotation_radians(state.index, 0, 0, 0);
         state.oblique_rotation = [0, 0, 0]
       } else if (opt == "C") {
-        gl_canvas.set_oblique_rotation_quat(state.index, [0, 0, 0, 1]);
+        gl_canvas.set_rotation_quat(state.index, [0, 0, 0, 1]);
         gl_canvas.set_oblique_rotation_radians(state.index, deg2rad(-90), 0, 0);
         state.oblique_rotation = [0, 0, 0]
       } else if (opt == "S") {
-        gl_canvas.set_oblique_rotation_quat(state.index, [0, 0, 0, 1]);
+        gl_canvas.set_rotation_quat(state.index, [0, 0, 0, 1]);
         gl_canvas.set_oblique_rotation_radians(state.index, deg2rad(90), deg2rad(-180), deg2rad(-90));
         state.oblique_rotation = [0, 0, 0]
       }

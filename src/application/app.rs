@@ -458,7 +458,7 @@ impl App {
         orientation_index: usize,
     ) {
         // Save current view states before layout switch
-        // self.app_view.save_view_states();
+        self.app_view.save_view_states();
 
         // Layout management
         if mode == 2 {
@@ -499,7 +499,7 @@ impl App {
                         orientation_index,
                     );
 
-                    // self.app_view.restore_view_states();
+                    self.app_view.restore_view_states();
                 }
 
                 // === MIP ===
@@ -512,7 +512,7 @@ impl App {
                         orientation_index,
                     );
 
-                    // self.app_view.restore_view_states();
+                    self.app_view.restore_view_states();
                 }
 
                 // === Mesh ===
@@ -530,7 +530,7 @@ impl App {
                         .expect("Failed to create mesh view");
 
                     self.app_view.layout.add_view(mesh_view);
-                    // self.app_view.restore_view_states();
+                    self.app_view.restore_view_states();
                 }
                 _ => {
                     let _ = self.app_view.configure_mesh_layout(
@@ -541,7 +541,7 @@ impl App {
                         mesh_index,
                     );
 
-                    // self.app_view.restore_view_states();
+                    self.app_view.restore_view_states();
                 }
             }
         } else {
@@ -690,20 +690,31 @@ impl App {
         }
     }
 
-    pub fn get_oblique_rotation(&self, index: usize)->[f32; 4]{
+    pub fn get_rotation(&self, index: usize)->[f32; 4]{
         let view = self.app_view.layout.views().get(index).unwrap();
         if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
             let n = mpr_view.get_oblique_rotation();
             [n.x, n.y, n.z, n.w]
-        } else {
+        } else if let Some(mesh_view) = view.as_any().downcast_ref::<MeshView>() {
+            let n = mesh_view.get_rotation_quat();
+            [n.x, n.y, n.z, n.w]
+        } 
+        else {
             [f32::NAN, f32::NAN, f32::NAN, f32::NAN]
         }
     }
 
-    pub fn set_oblique_rotation(&mut self, index: usize, q: [f32; 4]) {
+    pub fn set_rotation(&mut self, index: usize, q: [f32; 4]) {
         if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
                 if let Err(e) = mpr_view.set_oblique_rotation(q) {
+                    log::warn!("set_oblique_rotation failed on view {}: {}", index, e);
+                } else {
+                    log::info!("View {} set_oblique_rotation: {:?}", index, q);
+                }
+            }
+            if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                if let Err(e) = mesh_view.set_rotation_quat(q) {
                     log::warn!("set_oblique_rotation failed on view {}: {}", index, e);
                 } else {
                     log::info!("View {} set_oblique_rotation: {:?}", index, q);
@@ -948,24 +959,6 @@ impl App {
     pub fn set_mesh_rotation_degrees(&mut self, roll_deg: f32, yaw_deg: f32, pitch_deg: f32) {
         self.apply_to_mesh_view(|mesh_view| {
             mesh_view.set_rotation_degrees(roll_deg, yaw_deg, pitch_deg);
-        });
-    }
-
-    pub fn get_mesh_rotation(&self) -> [f32; 16] {
-        for view in self.app_view.layout.views().iter() {
-            if let Some(mesh_view) = view
-                .as_any()
-                .downcast_ref::<crate::rendering::view::MeshView>()
-            {
-                return mesh_view.get_rotation().to_cols_array();
-            }
-        }
-        Mat4::from_rotation_x(PI).to_cols_array()
-    }
-
-    pub fn set_mesh_rotation(&mut self, rotation: [f32; 16]) {
-        self.apply_to_mesh_view(|mesh_view| {
-            mesh_view.set_rotation(Mat4::from_cols_array(&rotation));
         });
     }
 

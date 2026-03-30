@@ -75,6 +75,7 @@ impl Default for FallbackMode {
 }
 
 pub struct MeshView {
+    view_id: usize,
     pub mesh: Option<Mesh>,
     pub camera: Option<Camera>,
     volume_ctx: Option<std::sync::Arc<MeshRenderContext>>,
@@ -98,8 +99,6 @@ pub struct MeshView {
     rotation_quat: Quat,
     /// Rotation speed in radians per second (default: π/2 = 90 degrees/second)
     rotation_speed: f32,
-    /// Current rotation state as a matrix (supports free 3D rotation)
-    rotation: Mat4,
     /// Last frame time for rotation calculation
     last_frame_time: Instant,
     /// Uniform scale factor
@@ -116,6 +115,7 @@ pub struct MeshView {
 impl Default for MeshView {
     fn default() -> Self {
         Self {
+            view_id: 0,
             mesh: None,
             camera: None,
             volume_ctx: None,
@@ -130,7 +130,6 @@ impl Default for MeshView {
             rotation_enabled: true,
             rotation_quat: Quat::IDENTITY,
             rotation_speed: FRAC_PI_2, // 90 degrees per second
-            rotation: Mat4::from_rotation_x(PI),
             last_frame_time: Instant::now(),
             scale_factor: 1.0,
             pan: [0.0, 0.0, 0.0],
@@ -146,6 +145,10 @@ impl Default for MeshView {
 impl MeshView {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn view_id(&self) -> usize {
+        self.view_id
     }
     
     /// Function-level comment: Attaches a volume render context for GPU operations
@@ -256,7 +259,6 @@ impl MeshView {
     /// Function-level comment: Reset the rotation angle to zero.
     /// Useful for returning to a known orientation or synchronizing multiple objects.
     pub fn reset_rotation(&mut self) {
-        self.rotation = Mat4::from_rotation_x(PI);
         self.rotation_quat = Quat::IDENTITY;
         self.last_frame_time = Instant::now();
         log::debug!("Mesh rotation reset to identity");
@@ -265,11 +267,16 @@ impl MeshView {
     /// Function-level comment: Set the current rotation angle using degrees for convenience.
     /// This directly sets the orientation without affecting rotation speed.
     pub fn set_rotation_angle_degrees(&mut self, degrees_x: f32, degrees_y: f32) {
-        let rad = [degrees_x, degrees_y].map(|d| d.to_radians());
-        let rotation = Mat4::from_rotation_y(rad[1]) * Mat4::from_rotation_x(rad[0]);
-        self.rotation = rotation * self.rotation;
+        let right = self.rotation_quat * Vec3::Y;
+        let up    = self.rotation_quat * Vec3::X;
+        let dx = degrees_x.to_radians();
+        let dy = degrees_y.to_radians();
+        let qx = Quat::from_axis_angle(up.normalize(), dx);
+        let qy = Quat::from_axis_angle(right.normalize(), dy);
+        let delta = qy * qx;
+        self.rotation_quat = (delta * self.rotation_quat).normalize();
         self.last_frame_time = Instant::now();
-        log::info!("Mesh rotation set to {:?}°", self.rotation);
+        log::info!("Mesh rotation set to (deg_x: {}, deg_y: {})", degrees_x, degrees_y);
     }
 
     /// Set Mesh rotation angles in degrees around X, Y, Z axes.
@@ -279,21 +286,20 @@ impl MeshView {
             yaw_deg.to_radians(),
             pitch_deg.to_radians(),
         );
-
         let rot = Mat4::from_rotation_x(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(pitch);
-        self.rotation = rot;
+        self.rotation_quat = Quat::from_mat4(&rot);
         self.last_frame_time = Instant::now();
-        log::info!("Mesh rotation set to {:?}°", self.rotation);
     }
 
-    pub fn set_rotation(&mut self, rotation: Mat4) {
-        self.rotation = rotation;
+    pub fn set_rotation_quat(&mut self, rotation: [f32; 4]) -> KeplerResult<()>{
+        self.rotation_quat = Quat::from_array(rotation);
         self.last_frame_time = Instant::now();
-        log::info!("Mesh rotation set to {:?}", self.rotation);
+        log::info!("Mesh rotation set to {:?}", self.rotation_quat);
+        Ok(())
     }
 
-    pub fn get_rotation(&self) -> Mat4 {
-        self.rotation
+    pub fn get_rotation_quat(&self) -> Quat {
+        self.rotation_quat
     }
 
     /// Function-level comment: Set rotation speed using degrees per second for convenience.
@@ -430,7 +436,7 @@ impl MeshView {
             let d_mm = d * self.slab_thickness; 
             let scale_viewport = Mat4::from_scale(Vec3::new(w, h, w));
             let scale_texture = Mat4::from_scale(Vec3::new(1.0 / w_mm, 1.0 / h_mm, 1.0 / d_mm));
-            let rotation = self.rotation;
+            let rotation = Mat4::from_quat(self.rotation_quat);
             let final_matrix = scale_texture * rotation * scale_viewport;
 
             // Extract format and bias from RenderContent decode parameters
@@ -465,8 +471,8 @@ impl MeshView {
 
         // Update Orientation Cube Uniforms
         if let Some(cube_ctx) = &self.orientation_cube_ctx {
-            // Model: Only Rotation (no pan, no scale from main mesh)
-            let model_matrix = self.rotation;
+            let flip = Mat4::from_scale(Vec3::new(1.0, -1.0, -1.0));
+            let model_matrix = flip * Mat4::from_quat(self.rotation_quat.conjugate());
 
             // View: Standard fixed camera
             // Place cube closer to camera (Z=5.0) than main mesh (Z=-2.0) to ensure it renders on top
@@ -746,16 +752,13 @@ mod tests {
 
     /// Function-level comment: Verify default rotation state and speed
     #[test]
-    fn test_rotation_api_basic_functionality() {
+    fn test_rotation_default_identity() {
         let mesh_view = MeshView::default();
+        assert!(mesh_view.rotation_quat.abs_diff_eq(Quat::IDENTITY, 1e-6));
 
-        // Verify default rotation is 180 degrees around X (PI radians)
-        let expected_mat = Mat4::from_rotation_x(PI);
         // Check Matrix columns
-        assert!(mesh_view.rotation.col(0).abs_diff_eq(expected_mat.col(0), 1e-6));
-        assert!(mesh_view.rotation.col(1).abs_diff_eq(expected_mat.col(1), 1e-6));
-        assert!(mesh_view.rotation.col(2).abs_diff_eq(expected_mat.col(2), 1e-6));
-        assert!(mesh_view.rotation.col(3).abs_diff_eq(expected_mat.col(3), 1e-6));
+        let mat = Mat4::from_quat(mesh_view.rotation_quat);
+        assert!(mat.abs_diff_eq(Mat4::IDENTITY, 1e-6));
 
         // Verify default speed (90 degrees/s)
         assert!((mesh_view.rotation_speed - FRAC_PI_2).abs() < 1e-6);
@@ -770,17 +773,17 @@ mod tests {
         // Add 45 degrees around Y to the existing default
         mesh_view.set_rotation_angle_degrees(0.0, 45.0);
         
-        let before_mat = mesh_view.rotation;
+        let before = mesh_view.rotation_quat;
 
         mesh_view.set_rotation_enabled(false);
-        let after_disable_mat = mesh_view.rotation;
+        let after_disable = mesh_view.rotation_quat;
 
         mesh_view.set_rotation_enabled(true);
-        let after_enable_mat = mesh_view.rotation;
+        let after_enable = mesh_view.rotation_quat;
 
         // Rotation should be preserved through enable/disable cycles
-        assert_eq!(before_mat, after_disable_mat);
-        assert_eq!(before_mat, after_enable_mat);
+        assert_eq!(before, after_disable);
+        assert_eq!(before, after_enable);
     }
 
     /// Function-level comment: Verify rotation speed setters
@@ -796,6 +799,37 @@ mod tests {
         assert!((mesh_view.get_rotation_speed() - PI).abs() < 1e-6);
     }
 
+    #[test]
+    fn test_set_rotation_degrees() {
+        let mut mesh_view = MeshView::default();
+
+        mesh_view.set_rotation_degrees(90.0, 0.0, 0.0);
+
+        let expected = Quat::from_rotation_x(90.0_f32.to_radians());
+
+        assert!(mesh_view.rotation_quat.abs_diff_eq(expected, 1e-5));
+    }
+
+    #[test]
+    fn test_rotation_accumulation() {
+        let mut mesh_view = MeshView::default();
+
+        mesh_view.set_rotation_angle_degrees(0.0, 90.0);
+
+        let q1 = mesh_view.rotation_quat;
+
+        mesh_view.set_rotation_angle_degrees(0.0, 90.0);
+
+        let q2 = mesh_view.rotation_quat;
+
+        // 两次旋转后不应相同
+        assert!(q1 != q2);
+
+        // 应接近 180°
+        let expected = Quat::from_rotation_y(180.0_f32.to_radians());
+        assert!(q2.abs_diff_eq(expected, 1e-4));
+    }
+
     /// Function-level comment: Reset rotation and verify default orientation (Identity)
     #[test]
     fn test_rotation_angle_reset() {
@@ -803,17 +837,9 @@ mod tests {
 
         // Apply some rotation
         mesh_view.set_rotation_angle_degrees(90.0, 45.0);
-        // Verify initial state is NOT default
-        assert_ne!(mesh_view.rotation, Mat4::from_rotation_x(PI));
-        
+
         // Reset
         mesh_view.reset_rotation();
-
-        // Verify reset to default (PI around X)
-        let expected_mat = Mat4::from_rotation_x(PI);
-
-        assert!(mesh_view.rotation.col(0).abs_diff_eq(expected_mat.col(0), 1e-6));
-        assert!(mesh_view.rotation.col(1).abs_diff_eq(expected_mat.col(1), 1e-6));
-        assert!(mesh_view.rotation.col(2).abs_diff_eq(expected_mat.col(2), 1e-6));
+        assert!(mesh_view.rotation_quat.abs_diff_eq(Quat::IDENTITY, 1e-6));
     }
 }

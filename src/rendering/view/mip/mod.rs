@@ -307,6 +307,7 @@ impl MipViewWgpuImpl {
 
 /// MIP view that integrates with the existing RenderContent architecture.
 pub struct MipView {
+    view_id: usize,
     /// WGPU implementation details
     wgpu_impl: Arc<MipViewWgpuImpl>,
     /// MIP configuration settings
@@ -331,6 +332,7 @@ impl MipView {
     /// Create a new MIP view with the given WGPU implementation.
     pub fn new(wgpu_impl: Arc<MipViewWgpuImpl>) -> Self {
         Self {
+            view_id: 0,
             wgpu_impl,
             config: MipConfig::default(),
             position: (0, 0),
@@ -341,6 +343,10 @@ impl MipView {
             content_dimensions: (1.0, 1.0),
             window_level: WindowLevel::new(),
         }
+    }
+
+    pub fn view_id(&self) -> usize {
+        self.view_id
     }
 
     pub fn config(&self) -> &MipConfig {

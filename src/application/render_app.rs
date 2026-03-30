@@ -234,26 +234,13 @@ impl RenderApp {
                     state.set_mesh_rotation_angle_degrees(degrees_x, degrees_y);
                     log::info!("Mesh rotation angle set to {:?}°", [degrees_x, degrees_y]);
                 }
-                Event::UserEvent(UserEvent::SetMeshRotation(_index, rotation)) => {
-                    state.set_mesh_rotation(rotation);
-                    log::debug!("Mesh rotation set to {:?}", rotation);
-                }
-                Event::UserEvent(UserEvent::SetObliqueRotationQuat(index, q)) => {
-                    state.set_oblique_rotation(index, q);
-                    log::debug!("Oblique rotation set to {:?}", q);
+                Event::UserEvent(UserEvent::SetRotationQuat(index, q)) => {
+                    state.set_rotation(index, q);
+                    log::debug!("Rotation set to {:?}", q);
                 }
                 Event::UserEvent(UserEvent::SetMeshRotationDegrees(_index, roll_deg, yaw_deg, pitch_deg)) => {
                     state.set_mesh_rotation_degrees(roll_deg, yaw_deg, pitch_deg);
                     log::debug!("Mesh rotation set to {:?}°", [roll_deg, yaw_deg, pitch_deg]);
-                }
-                #[cfg(target_arch = "wasm32")]
-                Event::UserEvent(UserEvent::GetMeshRotation(_index, sender)) => {
-                    let rotation = state.get_mesh_rotation();
-                    if let Err(_) = sender.send(rotation) {
-                        log::error!("Failed to send GetMeshRotation result");
-                    } else {
-                        log::info!("Sent GetMeshRotation result: {:?}", rotation);
-                    }
                 }
                 Event::UserEvent(UserEvent::ViewClick(view_index, screen_x, screen_y, screen_z)) => {
                     state.handle_view_click(view_index, screen_x, screen_y, screen_z);
@@ -289,12 +276,12 @@ impl RenderApp {
                     }
                 }
                 #[cfg(target_arch = "wasm32")]
-                Event::UserEvent(UserEvent::GetObliqueRotation(index, sender)) => {
-                    let result = state.get_oblique_rotation(index);
+                Event::UserEvent(UserEvent::GetRotation(index, sender)) => {
+                    let result = state.get_rotation(index);
                     if let Err(_) = sender.send(result) {
-                        log::error!("Failed to send GetObliqueRotation result for window {}", index);
+                        log::error!("Failed to send GetRotation result for window {}", index);
                     } else {
-                        log::info!("Sent GetObliqueRotation result for window {}: {:?}", index, result);
+                        log::info!("Sent GetRotation result for window {}: {:?}", index, result);
                     }
                 }
                 #[cfg(target_arch = "wasm32")]

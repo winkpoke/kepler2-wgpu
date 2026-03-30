@@ -15,18 +15,19 @@ use crate::rendering::view::{
 use crate::rendering::StatefulView;
 use crate::rendering::{GridLayout, LayoutContainer, OneCellLayout};
 use crate::CTVolume;
-use glam::Mat4;
 use std::sync::Arc;
 
 /// Encapsulated state for a view, including its orientation and rendering parameters.
 #[derive(Debug, Clone)]
 pub enum CapturedViewState {
     Mpr {
+        view_id: usize,
         view_index: usize,
         orientation: Orientation,
         state: ViewState,
     },
     Mip {
+        view_id: usize,
         config: MipConfig,
         scale: f32,
         pan: [f32; 3],
@@ -34,7 +35,8 @@ pub enum CapturedViewState {
         rotation_radians: [f32; 3],
     },
     Mesh {
-        rotation: Mat4,
+        view_id: usize,
+        rotation: [f32; 4],
         scale: f32,
         pan: [f32; 3],
         opacity: f32,
@@ -69,73 +71,75 @@ impl AppView {
     pub fn save_view_states(&mut self) {
         // Collect current view states first to avoid borrowing conflicts
         let current_states: Vec<CapturedViewState> = self
-            .layout
-            .views()
-            .iter()
-            .enumerate()
-            .filter_map(|(i, v)| {
-                if let Some(mpr_view) = v.as_any().downcast_ref::<MprView>() {
-                    let orientation = mpr_view.get_orientation();
-                    mpr_view.save_state().map(|state| CapturedViewState::Mpr {
-                        view_index: i,
-                        orientation: *orientation,
-                        state,
-                    })
-                } else if let Some(mip_view) = v.as_any().downcast_ref::<MipView>() {
-                    Some(CapturedViewState::Mip {
-                        config: mip_view.config().clone(),
-                        scale: mip_view.get_scale(),
-                        pan: mip_view.get_pan(),
-                        window: mip_view.get_window_level(),
-                        rotation_radians: mip_view.get_rotation_radians(),
-                    })
-                } else if let Some(mesh_view) = v.as_any().downcast_ref::<MeshView>() {
-                    Some(CapturedViewState::Mesh {
-                        rotation: mesh_view.get_rotation(),
-                        scale: mesh_view.get_scale_factor(),
-                        pan: mesh_view.get_pan(),
-                        opacity: mesh_view.get_opacity(),
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect();
+                .layout
+                .views()
+                .iter()
+                .enumerate()
+                .filter_map(|(i, v)| {
+                    if let Some(mpr_view) = v.as_any().downcast_ref::<MprView>() {
+                        let orientation = mpr_view.get_orientation();
+                        mpr_view.save_state().map(|state| CapturedViewState::Mpr {
+                            view_id: mpr_view.view_id(),
+                            view_index: i,
+                            orientation: *orientation,
+                            state,
+                        })
+                    } else if let Some(mip_view) = v.as_any().downcast_ref::<MipView>() {
+                        Some(CapturedViewState::Mip {
+                            view_id: mip_view.view_id(),
+                            config: mip_view.config().clone(),
+                            scale: mip_view.get_scale(),
+                            pan: mip_view.get_pan(),
+                            window: mip_view.get_window_level(),
+                            rotation_radians: mip_view.get_rotation_radians(),
+                        })
+                    } else if let Some(mesh_view) = v.as_any().downcast_ref::<MeshView>() {
+                        Some(CapturedViewState::Mesh {
+                            view_id: mesh_view.view_id(),
+                            rotation: mesh_view.get_rotation_quat().to_array(),
+                            scale: mesh_view.get_scale_factor(),
+                            pan: mesh_view.get_pan(),
+                            opacity: mesh_view.get_opacity(),
+                        })
+                    } else {
+                        None
+                    }
+                })
+                .collect();
 
         // Merge current states into saved_states
         for new_state in current_states {
             match &new_state {
                 CapturedViewState::Mpr {
+                    view_id,
                     view_index: new_i,
                     orientation: new_o,
                     ..
                 } => {
                     if let Some(existing) = self.saved_states.iter_mut().find(|s| {
-                        matches!(s, CapturedViewState::Mpr { view_index: old_i, orientation: old_o, .. }
-                            if *old_i == *new_i && old_o == new_o)
+                        matches!(s, CapturedViewState::Mpr { view_id: old_id, view_index: old_i, orientation: old_o, .. }
+                            if old_id == view_id && *old_i == *new_i && old_o == new_o)
                     }) {
                         *existing = new_state;
                     } else {
                         self.saved_states.push(new_state);
                     }
                 }
-                CapturedViewState::Mip { .. } => {
-                    if let Some(existing) = self
-                        .saved_states
-                        .iter_mut()
-                        .find(|s| matches!(s, CapturedViewState::Mip { .. }))
-                    {
+                CapturedViewState::Mip { view_id,.. } => {
+                    if let Some(existing) = self.saved_states.iter_mut().find(|s|{
+                        matches!(s, CapturedViewState::Mip { view_id: old_id, .. }
+                            if old_id == view_id)
+                    }){
                         *existing = new_state;
                     } else {
                         self.saved_states.push(new_state);
                     }
                 }
-                CapturedViewState::Mesh { .. } => {
-                    if let Some(existing) = self
-                        .saved_states
-                        .iter_mut()
-                        .find(|s| matches!(s, CapturedViewState::Mesh { .. }))
-                    {
+                CapturedViewState::Mesh { view_id,.. } => {
+                    if let Some(existing) = self.saved_states.iter_mut().find(|s| {
+                        matches!(s, CapturedViewState::Mesh { view_id: old_id, .. }
+                            if old_id == view_id)
+                    }){
                         *existing = new_state;
                     } else {
                         self.saved_states.push(new_state);
@@ -156,12 +160,10 @@ impl AppView {
         for (i, view) in self.layout.views_mut().iter_mut().enumerate() {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
                 // Match by BOTH view index and orientation
-                if let Some(CapturedViewState::Mpr {
-                    state,
-                    ..
-                }) = states.iter().find(|s| {
-                    matches!(s, CapturedViewState::Mpr { view_index: idx, orientation: o, .. }
-                        if *idx == i && *o == *mpr_view.get_orientation())
+                if let Some(CapturedViewState::Mpr { state,..}) = 
+                    states.iter().find(|s| {
+                    matches!(s, CapturedViewState::Mpr { view_id, view_index: idx, orientation: o, .. }
+                        if *idx == i && *view_id == mpr_view.view_id() && *o == *mpr_view.get_orientation())
                 }) {
                     mpr_view.restore_state(state);
                 }
@@ -174,10 +176,11 @@ impl AppView {
                     pan,
                     window,
                     rotation_radians,
-                }) = states
-                    .iter()
-                    .find(|s| matches!(s, CapturedViewState::Mip { .. }))
-                {
+                    ..
+                }) = states.iter().find(|s| {
+                    matches!(s, CapturedViewState::Mip { view_id, .. }
+                        if *view_id == mip_view.view_id())
+                }) {
                     mip_view.set_mip_mode(config.mip_mode);
                     mip_view.set_slab_thickness(config.slab_thickness);
                     mip_view.set_scale(*scale);
@@ -198,11 +201,12 @@ impl AppView {
                     scale,
                     pan,
                     opacity,
-                }) = states
-                    .iter()
-                    .find(|s| matches!(s, CapturedViewState::Mesh { .. }))
-                {
-                    mesh_view.set_rotation(*rotation);
+                    ..
+                }) = states.iter().find(|s| {
+                    matches!(s, CapturedViewState::Mesh { view_id, .. }
+                        if *view_id == mesh_view.view_id())
+                }){
+                    let _ = mesh_view.set_rotation_quat(*rotation);
                     mesh_view.set_scale_factor(*scale);
                     mesh_view.set_pan(pan[0], pan[1]);
                     mesh_view.set_opacity(*opacity);

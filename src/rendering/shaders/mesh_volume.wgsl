@@ -1,10 +1,22 @@
+// ============================================================
 // Mesh Volume Rendering Shader
-// Vertex shader for fullscreen quad rendering
+// Implements GPU-based volume ray casting using ray marching
+// ============================================================
+
+// ============================================================
+// Vertex Output Structure
+// Carries clip-space position and UV coordinates to fragment stage
+// ============================================================
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) tex_coords: vec2<f32>,
 }
 
+// ============================================================
+// Vertex Shader
+// Generates a full-screen quad procedurally (no vertex buffer)
+// Each vertex corresponds to one corner of the screen
+// ============================================================
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     var out: VertexOutput;
@@ -20,13 +32,18 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     return out;
 }
 
-// Fragment shader
-
+// ============================================================
+// Volume Texture & Sampler
+// ============================================================
 @group(0) @binding(0)
-var t_volume: texture_3d<f32>;
+var t_volume: texture_3d<f32>;// 3D volume texture (CT/MRI data)
 @group(0) @binding(1)
-var s_volume: sampler;
+var s_volume: sampler;// Sampler for interpolation
 
+// ============================================================
+// Uniform Buffer
+// Controls rendering, interaction, and lighting
+// ============================================================
 struct MeshUniforms {
     ray_step_size: f32,
     max_steps: f32,
@@ -47,7 +64,10 @@ struct MeshUniforms {
 @group(1) @binding(0)
 var<uniform> u_vol: MeshUniforms;
 
-// Intersect axis-aligned unit box [0,1]^3
+// ============================================================
+// Ray-box intersection (Axis-Aligned Bounding Box [0,1]^3)
+// Computes entry and exit distances (tmin, tmax)
+// ============================================================
 fn intersect_volume(ray_origin: vec3<f32>, ray_dir: vec3<f32>) -> vec2<f32> {
     let is_zero = abs(ray_dir) < vec3<f32>(1e-6);
     let sign_dir = select(sign(ray_dir), vec3<f32>(1.0), is_zero);
@@ -61,6 +81,10 @@ fn intersect_volume(ray_origin: vec3<f32>, ray_dir: vec3<f32>) -> vec2<f32> {
     return vec2<f32>(tmin, tmax);
 }
 
+// ============================================================
+// Sample volume texture
+// Supports both float and packed 16-bit (RG8) formats
+// ============================================================
 fn sample_volume(coords: vec3<f32>) -> f32 {
     if (any(coords < vec3<f32>(0.0)) || any(coords > vec3<f32>(1.0))) {
         return -1024.0;
@@ -78,7 +102,10 @@ fn sample_volume(coords: vec3<f32>) -> f32 {
     return value;
 }
 
-// DICOM-style window/level mapping (0..1)
+// ============================================================
+// DICOM Window/Level Mapping
+// Maps HU values to normalized intensity [0,1]
+// ============================================================
 fn apply_window_level(value: f32) -> f32 {
     let center = u_vol.level;
     let width = max(u_vol.window, 1e-6);
@@ -93,6 +120,11 @@ fn apply_window_level(value: f32) -> f32 {
     return clamp(v, 0.0, 1.0);
 }
 
+// ============================================================
+// Transfer Function
+// Converts HU → color + opacity
+// Models different tissue types (air, lung, fat, soft tissue, bone)
+// ============================================================
 fn transfer_function(hu: f32) -> vec4<f32> {
     let norm = apply_window_level(hu);
     let visibility = pow(norm, 1.5);
@@ -126,22 +158,22 @@ fn transfer_function(hu: f32) -> vec4<f32> {
         norm
     );
 
-    // ========= 5. 合成 =========
     let color = lung_color * lung_alpha
         + fat_color * fat_alpha
         + soft_color * soft_alpha
         + bone_color * bone_alpha
-        + vec3<f32>(0.0) * air_alpha;
-
-    var alpha = (lung_alpha + fat_alpha + soft_alpha + bone_alpha) * visibility;;
-    alpha = clamp(alpha, 0.0, 1.0);
-
-    // ========= 6. Gamma =========
+        + vec3<f32>(0.0) * air_alpha
+    ;
     let final_color = pow(color, vec3<f32>(0.9));
-
+    var alpha = (lung_alpha + fat_alpha + soft_alpha + bone_alpha) * visibility;;
+    alpha = clamp(alpha, 0.0, 1.0);  
     return vec4<f32>(final_color, alpha);
 }
 
+// ============================================================
+// Compute Gradient (Central Difference)
+// Used to approximate surface normals for lighting
+// ============================================================
 fn compute_gradient(pos: vec3<f32>) -> vec3<f32> {
     let step = 1.0 / 512.0;
     let dx = sample_volume(pos + vec3<f32>(step, 0.0, 0.0)) -
@@ -153,6 +185,10 @@ fn compute_gradient(pos: vec3<f32>) -> vec3<f32> {
     return normalize(vec3<f32>(dx, dy, dz));
 }
 
+// ============================================================
+// Phong Lighting Model
+// Adds shading using normal, light direction, and view direction
+// ============================================================
 fn phong_lighting(normal: vec3<f32>, view_dir: vec3<f32>, base_color: vec3<f32>) -> vec3<f32> {
     let light_dir = normalize(vec3<f32>(0.5, 0.5, -1.0));
     let ambient = 0.2;
@@ -167,7 +203,10 @@ fn phong_lighting(normal: vec3<f32>, view_dir: vec3<f32>, base_color: vec3<f32>)
     return color;
 }
 
-// Ray march with front-to-back accumulation
+// ============================================================
+// Volume Ray Marching 连续采样
+// Performs front-to-back compositing along the ray
+// ============================================================
 fn volume_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end: f32) -> vec4<f32> {
     var color = vec3<f32>(0.0);
     var alpha = 0.0;
@@ -179,7 +218,8 @@ fn volume_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_e
         if (t > t_end || alpha > 0.98 || steps > u32(u_vol.max_steps)) {
             break;
         }
-
+ 
+        // Ray Tracing 求交点
         let pos = ray_origin + t * ray_dir;
 
         // ROI
@@ -192,13 +232,17 @@ fn volume_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_e
         let hu = sample_volume(pos);
         let tf = transfer_function(hu);
         var c = tf.rgb;
+
+        // Convert TF alpha to physical density (Beer-Lambert law)
         let density_scale = 400.0;
         let density = tf.a * u_vol.opacity_multiplier * density_scale;
+
+        // Compute alpha using exponential absorption model
         let a = 1.0 - exp(-density * step);
 
-        // Gradient lighting
+        // Apply shading if voxel is sufficiently opaque
         if (a > 0.05) {
-            let grad = compute_gradient(pos);
+            let grad = compute_gradient(pos); //“表面方向”（法线）
             let view_dir = normalize(-ray_dir);
             c = phong_lighting(grad, view_dir, c);
             let edge = clamp(length(grad) * 2.0, 0.0, 1.0);
@@ -206,7 +250,7 @@ fn volume_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_e
         }
         c = pow(c, vec3<f32>(0.85)) * 1.2;
 
-        // front-to-back compositing
+        // front-to-back compositing 前向累积
         color += (1.0 - alpha) * c * a;
         alpha += (1.0 - alpha) * a;
 
