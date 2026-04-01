@@ -907,8 +907,6 @@
       }
 
       gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y);
-      state.mesh_rotation = await gl_canvas.get_mesh_rotation(indexValue);
-      console.log('3d-submit:', state.mesh_rotation);
     });
 
     byId('3d-rot').addEventListener('click', () => {

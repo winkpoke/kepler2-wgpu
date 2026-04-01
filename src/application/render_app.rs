@@ -397,12 +397,12 @@ impl RenderApp {
                                 ..
                             } => {
                                 state.set_render_mode(2, Some(0), None, None, 1);
-                                state.set_mesh_rotation_angle_degrees(90.0, 0.0);
+                                state.set_mesh_rotation_degrees(-90.0, 90.0, 0.0);
                                 // state.set_mesh_roi(0.0,0.0,0.5,1.0,1.0,1.0);
                                 state.set_mesh_opacity(1.0);
                                 state.set_scale(0, 2.0);
-                                state.set_window_width(0, -500.0);
-                                state.set_window_level(0, -40.0);
+                                state.set_window_width(0, 300.0);
+                                state.set_window_level(0, 300.0);
                                 log::info!("KeyC pressed: mesh mode toggled to {}", true);
                             }
                             WindowEvent::KeyboardInput {

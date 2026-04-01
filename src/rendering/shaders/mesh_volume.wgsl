@@ -58,7 +58,7 @@ struct MeshUniforms {
     roi_max: vec3<f32>,
     opacity_multiplier: f32,
     light_dir: vec3<f32>,
-    shading_strength: f32,
+    aspect_ratio: f32,
     rotation: mat4x4<f32>,
 }
 @group(1) @binding(0)
@@ -127,47 +127,49 @@ fn apply_window_level(value: f32) -> f32 {
 // ============================================================
 fn transfer_function(hu: f32) -> vec4<f32> {
     let norm = apply_window_level(hu);
-    let visibility = pow(norm, 1.5);
 
-    // ========= 1. Air =========
-    let air_alpha = 1.0 - smoothstep(-1000.0, -900.0, hu);
-    let lung_t = smoothstep(-900.0, -300.0, hu);
-    let lung_alpha = lung_t * 0.05;
-    let lung_color = mix(
-        vec3<f32>(0.15, 0.15, 0.15),
-        vec3<f32>(0.25, 0.25, 0.25),
-        lung_t
-    );
+    // ========= Air =========
+    if (norm < 0.0 || norm > 1.0) { return vec4<f32>(0.0); }
 
-    // ========= 2. Fat =========
-    let fat_t = smoothstep(-300.0, -100.0, hu);
-    let fat_alpha = fat_t * 0.15;
-    let fat_color = mix(vec3<f32>(1.0, 0.9, 0.7),vec3<f32>(1.0, 0.8, 0.5),smoothstep(0.3, 0.7, norm)) * 0.8;
+    // ========== Soft tissue ==========
+    let soft_alpha = smoothstep(0.5, 1.0, norm) - smoothstep(1.0, 1.05, norm);
+    let soft_color = vec3<f32>(0.95, 0.65, 0.55);
 
-    // ========= 3. Soft tissue =========
-    let soft_t = smoothstep(-100.0, 200.0, hu);
-    let soft_alpha = soft_t * smoothstep(0.2, 0.8, norm) * 0.5;
-    let soft_color = mix(vec3<f32>(0.9, 0.5, 0.4), vec3<f32>(1.0, 0.7, 0.6), soft_t)* (1.0 + 0.2 * norm);
+    // ========== Fat ==========
+    let fat_alpha  = smoothstep(0.25, 0.52, norm) - smoothstep(0.52, 0.55, norm);
+    let fat_color = vec3<f32>(1.0, 0.85, 0.6);
 
-    // ========= 4. Bone =========
-    let bone_t = smoothstep(200.0, 1200.0, hu);
-    let bone_alpha = clamp(bone_t * 1.2, 0.0, 1.0);
-    let bone_color = mix(
-        vec3<f32>(0.95, 0.93, 0.88),
-        vec3<f32>(1.0, 1.0, 1.0),
-        norm
-    );
+    // ========== Lung ==========
+    let lung_alpha = smoothstep(0.4, 0.7, norm) - smoothstep(0.7, 0.8, norm);
+    let lung_color = vec3<f32>(0.25, 0.25, 0.25);
 
-    let color = lung_color * lung_alpha
-        + fat_color * fat_alpha
-        + soft_color * soft_alpha
-        + bone_color * bone_alpha
-        + vec3<f32>(0.0) * air_alpha
-    ;
-    let final_color = pow(color, vec3<f32>(0.9));
-    var alpha = (lung_alpha + fat_alpha + soft_alpha + bone_alpha) * visibility;;
-    alpha = clamp(alpha, 0.0, 1.0);  
-    return vec4<f32>(final_color, alpha);
+    // ========== Muscle ==========
+    let muscle_alpha = smoothstep(0.51, 0.76, norm) - smoothstep(0.76, 0.8, norm);
+    let muscle_color = vec3<f32>(0.75, 0.25, 0.25);
+
+    // ========== Organ ==========
+    let organ_alpha = smoothstep(0.5, 0.75, norm) - smoothstep(0.75, 0.8, norm);
+    let organ_color = vec3<f32>(0.9, 0.5, 0.3);
+
+    // ===== 主颜色 =====
+    var color = vec3<f32>(0.0);
+    var alpha = 0.0;
+    color += lung_color * lung_alpha * (1.0 - alpha);
+    alpha += lung_alpha * (1.0 - alpha);
+
+    color += fat_color * fat_alpha * (1.0 - alpha);
+    alpha += fat_alpha * (1.0 - alpha);
+
+    color += soft_color * soft_alpha * (1.0 - alpha);
+    alpha += soft_alpha * (1.0 - alpha);
+
+    color += muscle_color * muscle_alpha * (1.0 - alpha);
+    alpha += muscle_alpha * (1.0 - alpha);
+
+    color += organ_color * organ_alpha * (1.0 - alpha);
+    alpha += organ_alpha * (1.0 - alpha);
+
+    return vec4<f32>(color, clamp(alpha, 0.0, 1.0));
 }
 
 // ============================================================
@@ -175,14 +177,14 @@ fn transfer_function(hu: f32) -> vec4<f32> {
 // Used to approximate surface normals for lighting
 // ============================================================
 fn compute_gradient(pos: vec3<f32>) -> vec3<f32> {
-    let step = 1.0 / 512.0;
+    let step = u_vol.ray_step_size * 1.5;
     let dx = sample_volume(pos + vec3<f32>(step, 0.0, 0.0)) -
              sample_volume(pos - vec3<f32>(step, 0.0, 0.0));
     let dy = sample_volume(pos + vec3<f32>(0.0, step, 0.0)) -
              sample_volume(pos - vec3<f32>(0.0, step, 0.0));
     let dz = sample_volume(pos + vec3<f32>(0.0, 0.0, step)) -
              sample_volume(pos - vec3<f32>(0.0, 0.0, step));
-    return normalize(vec3<f32>(dx, dy, dz));
+    return normalize(vec3<f32>(dx, dy, dz)+ vec3<f32>(1e-3));
 }
 
 // ============================================================
@@ -191,7 +193,7 @@ fn compute_gradient(pos: vec3<f32>) -> vec3<f32> {
 // ============================================================
 fn phong_lighting(normal: vec3<f32>, view_dir: vec3<f32>, base_color: vec3<f32>) -> vec3<f32> {
     let light_dir = normalize(vec3<f32>(0.5, 0.5, -1.0));
-    let ambient = 0.2;
+    let ambient = 0.35;
 
     // ===== diffuse =====
     let diff = max(dot(normal, light_dir), 0.0);
@@ -199,8 +201,26 @@ fn phong_lighting(normal: vec3<f32>, view_dir: vec3<f32>, base_color: vec3<f32>)
     // ===== specular =====
     let reflect_dir = reflect(-light_dir, normal);
     let spec = pow(max(dot(view_dir, reflect_dir), 0.0), 32.0);
-    let color = base_color * (ambient + 0.8 * diff) + vec3<f32>(1.0) * spec * 0.3;
+    let color = base_color * (ambient + 1.1 * diff) + vec3<f32>(1.0) * spec * 0.25;
     return color;
+}
+
+// ================== Shadow ==================
+fn compute_shadow(pos: vec3<f32>, light_dir: vec3<f32>) -> f32 {
+    var shadow: f32 = 1.0;
+    var t: f32 = u_vol.ray_step_size * 2.0;
+    let iso = u_vol.level;
+
+    for (var i: i32 = 0; i < 8; i++) {
+        let p = pos + light_dir * t;
+        let v = sample_volume(p);
+        if (v > iso) {
+            let atten = exp(-t * 2.0);
+            shadow *= mix(0.85, 1.0, atten);
+        }
+        t += u_vol.ray_step_size * 2.5;
+    }
+    return clamp(shadow, 0.9, 1.0);
 }
 
 // ============================================================
@@ -229,30 +249,109 @@ fn volume_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_e
             continue;
         }
 
-        let hu = sample_volume(pos);
-        let tf = transfer_function(hu);
-        var c = tf.rgb;
-
-        // Convert TF alpha to physical density (Beer-Lambert law)
-        let density_scale = 400.0;
-        let density = tf.a * u_vol.opacity_multiplier * density_scale;
-
-        // Compute alpha using exponential absorption model
-        let a = 1.0 - exp(-density * step);
-
-        // Apply shading if voxel is sufficiently opaque
-        if (a > 0.05) {
-            let grad = compute_gradient(pos); //“表面方向”（法线）
-            let view_dir = normalize(-ray_dir);
-            c = phong_lighting(grad, view_dir, c);
-            let edge = clamp(length(grad) * 2.0, 0.0, 1.0);
-            c *= mix(0.7, 1.3, edge);
+        let v0 = sample_volume(pos);
+        let v1 = sample_volume(pos + ray_dir * step);
+        if (v0 < -950.0 && v1 < -950.0) {
+            t += step * 3.0;
+            steps += 1u;
+            continue;
         }
-        c = pow(c, vec3<f32>(0.85)) * 1.2;
 
-        // front-to-back compositing 前向累积
-        color += (1.0 - alpha) * c * a;
-        alpha += (1.0 - alpha) * a;
+        // TF
+        let tf = transfer_function(v0);
+        let grad = compute_gradient(pos);
+        let grad_mag = length(grad);
+
+        // ===== 边界增强（壳的来源）=====
+        let edge = smoothstep(0.02, 0.12, grad_mag);
+
+        // ===== 内部抑制（防止一坨）=====
+        let interior = smoothstep(0.0, 0.04, grad_mag);
+
+        // ===== 密度 =====
+        let density = tf.a * u_vol.opacity_multiplier * 120.0;
+        let a = (1.0 - exp(-density * step)) * edge * interior;
+
+        if (a > 0.01) {
+            let grad = compute_gradient(pos);
+            let view_dir = normalize(-ray_dir);
+
+            var c = phong_lighting(grad, view_dir, tf.rgb);
+            let rim = pow(1.0 - abs(dot(view_dir, grad)), 2.5);
+            c += tf.rgb * rim * 0.3;
+
+            let shadow = compute_shadow(pos, normalize(u_vol.light_dir));
+            c *= mix(0.75, 1.0, shadow);
+
+            color += (1.0 - alpha) * c * a;
+            alpha += (1.0 - alpha) * a;
+        }
+
+        // ISO（骨，优先级最高）
+        let current_iso = u_vol.level;
+        if ((v0 < current_iso && v1 >= current_iso) || (v0 >= current_iso && v1 < current_iso)) {
+            // 精确求交点（线性插值）
+            let t_iso = clamp((current_iso - v0) / (v1 - v0 + 1e-5), 0.0, 1.0);
+            let iso_pos = pos + t_iso * ray_dir * step;
+
+            // 法线（gradient）
+            let normal = compute_gradient(iso_pos);
+            let view_dir = normalize(-ray_dir);
+            let light_dir = normalize(u_vol.light_dir);
+            let diff = max(dot(normal, light_dir), 0.0);
+
+            // 阴影 
+            let shadow = compute_shadow(iso_pos, light_dir);
+
+            // AO（凹陷增强，关键）
+            let ao_base = clamp(dot(normal, vec3<f32>(0.0, 0.0, 1.0)) * 0.5 + 0.5, 0.0, 1.0);
+            let ao = pow(1.0 - ao_base, 1.5);
+
+            // Curvature 曲率
+            let g1 = compute_gradient(iso_pos + normal * u_vol.ray_step_size);
+            let g2 = compute_gradient(iso_pos - normal * u_vol.ray_step_size);
+            let curvature = length(g1 - g2);
+            let curv = clamp(curvature * 2.5, 0.0, 1.0);
+
+            // ===== 骨骼颜色 =====
+            let base_light = vec3<f32>(1.0, 0.98, 0.9);   // 亮部（偏白）
+            let base_mid   = vec3<f32>(0.95, 0.88, 0.7);  // 主体（米黄）
+            let base_dark  = vec3<f32>(0.7, 0.6, 0.45);   // 暗部（偏棕）
+
+            // ===== 根据光照插值 =====
+            var bone = mix(base_dark, base_mid, diff);
+            bone = mix(bone, base_light, pow(diff, 2.0));
+            bone *= shadow;
+            bone *= mix(1.0, 0.85, ao);
+            bone *= mix(0.85, 1.25, curv);
+
+            // ===== 高光=====
+            let reflect_dir = reflect(-light_dir, normal);
+            let spec = pow(max(dot(view_dir, reflect_dir), 0.0), 24.0);
+            bone += vec3<f32>(1.0, 0.98, 0.95) * spec * 0.15;
+
+            // ===== 微弱“厚度感”=====
+            let thickness = clamp(length(normal), 0.0, 1.0);
+            bone *= mix(0.92, 1.08, thickness);
+
+            // ===== 边缘增强 =====
+            let edge = clamp(length(normal) * 1.5, 0.0, 1.0);
+            bone *= mix(0.9, 1.1, edge);
+
+            // Tone（医疗质感关键)
+            let variation = fract(sin(dot(iso_pos.xy ,vec2<f32>(12.9898,78.233))) * 43758.5453);
+            bone *= mix(0.97, 1.03, variation);
+            bone = pow(bone, vec3<f32>(0.85));
+
+            let iso_alpha = 0.85;   // 可调（0.7~1.0）
+
+            color += (1.0 - alpha) * bone * iso_alpha;
+            alpha += (1.0 - alpha) * iso_alpha;
+
+            t += step * 0.5;
+            steps += 1u;
+            continue;
+        }
 
         t += step;
         steps += 1u;
@@ -264,7 +363,17 @@ fn volume_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_e
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let scale = max(u_vol.scale, 0.0001);
-    let uv_centered = in.tex_coords - vec2<f32>(0.5, 0.5);
+    var uv_centered = in.tex_coords - vec2<f32>(0.5, 0.5);
+    
+    // Apply aspect ratio compensation
+    // If width > height (aspect_ratio > 1.0), stretch x to avoid horizontal squashing
+    if (u_vol.aspect_ratio > 1.0) {
+        uv_centered.x *= u_vol.aspect_ratio;
+    } else if (u_vol.aspect_ratio < 1.0 && u_vol.aspect_ratio > 0.0) {
+        // If height > width (aspect_ratio < 1.0), stretch y to avoid vertical squashing
+        uv_centered.y /= u_vol.aspect_ratio;
+    }
+    
     let uv_scaled = uv_centered / scale;
     let uv = uv_scaled + vec2<f32>(0.5, 0.5) + vec2<f32>(u_vol.pan_x, u_vol.pan_y);
     let uv_clamped = clamp(uv, vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0));

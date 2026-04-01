@@ -8,7 +8,7 @@ use glam::Mat4;
 
 /// Volume rendering parameters (sent to fragment shader)
 #[repr(C)]
-#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct MeshUniforms {
     pub ray_step_size: f32,
     pub max_steps: f32,
@@ -23,14 +23,14 @@ pub struct MeshUniforms {
     pub roi_max: [f32; 3],
     pub opacity_multiplier: f32,
     pub light_dir: [f32; 3],
-    pub shading_strength: f32,
+    pub aspect_ratio: f32,
     pub rotation: [f32; 16],
 }
 
 impl Default for MeshUniforms {
     fn default() -> Self {
         Self {
-            ray_step_size: 0.01,
+            ray_step_size: 0.0001,
             max_steps: 512.0,
             is_packed_rg8: 1.0,
             bias: VolumeEncoding::DEFAULT_HU_OFFSET,
@@ -43,7 +43,7 @@ impl Default for MeshUniforms {
             roi_max: [1.0, 1.0, 1.0],
             opacity_multiplier: 0.05,
             light_dir: [0.5, 0.5, -1.0],
-            shading_strength: 0.0,
+            aspect_ratio: 1.0,
             rotation: Mat4::IDENTITY.to_cols_array(),
         }
     }

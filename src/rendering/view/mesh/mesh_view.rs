@@ -447,6 +447,12 @@ impl MeshView {
                 0.0
             };
 
+            let aspect_ratio = if self.dim.1 > 0 && self.dim.0 > 0 {
+                self.dim.0 as f32 / self.dim.1 as f32
+            } else {
+                1.0
+            };
+
             let vol_uniforms = MeshUniforms {
                 ray_step_size: 0.003,
                 max_steps: 1500.0,
@@ -461,7 +467,7 @@ impl MeshView {
                 roi_max: self.roi_max,
                 opacity_multiplier: self.opacity,
                 light_dir: [0.5, 0.5, -1.0],
-                shading_strength: 0.0,
+                aspect_ratio,
                 rotation: final_matrix.to_cols_array(),
             };
 

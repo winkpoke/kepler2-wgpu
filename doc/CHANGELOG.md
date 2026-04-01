@@ -147,6 +147,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Fixed
+- **MeshView Aspect Ratio Distortion**: Fixed 3D view distortion when resizing the window.
+  - Added `aspect_ratio` and padding fields to `MeshUniforms` in Rust to maintain 16-byte alignment.
+  - Updated `mesh_volume.wgsl` to apply aspect ratio compensation to the `uv_centered` coordinates, ensuring the volume maintains correct proportions regardless of window dimensions.
+
 ### Added
 - **3D Volume Rendering**: Introduced GPU volume rendering for the 3D mesh view using ray-marched volume sampling.
   - Added a new WGSL shader `mesh_volume.wgsl` for front-to-back accumulation of volume intensities.
