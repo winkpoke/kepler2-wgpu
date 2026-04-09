@@ -123,6 +123,10 @@ impl RenderApp {
                     state.set_pan_mm(index, dx_mm, dy_mm);
                     log::info!("PanMM set to: dx_mm={dx_mm}, dy_mm={dy_mm}");
                 }
+                Event::UserEvent(UserEvent::SetAliasing(index, aliasing)) => {
+                    state.set_aliasing(index, aliasing);
+                    log::info!("Antialiasing set to: {}", aliasing);
+                }
                 Event::UserEvent(UserEvent::Quit) => {
                     log::info!("Quit event received. Exiting event loop.");
                     state.app_view.layout.remove_all();
@@ -276,6 +280,15 @@ impl RenderApp {
                     }
                 }
                 #[cfg(target_arch = "wasm32")]
+                Event::UserEvent(UserEvent::GetBaseScreen(index, sender)) => {
+                    let result = state.get_base_screen(index);
+                    if let Err(_) = sender.send(result) {
+                        log::error!("Failed to send GetBaseScreen result for window {}", index);
+                    } else {
+                        log::info!("Sent GetBaseScreen result for window {}: {:?}", index, result);
+                    }
+                }
+                #[cfg(target_arch = "wasm32")]
                 Event::UserEvent(UserEvent::GetRotation(index, sender)) => {
                     let result = state.get_rotation(index);
                     if let Err(_) = sender.send(result) {
@@ -364,6 +377,7 @@ impl RenderApp {
                                 ..
                             } => {
                                 state.set_render_mode(0, None, None, None, 2);
+                                let _ = state.set_dual_mpr_mode(0, true, 0);
                                 log::info!("KeyA pressed: mpr mode toggled to {}", true);
                             }
                             WindowEvent::KeyboardInput {
@@ -398,7 +412,9 @@ impl RenderApp {
                             } => {
                                 state.set_render_mode(2, Some(0), None, None, 1);
                                 state.set_mesh_rotation_degrees(-90.0, 90.0, 0.0);
-                                // state.set_mesh_roi(0.0,0.0,0.5,1.0,1.0,1.0);
+                                let roi_point_min = [-79.29739379882812, -50.16448974609375, -1241.34130859375];
+                                let roi_point_max = [86.64703369140625, 49.83551025390625, -978.4163208007812];
+                                state.set_mesh_roi(roi_point_min[0], roi_point_min[1], roi_point_min[2], roi_point_max[0], roi_point_max[1], roi_point_max[2]);
                                 state.set_mesh_opacity(1.0);
                                 state.set_scale(0, 2.0);
                                 state.set_window_width(0, 300.0);

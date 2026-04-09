@@ -627,6 +627,34 @@ impl AppView {
         }
     }
 
+    /// Enable or disable dual orthogonal MPR mode for a specific view.
+    pub fn set_dual_mpr_mode(
+        &mut self,
+        index: usize,
+        enable: bool,
+        vol: &CTVolume,
+        orientation2: Option<Orientation>,
+    ) -> Result<(), String> {
+        if let Some(view) = self.layout.views_mut().get_mut(index) {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                if enable {
+                    if let Some(o2) = orientation2 {
+                        mpr_view.enable_dual_mode(vol, o2);
+                    } else {
+                        return Err("orientation2 is required to enable dual MPR mode".to_string());
+                    }
+                } else {
+                    mpr_view.disable_dual_mode();
+                }
+                Ok(())
+            } else {
+                Err(format!("View {} is not an MPR view", index))
+            }
+        } else {
+            Err(format!("View index {} out of bounds", index))
+        }
+    }
+    
     /// Set the pan (X, Y) for a specific view.
     pub fn set_pan(&mut self, index: usize, x: f32, y: f32) -> Result<(), String> {
         if let Some(view) = self.layout.views_mut().get_mut(index) {
@@ -692,8 +720,11 @@ impl AppView {
             if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
                 mip_view.set_slab_thickness(thickness);
                 Ok(())
+            } else if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view.set_slab_thickness(thickness);
+                Ok(())
             } else {
-                Err(format!("View {} is not a MIP view", index))
+                Err(format!("View {} is not a MIP or Mesh view", index))
             }
         } else {
             Err(format!("View index {} out of bounds", index))

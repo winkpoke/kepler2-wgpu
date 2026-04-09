@@ -21,8 +21,6 @@ use crate::data::{ct_volume::*, AppModel};
 use crate::rendering::view::mesh::mesh_texture_pool::MeshTexturePool;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::*;
-use glam::Mat4;
-use std::f32::consts::PI;
 
 // static STATE: Lazy<Arc<Mutex<Option<State>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 
@@ -449,6 +447,19 @@ impl App {
     /// - iso_min, iso_max: ISO range for mesh extraction
     /// - mip: optional parameter for MIP config
     /// - orientation_index: orientation for MPR
+    pub fn set_dual_mpr_mode(&mut self, view_index: usize, enable: bool, orientation2_index: usize) -> Result<(), String> {
+        if let Ok(vol) = self.app_model.volume() {
+            let o2 = if enable {
+                Some(crate::rendering::view::ALL_ORIENTATIONS[orientation2_index % crate::rendering::view::ALL_ORIENTATIONS.len()])
+            } else {
+                None
+            };
+            self.app_view.set_dual_mpr_mode(view_index, enable, vol, o2)
+        } else {
+            Err("No volume loaded".to_string())
+        }
+    }
+
     pub fn set_render_mode(
         &mut self,
         mode: usize,
@@ -704,6 +715,24 @@ impl App {
         }
     }
 
+    /// Set antialiasing flag
+    pub fn set_aliasing(&mut self, index: usize, aliasing: bool) {
+        if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_aliasing(aliasing);
+            }
+        }
+    }
+
+    pub fn get_base_screen(&self, index: usize) -> [f32; 16] {
+        let view = self.app_view.layout.views().get(index).unwrap();
+        if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
+            mpr_view.get_base_screen().to_cols_array()
+        } else {
+            [0.0; 16]
+        }
+    }
+
     pub fn set_rotation(&mut self, index: usize, q: [f32; 4]) {
         if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
@@ -940,12 +969,31 @@ impl App {
     }
 
     pub fn set_mesh_roi(&mut self, sx: f32,sy: f32, sz: f32, lx: f32, ly: f32,lz: f32){
-        let world_min = [sx, sy, sz];
-        let world_max = [lx, ly, lz];
-        self.apply_to_mesh_view(|mesh_view| {
-            mesh_view.set_roi(world_min, world_max);
-            log::info!("Mesh roi set from {:?} to {:?}", world_min, world_max);
-        });
+        let roi_point_min = [sx, sy, sz];
+        let roi_point_max = [lx, ly, lz];
+        if let Ok(vol) = self.app_model.volume() {
+            let inv = vol.base.matrix.inverse();
+            let (nx, ny, nz) = vol.dimensions;
+
+            let to_roi = |p_mm: [f32; 3]| -> [f32; 3] {
+                let v = inv.transform_point3(glam::Vec3::from_array(p_mm));
+                [
+                    (v.x / (nx as f32 - 1.0)).clamp(0.0, 1.0),
+                    (v.y / (ny as f32 - 1.0)).clamp(0.0, 1.0),
+                    (v.z / (nz as f32 - 1.0)).clamp(0.0, 1.0),
+                ]
+            };
+
+            let a = to_roi(roi_point_min);
+            let b = to_roi(roi_point_max);
+
+            let roi_min = [a[0].min(b[0]), a[1].min(b[1]), a[2].min(b[2])];
+            let roi_max = [a[0].max(b[0]), a[1].max(b[1]), a[2].max(b[2])];
+            self.apply_to_mesh_view(|mesh_view| {
+                mesh_view.set_roi(roi_min, roi_max);
+                log::info!("Mesh roi set from {:?} to {:?}", roi_point_min, roi_point_max);
+            });
+        }
     }
 
     /// Set mesh rotation angle in degrees for the first MeshView.

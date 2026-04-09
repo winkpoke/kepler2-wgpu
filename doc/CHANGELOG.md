@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-04-03T10-50-00
+- **Dual Orthogonal MPR Rendering**
+  - Added support for rendering two orthogonal MPR slices simultaneously within the same canvas.
+  - Updated MPR shader (`shader_tex.wgsl`) to accept two distinct transformation matrices and sample from the 3D CT volume accordingly.
+  - Implemented an intersecting indicator line to show where the two orthogonal slices meet, providing spatial correlation between planes.
+  - Added `enable_dual_mode` and `disable_dual_mode` to `MprView` and updated `AppView` and `App` to expose this functionality to the UI/WASM.
+
 ## 2026-02-26T00-00-00
 - **Oblique MPR View Rotation Controls (Slicer-style)**
   - Added oblique plane control via normal vector + in-plane rotation (supports Horizontal/Vertical/In-Plane style control mapping).

@@ -320,6 +320,11 @@
               <button id="scale-submit">应用</button>
             </div>
             <div>
+              <span id="aliasing">aliasing</span>
+              <input type="checkbox" id="aliasing-input">
+              <button id="aliasing-submit">应用</button>
+            </div>
+            <div>
               <span id ="translate-input">translate</span>
               <div class="row">
                 <span id="trans-x-label">x:</span>
@@ -386,15 +391,15 @@
           <div class="grid">
             <div>
               <span id="roi-min-label">ROI Min:</span>
-              <input type="number" id="roi-min-x" step="0.01" value="0.0">
-              <input type="number" id="roi-min-y" step="0.01" value="0.0">
-              <input type="number" id="roi-min-z" step="0.01" value="0.0">
+              <input type="number" id="roi-min-x" step="0.01" value="-79.29739379882812">
+              <input type="number" id="roi-min-y" step="0.01" value="-50.16448974609375">
+              <input type="number" id="roi-min-z" step="0.01" value="-1241.34130859375">
             </div>
             <div>
               <span id="roi-max-label">ROI Max:</span>
-              <input type="number" id="roi-max-x" step="0.01" value="1.0">
-              <input type="number" id="roi-max-y" step="0.01" value="1.0">
-              <input type="number" id="roi-max-z" step="0.01" value="1.0">
+              <input type="number" id="roi-max-x" step="0.01" value="86.64703369140625">
+              <input type="number" id="roi-max-y" step="0.01" value="49.83551025390625">
+              <input type="number" id="roi-max-z" step="0.01" value="-978.4163208007812">
             </div>
             <div><button id="crop-roi">ROI</button></div>
             <div>
@@ -680,6 +685,14 @@
       }
       gl_canvas.set_scale(indexValue, scaleValue);
     });
+
+    byId('aliasing-submit').addEventListener('click', () => {
+      const aliasing = byId('aliasing-input').checked;
+      const input_index = byId('index-input');
+      const indexValue = parseInt(input_index.value);
+      gl_canvas.set_aliasing(indexValue, aliasing);
+      console.log('aliasing:', aliasing);
+    })
 
     byId('trans-submit').addEventListener('click', () => {
       let x = parseFloat(byId('trans-x').value);
@@ -1118,7 +1131,10 @@
                 log("开始导出 MHA/MHX ...");
                 if (volume) {
                     console.log("开始将内存中的 DICOM 数据导出为 MHA...");
-                    // 调用我们刚写的 Rust WASM 方法
+                    const matrix = await gl_canvas.get_base_screen(0);
+                    console.log(matrix);
+                    
+                    // const mhaBytes = volume.export_mha_with_effects(true, 35.0, matrix);
                     const mhaBytes = volume.export_mha();
                     // 生成 Blob 并下载
                     const blob = new Blob([mhaBytes], { type: "application/octet-stream" });

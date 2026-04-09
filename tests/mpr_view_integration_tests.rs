@@ -18,6 +18,7 @@ mod mpr_integration_tests {
         slice_position: f32,
         pan_x: f32,
         pan_y: f32,
+        dual_mode: bool,
     }
 
     impl MockMprView {
@@ -44,6 +45,7 @@ mod mpr_integration_tests {
                 slice_position,
                 pan_x: Self::clamp_pan_coordinate(pan_x),
                 pan_y: Self::clamp_pan_coordinate(pan_y),
+                dual_mode: false,
             })
         }
 
@@ -111,6 +113,14 @@ mod mpr_integration_tests {
             self.pan_y = Self::clamp_pan_coordinate(new_pan_y);
 
             Ok(())
+        }
+
+        fn enable_dual_mode(&mut self) {
+            self.dual_mode = true;
+        }
+
+        fn disable_dual_mode(&mut self) {
+            self.dual_mode = false;
         }
 
         // Validation methods
@@ -360,5 +370,30 @@ mod mpr_integration_tests {
         // Valid operation should still work
         let valid_point = [100.0, 100.0, 0.0];
         assert!(view.set_center_at_point_in_mm(valid_point).is_ok());
+    }
+
+    #[test]
+    fn test_dual_mpr_mode_mock() {
+        let mut mpr_view = MockMprView::new(1.0, 0.0, 100.0, 50.0, 0.0, 0.0).unwrap();
+
+        // Verify initial state
+        assert_eq!(mpr_view.dual_mode, false);
+        assert_eq!(mpr_view.scale, 1.0);
+
+        // Enable dual mode
+        mpr_view.enable_dual_mode();
+        assert_eq!(mpr_view.dual_mode, true);
+
+        // Verify parameters can still be modified while in dual mode
+        mpr_view.set_scale(2.0).unwrap();
+        mpr_view.set_pan(10.0, 20.0).unwrap();
+        mpr_view.set_slice_mm(50.0).unwrap();
+
+        assert_eq!(mpr_view.scale, 2.0);
+
+        // Disable dual mode
+        mpr_view.disable_dual_mode();
+        assert_eq!(mpr_view.dual_mode, false);
+        assert_eq!(mpr_view.scale, 2.0); // Should retain previous scale
     }
 }

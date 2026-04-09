@@ -19,8 +19,11 @@ pub struct UniformsFrag {
     pub slice: f32,
     pub is_packed_rg8: f32,
     pub bias: f32,
-    pub _pad0: [f32; 3],
+    pub is_dual_mode: f32,
+    pub slice2: f32,
+    pub aliasing: u32,  // Change from bool to u32
     pub mat: [f32; 16],
+    pub mat2: [f32; 16],
 }
 
 #[repr(C)]
@@ -88,7 +91,11 @@ impl MprViewWgpuImpl {
             slice: 0.0,
             is_packed_rg8: decode_params.is_packed_flag as f32,
             bias: decode_params.bias,
+            is_dual_mode: 0.0,
+            slice2: 0.0,
+            aliasing: 0,
             mat: transform_matrix.to_cols_array(),
+            mat2: glam::Mat4::IDENTITY.to_cols_array(),
             ..Default::default()
         };
 
@@ -169,12 +176,32 @@ impl MprViewWgpuImpl {
         self.uniforms.frag.mat = matrix;
     }
 
+    /// Set second transformation matrix (for dual mode)
+    pub fn set_matrix2(&mut self, matrix: [f32; 16]) {
+        self.uniforms.frag.mat2 = matrix;
+    }
+
+    /// Enable or disable dual mode
+    pub fn set_dual_mode(&mut self, is_dual: bool) {
+        self.uniforms.frag.is_dual_mode = if is_dual { 1.0 } else { 0.0 };
+    }
+
     /// Set slice position
     ///
     /// # Arguments
     /// * `slice` - New slice position
     pub fn set_slice(&mut self, slice: f32) {
         self.uniforms.frag.slice = slice;
+    }
+
+    /// Set second slice position
+    pub fn set_slice2(&mut self, slice: f32) {
+        self.uniforms.frag.slice2 = slice;
+    }
+
+    /// Set antialiasing flag
+    pub fn set_aliasing(&mut self, aliasing: bool) {
+        self.uniforms.frag.aliasing = if aliasing { 1 } else { 0 };
     }
 
     /// Set window level only
@@ -315,7 +342,7 @@ mod tests {
     #[test]
     fn test_uniforms_frag_size_alignment() {
         let size = std::mem::size_of::<UniformsFrag>();
-        assert_eq!(size, 96);
+        assert_eq!(size, 160);
         let vert_size = std::mem::size_of::<UniformsVert>();
         assert_eq!(vert_size, 16);
         let uniforms_size = std::mem::size_of::<Uniforms>();

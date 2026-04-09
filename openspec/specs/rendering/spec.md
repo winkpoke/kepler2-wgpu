@@ -135,3 +135,24 @@ The 3D view SHALL expose minimal controls for volume rendering that influence ra
 - **THEN** the renderer SHALL update uniforms without reallocating the volume texture
 - **AND** the change SHALL take effect on the next frame
 
+### Requirement: Dual Orthogonal MPR Rendering
+
+The multi-planar reconstruction (MPR) view SHALL support rendering two orthogonal CT slices simultaneously within the same viewport, providing spatial correlation between the two planes.
+
+#### Scenario: Display Dual Orthogonal Slices
+- **WHEN** the dual orthogonal MPR mode is activated
+- **THEN** the renderer SHALL display two orthogonal slices (e.g., axial and sagittal) within the single canvas
+- **AND** the shader SHALL sample the 3D volume using two distinct transformation matrices
+- **AND** the rendered slices SHALL accurately reflect the same patient space
+
+#### Scenario: Display Intersection Line
+- **WHEN** dual orthogonal slices are rendered
+- **THEN** an intersection indicator or line SHALL be drawn where the two planes meet
+- **AND** the indicator SHALL help the user orient the cross-section
+- **AND** updating the slice position in one plane SHALL correctly update the intersection location in the other plane
+
+#### Scenario: Dual Uniform Upload
+- **WHEN** dual MPR slices are updated
+- **THEN** both transformation matrices SHALL be uploaded to the GPU as column-major matrices
+- **AND** the shader uniforms SHALL handle both planes without exceeding memory limits or breaking alignment
+

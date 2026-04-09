@@ -16,7 +16,8 @@ pub enum UserEvent {
     SetScale(usize, f32),
     SetTranslateInScreenCoord(usize, f32, f32, f32),
     SetPan(usize, f32, f32),   // pan in screen space
-    SetPanMM(usize, f32, f32), // pan in mm
+    SetPanMM(usize, f32, f32), // pan in mm space
+    SetAliasing(usize, bool), // set antialiasing
     LoadDataFromCTVolume(CTVolume),
     Resize(u32, u32), // width, height
     Quit,
@@ -36,6 +37,8 @@ pub enum UserEvent {
     GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     #[cfg(target_arch = "wasm32")]
     GetWindowLevel(usize, oneshot::Sender<[f32; 2]>),
+    #[cfg(target_arch = "wasm32")]
+    GetBaseScreen(usize, oneshot::Sender<[f32; 16]>),
     #[cfg(target_arch = "wasm32")]
     GetPan(usize, oneshot::Sender<[f32; 3]>),
     #[cfg(target_arch = "wasm32")]
@@ -271,6 +274,28 @@ impl GLCanvas {
     }
 
     #[cfg(target_arch = "wasm32")]
+    pub async fn get_base_screen(&self, index: usize) -> Result<Box<[f32]>, String> {
+        let (tx, rx) = oneshot::channel();
+
+        if let Err(e) = self.proxy.send_event(UserEvent::GetBaseScreen(index, tx)) {
+            log::error!(
+                "Failed to send GetBaseScreen event for window {}: {:?}",
+                index,
+                e
+            );
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+
+        log::info!("Sent GetBaseScreen event for window {}", index);
+
+        match rx.await {
+            Ok(result) => Ok(result.into()),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
+        }   
+    }
+
+
+    #[cfg(target_arch = "wasm32")]
     pub async fn get_window_level(&self, index: usize) -> Result<Box<[f32]>, String> {
         let (tx, rx) = oneshot::channel();
 
@@ -425,6 +450,7 @@ impl_user_event_senders_for_glcanvas! {
     set_translate_in_screen_coord => SetTranslateInScreenCoord(x: f32, y: f32, z: f32),
     set_pan => SetPan(dx: f32, dy: f32),
     set_pan_mm => SetPanMM(dx_mm: f32, dy_mm: f32),
+    set_aliasing => SetAliasing(aliasing: bool),
     handle_view_click => ViewClick(screen_x: f32, screen_y: f32, screen_z: f32),
     set_oblique_rotation_radians => SetObliqueRotation(horizontal_radians: f32, vertical_radians: f32, in_plane_radians: f32),
     // Mip controls

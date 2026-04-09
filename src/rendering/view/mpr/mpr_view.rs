@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use glam::{Mat4, Quat, Vec3, Vec4};
+use glam::{Mat4, Quat, Vec3};
 use crate::{
     core::{
         error::{KeplerResult, MprError},
@@ -61,6 +61,16 @@ pub struct MprView {
     window_level: WindowLevel,
     /// Anatomical orientation for this view (Axial, Coronal, Sagittal)
     orientation: Orientation,
+    /// Antialiasing flag
+    aliasing: bool,
+    /// Second view parameters for dual mode
+    dual_mode: bool,
+    orientation2: Option<Orientation>,
+    base_screen2: Mat4,
+    base_uv2: Mat4,
+    slice2: f32,
+    pan2: Vec3,
+    scale2: f32,
     /// Physical in-plane content width in millimeters
     content_w_mm: f32,
     /// Physical in-plane content height in millimeters
@@ -210,6 +220,14 @@ impl MprView {
             dim,
             window_level, // Use provided WindowLevel with configured bias
             orientation,  // Store orientation for cross-sectional linking
+            aliasing: false,
+            dual_mode: false,
+            orientation2: None,
+            base_screen2: Mat4::IDENTITY,
+            base_uv2: Mat4::IDENTITY,
+            slice2: 0.0,
+            pan2: Vec3::ZERO,
+            scale2: scale,
             content_w_mm,
             content_h_mm,
             padding_px: 0,
@@ -246,6 +264,14 @@ impl MprView {
 
         // Set the transformation matrix using the new architecture
         self.wgpu_impl.set_matrix(transform_matrix.to_cols_array());
+
+        if self.dual_mode {
+            let t_pan2 = Mat4::from_translation(-self.pan2);
+            let s_scale2 = Mat4::from_scale(Vec3::splat(self.scale2).with_z(1.0));
+            let transform_matrix_screen2 = self.base_screen2 * t_pan2 * t_center * s_scale2 * t_uncenter;
+            let transform_matrix2 = self.base_uv2.inverse() * transform_matrix_screen2;
+            self.wgpu_impl.set_matrix2(transform_matrix2.to_cols_array());
+        }
     }
 
     pub fn set_oblique_rotation_radians(
@@ -294,6 +320,10 @@ impl MprView {
         self.oblique_normal = r.transform_vector3(Vec3::Z).normalize_or_zero();
     }
 
+    pub fn get_base_screen(&self) -> Mat4 {
+        self.base_screen
+    }
+
     /// Return the current screen base matrix (including translation, scaling)
     pub fn get_base(&self) -> Mat4 {
         // Apply the same transformation chain as update_transform_matrix
@@ -304,6 +334,35 @@ impl MprView {
         let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
 
         self.base_screen * t_pan * t_center * s_scale * t_uncenter
+    }
+
+    /// Enable dual orthogonal MPR rendering.
+    /// Sets the second orientation based on the provided volume and orientation.
+    pub fn enable_dual_mode(&mut self, vol: &CTVolume, orientation2: Orientation) {
+        let base_screen_legacy = orientation2.build_base(vol);
+        let base_uv_legacy = GeometryBuilder::build_uv_base(vol);
+        self.base_screen2 = base_screen_legacy.matrix;
+        self.base_uv2 = base_uv_legacy.matrix;
+        self.orientation2 = Some(orientation2);
+        self.dual_mode = true;
+        
+        // Match initial pan and scale if possible, or set to center
+        self.scale2 = self.scale;
+        self.pan2 = Vec3::ZERO;
+        
+        self.wgpu_impl.set_dual_mode(true);
+        self.update_transform_matrix();
+    }
+
+    pub fn disable_dual_mode(&mut self) {
+        self.dual_mode = false;
+        self.wgpu_impl.set_dual_mode(false);
+        self.update_transform_matrix();
+    }
+
+    pub fn set_aliasing(&mut self, aliasing: bool) {
+        self.aliasing = aliasing;
+        self.wgpu_impl.set_aliasing(aliasing);
     }
 }
 
@@ -357,6 +416,9 @@ impl Renderable for MprView {
 
         // Set slice position for volume sampling
         self.wgpu_impl.set_slice(self.slice);
+        if self.dual_mode {
+            self.wgpu_impl.set_slice2(self.slice2);
+        }
 
         // Recalculate transformation matrix if view parameters changed
         self.update_transform_matrix();

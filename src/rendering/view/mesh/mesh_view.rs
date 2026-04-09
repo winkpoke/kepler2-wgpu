@@ -7,7 +7,7 @@ use super::{
     performance::{PerformanceStats, QualityController, QualityLevel},
 };
 use crate::{
-    core::{WindowLevel, KeplerResult, timing::Instant},
+    core::{timing::Instant, KeplerResult, WindowLevel},
     rendering::view::{Renderable, View},
 };
 use glam::{Mat4, Quat, Vec3};
@@ -150,7 +150,7 @@ impl MeshView {
     pub fn view_id(&self) -> usize {
         self.view_id
     }
-    
+
     /// Function-level comment: Attaches a volume render context for GPU operations
     pub fn attach_context(&mut self, ctx: std::sync::Arc<MeshRenderContext>) {
         self.volume_ctx = Some(ctx);
@@ -268,7 +268,7 @@ impl MeshView {
     /// This directly sets the orientation without affecting rotation speed.
     pub fn set_rotation_angle_degrees(&mut self, degrees_x: f32, degrees_y: f32) {
         let right = self.rotation_quat * Vec3::Y;
-        let up    = self.rotation_quat * Vec3::X;
+        let up = self.rotation_quat * Vec3::X;
         let dx = degrees_x.to_radians();
         let dy = degrees_y.to_radians();
         let qx = Quat::from_axis_angle(up.normalize(), dx);
@@ -276,7 +276,11 @@ impl MeshView {
         let delta = qy * qx;
         self.rotation_quat = (delta * self.rotation_quat).normalize();
         self.last_frame_time = Instant::now();
-        log::info!("Mesh rotation set to (deg_x: {}, deg_y: {})", degrees_x, degrees_y);
+        log::info!(
+            "Mesh rotation set to (deg_x: {}, deg_y: {})",
+            degrees_x,
+            degrees_y
+        );
     }
 
     /// Set Mesh rotation angles in degrees around X, Y, Z axes.
@@ -286,12 +290,13 @@ impl MeshView {
             yaw_deg.to_radians(),
             pitch_deg.to_radians(),
         );
-        let rot = Mat4::from_rotation_x(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(pitch);
+        let rot =
+            Mat4::from_rotation_x(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(pitch);
         self.rotation_quat = Quat::from_mat4(&rot);
         self.last_frame_time = Instant::now();
     }
 
-    pub fn set_rotation_quat(&mut self, rotation: [f32; 4]) -> KeplerResult<()>{
+    pub fn set_rotation_quat(&mut self, rotation: [f32; 4]) -> KeplerResult<()> {
         self.rotation_quat = Quat::from_array(rotation);
         self.last_frame_time = Instant::now();
         log::info!("Mesh rotation set to {:?}", self.rotation_quat);
@@ -328,6 +333,11 @@ impl MeshView {
         log::info!("Mesh scale factor reset to default (1.0)");
     }
 
+    pub fn set_slab_thickness(&mut self, thickness: f32) {
+        self.slab_thickness = thickness;
+        log::info!("Mesh slab thickness set to {:.3} mm", thickness);
+    }
+
     /// Function-level comment: Set mesh pan translation (world units) for X and Y axes.
     /// Pan values are uploaded to the vertex shader as a uniform offset.
     pub fn set_pan(&mut self, dx: f32, dy: f32) {
@@ -362,7 +372,7 @@ impl MeshView {
         self.opacity
     }
 
-    pub fn set_roi(&mut self, min: [f32;3], max: [f32;3]) {
+    pub fn set_roi(&mut self, min: [f32; 3], max: [f32; 3]) {
         self.roi_min = min;
         self.roi_max = max;
     }
@@ -433,7 +443,7 @@ impl MeshView {
             let d = extent.depth_or_array_layers.max(1) as f32;
             let w_mm = w * 1.0;
             let h_mm = h * 1.0;
-            let d_mm = d * self.slab_thickness; 
+            let d_mm = d * self.slab_thickness;
             let scale_viewport = Mat4::from_scale(Vec3::new(w, h, w));
             let scale_texture = Mat4::from_scale(Vec3::new(1.0 / w_mm, 1.0 / h_mm, 1.0 / d_mm));
             let rotation = Mat4::from_quat(self.rotation_quat);
@@ -778,7 +788,7 @@ mod tests {
         // Set some rotation first to ensure we aren't just testing identity or default
         // Add 45 degrees around Y to the existing default
         mesh_view.set_rotation_angle_degrees(0.0, 45.0);
-        
+
         let before = mesh_view.rotation_quat;
 
         mesh_view.set_rotation_enabled(false);
