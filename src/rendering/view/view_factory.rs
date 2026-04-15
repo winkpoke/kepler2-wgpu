@@ -20,7 +20,6 @@ use crate::rendering::view::mip::{MipView, MipViewWgpuImpl};
 use crate::rendering::view::mpr::mpr_render_context::MprRenderContext;
 use crate::rendering::view::mpr::mpr_view::MprView;
 use crate::rendering::view::render_content::RenderContent;
-use crate::rendering::view::View as _;
 
 /// Factory trait for creating different types of views.
 ///

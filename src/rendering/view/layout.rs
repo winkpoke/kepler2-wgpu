@@ -230,6 +230,50 @@ impl LayoutStrategy for OneCellLayout {
         }
     }
 }
+
+pub struct LargeLeft3RightLayout{
+    pub rows: u32,
+    pub cols: u32,
+    pub spacing: u32,
+}
+
+impl LayoutStrategy for LargeLeft3RightLayout {
+    fn id(&self) -> &str {
+        "LargeLeft3RightLayout"
+    }
+
+    fn calculate_position_and_size(
+        &self,
+        index: u32,
+        _total_views: u32,
+        parent_dim: (u32, u32),
+    ) -> ((i32, i32), (u32, u32)) {
+        let w = parent_dim.0 as f32;
+        let h = parent_dim.1 as f32;
+
+        // 左侧大图占 70%
+        let left_w = (w * 0.7) as u32;
+        let right_w = parent_dim.0 - left_w;
+
+        if index == 0 {
+            // BIG VIEW (left)
+            return ((0, 0), (left_w, parent_dim.1));
+        }
+
+        // right side 3 stacked views
+        let small_h = parent_dim.1 / 3;
+
+        let i = index - 1;
+        let y = (i * small_h) as i32;
+
+        (
+            (left_w as i32, y),
+            (right_w, small_h)
+        )
+    }
+}
+
+
 /// A generic layout container parameterized by a `LayoutStrategy`.
 ///
 /// Manages a collection of `View` instances and delegates placement to `strategy` on view addition

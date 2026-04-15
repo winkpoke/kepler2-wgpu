@@ -430,6 +430,19 @@ impl App {
         }
     }
 
+    pub fn set_dual_mpr_mode(&mut self, view_index: usize, enable: bool, orientation2_index: usize) -> Result<(), String> {
+        if let Ok(vol) = self.app_model.volume() {
+            let o2 = if enable {
+                Some(crate::rendering::view::ALL_ORIENTATIONS[orientation2_index % crate::rendering::view::ALL_ORIENTATIONS.len()])
+            } else {
+                None
+            };
+            self.app_view.set_dual_mpr_mode(view_index, enable, vol, o2)
+        } else {
+            Err("No volume loaded".to_string())
+        }
+    }
+
     /// Render mode setter for MPR, MIP, and Mesh.
     ///
     /// Function-level comment:
@@ -446,20 +459,7 @@ impl App {
     /// - mesh_index: the target cell index for mesh view
     /// - iso_min, iso_max: ISO range for mesh extraction
     /// - mip: optional parameter for MIP config
-    /// - orientation_index: orientation for MPR
-    pub fn set_dual_mpr_mode(&mut self, view_index: usize, enable: bool, orientation2_index: usize) -> Result<(), String> {
-        if let Ok(vol) = self.app_model.volume() {
-            let o2 = if enable {
-                Some(crate::rendering::view::ALL_ORIENTATIONS[orientation2_index % crate::rendering::view::ALL_ORIENTATIONS.len()])
-            } else {
-                None
-            };
-            self.app_view.set_dual_mpr_mode(view_index, enable, vol, o2)
-        } else {
-            Err("No volume loaded".to_string())
-        }
-    }
-
+    /// - orientation_index: orientation for MPR=
     pub fn set_render_mode(
         &mut self,
         mode: usize,
@@ -542,6 +542,17 @@ impl App {
 
                     self.app_view.layout.add_view(mesh_view);
                     self.app_view.restore_view_states();
+                }
+                // LargeLeft3RightLayout
+                3 => {
+                    log::info!("Switching to LargeLeft3RightLayout");
+                    let _ = self.app_view.set_layout_three(
+                        texture.clone(),
+                        &vol,
+                        self.saved_states,
+                        mip_index,
+                        mesh_index,
+                    );
                 }
                 _ => {
                     let _ = self.app_view.configure_mesh_layout(

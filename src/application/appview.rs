@@ -10,10 +10,9 @@ use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::ViewFactory;
 use crate::rendering::view::{
     DefaultViewFactory, DynamicLayout, MipView, MprView, Orientation, View, ViewState,
-    ALL_ORIENTATIONS,
+    ALL_ORIENTATIONS, LargeLeft3RightLayout,GridLayout, LayoutContainer, OneCellLayout,
 };
 use crate::rendering::StatefulView;
-use crate::rendering::{GridLayout, LayoutContainer, OneCellLayout};
 use crate::CTVolume;
 use std::sync::Arc;
 
@@ -298,6 +297,14 @@ impl AppView {
         }));
     }
 
+    pub fn set_three_layout(&mut self, rows: u32, cols: u32, spacing: u32) {
+        self.layout.set_strategy(Box::new(LargeLeft3RightLayout {
+            rows,
+            cols,
+            spacing,
+        }));
+    }
+
     /// Returns true if the current layout strategy is OneCellLayout.
     ///
     /// Function-level comment: Helper to gate active-view-specific operations.
@@ -446,9 +453,11 @@ impl AppView {
         }
 
         if mip.is_some() {
-            let mip_view =
-                self.view_factory
-                    .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))?;
+            let mip_view = self.view_factory.create_mip_view_with_content(
+                texture.clone(), 
+                (0, 0), 
+                (0, 0)
+            )?;
             LayoutContainer::replace_view_at(&mut self.layout, mip.unwrap(), mip_view);
         }
 
@@ -512,6 +521,66 @@ impl AppView {
                 LayoutContainer::add_view(&mut self.layout, view);
             }
         }
+        Ok(())
+    }
+
+
+    pub fn set_layout_three(
+        &mut self,
+        texture: Arc<RenderContent>,
+        vol: &CTVolume,
+        indices: [usize; 4],
+        mip_index: Option<usize>,
+        mesh_index: Option<usize>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // 1. 切换 layout
+        self.set_three_layout(1, 3, 0); 
+        self.remove_all();
+
+        // 2. 左侧大视图（第一个 MPR）
+        let main_orientation = ALL_ORIENTATIONS[indices[0]];
+        let main_view = self.view_factory.create_mpr_view_with_content(
+            texture.clone(),
+            vol,
+            main_orientation,
+            (0, 0),
+            (0, 0),
+        )?;
+        LayoutContainer::add_view(&mut self.layout, main_view);
+
+        // 3. 右侧三个小视图（MPR）
+        for i in 1..4 {
+            let orientation = ALL_ORIENTATIONS[indices[i]];
+            let view = self.view_factory.create_mpr_view_with_content(
+                texture.clone(),
+                vol,
+                orientation,
+                (0, 0),
+                (0, 0),
+            )?;
+            LayoutContainer::add_view(&mut self.layout, view);
+        }
+
+        // 4. optional extra view replacement (MIP or Mesh)
+        if mip_index.is_some() {
+            let mip_view =  self.view_factory.create_mip_view_with_content(
+                texture.clone(),
+                (0, 0),
+                (0, 0),
+            )?;
+            // replace last small view (or configurable slot)
+            LayoutContainer::replace_view_at(&mut self.layout, mip_index.unwrap(), mip_view);
+        }
+
+        if mesh_index.is_some() {
+            let mesh_view = self.view_factory.create_mesh_view_with_content(
+                texture.clone(),
+                (0, 0),
+                (0, 0),
+            )?;
+            LayoutContainer::replace_view_at(&mut self.layout, mesh_index.unwrap(), mesh_view);
+        }
+
         Ok(())
     }
 

@@ -5,6 +5,7 @@ use crate::rendering::view::layout::compute_aspect_fit;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::{Renderable, View};
 use crate::core::{WindowLevel,KeplerResult};
+use crate::rendering::pipeline::*;
 use glam::{Mat4, Vec3};
 use std::{any::Any, sync::Arc};
 use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, Queue, RenderPipeline};
@@ -109,102 +110,19 @@ impl MipRenderContext {
     /// Create a new MIP render context with initialized GPU resources.
     pub fn new(device: &Device, surface_format: wgpu::TextureFormat) -> Self {
         // Create bind group layout for texture resources (group 0)
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("MIP Texture Bind Group Layout"),
-                entries: &[
-                    // Texture binding
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D3,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        },
-                        count: None,
-                    },
-                    // Sampler binding
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            });
-
+        let texture_bind_group_layout = create_texture_bind_group_layout(device);
+        
         // Create bind group layout for uniforms (group 1)
-        let uniform_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("MIP Uniform Bind Group Layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: std::num::NonZeroU64::new(
-                            std::mem::size_of::<MipUniforms>() as u64,
-                        ),
-                    },
-                    count: None,
-                }],
-            });
-
-        // Load MIP shader
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("MIP Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../../shaders/mip.wgsl").into()),
-        });
-
-        // Create render pipeline layout
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("MIP Pipeline Layout"),
-            bind_group_layouts: &[&texture_bind_group_layout, &uniform_bind_group_layout],
-            push_constant_ranges: &[],
-        });
+        let min_binding_size = std::num::NonZeroU64::new(std::mem::size_of::<MipUniforms>() as u64,);
+        let uniform_bind_group_layout = create_uniform_bind_group_layout(device, min_binding_size);
 
         // Create render pipeline
-        let pipeline = Arc::new(
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("MIP Render Pipeline"),
-                layout: Some(&pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &shader,
-                    entry_point: Some("vs_main"),
-                    buffers: &[],
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some("fs_main"),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: surface_format,
-                        blend: Some(wgpu::BlendState::REPLACE),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleStrip,
-                    strip_index_format: None,
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: None,
-                    unclipped_depth: false,
-                    polygon_mode: wgpu::PolygonMode::Fill,
-                    conservative: false,
-                },
-                depth_stencil: None,
-                multisample: wgpu::MultisampleState {
-                    count: 1,
-                    mask: !0,
-                    alpha_to_coverage_enabled: false,
-                },
-                multiview: None,
-                cache: None,
-            }),
-        );
+        let pipeline = Arc::new(create_mip_pipeline(
+            device, 
+            surface_format,
+            &texture_bind_group_layout,
+            &uniform_bind_group_layout,
+        ));
 
         Self {
             texture_bind_group_layout,

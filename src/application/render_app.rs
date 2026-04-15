@@ -448,6 +448,9 @@ impl RenderApp {
                                 ..
                             } => {
                                 state.set_render_mode(1, None, None, Some(0), 1);
+                                state.set_pan(0, 0.0, 0.0);
+                                state.set_window_width(0, 1500.0);
+                                state.set_window_level(0, 400.0);
                                 log::info!("KeyE pressed: mip mode toggled to {}", true);
                             }
                             WindowEvent::KeyboardInput {

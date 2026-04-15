@@ -1,10 +1,11 @@
 #![allow(dead_code)]
 
-use crate::data::{volume_encoding::VolumeEncoding, CTVolume};
+use crate::data::volume_encoding::VolumeEncoding;
 use crate::rendering::view::render_content::RenderContent;
+use crate::rendering::core::pipeline::*;
 use std::sync::Arc;
-use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, RenderPipeline};
 use glam::Mat4;
+use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, RenderPipeline};
 
 /// Volume rendering parameters (sent to fragment shader)
 #[repr(C)]
@@ -30,7 +31,7 @@ pub struct MeshUniforms {
 impl Default for MeshUniforms {
     fn default() -> Self {
         Self {
-            ray_step_size: 0.0001,
+            ray_step_size: 0.0002,
             max_steps: 512.0,
             is_packed_rg8: 1.0,
             bias: VolumeEncoding::DEFAULT_HU_OFFSET,
@@ -63,112 +64,22 @@ pub struct MeshRenderContext {
 impl MeshRenderContext {
     pub fn new(
         device: &Device,
-        surface_format: wgpu::TextureFormat,
+        target_format: wgpu::TextureFormat,
         render_content: Arc<RenderContent>,
     ) -> Self {
-        let texture_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Mesh Volume Texture Bind Group Layout"),
-            entries: &[
-                // 3D Texture
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        multisampled: false,
-                        view_dimension: wgpu::TextureViewDimension::D3,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    },
-                    count: None,
-                },
-                // Sampler binding
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
+        let texture_bind_group_layout = create_texture_bind_group_layout(device);
 
         // Uniform buffer
-        let uniform_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("Mesh Volume Uniform Bind Group Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: std::num::NonZeroU64::new(std::mem::size_of::<
-                        MeshUniforms,
-                    >()
-                        as u64),
-                },
-                count: None,
-            }],
-        });
-
-        // Load Mesh shader
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Mesh Volume Shader"),
-            source: wgpu::ShaderSource::Wgsl(
-                include_str!("../../shaders/mesh_volume.wgsl").into(),
-            ),
-        });
-
-        // Create render pipeline layout
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("Mesh Volume Pipeline Layout"),
-            bind_group_layouts: &[&texture_bind_group_layout, &uniform_bind_group_layout],
-            push_constant_ranges: &[],
-        });
+        let min_binding_size = std::num::NonZeroU64::new(std::mem::size_of::<MeshUniforms>() as u64);
+        let uniform_bind_group_layout = create_uniform_bind_group_layout(device, min_binding_size);
 
         // Create render pipeline
-        let pipeline = Arc::new(
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("Mesh Volume Render Pipeline"),
-                layout: Some(&pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &shader,
-                    entry_point: Some("vs_main"),
-                    buffers: &[],
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &shader,
-                    entry_point: Some("fs_main"),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: surface_format,
-                        blend: Some(wgpu::BlendState::ALPHA_BLENDING), // Important for overlaying
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                    compilation_options: wgpu::PipelineCompilationOptions::default(),
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleStrip,
-                    strip_index_format: None,
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: None,
-                    unclipped_depth: false,
-                    polygon_mode: wgpu::PolygonMode::Fill,
-                    conservative: false,
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: wgpu::TextureFormat::Depth24Plus,
-                    depth_write_enabled: false,
-                    depth_compare: wgpu::CompareFunction::Always,
-                    stencil: wgpu::StencilState::default(),
-                    bias: wgpu::DepthBiasState::default(),
-                }),
-                multisample: wgpu::MultisampleState {
-                    count: 1,
-                    mask: !0,
-                    alpha_to_coverage_enabled: false,
-                },
-                multiview: None,
-                cache: None,
-            }),
-        );
+        let pipeline = Arc::new(create_volume_pipeline(
+            device,
+            target_format,
+            &texture_bind_group_layout,
+            &uniform_bind_group_layout,
+        ));
 
         // GPU Buffer
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
