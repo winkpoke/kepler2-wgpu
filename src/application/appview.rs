@@ -305,13 +305,6 @@ impl AppView {
         }));
     }
 
-    /// Returns true if the current layout strategy is OneCellLayout.
-    ///
-    /// Function-level comment: Helper to gate active-view-specific operations.
-    pub fn is_one_cell_layout(&self) -> bool {
-        self.layout.strategy_id() == "OneCellLayout"
-    }
-
     /// Create and add an MPR view for a given volume and orientation.
     ///
     /// Function-level comment: Uses DefaultViewFactory and routes addition through AppView.
@@ -437,6 +430,7 @@ impl AppView {
         mip: Option<usize>,
         mesh_index: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        self.set_grid_layout(2, 2, 2);
         self.remove_all();
 
         // Add 4 MPR views based on indices

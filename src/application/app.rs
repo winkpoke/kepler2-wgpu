@@ -470,14 +470,6 @@ impl App {
     ) {
         // Save current view states before layout switch
         self.app_view.save_view_states();
-
-        // Layout management
-        if mode == 2 {
-            self.app_view.set_one_cell_layout();
-            self.app_view.layout.remove_all();
-        } else if self.app_view.is_one_cell_layout() {
-            self.app_view.set_grid_layout(2, 2, 2);
-        }
         
         // Load current volume
         if let Some(vol) = self.app_model.volume().ok().map(|v| v.clone()) {
@@ -528,6 +520,8 @@ impl App {
 
                 // === Mesh ===
                 2 => {
+                    self.app_view.set_one_cell_layout();
+                    self.app_view.layout.remove_all();
                     log::info!("Switching to Mesh mode");
                     // Create mesh view
                     let mesh_view = self
@@ -553,6 +547,8 @@ impl App {
                         mip_index,
                         mesh_index,
                     );
+
+                    self.app_view.restore_view_states();
                 }
                 _ => {
                     let _ = self.app_view.configure_mesh_layout(
