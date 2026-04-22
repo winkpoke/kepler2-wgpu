@@ -60,6 +60,10 @@ struct MeshUniforms {
     light_dir: vec3<f32>,
     aspect_ratio: f32,
     rotation: mat4x4<f32>,
+    preset: f32,
+    _pad1: f32,
+    _pad2: f32,
+    _pad3: f32,
 }
 @group(1) @binding(0)
 var<uniform> u_vol: MeshUniforms;

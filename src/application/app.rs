@@ -538,7 +538,7 @@ impl App {
                     self.app_view.restore_view_states();
                 }
                 // LargeLeft3RightLayout
-                3 => {
+                4 => {
                     log::info!("Switching to LargeLeft3RightLayout");
                     let _ = self.app_view.set_layout_three(
                         texture.clone(),
@@ -972,6 +972,13 @@ impl App {
         self.apply_to_mesh_view(|mesh_view| {
             mesh_view.set_opacity(alpha);
             log::info!("Mesh opacity set to {:.3}", alpha);
+        });
+    }
+
+    pub fn set_mesh_mode(&mut self, mode: usize) {
+        self.apply_to_mesh_view(|mesh_view| {
+            mesh_view.set_mode(mode);
+            log::info!("Mesh mode set to {:?}", mode);
         });
     }
 

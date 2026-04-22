@@ -234,6 +234,10 @@ impl RenderApp {
                     state.set_mesh_roi(sx ,sy , sz, lx, ly, lz);
                     log::info!("Mesh roi set from {:?} to {:?}", [sx ,sy , sz], [lx, ly, lz]);
                 }
+                Event::UserEvent(UserEvent::SetMeshMode(_index, mode)) => {
+                    state.set_mesh_mode(mode);
+                    log::info!("Mesh mode set to {:?}", mode);
+                }
                 Event::UserEvent(UserEvent::SetMeshRotationAngleDeg(_index, degrees_x, degrees_y)) => {
                     state.set_mesh_rotation_angle_degrees(degrees_x, degrees_y);
                     log::info!("Mesh rotation angle set to {:?}°", [degrees_x, degrees_y]);

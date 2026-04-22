@@ -2,8 +2,7 @@
 
 use super::{
     basic_mesh_context::BasicMeshContext,
-    camera::Camera,
-    mesh::{Mesh, MeshRenderContext, MeshUniforms},
+    mesh::{MeshRenderContext, MeshUniforms},
     performance::{PerformanceStats, QualityController, QualityLevel},
 };
 use crate::{
@@ -11,7 +10,7 @@ use crate::{
     rendering::view::{Renderable, View},
 };
 use glam::{Mat4, Quat, Vec3};
-use std::f32::consts::{FRAC_PI_2, PI};
+use std::f32::consts::FRAC_PI_2;
 
 /// Function-level comment: Error types specific to mesh rendering operations
 #[derive(Debug)]
@@ -76,8 +75,6 @@ impl Default for FallbackMode {
 
 pub struct MeshView {
     view_id: usize,
-    pub mesh: Option<Mesh>,
-    pub camera: Option<Camera>,
     volume_ctx: Option<std::sync::Arc<MeshRenderContext>>,
     /// Context for the orientation cube (bottom-left gizmo)
     orientation_cube_ctx: Option<std::sync::Arc<BasicMeshContext>>,
@@ -110,14 +107,13 @@ pub struct MeshView {
     roi_max: [f32; 3],
     window_level: WindowLevel,
     slab_thickness: f32,
+    mode: usize,
 }
 
 impl Default for MeshView {
     fn default() -> Self {
         Self {
             view_id: 0,
-            mesh: None,
-            camera: None,
             volume_ctx: None,
             orientation_cube_ctx: None,
             pos: (0, 0),
@@ -138,6 +134,7 @@ impl Default for MeshView {
             roi_max: [1.0, 1.0, 1.0],
             window_level: WindowLevel::new(),
             slab_thickness: 1.25,
+            mode: 0,
         }
     }
 }
@@ -372,6 +369,11 @@ impl MeshView {
         self.opacity
     }
 
+    pub fn set_mode(&mut self, mode: usize) {
+        self.mode = mode;
+        log::info!("Mesh mode set to {:?}", mode);
+    }
+
     pub fn set_roi(&mut self, min: [f32; 3], max: [f32; 3]) {
         self.roi_min = min;
         self.roi_max = max;
@@ -392,31 +394,6 @@ impl MeshView {
         let _ = self.window_level.set_window_width(window_width);
         log::info!("MIP window width set to {:.3}", window_width);
         Ok(())
-    }
-
-    /// Function-level comment: Create a default camera compatible with orthogonal projection
-    /// Ensures the entire unit cube is visible without clipping when using orthographic mode.
-    fn create_default_camera(&self) -> Camera {
-        // Start with orthogonal projection camera
-        let mut camera = Camera::new(); // uses Orthogonal by default
-
-        // Set standard viewing parameters
-        camera.eye = [0.0, 0.0, 3.0]; // Camera in front of the scene
-        camera.center = [0.0, 0.0, 0.0]; // Look at origin
-        camera.up = [0.0, 1.0, 0.0]; // Y-up coordinate system
-
-        // Fix clipping issues: near and far planes must include the scene
-        // For orthographic projection, near MUST be < far; negative near is allowed.
-        camera.near = -5.0; // Allow objects between camera and center
-        camera.far = 5.0; // Small range improves depth precision
-
-        // Setup orthogonal bounds to ensure a unit cube (-1..1) fits inside view
-        camera.ortho_left = -2.0;
-        camera.ortho_right = 2.0;
-        camera.ortho_bottom = -2.0;
-        camera.ortho_top = 2.0;
-
-        camera
     }
 
     /// Function-level comment: Update GPU uniforms for basic mesh rendering with combined MVP matrix
@@ -444,7 +421,7 @@ impl MeshView {
             let w_mm = w * 1.0;
             let h_mm = h * 1.0;
             let d_mm = d * self.slab_thickness;
-            let scale_viewport = Mat4::from_scale(Vec3::new(w, h, w));
+            let scale_viewport = Mat4::from_scale(Vec3::new(w, h, d));
             let scale_texture = Mat4::from_scale(Vec3::new(1.0 / w_mm, 1.0 / h_mm, 1.0 / d_mm));
             let rotation = Mat4::from_quat(self.rotation_quat);
             let final_matrix = scale_texture * rotation * scale_viewport;
@@ -464,7 +441,7 @@ impl MeshView {
             };
 
             let vol_uniforms = MeshUniforms {
-                ray_step_size: 0.003,
+                ray_step_size: 1.0 / (w.max(h).max(d)),
                 max_steps: 1500.0,
                 is_packed_rg8: is_packed_rg8,
                 bias: decode_params.bias,
@@ -479,6 +456,10 @@ impl MeshView {
                 light_dir: [0.5, 0.5, -1.0],
                 aspect_ratio,
                 rotation: final_matrix.to_cols_array(),
+                preset: self.mode as f32,
+                _pad1: 0.0,
+                _pad2: 0.0,
+                _pad3: 0.0
             };
 
             // update

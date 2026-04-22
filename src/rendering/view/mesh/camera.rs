@@ -151,3 +151,28 @@ impl Camera {
         self.eye = [target[0] + x, target[1] + y, target[2] + z];
     }
 }
+
+/// Function-level comment: Create a default camera compatible with orthogonal projection
+/// Ensures the entire unit cube is visible without clipping when using orthographic mode.
+pub fn create_default_camera() -> Camera {
+    // Start with orthogonal projection camera
+    let mut camera = Camera::new(); // uses Orthogonal by default
+
+    // Set standard viewing parameters
+    camera.eye = [0.0, 0.0, 3.0]; // Camera in front of the scene
+    camera.center = [0.0, 0.0, 0.0]; // Look at origin
+    camera.up = [0.0, 1.0, 0.0]; // Y-up coordinate system
+
+    // Fix clipping issues: near and far planes must include the scene
+    // For orthographic projection, near MUST be < far; negative near is allowed.
+    camera.near = -5.0; // Allow objects between camera and center
+    camera.far = 5.0; // Small range improves depth precision
+
+    // Setup orthogonal bounds to ensure a unit cube (-1..1) fits inside view
+    camera.ortho_left = -2.0;
+    camera.ortho_right = 2.0;
+    camera.ortho_bottom = -2.0;
+    camera.ortho_top = 2.0;
+
+    camera
+}

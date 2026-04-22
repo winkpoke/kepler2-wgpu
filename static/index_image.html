@@ -307,22 +307,18 @@
             <div>
               <span id="slice">slice</span>
               <input type="number" id="slice-input" step="0.5" value="0.0">
-              <button id="slice-submit">应用</button>
             </div>
             <div>
               <span id="slab-thickness-input">slab</span>
               <input type="number" id="slab-thickness" step="0.5" value="0.0">
-              <button id="slab-thickness-submit">应用</button>
             </div>
             <div>
               <span id="scale">scale</span>
               <input type="number" id="scale-input" step="1.0" value="1.0">
-              <button id="scale-submit">应用</button>
             </div>
             <div>
               <span id="aliasing">aliasing</span>
               <input type="checkbox" id="aliasing-input">
-              <button id="aliasing-submit">应用</button>
             </div>
             <div>
               <span id ="translate-input">translate</span>
@@ -332,21 +328,17 @@
                 <span id="trans-y-label">y:</span>
                 <input type="number" id="trans-y" step="10.0" value="0.0"></br>
               </div>
-              <button id="trans-submit">应用</button>
-              <button id="trans-get">获取</button>
+              <button id="trans-get">get</button>
             </div>
             <div>
-              <label>Window/Level</label>
               <div class="row">
-                <span id="window-label">width:</span>
+                <span id="window-level">Window/Level:</span>
+                <span id="window-label">W:</span>
                 <input type="number" id="window" step="10.0" value="0.0">
-                <span id="level-label">level:</span>
+                <span id="level-label">L:</span>
                 <input type="number" id="level" step="10.0" value="0.0">
               </div>
-              <div class="row" style="margin-top:6px">
-                <button id="winlev-submit">应用</button>
-                <button id="winlev-get">获取</button>
-              </div>
+              <button id="winlev-get">get</button>
             </div>
             <div>
               <label for="resize-input">Resize</label>
@@ -373,7 +365,9 @@
                 <option value="0">MIP</option>
                 <option value="1">MinIP</option>
                 <option value="2">AvgIP</option>
-              </select></br>
+              </select>
+            </div>
+            <div>
               <span id="mip-rotation-label">旋转:</span></br>
               <span id="mip-rotation-x-label">roll:</span><input type="number"  id="mip-rotation-x"
                 step="15" value="0" min="0" max="360">
@@ -405,6 +399,14 @@
             <div>
               <span id="3d-opacity-label">opacity:</span>
               <input type="number" id="3d-opacity" step="0.1" value="1.0" min="0" max="1">
+            </div>
+            <div>
+              <span id="3d-mode-label">3D Mode:</span>
+              <select id="3d-mode">
+                <option value="0">ANGIO</option>
+                <option value="1">BONE</option>
+                <option value="2">SOFT</option>
+              </select>
             </div>
             <div>
               <span id="3d-rotation-label">angle:</span></br>
@@ -439,6 +441,14 @@
     const byId = (id) => document.getElementById(id);
     const deg2rad = (d) => d * Math.PI / 180;
     const rad2deg = (r) => r * 180 / Math.PI;
+    function bindInput(ids, handler) {
+      ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('input', handler);
+        el.addEventListener('change', handler); // 兼容 number / checkbox
+      });
+    }
 
     // ========= 状态管理 =========
     var repo;
@@ -581,16 +591,11 @@
         ctx.fill();
         ctx.closePath();
     }
-    // 切层
-    byId('slice-submit').addEventListener('click', () => {
-      const sliceValue = byId('slice-input').value;
-      const input_index = byId('index-input');
 
-      const indexValue = parseInt(input_index.value);
-      if (isNaN(sliceValue)) {
-        alert('Please enter a valid number');
-        return;
-      }
+    // 切层
+    bindInput(['slice-input', 'index-input'], () => {
+      const sliceValue = byId('slice-input').value;
+      const indexValue = parseInt(byId('index-input').value);
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
@@ -598,15 +603,9 @@
       gl_canvas.set_slice_mm(indexValue, sliceValue);
     })
 
-    byId('slab-thickness-submit').addEventListener('click', () => {
+    bindInput(['slab-thickness', 'index-input'], () => {
       const thicknessValue = byId('slab-thickness').value;
-      const input_index = byId('index-input');
-
-      const indexValue = parseInt(input_index.value);
-      if (isNaN(thicknessValue)) {
-        alert('Please enter a valid number');
-        return;
-      }
+      const indexValue = parseInt(byId('index-input').value);
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
@@ -670,15 +669,9 @@
         drawPoint(ctx, 600, 600);
     })
 
-    byId('scale-submit').addEventListener('click', () => {
-      const input = byId('scale-input');
-      scaleValue = parseFloat(input.value);
-      const input_index = byId('index-input');
-      const indexValue = parseInt(input_index.value);
-      if (isNaN(scaleValue)) {
-        alert('Please enter a valid number');
-        return;
-      }
+    bindInput(['scale-input', 'index-input'], () => {
+      const scaleValue = parseFloat(byId('scale-input').value);
+      const indexValue = parseInt(byId('index-input').value);
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
@@ -686,19 +679,20 @@
       gl_canvas.set_scale(indexValue, scaleValue);
     });
 
-    byId('aliasing-submit').addEventListener('click', () => {
+    byId('aliasing-input').addEventListener('change', () => {
       const aliasing = byId('aliasing-input').checked;
-      const input_index = byId('index-input');
-      const indexValue = parseInt(input_index.value);
+      const indexValue = parseInt(byId('index-input').value);
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
       gl_canvas.set_aliasing(indexValue, aliasing);
-      console.log('aliasing:', aliasing);
     })
 
-    byId('trans-submit').addEventListener('click', () => {
+    bindInput(['trans-x', 'trans-y', 'index-input'], () => {
       let x = parseFloat(byId('trans-x').value);
       let y = parseFloat(byId('trans-y').value);
-      const input_index = byId('index-input');
-      const indexValue = parseInt(input_index.value);
+      const indexValue = parseInt(byId('index-input').value);
       console.log('translate:', x, y);
 
       if (!gl_canvas) {
@@ -709,11 +703,10 @@
       gl_canvas.set_pan(indexValue, x, y);
     });
 
-    byId('winlev-submit').addEventListener('click', () => {
+    bindInput(['window', 'level', 'index-input'], () => {
       const win = byId('window').value;
       const lev = byId('level').value;
-      const input_index = byId('index-input');
-      const indexValue = parseInt(input_index.value);
+      const indexValue = parseInt(byId('index-input').value);
 
       if (!gl_canvas) {
         alert('Please select a series first!');
@@ -888,14 +881,26 @@
         return;
       }
 
-      const mip_mode = parseInt(byId('mip-mode').value, 10);
-      gl_canvas.set_mip_mode(indexValue, mip_mode);
-
       const rotation_x = parseFloat(byId('mip-rotation-x').value);
       const rotation_y = parseFloat(byId('mip-rotation-y').value);
       const rotation_z = parseFloat(byId('mip-rotation-z').value);
       gl_canvas.set_mip_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
     })
+
+    byId('mip-mode').addEventListener('change', () => {
+      const indexValue = parseInt(byId('index-input').value, 10);
+      if (!gl_canvas) return;
+
+      const mip_mode = parseInt(byId('mip-mode').value, 10);
+      gl_canvas.set_mip_mode(indexValue, mip_mode);
+    });
+
+    byId('3d-mode').addEventListener('change', () => {
+      if (!gl_canvas) return;
+      const preset = parseInt(byId('3d-mode').value, 10);
+      console.log(preset);
+      gl_canvas.set_mesh_mode(state.index, preset);
+    });
 
     byId('3d-submit').addEventListener('click', async () => {
       const indexValue = parseInt(byId('index-input').value, 10);
@@ -903,19 +908,19 @@
         alert('Please select a series first!');
         return;
       }
-
       gl_canvas.set_mesh_rotation_enabled(indexValue, state.enable_rotation);
-      const opacity = parseFloat(byId('3d-opacity').value);
       const rotation_x = parseFloat(byId('3d-rotation-x').value);
       const rotation_y = parseFloat(byId('3d-rotation-y').value);
+      gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y);
+    });
 
+    bindInput(['3d-opacity'], async () => {
+      const opacity = parseFloat(byId('3d-opacity').value);
       if (typeof gl_canvas.set_mesh_opacity === 'function') {
         gl_canvas.set_mesh_opacity(indexValue, Math.max(0, Math.min(1, opacity)));
       } else {
         log('mesh opacity 方法未导出，已跳过', 'warn');
       }
-
-      gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y);
     });
 
     byId('3d-rot').addEventListener('click', () => {
