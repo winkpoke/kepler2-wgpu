@@ -50,7 +50,7 @@ pub enum UserEvent {
     SetRotationQuat(usize, [f32; 4]),
     #[cfg(target_arch = "wasm32")]
     /// View click with reply; returns [x_mm, y_mm, slice_mm, reserved]
-    ViewClickGet(usize, f32, f32, f32, oneshot::Sender<[f32; 4]>),
+    ViewClickGet(usize, f32, f32, f32, oneshot::Sender<([f32; 4], f32)>),
     // Mesh control events
     SetMeshRotationEnabled(usize, bool),
     SetMeshOpacity(usize, f32),
@@ -357,7 +357,12 @@ impl GLCanvas {
             return Err(format!("Failed to send event: {:?}", e));
         }
         match rx.await {
-            Ok(result) => Ok(result.into()),
+            Ok((coords, pixel)) => {
+                let mut ret = vec![0.0; 5];
+                ret[0..4].copy_from_slice(&coords);
+                ret[4] = pixel;
+                Ok(ret.into_boxed_slice())
+            }
             Err(e) => Err(format!("Failed to receive result: {:?}", e)),
         }
     }

@@ -89,7 +89,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Intersection line drawing
     var draw_line = false;
     
-    if (u_uniform_frag.is_dual_mode > 0.5) {
+    if (u_uniform_frag.is_dual_mode > 1.5) {
+        // Single view, but draw intersection with mat2 (Oblique plane)
+        let p1 = (current_mat * vec4<f32>(local_x, in.tex_coords.y, depth, 1.0)).xyz;
+        let n2 = normalize(vec3<f32>(u_uniform_frag.mat2[2][0], u_uniform_frag.mat2[2][1], u_uniform_frag.mat2[2][2]));
+        let p2 = (u_uniform_frag.mat2 * vec4<f32>(0.5, 0.5, 0.0, 1.0)).xyz;
+        let dist = dot(p1 - p2, n2);
+        if (abs(dist) < 0.003) {
+            draw_line = true;
+        }
+    } else if (u_uniform_frag.is_dual_mode > 0.5) {
         if (in.tex_coords.x < 0.498) {
             // Left view: use mat1
             local_x = in.tex_coords.x * 2.0;

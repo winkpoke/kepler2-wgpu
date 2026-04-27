@@ -66,6 +66,12 @@ impl CTVolume {
     pub fn base(&self) -> &Base {
         &self.base
     }
+
+    pub fn get_voxel(&self, x: usize, y: usize, z: usize) -> Option<i16> {
+        let (rows, cols, slices) = self.dimensions;
+        let idx = z * rows * cols + y * cols + x;
+        self.voxel_data.get(idx).copied()
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]

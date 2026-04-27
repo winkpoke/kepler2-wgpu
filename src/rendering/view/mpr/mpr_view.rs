@@ -824,6 +824,27 @@ impl MprView {
         self.oblique_rotation
     }
 
+    pub fn show_intersection_line(&mut self, oblique_matrix: [f32; 16]) {
+        self.wgpu_impl.set_matrix2(oblique_matrix);
+        self.wgpu_impl.uniforms.frag.is_dual_mode = 2.0;
+    }
+
+    pub fn hide_intersection_line(&mut self) {
+        if !self.dual_mode {
+            self.wgpu_impl.uniforms.frag.is_dual_mode = 0.0;
+        }
+    }
+
+    pub fn get_transform_matrix(&self) -> Mat4 {
+        // 计算并提取从屏幕坐标到 UV 空间映射的变换矩
+        let t_pan = Mat4::from_translation(-self.pan);
+        let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
+        let s_scale = Mat4::from_scale(Vec3::splat(self.scale).with_z(1.0));
+        let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
+        let transform_matrix_screen = self.base_screen * t_pan * t_center * s_scale * t_uncenter;
+        self.base_uv.inverse() * transform_matrix_screen
+    }
+
     pub fn set_oblique_rotation(&mut self, q: [f32; 4]) -> KeplerResult<()> {
         self.oblique_rotation = Quat::from_array(q);
         self.oblique_center_world();

@@ -380,8 +380,10 @@ impl RenderApp {
                                     },
                                 ..
                             } => {
-                                state.set_render_mode(0, None, None, None, 2);
-                                let _ = state.set_dual_mpr_mode(0, true, 0);
+                                // state.set_render_mode(0, None, None, None, 2);
+                                // let _ = state.set_dual_mpr_mode(0, true, 0);
+                                state.set_render_mode(3, None, Some(0), None, 3);
+                                state.set_oblique_rotation_radians(0, 0.0, 20.0, 0.0);
                                 log::info!("KeyA pressed: mpr mode toggled to {}", true);
                             }
                             WindowEvent::KeyboardInput {

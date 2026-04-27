@@ -83,14 +83,9 @@ fn sample_volume(coords: vec3<f32>) -> f32 {
 fn apply_window_level(value: f32) -> f32 {
     let center = u_mip.level;
     let width = max(u_mip.window, 1e-6);
-    var v: f32;
-    if (value <= (center - 0.5 - (width - 1.0) / 2.0)) {
-        v = 0.0;
-    } else if (value > (center - 0.5 + (width - 1.0) / 2.0)) {
-        v = 1.0;
-    } else {
-        v = ((value - (center - 0.5)) / (width - 1.0)) + 0.5;
-    }
+    let min_val = center - 0.5 - (width - 1.0) * 0.5;
+    let max_val = center - 0.5 + (width - 1.0) * 0.5;
+    let v = (value - min_val) / (max_val - min_val);
     return clamp(v, 0.0, 1.0);
 }
 
@@ -150,9 +145,7 @@ fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end:
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // pan/scale centered at 0.5
     let scale = max(u_mip.scale, 0.0001);
-    let uv_centered = in.tex_coords - vec2<f32>(0.5, 0.5);
-    let uv_scaled = uv_centered / scale;
-    let uv = uv_scaled + vec2<f32>(0.5, 0.5) + vec2<f32>(u_mip.pan_x, u_mip.pan_y);
+    let uv = (in.tex_coords - 0.5) / scale + 0.5 + vec2<f32>(u_mip.pan_x, u_mip.pan_y);
     let uv_clamped = clamp(uv, vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0));
 
     // Establish orthographic ray along +Z (texture coords space)
@@ -175,11 +168,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // Map intensity -> display value using window/level
     var processed = apply_window_level(intensity);
-
-    // // For MinIP (mode == 1), invert the display mapping so low-HU -> bright.
-    // if (u_mip.mode >= 1.0 && u_mip.mode < 2.0) {
-    //     processed = 1.0 - processed;
-    // }
 
     return vec4<f32>(processed, processed, processed, 1.0);
 }

@@ -212,9 +212,39 @@ impl App {
     }
 
     pub fn update(&mut self) {
+        self.sync_oblique_intersection();
         self.app_view
             .layout
             .update(&self.graphics_context.graphics.queue);
+    }
+
+    fn sync_oblique_intersection(&mut self) {
+        let mut oblique_mat = None;
+        for view in self.app_view.layout.views() {
+            if let Some(mpr_view) = view.as_any().downcast_ref::<view::MprView>() {
+                if matches!(mpr_view.get_orientation(), view::Orientation::Oblique) {
+                    oblique_mat = Some(mpr_view.get_transform_matrix());
+                    break;
+                }
+            }
+        }
+        
+        if let Some(mat) = oblique_mat {
+            let mat_array = mat.to_cols_array();
+            for view in self.app_view.layout.views_mut() {
+                if let Some(mpr_view) = view.as_any_mut().downcast_mut::<view::MprView>() {
+                    if !matches!(mpr_view.get_orientation(), view::Orientation::Oblique) {
+                        mpr_view.show_intersection_line(mat_array);
+                    }
+                }
+            }
+        } else {
+            for view in self.app_view.layout.views_mut() {
+                if let Some(mpr_view) = view.as_any_mut().downcast_mut::<view::MprView>() {
+                    mpr_view.hide_intersection_line();
+                }
+            }
+        }
     }
 
     /// Function-level comment: Check if the layout contains any MIP views for MIP pass execution.
@@ -820,7 +850,7 @@ impl App {
         screen_x: f32,
         screen_y: f32,
         screen_z: f32,
-    ) -> [f32; 4] {
+    ) -> ([f32; 4], f32) {
         // Default failure return uses NaN to indicate invalid result to the caller
         let mut result = [f32::NAN, f32::NAN, f32::NAN, f32::NAN];
 
@@ -852,6 +882,26 @@ impl App {
             }
         };
 
+        // Convert world coordinates to voxel coordinates
+        let vol = self.app_model.volume().unwrap();
+        let inverse_matrix = vol.base().matrix.inverse();
+        let voxel_coord = inverse_matrix.transform_point3(glam::Vec3::from_array(world_coord));
+        let vx = voxel_coord.x.round() as isize;
+        let vy = voxel_coord.y.round() as isize;
+        let vz = voxel_coord.z.round() as isize;
+
+        let (cols, rows, slices) = vol.dimensions();
+        let pixel_value = if vx >= 0 && vx < cols as isize 
+            && vy >= 0 && vy < rows as isize 
+            && vz >= 0 && vz < slices as isize 
+        {
+            vol.get_voxel(vx as usize, vy as usize, vz as usize).unwrap_or(-1000) as f32
+        } else {
+            -1000.0
+        };
+
+        log::info!("handle_view_click: pixel_value={}", pixel_value);
+
         // Update slice positions for all other MPR views
         for (index, view) in self.app_view.layout.views_mut().iter_mut().enumerate() {
             // Skip the clicked view itself
@@ -879,7 +929,7 @@ impl App {
         }
 
         log::info!("handle_view_click: result={:?}", result);
-        result
+        (result, pixel_value)
     }
 
     /// Function-level comment: Convert world coordinates to screen coordinates for the specified view.

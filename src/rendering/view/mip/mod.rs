@@ -34,11 +34,11 @@ impl Default for MipConfig {
     /// These values provide a good balance between quality and performance for medical imaging.
     fn default() -> Self {
         Self {
-            ray_step_size: 0.005, // Default 0.005mm step size
-            max_steps: 1000.0,    // Default 1000 steps
+            ray_step_size: 0.005,     // Default 0.005mm step size
+            max_steps: 1000.0,        // Default 1000 steps
             lower_threshold: -1024.0, // Default lower threshold
             upper_threshold: 3071.0,  // Default upper threshold
-            slab_thickness: 10.0, // Default 10mm slab
+            slab_thickness: 10.0,     // Default 10mm slab
             mip_mode: 0,              // Default to Maximum Intensity Projection
         }
     }
@@ -279,35 +279,6 @@ impl MipView {
         Mat4::from_rotation_z(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_x(pitch)
     }
 
-    /// Helper to get render parameters (W/L, Thresholds) based on mode.
-    /// Returns (window, level, lower_threshold, upper_threshold).
-    fn get_render_params(&mut self, mip_mode: u32) {
-        match mip_mode {
-            1 => {
-                // MinIP: Lung Window, full range to include air
-                self.config.ray_step_size = 0.004;
-                self.config.max_steps = 1500.0;
-                self.config.lower_threshold = -1024.0;
-                self.config.upper_threshold = 300.0;
-            }
-            2 => {
-                // AvgIP: Soft Tissue Window, full range
-                self.config.ray_step_size = 0.003;
-                self.config.max_steps = 2000.0;
-                self.config.lower_threshold = -200.0;
-                self.config.upper_threshold = 300.0;
-            }
-            _ => {
-                // MIP: Bone Window, full range
-                self.config.ray_step_size = 0.005;
-                self.config.max_steps = 1000.0;
-                self.config.lower_threshold = -1024.0;
-                self.config.upper_threshold = 3071.0;
-
-            }
-        }
-    }
-
     /// Set scale factor.
     pub fn set_scale(&mut self, scale: f32) {
         let clamped = scale.clamp(0.001, 100.0);
@@ -340,6 +311,30 @@ impl MipView {
     pub fn set_mip_mode(&mut self, mip_mode: u32) {
         self.config.mip_mode = mip_mode;
         log::info!("MIP mode set to {}", mip_mode);
+
+        match mip_mode {
+            1 => {
+                // MinIP: Lung Window, full range to include air
+                self.config.ray_step_size = 0.004;
+                self.config.max_steps = 1500.0;
+                self.config.lower_threshold = -1024.0;
+                self.config.upper_threshold = 300.0;
+            }
+            2 => {
+                // AvgIP: Soft Tissue Window, full range
+                self.config.ray_step_size = 0.003;
+                self.config.max_steps = 2000.0;
+                self.config.lower_threshold = -200.0;
+                self.config.upper_threshold = 300.0;
+            }
+            _ => {
+                // MIP: Bone Window, full range
+                self.config.ray_step_size = 0.005;
+                self.config.max_steps = 1000.0;
+                self.config.lower_threshold = -1024.0;
+                self.config.upper_threshold = 3071.0;
+            }
+        }
     }
 
     /// Set MIP slab thickness in mm.
@@ -387,9 +382,6 @@ impl Renderable for MipView {
         // Derive texture format flag for shader decoding
         let decode_params = self.wgpu_impl.render_content().decode_parameters();
 
-        // Get render parameters based on MIP mode
-        self.get_render_params(self.config.mip_mode);
-
         // Create uniforms
         let rotation = Self::build_rotation_matrix(
             self.rotation_radians[0],
@@ -406,7 +398,7 @@ impl Renderable for MipView {
         let sz = self.config.slab_thickness;
         let w_mm = w_vol * 1.0;
         let h_mm = h_vol * 1.0;
-        let _d_mm = d_vol * sz; // Unused for viewport sizing to prevent zoom-out on deep volumes
+        let d_mm = d_vol * sz; // Unused for viewport sizing to prevent zoom-out on deep volumes
 
         // Optimize: Use width/height max as base dimension to "move view inside".
         // Using diagonal or including depth causes excessive zoom-out, revealing artifacts.
@@ -418,7 +410,7 @@ impl Renderable for MipView {
 
         // Construct Composite Matrix for Shader
         let scale_viewport = Mat4::from_scale(Vec3::new(cw, ch, cw));
-        let scale_texture = Mat4::from_scale(Vec3::new(1.0 / w_mm, 1.0 / h_mm, 1.0 / _d_mm));
+        let scale_texture = Mat4::from_scale(Vec3::new(1.0 / w_mm, 1.0 / h_mm, 1.0 / d_mm));
         let final_matrix = scale_texture * rotation * scale_viewport;
 
         let uniforms = MipUniforms {
