@@ -50,7 +50,9 @@ pub enum UserEvent {
     SetRotationQuat(usize, [f32; 4]),
     #[cfg(target_arch = "wasm32")]
     /// View click with reply; returns [x_mm, y_mm, slice_mm, reserved]
-    ViewClickGet(usize, f32, f32, f32, oneshot::Sender<([f32; 4], f32)>),
+    ViewClickGet(usize, f32, f32, f32, oneshot::Sender<[f32; 4]>),
+    #[cfg(target_arch = "wasm32")]
+    GetPixelValue(usize, f32, f32, oneshot::Sender<f32>),
     // Mesh control events
     SetMeshRotationEnabled(usize, bool),
     SetMeshOpacity(usize, f32),
@@ -357,12 +359,40 @@ impl GLCanvas {
             return Err(format!("Failed to send event: {:?}", e));
         }
         match rx.await {
-            Ok((coords, pixel)) => {
-                let mut ret = vec![0.0; 5];
-                ret[0..4].copy_from_slice(&coords);
-                ret[4] = pixel;
-                Ok(ret.into_boxed_slice())
-            }
+            Ok(result) => Ok(result.into()),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn get_pixel_value_from_screen(
+        &self,
+        index: usize,
+        x: f32,
+        y: f32,
+    ) -> Result<f32, String> {
+        log::info!(
+            "get_pixel_value_from_screen: index={}, x={}, y={}",
+            index,
+            x,
+            y
+        );
+        let (tx, rx) = oneshot::channel();
+
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::GetPixelValue(index, x, y, tx))
+        {
+            log::error!(
+                "Failed to send GetPixelValue event for window {}: {:?}",
+                index,
+                e
+            );
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+
+        match rx.await {
+            Ok(result) => Ok(result.into()),
             Err(e) => Err(format!("Failed to receive result: {:?}", e)),
         }
     }

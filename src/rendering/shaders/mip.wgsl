@@ -47,17 +47,16 @@ var<uniform> u_mip: MipUniforms;
 
 // Intersect axis-aligned unit box [0,1]^3
 fn intersect_volume(ray_origin: vec3<f32>, ray_dir: vec3<f32>) -> vec2<f32> {
-    let box_min = vec3<f32>(0.0, 0.0, 0.0);
-    let box_max = vec3<f32>(1.0, 1.0, 1.0);
-    let eps = 1e-6;
-    let inv_dir = select(vec3<f32>(1e20, 1e20, 1e20), 1.0 / ray_dir, abs(ray_dir) > vec3<f32>(eps, eps, eps));
-    let t0 = (box_min - ray_origin) * inv_dir;
-    let t1 = (box_max - ray_origin) * inv_dir;
-    let tmin3 = min(t0, t1);
-    let tmax3 = max(t0, t1);
-    let t_min = max(max(tmin3.x, tmin3.y), tmin3.z);
-    let t_max = min(min(tmax3.x, tmax3.y), tmax3.z);
-    return vec2<f32>(t_min, t_max);
+    let is_zero = abs(ray_dir) < vec3<f32>(1e-6);
+    let sign_dir = select(sign(ray_dir), vec3<f32>(1.0), is_zero);
+    let inv = 1.0 / max(abs(ray_dir), vec3<f32>(1e-6)) * sign_dir;
+    let t0 = (vec3<f32>(0.0) - ray_origin) * inv;
+    let t1 = (vec3<f32>(1.0) - ray_origin) * inv;
+
+    let tmin = max(max(min(t0.x,t1.x), min(t0.y,t1.y)), min(t0.z,t1.z));
+    let tmax = min(min(max(t0.x,t1.x), max(t0.y,t1.y)), max(t0.z,t1.z));
+
+    return vec2<f32>(tmin, tmax);
 }
 
 fn sample_volume(coords: vec3<f32>) -> f32 {

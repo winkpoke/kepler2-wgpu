@@ -441,7 +441,7 @@ impl MeshView {
             };
 
             let vol_uniforms = MeshUniforms {
-                ray_step_size: 1.0 / (w.max(h).max(d)),
+                ray_step_size: 0.004,
                 max_steps: 1500.0,
                 is_packed_rg8: is_packed_rg8,
                 bias: decode_params.bias,
@@ -456,10 +456,8 @@ impl MeshView {
                 light_dir: [0.5, 0.5, -1.0],
                 aspect_ratio,
                 rotation: final_matrix.to_cols_array(),
-                preset: self.mode as f32,
-                _pad1: 0.0,
-                _pad2: 0.0,
-                _pad3: 0.0
+                vol_dims: [w, h, d],
+                preset: self.mode as f32
             };
 
             // update

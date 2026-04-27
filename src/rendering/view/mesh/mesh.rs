@@ -26,10 +26,8 @@ pub struct MeshUniforms {
     pub light_dir: [f32; 3],
     pub aspect_ratio: f32,
     pub rotation: [f32; 16],
+    pub vol_dims: [f32; 3],
     pub preset: f32,
-    pub _pad1: f32,
-    pub _pad2: f32,
-    pub _pad3: f32,
 }
 
 impl Default for MeshUniforms {
@@ -50,10 +48,8 @@ impl Default for MeshUniforms {
             light_dir: [0.5, 0.5, -1.0],
             aspect_ratio: 1.0,
             rotation: Mat4::IDENTITY.to_cols_array(),
+            vol_dims: [512.0, 512.0, 300.0],
             preset: 0.0,
-            _pad1: 0.0,
-            _pad2: 0.0,
-            _pad3: 0.0
         }
     }
 }

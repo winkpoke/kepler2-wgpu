@@ -236,7 +236,7 @@ pub fn create_volume_pipeline(
     let shader = device.create_shader_module(ShaderModuleDescriptor {
         label: Some("Volume Shader"),
         source: ShaderSource::Wgsl(
-            include_str!("../shaders/mesh_volume.wgsl").into(),
+            include_str!("../shaders/mesh.wgsl").into(),
         ),
     });
 

@@ -265,6 +265,15 @@ impl RenderApp {
                     }
                 }
                 #[cfg(target_arch = "wasm32")]
+                Event::UserEvent(UserEvent::GetPixelValue(view_index, screen_x, screen_y, sender)) => {
+                    let result = state.get_pixel_value_from_screen(view_index, screen_x, screen_y);
+                    if let Err(_) = sender.send(result) {
+                        log::error!("Failed to send GetPixelValue result for view {}", view_index);
+                    } else {
+                        log::info!("Sent GetPixelValue result for view {}: {:?}", view_index, result);
+                    }
+                }
+                #[cfg(target_arch = "wasm32")]
                 Event::UserEvent(UserEvent::GetScreenCoordInMM(index, coord, sender)) => {
                     // Function-level comment: Handle get_screen_coord_in_mm request and send result back via oneshot channel.
                     let result = state.get_screen_coord_in_mm(index, coord);

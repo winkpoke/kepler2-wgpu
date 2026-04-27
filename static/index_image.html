@@ -627,10 +627,9 @@
         alert('Please select a series first!');
         return;
       }
-      // Function-level comment: Request Rust to compute world/slice data and await the result Promise.
+      
       try {
         const result = await gl_canvas.handle_view_click_get(indexValue, x, y, z);
-        console.log('handle_view_click:', result);
       } catch (e) {
         console.error('handle_view_click error:', e);
       }

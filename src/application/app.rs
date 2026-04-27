@@ -841,6 +841,40 @@ impl App {
         }
     }
 
+    /// get pixel value from screen coordinate 
+    pub fn get_pixel_value_from_screen(
+        &self,
+        view_index: usize,
+        screen_x: f32,
+        screen_y: f32,
+    ) -> f32 {
+        let view = self.app_view.layout.views().get(view_index).unwrap();
+        let world_coord = if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
+            mpr_view.screen_coord_to_world([screen_x, screen_y, 0.0])
+        } else {
+            return -1000.0;
+        };
+
+        let vol = self.app_model.volume().unwrap();
+        let inverse_matrix = vol.base().matrix.inverse();
+        let voxel_coord = inverse_matrix.transform_point3(glam::Vec3::from_array(world_coord));
+        let vx = voxel_coord.x.round() as isize;
+        let vy = voxel_coord.y.round() as isize;
+        let vz = voxel_coord.z.round() as isize;
+
+        let (cols, rows, slices) = vol.dimensions();
+        let pixel_value = if vx >= 0 && vx < cols as isize 
+            && vy >= 0 && vy < rows as isize 
+            && vz >= 0 && vz < slices as isize 
+        {
+            vol.get_voxel(vx as usize, vy as usize, vz as usize).unwrap_or(-1000) as f32
+        } else {
+            -1000.0
+        };
+        log::info!("pixel_value={}", pixel_value);
+        pixel_value
+    }
+
     /// Function-level comment: Handle view click for cross-sectional linking between MPR views.
     /// When a user clicks on an MPR view, this method converts the screen coordinates to world coordinates
     /// and updates the slice positions of other MPR views to show the corresponding cross-sections.
@@ -850,18 +884,13 @@ impl App {
         screen_x: f32,
         screen_y: f32,
         screen_z: f32,
-    ) -> ([f32; 4], f32) {
+    ) -> [f32; 4] {
         // Default failure return uses NaN to indicate invalid result to the caller
         let mut result = [f32::NAN, f32::NAN, f32::NAN, f32::NAN];
 
         // Convert screen coordinates to world coordinates for the clicked view
         let (world_coord, slice_mm) = {
-            let clicked_view = self
-                .app_view
-                .layout
-                .views()
-                .get(clicked_view_index)
-                .unwrap();
+            let clicked_view = self.app_view.layout.views().get(clicked_view_index).unwrap();
             if let Some(mpr_view) = clicked_view.as_any().downcast_ref::<MprView>() {
                 let world_coord = mpr_view.screen_coord_to_world([screen_x, screen_y, screen_z]);
                 let slice = mpr_view.get_slice_mm();
@@ -881,26 +910,6 @@ impl App {
                 ([f32::NAN, f32::NAN, f32::NAN], f32::NAN)
             }
         };
-
-        // Convert world coordinates to voxel coordinates
-        let vol = self.app_model.volume().unwrap();
-        let inverse_matrix = vol.base().matrix.inverse();
-        let voxel_coord = inverse_matrix.transform_point3(glam::Vec3::from_array(world_coord));
-        let vx = voxel_coord.x.round() as isize;
-        let vy = voxel_coord.y.round() as isize;
-        let vz = voxel_coord.z.round() as isize;
-
-        let (cols, rows, slices) = vol.dimensions();
-        let pixel_value = if vx >= 0 && vx < cols as isize 
-            && vy >= 0 && vy < rows as isize 
-            && vz >= 0 && vz < slices as isize 
-        {
-            vol.get_voxel(vx as usize, vy as usize, vz as usize).unwrap_or(-1000) as f32
-        } else {
-            -1000.0
-        };
-
-        log::info!("handle_view_click: pixel_value={}", pixel_value);
 
         // Update slice positions for all other MPR views
         for (index, view) in self.app_view.layout.views_mut().iter_mut().enumerate() {
@@ -929,7 +938,7 @@ impl App {
         }
 
         log::info!("handle_view_click: result={:?}", result);
-        (result, pixel_value)
+        result
     }
 
     /// Function-level comment: Convert world coordinates to screen coordinates for the specified view.
