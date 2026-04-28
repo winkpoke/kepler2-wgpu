@@ -356,8 +356,8 @@
                 <input type="number" id="center-x" step="0.1" value="0.0" placeholder="x">
                 <input type="number" id="center-y" step="0.1" value="0.0" placeholder="y">
                 <input type="number" id="center-z" step="0.1" value="0.0" placeholder="z">
-              </div>
-              <button id="set-center">应用</button>
+              </div><br>
+              <button id="get-point">get point</button>
             </div>
             <div>
               <span id="mip-mode-label">MIP Mode:</span>
@@ -613,12 +613,27 @@
       gl_canvas.set_slab_thickness(indexValue, thicknessValue);
     })
 
-    byId('set-center').addEventListener('click', async () => {
+    bindInput(['center-x', 'center-y', 'center-z', 'index-input'], async () => {
       const x = parseFloat(byId('center-x').value);
       const y = parseFloat(byId('center-y').value);
       const z = parseFloat(byId('center-z').value);
-      const input_index = byId('index-input');
-      const indexValue = parseInt(input_index.value);
+      const indexValue = parseInt(byId('index-input').value);
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+      try {
+        const result = await gl_canvas.handle_view_click_get(indexValue, x, y, z);
+      } catch (e) {
+        console.error('handle_view_click error:', e);
+      }
+    })
+
+    byId('get-point').addEventListener('click', async () => {
+      const x = parseFloat(byId('center-x').value);
+      const y = parseFloat(byId('center-y').value);
+      const z = parseFloat(byId('center-z').value);
+      const indexValue = parseInt(byId('index-input').value);
       if ([x, y, z].some(v => Number.isNaN(v))) {
         alert('Please enter a valid number');
         return;
@@ -628,11 +643,8 @@
         return;
       }
       
-      try {
-        const result = await gl_canvas.handle_view_click_get(indexValue, x, y, z);
-      } catch (e) {
-        console.error('handle_view_click error:', e);
-      }
+      const result = await gl_canvas.get_pixel_value_from_screen(indexValue, x, y);
+      console.log('get point:', result);
     });
 
     byId('points').addEventListener('click', () => {

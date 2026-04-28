@@ -156,9 +156,9 @@ fn transfer_function(hu: f32, grad_mag: f32) -> vec4<f32> {
     }
     
     // 基础颜色设定：从深红棕色（低值）过渡到浅黄色/白色（高值）
-    let color_low = vec3<f32>(0.4, 0.1, 0.05);   // 暗红棕色 (类似外层组织)
-    let color_mid = vec3<f32>(0.8, 0.4, 0.2);    // 亮橙棕色 (类似肌肉)
-    let color_high = vec3<f32>(1.0, 0.95, 0.85); // 骨白色
+    let color_low = vec3<f32>(0.18, 0.14, 0.12);   // 深灰褐色（空气/低密度组织过渡）
+    let color_mid = vec3<f32>(0.72, 0.55, 0.44);   // 肉色浅棕（软组织）
+    let color_high = vec3<f32>(0.98, 0.96, 0.92);  // 骨白色（高密度骨骼）
 
     // 使用 smoothstep 根据 norm 在三种颜色之间平滑插值
     var color = mix(color_low, color_mid, smoothstep(0.0, 0.5, norm));
@@ -168,9 +168,6 @@ fn transfer_function(hu: f32, grad_mag: f32) -> vec4<f32> {
     // 在 3D Slicer 中，低值通常更透明，高值更不透明。
     // 这里我们使用非线性曲线（例如二次方或立方），让过渡更自然，剥离感更强。
     var base_alpha = pow(norm, 2.5); // 指数越大，低值区域越透明，剥离感越强
-
-    // 边缘增强：梯度大的地方（边界处）略微增加不透明度，让结构更清晰
-    // 避免纯色区域一团糊
     let edge_factor = 1.0 + 1.5 * smoothstep(0.01, 0.1, grad_mag);
     let final_alpha = clamp(base_alpha * edge_factor, 0.0, 1.0);
 
@@ -234,24 +231,19 @@ fn iso_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32, is
 }
 
 fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) -> vec4<f32> {
-    let dims = u_vol.vol_dims; // 例如 vec3(512.0, 512.0, 300.0)
-    let ray_dir_vox = ray_dir * dims; // 将光线方向从 [0,1] 空间映射到体素空间
+    let dims = u_vol.vol_dims;
+    let ray_dir_vox = ray_dir * dims;
     let inv_len = 1.0 / max(length(ray_dir_vox), 1e-6);
     
-    // step_vox 决定了每次采样的跨度（0.5 表示每次走半个体素）
-    // 你可以通过 u_vol.ray_step_size 来控制这个系数，或者写死
     let step_vox = 0.5; 
-    let dt = step_vox * inv_len; // 这是在 [0,1] 归一化空间中，光线每步应该前进的 t 增量
-    let step_len = step_vox;     // 这是用于 Alpha 积分的物理/体素长度
+    let dt = step_vox * inv_len;
+    let step_len = step_vox; 
     let max_steps = u32(max(u_vol.max_steps, 1.0));
 
     var accum_rgb = vec3<f32>(0.0);
     var accum_a = 0.0;
     var t = t0;
 
-    // 提取出 min_val 用于早期跳过 (Empty Space Skipping)
-    // 只要 HU 低于窗底，apply_window_level 就会返回 0，产生 0 的 alpha。
-    // 我们可以直接跳过这些采样，极大提升性能！
     let center = u_vol.level;
     let width = max(u_vol.window, 1e-6);
     let min_val = center - 0.5 - (width - 1.0) * 0.5;
@@ -264,7 +256,6 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
         let pos = ray_origin + t * ray_dir;
         let hu = sample_volume(pos);
 
-        // 如果 HU 低于窗底，完全透明，加大步长跳过
         if (hu < min_val) {
             t = t + dt * 2.0;
             continue;
@@ -274,15 +265,12 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
         let grad_mag = length(n);
         let tf = transfer_function(hu, grad_mag);
 
-        // 如果该体素有可见贡献
         if (tf.a > 0.005) {
             let vdir = normalize(-ray_dir);
-            // 光照计算保持不变
             let lit_color = compute_lighting(n, vdir, tf.rgb);
 
-            // 转换 Alpha 到密度进行合成 (Front-to-Back)
             let density = tf.a * u_vol.opacity_multiplier * 50.0; 
-            let sample_alpha = 1.0 - exp(-density * step_len); 
+            let sample_alpha = 1.0 - exp(-density * step_len);
 
             accum_rgb += (1.0 - accum_a) * lit_color * sample_alpha;
             accum_a += (1.0 - accum_a) * sample_alpha;
@@ -306,10 +294,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     let uv = (uv_centered / scale) + vec2<f32>(0.5, 0.5) + vec2<f32>(u_vol.pan_x, u_vol.pan_y);
-    let uv_clamped = clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0),);
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
 
     let center = vec3<f32>(0.5, 0.5, 0.5);
-    let base_ray_origin = vec3<f32>(uv_clamped.x, 1.0 - uv_clamped.y, -0.5);
+    let base_ray_origin = vec3<f32>(uv.x, 1.0 - uv.y, -0.5);
 
     let ray_origin = (u_vol.rotation * vec4<f32>(base_ray_origin - center, 1.0)).xyz + center;
     let ray_dir = normalize((u_vol.rotation * vec4<f32>(0.0, 0.0, 1.0, 0.0)).xyz);
@@ -328,19 +318,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(0.0);
     }
 
-    // 计算步长抖动 (Jittering) 以减少条纹
     let dims = u_vol.vol_dims;
     let ray_dir_vox = ray_dir * dims;
     let inv_len = 1.0 / max(length(ray_dir_vox), 1e-6);
-    let step_vox = 0.5; // 根据模式不同，这里可能略有差异，可以使用 uniform 传过来
+    let step_vox = 0.5;
     let dt = step_vox * inv_len;
     
     t_start = t_start + hash(in.tex_coords) * dt;
 
-    // 进入具体的渲染模式
     if (u_vol.preset < 1.5) {
         let iso = get_iso_threshold();
-        // 传入经过 ROI 裁剪后的 t_start 和 t_end
         return iso_ray_march(ray_origin, ray_dir, t_start, t_end, iso);
     }
 

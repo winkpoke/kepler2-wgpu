@@ -592,6 +592,17 @@ impl App {
                     self.app_view.restore_view_states();
                 }
             }
+
+            let thickness = vol.voxel_spacing.2 / vol.voxel_spacing.0;
+            for index_opt in [mesh_index, mip_index].iter() {
+                if let Some(index) = index_opt {
+                    if let Err(e) = self.app_view.set_slab_thickness(*index, thickness) {
+                        log::warn!("set_slab_thickness failed on view {}: {}", index, e);
+                    } else {
+                        log::info!("View {} set_slab_thickness: {}", index, thickness);
+                    }
+                }
+            }
         } else {
             log::info!(
                 "MPR/MIP layout requested without loaded volume; will apply on next data load."

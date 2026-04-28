@@ -527,11 +527,11 @@ impl AppView {
         mip_index: Option<usize>,
         mesh_index: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // 1. 切换 layout
+        // check layout mode
         self.set_three_layout(1, 3, 0); 
         self.remove_all();
 
-        // 2. 左侧大视图（第一个 MPR）
+        // layout main view (MPR)
         let main_orientation = ALL_ORIENTATIONS[indices[0]];
         let main_view = self.view_factory.create_mpr_view_with_content(
             texture.clone(),
@@ -542,7 +542,7 @@ impl AppView {
         )?;
         LayoutContainer::add_view(&mut self.layout, main_view);
 
-        // 3. 右侧三个小视图（MPR）
+        // layout small views (MPR)
         for i in 1..4 {
             let orientation = ALL_ORIENTATIONS[indices[i]];
             let view = self.view_factory.create_mpr_view_with_content(
@@ -555,14 +555,13 @@ impl AppView {
             LayoutContainer::add_view(&mut self.layout, view);
         }
 
-        // 4. optional extra view replacement (MIP or Mesh)
+        // optional extra view replacement (MIP or Mesh)
         if mip_index.is_some() {
             let mip_view =  self.view_factory.create_mip_view_with_content(
                 texture.clone(),
                 (0, 0),
                 (0, 0),
             )?;
-            // replace last small view (or configurable slot)
             LayoutContainer::replace_view_at(&mut self.layout, mip_index.unwrap(), mip_view);
         }
 

@@ -145,12 +145,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // pan/scale centered at 0.5
     let scale = max(u_mip.scale, 0.0001);
     let uv = (in.tex_coords - 0.5) / scale + 0.5 + vec2<f32>(u_mip.pan_x, u_mip.pan_y);
-    let uv_clamped = clamp(uv, vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0));
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
 
     // Establish orthographic ray along +Z (texture coords space)
     let center = vec3<f32>(0.5, 0.5, 0.5);
     // Note the flip in y to match screen->texture coord mapping
-    let base_ray_origin = vec3<f32>(uv_clamped.x, 1.0 - uv_clamped.y, -0.5);
+    let base_ray_origin = vec3<f32>(uv.x, 1.0 - uv.y, -0.5);
 
     let volume_ray_origin = (u_mip.rotation * vec4<f32>(base_ray_origin - center, 1.0)).xyz + center;
     let volume_ray_dir = normalize((u_mip.rotation * vec4<f32>(0.0, 0.0, 1.0, 0.0)).xyz);

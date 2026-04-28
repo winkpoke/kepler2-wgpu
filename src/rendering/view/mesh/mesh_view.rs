@@ -134,7 +134,7 @@ impl Default for MeshView {
             roi_max: [1.0, 1.0, 1.0],
             window_level: WindowLevel::new(),
             slab_thickness: 1.25,
-            mode: 0,
+            mode: 2,
         }
     }
 }
