@@ -174,6 +174,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - 2025-12-17T16-10-36: Updated `doc/redering/basic-mesh-rendering.md` with current WGPU architecture notes and corrected mesh doc paths.
+- 2026-04-28T18-01-01: Consolidated ViewFactory-related view docs and added current implementation notes for `src/rendering/view/`.
+  - ViewFactory notes: `doc/views/2025-11-08T21-26-05-view-factory-extraction.md`
+  - View/layout overview: `doc/views/view-layout-refactoring-plan.md`
 
 ### Changed
 - 2025-11-17T17-50-00: Reorganized documentation folder structure:
@@ -200,7 +203,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Preserves existing behavior; public API unchanged (fields are `pub(crate)`).
   - All existing call sites continue to work via auto-deref to `&Device`/`&Queue`.
   - Verified native build succeeds; tests mostly pass (2 integration tests fail due to missing external files).
-  - Documentation: `doc/views/2025-11-08T22-27-07-default-view-factory-init-and-arc-device-queue.md`.
+  - Documentation: `doc/views/2025-11-08T21-26-05-view-factory-extraction.md`.
 
 ### Added
 - 2025-11-08T22-28-40: Declared `trace-logging` feature in `Cargo.toml` to gate heavy TRACE logs as required.
@@ -228,7 +231,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Forwarding implementation in `ViewManager` with INFO/DEBUG logging and error propagation.
   - Updated test mocks to implement the new method; all `view_transition_integration_tests` pass.
   - Verified native build (`cargo build`) and WASM build (`wasm-pack build -t web`) succeed.
-  - Documentation added in `doc/views/2025-11-08T21-32-39-mip-view-factory.md`.
+  - Documentation: `doc/views/2025-11-08T21-26-05-view-factory-extraction.md`.
 
 ### Changed
 - 2025-11-08T21-58-55: Moved `DefaultViewFactory` into `src/rendering/view/view_factory.rs` and removed separate `default_factory` module.
@@ -472,7 +475,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documentation: add `doc/window-level/2025-11-05T13-58-43-dicom-window-level-analysis.md` with detailed comparison to professional DICOM viewers, improvement suggestions, and no_run code examples.
 - Rationale: Align grayscale rendering with DICOM PS3.3 C.11.2.1 to match expected display behavior and reduce discrepancies across viewers.
 ## 2025-11-08T22-43-25
-Fix WASM panic caused by cross-device TextureView usage after Graphics swap. Reinitialize DefaultViewFactory inside State::swap_graphics with the new device/queue to ensure bind groups are created with resources from the same device. This prevents `wgpu-core` panic: `TextureView[...] does not exist` when creating bind groups on web. See doc/views/2025-11-08T22-43-25-wasm-textureview-panic-fix.md.
+Fix WASM panic caused by cross-device TextureView usage after Graphics swap. Reinitialize DefaultViewFactory inside State::swap_graphics with the new device/queue to ensure bind groups are created with resources from the same device. This prevents `wgpu-core` panic: `TextureView[...] does not exist` when creating bind groups on web. See doc/views/2025-11-08T21-26-05-view-factory-extraction.md.
 ## 2025-11-09T14-14-57
 
 - Fix wasm build failure (error E0425: cannot find value `volume`) in `src/application/render_app.rs`.
