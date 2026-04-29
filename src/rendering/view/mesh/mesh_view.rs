@@ -11,6 +11,7 @@ use crate::{
 };
 use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::FRAC_PI_2;
+use std::sync::Arc;
 
 /// Function-level comment: Error types specific to mesh rendering operations
 #[derive(Debug)]
@@ -75,9 +76,9 @@ impl Default for FallbackMode {
 
 pub struct MeshView {
     view_id: usize,
-    volume_ctx: Option<std::sync::Arc<MeshRenderContext>>,
+    volume_ctx: Option<Arc<MeshRenderContext>>,
     /// Context for the orientation cube (bottom-left gizmo)
-    orientation_cube_ctx: Option<std::sync::Arc<BasicMeshContext>>,
+    orientation_cube_ctx: Option<Arc<BasicMeshContext>>,
     pos: (i32, i32),
     dim: (u32, u32),
     /// Performance and error tracking
@@ -92,7 +93,7 @@ pub struct MeshView {
     quality_controller: QualityController,
     /// rotation state
     rotation_enabled: bool,
-    /// Current rotation state as a quaternion (supports free 3D rotation)
+    /// Current rotation state as a quaternion
     rotation_quat: Quat,
     /// Rotation speed in radians per second (default: π/2 = 90 degrees/second)
     rotation_speed: f32,
@@ -110,8 +111,8 @@ pub struct MeshView {
     mode: usize,
 }
 
-impl Default for MeshView {
-    fn default() -> Self {
+impl MeshView {
+    pub fn new() -> Self {
         Self {
             view_id: 0,
             volume_ctx: None,
@@ -136,12 +137,6 @@ impl Default for MeshView {
             slab_thickness: 1.25,
             mode: 2,
         }
-    }
-}
-
-impl MeshView {
-    pub fn new() -> Self {
-        Self::default()
     }
 
     pub fn view_id(&self) -> usize {
@@ -287,8 +282,7 @@ impl MeshView {
             yaw_deg.to_radians(),
             pitch_deg.to_radians(),
         );
-        let rot =
-            Mat4::from_rotation_x(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(pitch);
+        let rot = Mat4::from_rotation_x(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(pitch);
         self.rotation_quat = Quat::from_mat4(&rot);
         self.last_frame_time = Instant::now();
     }
@@ -748,7 +742,7 @@ mod tests {
     /// Function-level comment: Verify default rotation state and speed
     #[test]
     fn test_rotation_default_identity() {
-        let mesh_view = MeshView::default();
+        let mesh_view = MeshView::new();
         assert!(mesh_view.rotation_quat.abs_diff_eq(Quat::IDENTITY, 1e-6));
 
         // Check Matrix columns
@@ -762,7 +756,7 @@ mod tests {
     /// Function-level comment: Ensure enabling/disabling rotation does not panic and preserves orientation
     #[test]
     fn test_rotation_enable_disable() {
-        let mut mesh_view = MeshView::default();
+        let mut mesh_view = MeshView::new();
 
         // Set some rotation first to ensure we aren't just testing identity or default
         // Add 45 degrees around Y to the existing default
@@ -784,7 +778,7 @@ mod tests {
     /// Function-level comment: Verify rotation speed setters
     #[test]
     fn test_rotation_speed_control() {
-        let mut mesh_view = MeshView::default();
+        let mut mesh_view = MeshView::new();
         let test_speed = PI / 4.0; // 45°/s
 
         mesh_view.set_rotation_speed(test_speed);
@@ -796,7 +790,7 @@ mod tests {
 
     #[test]
     fn test_set_rotation_degrees() {
-        let mut mesh_view = MeshView::default();
+        let mut mesh_view = MeshView::new();
 
         mesh_view.set_rotation_degrees(90.0, 0.0, 0.0);
 
@@ -807,7 +801,7 @@ mod tests {
 
     #[test]
     fn test_rotation_accumulation() {
-        let mut mesh_view = MeshView::default();
+        let mut mesh_view = MeshView::new();
 
         mesh_view.set_rotation_angle_degrees(0.0, 90.0);
 
@@ -828,7 +822,7 @@ mod tests {
     /// Function-level comment: Reset rotation and verify default orientation (Identity)
     #[test]
     fn test_rotation_angle_reset() {
-        let mut mesh_view = MeshView::default();
+        let mut mesh_view = MeshView::new();
 
         // Apply some rotation
         mesh_view.set_rotation_angle_degrees(90.0, 45.0);

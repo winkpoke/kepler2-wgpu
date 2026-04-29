@@ -125,13 +125,12 @@ struct RenderContent {
 struct MprViewWgpuImpl {
     render_context: MprRenderContext,
     render_content: Arc<RenderContent>,
-    vertex_uniform_buffer: wgpu::Buffer,
-    fragment_uniform_buffer: wgpu::Buffer,
     texture_bind_group: wgpu::BindGroup,
-    vertex_uniform_bind_group: wgpu::BindGroup,
-    fragment_uniform_bind_group: wgpu::BindGroup,
-    base_screen: Base<f32>,
-    base_uv: Base<f32>,
+    uniform_vert_buffer: wgpu::Buffer,
+    uniform_vert_bind_group: wgpu::BindGroup,
+    uniform_frag_buffer: wgpu::Buffer,
+    uniform_frag_bind_group: wgpu::BindGroup,
+    uniforms: Uniforms,
 }
 
 struct MprView {

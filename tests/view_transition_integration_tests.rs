@@ -18,7 +18,7 @@ mod view_transition_integration_tests {
         impl ViewFactory for MockViewFactory {
             fn create_mesh_view(
                 &self,
-                _mesh: &kepler_wgpu::rendering::mesh::mesh::Mesh,
+                _vol: &kepler_wgpu::data::ct_volume::CTVolume,
                 _pos: (i32, i32),
                 _size: (u32, u32),
             ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
@@ -196,7 +196,7 @@ mod view_transition_integration_tests {
         impl kepler_wgpu::rendering::view::ViewFactory for MockViewFactory {
             fn create_mesh_view(
                 &self,
-                _mesh: &kepler_wgpu::rendering::mesh::mesh::Mesh,
+                _vol: &kepler_wgpu::data::ct_volume::CTVolume,
                 _pos: (i32, i32),
                 _size: (u32, u32),
             ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>>
@@ -355,7 +355,7 @@ mod view_transition_integration_tests {
         impl kepler_wgpu::rendering::view::ViewFactory for MockViewFactory {
             fn create_mesh_view(
                 &self,
-                _mesh: &kepler_wgpu::rendering::mesh::mesh::Mesh,
+                _vol: &kepler_wgpu::data::ct_volume::CTVolume,
                 _pos: (i32, i32),
                 _size: (u32, u32),
             ) -> Result<Box<dyn kepler_wgpu::rendering::view::View>, Box<dyn std::error::Error>>

@@ -2,8 +2,6 @@
 //!
 //! Minimal AppView that owns DynamicLayout and DefaultViewFactory.
 //! State will hold AppView and forward calls, keeping existing render loop intact.
-
-use crate::rendering::view::mesh::mesh::Mesh;
 use crate::rendering::view::mesh::mesh_view::MeshView;
 use crate::rendering::view::mip::MipConfig;
 use crate::rendering::view::render_content::RenderContent;
@@ -341,11 +339,11 @@ impl AppView {
     /// Function-level comment: Uses DefaultViewFactory and routes addition through AppView.
     pub fn add_mesh_view(
         &mut self,
-        mesh: &Mesh,
+        vol: &CTVolume,
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let view = self.view_factory.create_mesh_view(mesh, pos, size)?;
+        let view = self.view_factory.create_mesh_view(vol, pos, size)?;
         LayoutContainer::add_view(&mut self.layout, view);
         Ok(())
     }
@@ -501,6 +499,15 @@ impl AppView {
                     (0, 0),
                 )?;
                 LayoutContainer::add_view(&mut self.layout, mip_view);
+            }
+            2 => {
+                // Mesh
+                let mesh_view = self.view_factory.create_mesh_view_with_content(
+                    texture.clone(),
+                    (0, 0),
+                    (0, 0),
+                )?;
+                LayoutContainer::add_view(&mut self.layout, mesh_view);
             }
             _ => {
                 // Default to MPR for unsupported modes

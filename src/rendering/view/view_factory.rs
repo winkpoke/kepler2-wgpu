@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use crate::core::WindowLevel;
 use crate::rendering::view::mesh::basic_mesh_context::BasicMeshContext;
-use crate::rendering::view::mesh::mesh::{Mesh, MeshRenderContext};
+use crate::rendering::view::mesh::mesh::MeshRenderContext;
 use crate::rendering::view::mesh::mesh_view::MeshView;
 use crate::rendering::view::mip::{MipView, MipViewWgpuImpl};
 use crate::rendering::view::mpr::mpr_render_context::MprRenderContext;
@@ -40,7 +40,7 @@ pub trait ViewFactory {
     /// camera settings and rendering pipeline.
     fn create_mesh_view(
         &self,
-        mesh: &Mesh,
+        vol: &CTVolume,
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>>;
@@ -122,7 +122,7 @@ impl ViewFactory for MockViewFactory {
     /// Function-level comment: Mesh view creation stub returning an error for test scenarios
     fn create_mesh_view(
         &self,
-        _mesh: &Mesh,
+        _vol: &CTVolume,
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
@@ -296,7 +296,7 @@ impl ViewFactory for DefaultViewFactory {
     /// Function-level comment: Create a MeshView with a fresh BasicMeshContext and default rotation enabled
     fn create_mesh_view(
         &self,
-        mesh: &Mesh,
+        vol: &CTVolume,
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
@@ -304,16 +304,12 @@ impl ViewFactory for DefaultViewFactory {
         mesh_view.set_rotation_enabled(false);
         info!("[DefaultViewFactory] Mesh rotation enabled");
 
-        // Create fresh BasicMeshContext for each mesh view
-        let ctx = BasicMeshContext::new(
-            &self.device,
-            &self.queue,
-            mesh,
-            true, // Enable depth testing for proper 3D rendering
-        );
-        let ctx_arc = Arc::new(ctx);
-
-        // mesh_view.attach_context(ctx_arc);
+        let render_content = match self.build_render_content(vol) {
+            Ok(rc) => rc,
+            Err(e) => return Err(e),
+        };
+        let vol_ctx = MeshRenderContext::new(&self.device, self.surface_format, render_content);
+        mesh_view.attach_context(Arc::new(vol_ctx));
         mesh_view.move_to(pos);
         mesh_view.resize(size);
         Ok(Box::new(mesh_view))

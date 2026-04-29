@@ -523,48 +523,15 @@ impl App {
             // Switch rendering mode
             match mode {
                 // === MPR ===
-                0 => {
+                0 | 1 | 2  => {
                     log::info!("Switching to MPR mode (orientation: {})", orientation_index);
                     let _ = self.app_view.set_layout_mode_single(
                         texture.clone(),
                         &vol,
-                        0, // mode=0 for MPR
+                        mode,
                         orientation_index,
                     );
 
-                    self.app_view.restore_view_states();
-                }
-
-                // === MIP ===
-                1 => {
-                    log::info!("Switching to MIP mode");
-                    let _ = self.app_view.set_layout_mode_single(
-                        texture.clone(),
-                        &vol,
-                        1, // mode=1 for MIP
-                        orientation_index,
-                    );
-
-                    self.app_view.restore_view_states();
-                }
-
-                // === Mesh ===
-                2 => {
-                    self.app_view.set_one_cell_layout();
-                    self.app_view.layout.remove_all();
-                    log::info!("Switching to Mesh mode");
-                    // Create mesh view
-                    let mesh_view = self
-                        .app_view
-                        .view_factory
-                        .create_mesh_view_with_content(
-                            texture,
-                            (0, 0),
-                            (0, 0),
-                        )
-                        .expect("Failed to create mesh view");
-
-                    self.app_view.layout.add_view(mesh_view);
                     self.app_view.restore_view_states();
                 }
                 // LargeLeft3RightLayout
