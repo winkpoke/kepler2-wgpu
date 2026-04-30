@@ -13,6 +13,7 @@ use crate::rendering::view::{
 use crate::rendering::StatefulView;
 use crate::CTVolume;
 use std::sync::Arc;
+use glam::Quat;
 
 /// Encapsulated state for a view, including its orientation and rendering parameters.
 #[derive(Debug, Clone)]
@@ -29,7 +30,7 @@ pub enum CapturedViewState {
         scale: f32,
         pan: [f32; 3],
         window: [f32; 2],
-        rotation_radians: [f32; 3],
+        rotation_quat: Quat,
     },
     Mesh {
         view_id: usize,
@@ -88,7 +89,7 @@ impl AppView {
                             scale: mip_view.get_scale(),
                             pan: mip_view.get_pan(),
                             window: mip_view.get_window_level(),
-                            rotation_radians: mip_view.get_rotation_radians(),
+                            rotation_quat: mip_view.get_rotation_quat(),
                         })
                     } else if let Some(mesh_view) = v.as_any().downcast_ref::<MeshView>() {
                         Some(CapturedViewState::Mesh {
@@ -172,7 +173,7 @@ impl AppView {
                     scale,
                     pan,
                     window,
-                    rotation_radians,
+                    rotation_quat,
                     ..
                 }) = states.iter().find(|s| {
                     matches!(s, CapturedViewState::Mip { view_id, .. }
@@ -184,11 +185,7 @@ impl AppView {
                     mip_view.set_pan(pan[0], pan[1]);
                     let _ = mip_view.set_window_level(window[0]);
                     let _ = mip_view.set_window_width(window[1]);
-                    mip_view.set_rotation_radians(
-                        rotation_radians[0],
-                        rotation_radians[1],
-                        rotation_radians[2],
-                    );
+                    let _ = mip_view.set_rotation_quat(rotation_quat.to_array());
                 }
             }
             // Handle Mesh Views
@@ -814,7 +811,7 @@ impl AppView {
         }
     }
 
-    pub fn set_mip_rotation_angle_degrees(
+    pub fn set_rotation_angle_degrees(
         &mut self,
         index: usize,
         roll_deg: f32,
@@ -825,8 +822,27 @@ impl AppView {
             if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
                 mip_view.set_rotation_degrees(roll_deg, yaw_deg, pitch_deg);
                 Ok(())
+            } else if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view.set_rotation_degrees(roll_deg, yaw_deg, pitch_deg);
+                Ok(())
             } else {
-                Err(format!("View {} is not a MIP view", index))
+                Err(format!("View {} is not a MIP or Mesh view", index))
+            }
+        } else {
+            Err(format!("View index {} out of bounds", index))
+        }
+    }
+
+    pub fn set_rotation_degrees(&mut self, index: usize, dx: f32, dy: f32)-> Result<(), String> {
+        if let Some(view) = self.layout.views_mut().get_mut(index) {
+            if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
+                mip_view.set_rotation_angle_degrees(dx, dy);
+                Ok(())
+            } else if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view.set_rotation_angle_degrees(dx,dy);
+                Ok(())
+            } else {
+                Err(format!("View {} is not a MIP or Mesh view", index))
             }
         } else {
             Err(format!("View index {} out of bounds", index))

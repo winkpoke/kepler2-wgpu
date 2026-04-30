@@ -7,260 +7,592 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Learn WGPU</title>
     <style>
+        body {
+            margin: 0;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+            background: #f2f2f2;
+        }
+
+        .app {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            height: 100vh;
+            gap: 8px;
+            padding: 8px;
+            box-sizing: border-box;
+        }
+
+        .panel {
+            background: #fff;
+            border: 1px solid #cfcfcf;
+            box-shadow: 0 1px 1px rgba(0,0,0,0.04);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+        }
+
+        .panel-title {
+            background: linear-gradient(#f7f7f7, #eaeaea);
+            border-bottom: 1px solid #cfcfcf;
+            padding: 6px 10px;
+            font-size: 13px;
+            color: #222;
+            user-select: none;
+            font-weight: bold;
+        }
+
+        .controls-container {
+            padding: 8px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            border-bottom: 1px solid #cfcfcf;
+            background: #fafafa;
+            font-size: 13px;
+            overflow-y: auto;
+            max-height: 150px;
+        }
+
+        .controls-container > div {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            background: #fff;
+        }
+
+        input[type="number"] {
+            width: 60px;
+        }
+
+        #render_app {
+            width: 100%;
+            height: 100%;
+            min-height: 0;
+            background-color: black;
+        }
+
         canvas {
             background-color: black;
         }
 
-        ul li {
+        /* Slicer-like Tree */
+        .slicer-tree {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            height: 100%;
+        }
+
+        .slicer-tree-header {
+            display: grid;
+            grid-template-columns: 1fr 84px;
+            align-items: center;
+            background: #f4f4f4;
+            border-bottom: 1px solid #d4d4d4;
+            padding: 4px 8px;
+            font-size: 12px;
+            color: #222;
+            user-select: none;
+            font-weight: bold;
+        }
+
+        .slicer-tree-body {
+            overflow: auto;
+            min-height: 0;
+            flex: 1;
+            background: #fff;
+        }
+
+        .tree-list {
+            margin: 0;
+            padding: 0;
             list-style: none;
+        }
+
+        .tree-item {
+            margin: 0;
+            padding: 0;
+        }
+
+        .tree-row {
+            height: 24px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 0 6px;
+            cursor: default;
+            user-select: none;
+            border-bottom: 1px solid rgba(0,0,0,0.03);
+        }
+
+        .tree-row:hover {
+            background: #e9f2ff;
+        }
+
+        .tree-row.selected {
+            background: #2f78c4;
+            color: #fff;
+        }
+
+        .tree-row.selected .icon svg,
+        .tree-row.selected .row-actions svg,
+        .tree-row.selected .caret svg {
+            fill: #fff;
+            stroke: #fff;
+        }
+
+        .indent {
+            width: 0;
+            flex: 0 0 auto;
+        }
+
+        .caret {
+            width: 16px;
+            height: 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 0;
+            background: transparent;
+            padding: 0;
+            cursor: pointer;
+            flex: 0 0 auto;
+        }
+
+        .caret.hidden {
+            visibility: hidden;
+        }
+
+        .icon {
+            width: 16px;
+            height: 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+            opacity: 0.95;
+        }
+
+        .label {
+            font-size: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            flex: 1 1 auto;
+        }
+
+        .row-actions {
+            margin-left: auto;
+            display: inline-flex;
+            gap: 6px;
+            opacity: 0.65;
+            flex: 0 0 auto;
+        }
+
+        .tree-row:hover .row-actions {
+            opacity: 1;
+        }
+
+        .row-action {
+            width: 18px;
+            height: 18px;
+            border: 0;
+            background: transparent;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .child-container {
+            display: none;
+        }
+
+        .child-container.expanded {
+            display: block;
+        }
+
+        .file-row {
+            padding: 8px;
+            border-top: 1px solid #cfcfcf;
+            background: #fafafa;
         }
     </style>
 </head>
 
 <body>
-    <div id="wasm-example"></div>
-    <input type="file" id="file" multiple>
-    <div id="tree-container"></div>
-    <label for="index-input">viewIndex:</label>
-    <input type="number" id="index-input" step="1.0" value="0.0">
-    <div>
-        <label for="scale-input">Scale:</label>
-        <input type="number" id="scale-input" step="10.0" value="1.0">
-        <button id="scale-submit">Submit</button>
+    <!-- 整体应用布局 -->
+    <div class="app">
+        <!-- 左侧面板：数据树和文件上传 -->
+        <aside class="panel">
+            <div class="panel-title">Data</div>
+            <div id="tree-container" class="slicer-tree"></div>
+            <div class="file-row">
+                <input type="file" id="file" multiple accept=".dcm" />
+            </div>
+        </aside>
+
+        <!-- 右侧面板：视图与控制 -->
+        <main class="panel">
+            <div class="panel-title">Views & Controls</div>
+            <div class="controls-container">
+                <div>
+                    <span id="mode-label">mode:</span>
+                    <input type="number" id="mode" step="1" value="3" min="0" max="1">
+                    <span id="index-label">mpr_index:</span>
+                    <input type="number" id="index" step="1.0" value="0.0">
+                    <input type="checkbox" id="change_index" />
+                    <span id="mipSpan">mip_index:</span>
+                    <input type="number" id="mip" step="1.0" value="0.0">
+                    <input type="checkbox" id="change_mip" />
+                    <span id="mesh_index-label">mesh_index:</span>
+                    <input type="number" id="mesh_index" step="1.0" value="0.0">
+                    <input type="checkbox" id="change_mesh_index" />
+                    <span id="orientation-label">orientation:</span>
+                    <input type="number" id="index-orientation" step="1.0" value="0.0">
+                    <button id="mesh">apply view</button>
+                </div>
+                <div>
+                    <label for="index-input">viewIndex:</label>
+                    <input type="number" id="index-input" step="1.0" value="0.0">
+                </div>
+                <div>
+                    <span id="slab-thickness-input">slab</span>
+                    <input type="number" id="slab-thickness" step="0.5" value="0.0">
+                </div>
+                <div>
+                    <label for="scale-input">scale:</label>
+                    <input type="number" id="scale-input" step="0.5" value="1.0">
+                </div>
+                <div>
+                    <label for="slice-input">slice:</label>
+                    <input type="number" id="slice-input" step="1.0" value="0.0">
+                </div>
+                <div>
+                    <label>center:</label>
+                    x:<input type="number" id="center-x" step="0.1" value="0.0" placeholder="x">
+                    y:<input type="number" id="center-y" step="0.1" value="0.0" placeholder="y">
+                    z:<input type="number" id="center-z" step="0.1" value="0.0" placeholder="z">
+                    <button id="set-center">set Center</button>
+                    <button id="get-point">get point</button>
+                </div>
+                <div>
+                    <label>translate:</label>
+                    x:<input type="number" id="trans-x" step="0.1" value="0.0" placeholder="x">
+                    y:<input type="number" id="trans-y" step="0.1" value="0.0" placeholder="y">
+                    z:<input type="number" id="trans-z" step="0.1" value="0.0" placeholder="z">
+                </div>
+                <div>
+                    <label for="window">window:</label><input type="number" id="window" step="10.0" value="0.0">
+                    <label for="level">level:</label><input type="number" id="level" step="10.0" value="0.0">
+                </div>
+                <div>
+                    <label>resize:</label>
+                    w:<input type="number" id="width" step="10.0" value="0.0" placeholder="800" max="1200">
+                    h:<input type="number" id="height" step="10.0" value="0.0" placeholder="800" max="800">
+                    <button id="resize-submit">submit</button>
+                </div>
+                <div>
+                    <span id="rotation-label">rotation:</span>
+                    <span id="rotation-x-label">roll:</span><input type="number"  id="rotation-x" step="15" value="0" min="0" max="360">
+                    <span id="rotation-y-label">yaw:</span><input type="number" id="rotation-y" step="15" value="0" min="0" max="360">
+                    <span id="rotation-z-label">pitch:</span><input type="number"  id="rotation-z" step="15" value="0" min="0" max="360">
+                    <button id="submit-rot">submit degree</button>
+                </div>
+                <div>
+                    <span id="3d-rotation-x-label">dx:</span><input type="number"  id="3d-rotation-x" step="5" value="0">
+                    <span id="3d-rotation-y-label">dy:</span><input type="number" id="3d-rotation-y" step="5" value="0">
+                </div>
+                <div>
+                    <span id="roi-min-label">ROI Min:</span>
+                    <input type="number" id="roi-min-x" step="0.01" value="-79.29739379882812">
+                    <input type="number" id="roi-min-y" step="0.01" value="-50.16448974609375">
+                    <input type="number" id="roi-min-z" step="0.01" value="-1241.34130859375">
+                    <span id="roi-max-label">ROI Max:</span>
+                    <input type="number" id="roi-max-x" step="0.01" value="86.64703369140625">
+                    <input type="number" id="roi-max-y" step="0.01" value="49.83551025390625">
+                    <input type="number" id="roi-max-z" step="0.01" value="-978.4163208007812">
+                    <button id="crop-roi">crop ROI</button>
+                    <span id="3d-opacity-label">opacity:</span>
+                    <input type="number" id="3d-opacity" step="0.1" value="1.0" min="0" max="1">
+                    <button id="3d-reset">reset 3d</button>
+                </div>
+            </div>
+            
+            <!-- 渲染区域 -->
+            <div style="flex:1; min-height:0; position: relative; background: black;">
+                <div id="wasm-example"></div>
+                <div id="render_app"></div>
+            </div>
+        </main>
     </div>
-    <div>
-        <label for="slice-input">slice:</label>
-        <input type="number" id="slice-input" step="0.01" value="0.0">
-        <button id="slice-submit">Submit</button>
-    </div>
-    <div>
-        <label for="center-input">center:</label>
-        <label for="center-x">x:</label> <input type="number" id="center-x" step="0.1" value="0.0" placeholder="x">
-        <label for="center-y">y:</label> <input type="number" id="center-y" step="0.1" value="0.0" placeholder="y">
-        <label for="center-z">z:</label> <input type="number" id="center-z" step="0.1" value="0.0" placeholder="z">
-        <button id="set-center">Set Center</button>
-    </div>
-    <div>
-        <label for="translate-input">translate:</label>
-        <label for="trans-x">x:</label> <input type="number" id="trans-x" step="10.0" value="0.0" placeholder="x">
-        <label for="trans-y">y:</label><input type="number" id="trans-y" step="10.0" value="0.0" placeholder="y">
-        <label for="trans-z">z:</label><input type="number" id="trans-z" step="10.0" value="0.0" placeholder="z">
-        <button id="trans-submit">Submit</button>
-    </div>
-    <div>
-        <label for="window">window:</label><input type="number" id="window" step="10.0" value="0.0">
-        <label for="level">level:</label><input type="number" id="level" step="10.0" value="0.0">
-        <button id="winlev-submit">Submit</button>
-    </div>
-    <div>
-        <label for="resize-input">resize:</label>
-        <label for="width">width:</label><input type="number" id="width" step="10.0" value="0.0" placeholder="800">
-        <label for="height">height:</label><input type="number" id="height" step="10.0" value="0.0" placeholder="800">
-        <button id="resize-submit">Submit</button>
-    </div>
-    <div>
-        <label for="mesh-mode">Mesh Mode:</label>
-        <input type="checkbox" id="mesh-mode" />
-        <span id="mesh-status">Disabled</span>
-    </div>
-    <div>
-        <label for="mesh-view-slot">Mesh View Slot:</label>
-        <input type="number" id="mesh-view-slot" step="1" value="0" min="0" max="3">
-        <button id="mesh-view-switch">Switch View</button>
-        <span id="mesh-view-status">Active: Slot 0</span>
-    </div>
-    <button id="rerender">render</button>
-    <div id="render_app"></div>
+
     <script type="module">
-        import init, { parse_dcm_files_wasm, get_render_app } from '../pkg/kepler_wgpu.js';
+        const byId = (id) => document.getElementById(id);
+        const deg2rad = (d) => d * Math.PI / 180;
+        const rad2deg = (r) => r * 180 / Math.PI;
+        function bindInput(ids, handler) {
+        ids.forEach(id => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('input', handler);
+            el.addEventListener('change', handler); // 兼容 number / checkbox
+        });
+        }
+
         var repo;
         let state = {
+            wasmModule: null,
             render_app: null,
             gl_canvas: null,
+            mip: null,
+            mesh_index: null,
+            index: null,
+            width: 800,
+            height: 800,
+            rotation: [0, 0, 0],
         };
-
-
-        let render_app = null;
-        let gl_canvas0 = null;
-        let gl_canvas1 = null;
-
-        await init();
-
+        
+        let gl_canvas = null;
         let series_id;
         let fileLists = [];
         let flag = true;
-        let scaleValue = 0.1;
         let volume;
-        // function reRender() {
-        //    gl_canvas.load_data_from_ct_volume(0, volume);
-        // }
-        document.getElementById('rerender').addEventListener('click', () => {
-            if (gl_canvas0 && volume) {
-                gl_canvas0.load_data_from_ct_volume(volume);
-                // gl_canvas0.clear_layout();
+        let scaleValue = 0.1;
+
+        async function ensureWasm() {
+            if (!state.wasmModule) {
+                state.wasmModule = await import('/pkg/kepler_wgpu.js');
+                await state.wasmModule.default();
+            }
+            return state.wasmModule;
+        }
+        
+        bindInput(['slice-input', 'index-input'], () => {
+            const sliceValue = byId('slice-input').value;
+            const indexValue = parseInt(byId('index-input').value);
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return;
+            }
+            gl_canvas.set_slice_mm(indexValue, sliceValue);
+        })
+
+        bindInput(['slab-thickness', 'index-input'], () => {
+            const thicknessValue = byId('slab-thickness').value;
+            const indexValue = parseInt(byId('index-input').value);
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return;
+            }
+            gl_canvas.set_slab_thickness(indexValue, thicknessValue);
+        })
+        
+        byId('set-center').addEventListener('click', async () => {
+            const x = byId('center-x').value;
+            const y = byId('center-y').value;
+            const z = byId('center-z').value;
+            const indexValue = parseInt(byId('index-input').value);
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return;
+            }
+            try {
+                const result = await gl_canvas.handle_view_click_get(indexValue, x, y, z);
+            } catch (e) {
+                console.error('handle_view_click error:', e);
+            }
+        })
+
+        byId('get-point').addEventListener('click', async () => {
+            const x = parseFloat(byId('center-x').value);
+            const y = parseFloat(byId('center-y').value);
+            const z = parseFloat(byId('center-z').value);
+            const indexValue = parseInt(byId('index-input').value);
+            if ([x, y, z].some(v => Number.isNaN(v))) {
+                alert('Please enter a valid number');
+                return;
+            }
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return;
+            }
+            
+            const result = await gl_canvas.get_pixel_value_from_screen(indexValue, x, y);
+            console.log('get point:', result);
+        });
+        
+        byId('resize-submit').addEventListener('click', () => {
+            state.width = byId('width').value;
+            state.height = byId('height').value;
+            const indexValue = parseInt(byId('index-input').value);
+            if (state.width >= 1200 || state.height >= 800) {
+                state.width = 1200;
+                byId('width').value = state.width;
+                state.height = 800;
+                byId('height').value = state.height;
+            }
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return;
+            }
+            gl_canvas.resize(state.width, state.height);
+        })
+
+        bindInput(['scale-input', 'index-input'], () => {
+            const scaleValue = parseFloat(byId('scale-input').value);
+            const indexValue = parseInt(byId('index-input').value);
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return;
+            }
+            gl_canvas.set_scale(indexValue, scaleValue);
+        });
+
+        bindInput(['trans-x', 'trans-y', 'index-input'], () => {
+            let x = parseFloat(byId('trans-x').value);
+            let y = parseFloat(byId('trans-y').value);
+            const indexValue = parseInt(byId('index-input').value);
+            console.log('translate:', x, y);
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return;
+            }
+            gl_canvas.set_pan(indexValue, x, y);
+        });
+
+        bindInput(['window', 'level', 'index-input'], () => {
+            const win = byId('window').value;
+            const lev = byId('level').value;
+            const indexValue = parseInt(byId('index-input').value);
+
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return;
+            }
+
+            gl_canvas.set_window_width(indexValue, win);
+            gl_canvas.set_window_level(indexValue, lev);
+        });
+
+        byId('mesh').addEventListener('click', () => {
+            const checkboxChangeMip = byId('change_mip').checked;
+            const checkboxChangeIndex = byId('change_index').checked;
+            const checkboxChangeMeshIndex = byId('change_mesh_index').checked;
+            const mode = parseInt(byId('mode').value, 10);
+
+            if (checkboxChangeMeshIndex) {
+                state.mesh_index = parseInt(byId('mesh_index').value, 10);
             } else {
-                alert('Please select a series first!');
+                state.mesh_index = null;
             }
+
+            if (checkboxChangeMip) {
+                state.mip = parseInt(byId('mip').value, 10);
+            } else {
+                state.mip = null;
+            }
+
+            if (checkboxChangeIndex) {
+                state.index = parseInt(byId('index').value, 10);
+            } else {
+                state.index = null;
+            }
+
+            const index_orientation = parseInt(byId('index-orientation').value, 10);
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return;
+            }
+
+            gl_canvas.set_render_mode(mode, state.mesh_index, state.index, state.mip, index_orientation)
+        });
+
+        bindInput(['3d-opacity', 'index-input'], async () => {
+            const opacity = parseFloat(byId('3d-opacity').value);
+            const indexValue = parseInt(byId('index-input').value);
+            gl_canvas.set_mesh_opacity(indexValue, Math.max(0, Math.min(1, opacity)));
+        });
+
+        byId('3d-reset').addEventListener('click', () => {
+            const indexValue = parseInt(byId('index-input').value, 10);
+            gl_canvas.reset_mesh(indexValue);
+        });
+
+        byId('submit-rot').addEventListener('click', () => {
+            const indexValue = parseInt(byId('index-input').value);
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return;
+            }
+            const rotation_x = parseFloat(byId('rotation-x').value);
+            const rotation_y = parseFloat(byId('rotation-y').value);
+            const rotation_z = parseFloat(byId('rotation-z').value);
+            gl_canvas.set_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
         })
-        document.getElementById('slice-submit').addEventListener('click', () => {
-            const sliceValue = document.getElementById('slice-input').value;
-            const input_index = document.getElementById('index-input');
-            const indexValue = parseInt(input_index.value);
-            if (isNaN(sliceValue)) {
+
+        byId('crop-roi').addEventListener('click', () => {
+            const sx = parseFloat(byId('roi-min-x').value);
+            const sy = parseFloat(byId('roi-min-y').value);
+            const sz = parseFloat(byId('roi-min-z').value);
+            const lx = parseFloat(byId('roi-max-x').value);
+            const ly = parseFloat(byId('roi-max-y').value);
+            const lz = parseFloat(byId('roi-max-z').value);
+            const indexValue = parseInt(byId('index-input').value, 10);
+            console.log("set_mesh_roi",indexValue, sx, sy, sz, lx, ly, lz);
+
+            if ([sx, sy, sz, lx, ly, lz].some(v => Number.isNaN(v))) {
                 alert('Please enter a valid number');
                 return;
             }
-            if (!gl_canvas0) {
+
+            if (sx >= lx || sy >= ly || sz >= lz) {
+                alert('ROI min must be less than max');
+                return;
+            }
+            
+            if (!gl_canvas) {
                 alert('Please select a series first!');
                 return;
             }
-            gl_canvas0.set_slice_mm(indexValue, sliceValue);
-        })
-        document.getElementById('set-center').addEventListener('click', () => {
-            const input_index = document.getElementById('index-input');
-            const indexValue = parseInt(input_index.value);
-            if (!gl_canvas0) {
-                alert('Please select a series first!');
-                return;
-            }
-            const center_x = document.getElementById('center-x').value;
-            const center_y = document.getElementById('center-y').value;
-            const center_z = document.getElementById('center-z').value;
-            gl_canvas0.get_screen_coord_in_mm(indexValue, center_x, center_y, center_z)
-                .then((result) => {
-                    console.log('Screen Coord in MM:', result);
-                    gl_canvas0.set_center_at_point_in_mm(1, result[0], result[1], result[2]);
-                    gl_canvas0.set_center_at_point_in_mm(2, result[0], result[1], result[2]);
-                    gl_canvas0.set_center_at_point_in_mm(3, result[0], result[1], result[2]);
-                })
-        })
-        document.getElementById('resize-submit').addEventListener('click', () => {
-            const width = document.getElementById('width').value;
-            const height = document.getElementById('height').value;
-            const input_index = document.getElementById('index-input');
-            if (isNaN(width) || isNaN(height)) {
-                alert('Please enter a valid number');
-                return;
-            }
-            if (!gl_canvas0) {
-                alert('Please select a series first!');
-                return;
-            }
-            gl_canvas0.resize(width, height);
+            gl_canvas.set_mesh_roi(indexValue, sx, sy, sz, lx, ly, lz);
         })
 
-        document.getElementById('scale-submit').addEventListener('click', () => {
-            const input = document.getElementById('scale-input');
-            scaleValue = parseFloat(input.value);
-            const input_index = document.getElementById('index-input');
-            const indexValue = parseInt(input_index.value);
-            if (isNaN(scaleValue)) {
-                alert('Please enter a valid number');
-                return;
-            }
-            if (!gl_canvas0) {
-                alert('Please select a series first!');
-                return;
-            }
-            gl_canvas0.set_scale(indexValue, scaleValue);
-            console.log('Submitted scale:', scaleValue);
-            // Here you can call a WASM function or update AppState, e.g.:
-            // appState.scale = scaleValue;
-            // update_scale(appState);
+        bindInput(['3d-rotation-x', '3d-rotation-y', 'index-input'], async () => {
+            const rotation_x = parseFloat(byId('3d-rotation-x').value) || 0;
+            const rotation_y = parseFloat(byId('3d-rotation-y').value) || 0;
+            const dx_deg = rotation_x - state.rotation[0];
+            const dy_deg = rotation_y - state.rotation[1];
+            state.rotation[0] = rotation_x;
+            state.rotation[1] = rotation_y;
+            const indexValue = parseInt(byId('index-input').value);
+            gl_canvas.set_rotation_degrees(indexValue, dx_deg, dy_deg);
         });
 
-        document.getElementById('trans-submit').addEventListener('click', () => {
-            let x = document.querySelector('#trans-x').value;
-            let y = document.querySelector('#trans-y').value;
-            let z = document.querySelector('#trans-z').value;
-            const input_index = document.getElementById('index-input');
-            const indexValue = parseInt(input_index.value);
-            console.log('translate:', x, y, z);
-            if (isNaN(x) && isNaN(y) && isNaN(z)) {
-                alert('Please enter a valid number');
-                return;
-            }
-            if (!gl_canvas0) {
-                alert('Please select a series first!');
-                return;
-            }
-            gl_canvas0.set_pan(indexValue, x, y, z);
-        });
-
-        document.getElementById('winlev-submit').addEventListener('click', () => {
-            const win = document.getElementById('window').value;
-            let lev = document.getElementById('level').value;
-            const input_index = document.getElementById('index-input');
-            const indexValue = parseInt(input_index.value);
-
-            if (!gl_canvas1) {
-                alert('Please select a series first!');
-                return;
-            }
-            win && gl_canvas1.set_window_width(indexValue, win);
-            lev && gl_canvas1.set_window_level(indexValue, lev);
-            // render_app.drop_state();
-        });
-
-        // Function-level comment: Mesh mode checkbox event listener for runtime mesh toggling via WASM.
-        document.getElementById('mesh-mode').addEventListener('change', (event) => {
-            const isEnabled = event.target.checked;
-            const statusSpan = document.getElementById('mesh-status');
-
-            if (!gl_canvas0) {
-                alert('Please select a series first!');
-                event.target.checked = !isEnabled; // Revert checkbox state
-                return;
-            }
-
-            // Call WASM function to toggle mesh mode
-            gl_canvas0.enable_mesh(isEnabled);
-            statusSpan.textContent = isEnabled ? 'Enabled' : 'Disabled';
-            console.log('Mesh mode toggled:', isEnabled);
-        });
-
-        // Function-level comment: Mesh view slot input change listener to update status display.
-        document.getElementById('mesh-view-slot').addEventListener('input', (event) => {
-            const slot = event.target.value;
-            const statusSpan = document.getElementById('mesh-view-status');
-            statusSpan.textContent = `Target: Slot ${slot}`;
-        });
-
-        // Function-level comment: Mesh view switch button event listener for changing active mesh view.
-        document.getElementById('mesh-view-switch').addEventListener('click', () => {
-            const slotInput = document.getElementById('mesh-view-slot');
-            const statusSpan = document.getElementById('mesh-view-status');
-            const slot = slotInput.value;
-
-            // TODO: Call WASM function to switch mesh view
-            // gl_canvas0.switch_mesh_view(parseInt(slot));
-
-            statusSpan.textContent = `Active: Slot ${slot}`;
-            console.log('Mesh view switched to slot:', slot);
-        });
-
+        // ======================= DICOM 解析与树状图数据生成 =======================
         document.querySelector('#file').addEventListener('change', async () => {
-
             if (state.render_app) {
                 delete state.render_app;
                 delete state.gl_canvas;
             }
-
-
             const files = document.querySelector('input[type="file"]').files;
             fileLists = files;
             const fileArray = Array.from(files);
             let patient_list = await get_tree(fileArray);
-            let ul = createTree(patient_list);
-            const treeContainer = document.getElementById('tree-container');
-            treeContainer.appendChild(createTree(patient_list));
-
+            renderSlicerTree(patient_list);
         })
 
         function get_tree(fileArray) {
             return new Promise(async (resolve, reject) => {
                 try {
-                    repo = await parse_dcm_files_wasm(fileArray);
+                    await ensureWasm();
+                    repo = await state.wasmModule.parse_dcm_files_wasm(fileArray);
                     // 获取所有患者信息
                     let patients = JSON.parse(repo.get_all_patients());
                     let patient_list = [];
@@ -294,84 +626,173 @@
                         patient_list.push(patient_data); // 添加患者数据
                     }
                     resolve(patient_list)
-                    // console.log(patient_list); // 格式化输出 JSON 数据
                 } catch (error) {
                     reject(error);
                     console.error("Error parsing DICOM files:", error);
                 }
             })
-
         }
 
-        function createTree(data, isRoot = true) {
+        // ======================= Slicer =======================
+        let selectedRowEl = null;
+        function svg(name) {
+            if (name === 'caret-right') {
+                return `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 2 L7 5 L3 8 Z" fill="#333"></path></svg>`;
+            }
+            if (name === 'caret-down') {
+                return `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 3 L5 7 L8 3 Z" fill="#333"></path></svg>`;
+            }
+            if (name === 'user') {
+                return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 12c2.2 0 4-1.8 4-4s-1.8-4-4-4-4 1.8-4 4 1.8 4 4 4Z" fill="#333"></path><path d="M4 20c0-4 3.6-6 8-6s8 2 8 6" stroke="#333" stroke-width="2" fill="none"></path></svg>`;
+            }
+            if (name === 'folder') {
+                return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 6h7l2 2h9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z" fill="#333"></path></svg>`;
+            }
+            if (name === 'cube') {
+                return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Z" stroke="#333" stroke-width="2" fill="none"></path><path d="M12 22V12" stroke="#333" stroke-width="2"></path><path d="M21 7 12 12 3 7" stroke="#333" stroke-width="2"></path></svg>`;
+            }
+            if (name === 'eye') {
+                return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z" stroke="#333" stroke-width="2"></path><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" fill="#333"></path></svg>`;
+            }
+            if (name === 'gear') {
+                return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="#333" stroke-width="2"></path><path d="M19.4 15a8.2 8.2 0 0 0 .1-2l2-1.2-2-3.5-2.3.6a7.6 7.6 0 0 0-1.7-1l-.3-2.3h-4l-.3 2.3a7.6 7.6 0 0 0-1.7 1l-2.3-.6-2 3.5 2 1.2a8.2 8.2 0 0 0 .1 2l-2 1.2 2 3.5 2.3-.6a7.6 7.6 0 0 0 1.7 1l.3 2.3h4l.3-2.3a7.6 7.6 0 0 0 1.7-1l2.3.6 2-3.5-2-1.2Z" stroke="#333" stroke-width="1.5" fill="none"></path></svg>`;
+            }
+            return '';
+        }
+
+        function renderSlicerTree(data) {
+            const container = document.getElementById('tree-container');
+            container.innerHTML = '';
+
+            const header = document.createElement('div');
+            header.className = 'slicer-tree-header';
+            header.innerHTML = `<div>Node</div><div style="text-align:right;">&nbsp;</div>`;
+
+            const body = document.createElement('div');
+            body.className = 'slicer-tree-body';
+
             const ul = document.createElement('ul');
-            data.forEach(item => {
-                const li = document.createElement('li');
-                const toggle = document.createElement('span');
-                toggle.textContent = item.label;
-                toggle.classList.add('toggle');
+            ul.className = 'tree-list';
+            ul.setAttribute('role', 'tree');
 
-                const expandIcon = document.createElement('span');
-                if (item.children) {
-                    expandIcon.classList.add('expand-icon');
-                    expandIcon.innerHTML = '▶'; // 默认使用右箭头
-                    li.appendChild(expandIcon);
-                }
-                li.appendChild(toggle);
-                isRoot && li.classList.add('series'); // 给最外层 li 添加 class
-                // 如果有子节点，则递归创建树
-                if (item.children) {
-                    const childUl = createTree(item.children, false);
-                    childUl.style.display = 'none'; // 初始隐藏子节点
-                    li.appendChild(childUl);
-                    // 添加点击事件来切换显示
-                    toggle.addEventListener('click', () => {
-                        const isHidden = childUl.style.display === 'none';
-                        childUl.style.display = isHidden ? 'block' : 'none';
-                        expandIcon.innerHTML = isHidden ? '▼' : '▶'; // 更新图标
-                        if (isHidden) {
-                            expandIcon.classList.remove('collapsed');
-                        } else {
-                            expandIcon.classList.add('collapsed');
-                        }
-                    });
-                } else {
-                    toggle.addEventListener('click', async () => {
-                        series_id = toggle.innerHTML;
-                        let vol = repo.generate_ct_volume(series_id);
-                        volume = vol;
-                        if (true) {
-                            if (render_app == null) {
-                                render_app = await get_render_app();
-                                gl_canvas0 = render_app.get_glcanvas();
-                                gl_canvas0.load_data_from_ct_volume(volume);
-                                gl_canvas1 = render_app.get_glcanvas();
-                                render_app.run();
-                            } else {
-                                // gl_canvas0.quit();
-                                console.log('render_app:', render_app);
-                                // get_render_app_by_div_id(render_app, 'render_app'); // 绑定到 div
-                                // gl_canvas0.load_data_from_ct_volume(volume);
-                                // let graphics = create_graphics_by_div_id('render_app').await;
-                                // console.log('graphics:', graphics);
-                                gl_canvas0.set_window_by_div_id('render_app', volume);
-                                console.log(vol);
-                                // gl_canvas0.load_data_from_ct_volume(volume);
-                            }
-                            flag = false;
-                        } else {
-                            gl_canvas0.load_data_from_ct_volume(volume);
-                        }
+            data.forEach(item => ul.appendChild(createSlicerNode(item, 0)));
 
-                    })
-                }
-
-                ul.appendChild(li);
-            });
-            return ul;
+            body.appendChild(ul);
+            container.appendChild(header);
+            container.appendChild(body);
         }
 
+        function setSelectedRow(rowEl) {
+            if (selectedRowEl) selectedRowEl.classList.remove('selected');
+            selectedRowEl = rowEl;
+            selectedRowEl.classList.add('selected');
+        }
+
+        function createSlicerNode(item, depth) {
+            const hasChildren = Array.isArray(item.children) && item.children.length > 0;
+            const isLeafSeries = !hasChildren;
+
+            const li = document.createElement('li');
+            li.className = 'tree-item';
+
+            const row = document.createElement('div');
+            row.className = 'tree-row';
+
+            const indent = document.createElement('span');
+            indent.className = 'indent';
+            indent.style.width = `${depth * 14}px`;
+
+            const caretBtn = document.createElement('button');
+            caretBtn.className = 'caret' + (hasChildren ? '' : ' hidden');
+            caretBtn.type = 'button';
+            caretBtn.innerHTML = svg('caret-right');
+
+            const icon = document.createElement('span');
+            icon.className = 'icon';
+            icon.innerHTML = isLeafSeries ? svg('cube') : (depth === 0 ? svg('user') : svg('folder'));
+
+            const label = document.createElement('span');
+            label.className = 'label';
+            label.textContent = item.label ?? '';
+
+            const actions = document.createElement('span');
+            actions.className = 'row-actions';
+            actions.innerHTML = `
+                <button class="row-action" type="button" title="Visibility">${svg('eye')}</button>
+                <button class="row-action" type="button" title="Settings">${svg('gear')}</button>
+            `;
+
+            row.appendChild(indent);
+            row.appendChild(caretBtn);
+            row.appendChild(icon);
+            row.appendChild(label);
+            row.appendChild(actions);
+            li.appendChild(row);
+
+            let childWrap = null;
+
+            function toggleExpand(force) {
+                if (!hasChildren) return;
+                const shouldExpand = typeof force === 'boolean'
+                    ? force
+                    : !(childWrap && childWrap.classList.contains('expanded'));
+
+                if (shouldExpand) {
+                    childWrap.classList.add('expanded');
+                    caretBtn.innerHTML = svg('caret-down');
+                } else {
+                    childWrap.classList.remove('expanded');
+                    caretBtn.innerHTML = svg('caret-right');
+                }
+            }
+
+            if (hasChildren) {
+                childWrap = document.createElement('div');
+                childWrap.className = 'child-container';
+
+                const childUl = document.createElement('ul');
+                childUl.className = 'tree-list';
+                item.children.forEach(ch => childUl.appendChild(createSlicerNode(ch, depth + 1)));
+
+                childWrap.appendChild(childUl);
+                li.appendChild(childWrap);
+
+                caretBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    setSelectedRow(row);
+                    toggleExpand();
+                });
+
+                row.addEventListener('click', () => {
+                    setSelectedRow(row);
+                    toggleExpand();
+                });
+            } else {
+                row.addEventListener('click', async () => {
+                    setSelectedRow(row);
+                    series_id = item.label;
+                    let vol = repo.generate_ct_volume(series_id);
+                    volume = vol;
+                    if (flag == true) {
+                        if (state.render_app == null) {
+                            state.render_app = await state.wasmModule.get_render_app();
+                            gl_canvas = state.render_app.get_glcanvas();
+                            gl_canvas.load_data_from_ct_volume(volume);
+                            gl_canvas = state.render_app.get_glcanvas();
+                            state.render_app.run();
+                        } else {
+                            console.log('render_app:', state.render_app);
+                            gl_canvas.set_window_by_div_id('render_app', volume);
+                            console.log(vol);
+                        }
+                        flag = false;
+                    } else {
+                        gl_canvas.load_data_from_ct_volume(volume);
+                    }
+                });
+            }
+            return li;
+        }
     </script>
 </body>
-
 </html>

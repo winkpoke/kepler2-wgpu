@@ -44,7 +44,7 @@ pub enum UserEvent {
     #[cfg(target_arch = "wasm32")]
     WorldCoordToScreen(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
     SetSlabThickness(usize, f32),
-    SetMipRotationAngleDeg(usize, f32, f32, f32),
+    SetRotationAngleDeg(usize, f32, f32, f32),
     ViewClick(usize, f32, f32, f32), // view_index, screen_x, screen_y, screen_z
     SetObliqueRotation(usize, f32, f32, f32),
     SetRotationQuat(usize, [f32; 4]),
@@ -57,8 +57,7 @@ pub enum UserEvent {
     SetMeshRotationEnabled(usize, bool),
     SetMeshOpacity(usize, f32),
     ResetMesh(usize),
-    SetMeshRotationAngleDeg(usize, f32, f32),
-    SetMeshRotationDegrees(usize, f32, f32, f32),
+    SetRotationDeg(usize, f32, f32),
     SetMeshRotation(usize, [f32; 16]),
     SetMeshRoi(usize, f32, f32, f32, f32, f32, f32),
     SetMeshMode(usize, usize),
@@ -492,13 +491,12 @@ impl_user_event_senders_for_glcanvas! {
     // Mip controls
     set_mip_mode => SetMipMode(mode: u32),
     set_slab_thickness => SetSlabThickness(thickness: f32),
-    set_mip_rotation_angle_degrees => SetMipRotationAngleDeg(roll_deg: f32, yaw_deg: f32, pitch_deg: f32),
+    set_rotation_angle_degrees => SetRotationAngleDeg(roll_deg: f32, yaw_deg: f32, pitch_deg: f32),
     // Mesh controls
     set_mesh_rotation_enabled => SetMeshRotationEnabled(enabled: bool),
     set_mesh_opacity => SetMeshOpacity(alpha: f32),
     reset_mesh => ResetMesh(),
-    set_mesh_rotation_angle_degrees => SetMeshRotationAngleDeg(degrees_x: f32, degrees_y: f32),
-    set_mesh_rotation_degrees => SetMeshRotationDegrees(roll_deg: f32, yaw_deg: f32, pitch_deg: f32),
+    set_rotation_degrees => SetRotationDeg(degrees_x: f32, degrees_y: f32),
     set_mesh_roi => SetMeshRoi(sx: f32,sy: f32, sz: f32, lx: f32, ly: f32,lz: f32),
     set_mesh_mode => SetMeshMode(mode: usize),
 }

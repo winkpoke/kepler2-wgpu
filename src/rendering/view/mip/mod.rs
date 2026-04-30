@@ -6,7 +6,7 @@ use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::{Renderable, View};
 use crate::core::{WindowLevel,KeplerResult};
 use crate::rendering::pipeline::*;
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec3, Quat};
 use std::{any::Any, sync::Arc};
 use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, Queue, RenderPipeline};
 
@@ -238,8 +238,8 @@ pub struct MipView {
     scale: f32,
     /// Pan translation in screen coordinates
     pan: [f32; 3],
-    /// Rotation angles in radians around X, Y, Z axes
-    rotation_radians: [f32; 3],
+    /// Current rotation state as a quaternion
+    rotation_quat: Quat,
     /// Content dimensions in world space
     content_dimensions: (f32, f32),
     /// Window/level parameters for CT display
@@ -257,7 +257,7 @@ impl MipView {
             dimensions: (800, 600),
             scale: 1.5, // Default zoom to 1.5 to crop out CT scanner ring
             pan: [0.0, 0.0, 0.0],
-            rotation_radians: [0.0, 0.0, 0.0],
+            rotation_quat: Quat::IDENTITY,
             content_dimensions: (1.0, 1.0),
             window_level: WindowLevel::new(),
         }
@@ -343,6 +343,19 @@ impl MipView {
         log::info!("MIP slab thickness set to {:.3} mm", thickness);
     }
 
+    /// Function-level comment: Set the current rotation angle using degrees for convenience.
+    /// This directly sets the orientation without affecting rotation speed.
+    pub fn set_rotation_angle_degrees(&mut self, degrees_x: f32, degrees_y: f32) {
+        let right = self.rotation_quat * Vec3::Y;
+        let up = self.rotation_quat * Vec3::X;
+        let dx = degrees_x.to_radians();
+        let dy = degrees_y.to_radians();
+        let qx = Quat::from_axis_angle(up.normalize(), dx);
+        let qy = Quat::from_axis_angle(right.normalize(), dy);
+        let delta = qy * qx;
+        self.rotation_quat = (delta * self.rotation_quat).normalize();
+    }
+
     /// Set MIP rotation angles in degrees around X, Y, Z axes.
     pub fn set_rotation_degrees(&mut self, roll_deg: f32, yaw_deg: f32, pitch_deg: f32) {
         let (roll, yaw, pitch) = (
@@ -350,14 +363,16 @@ impl MipView {
             yaw_deg.to_radians(),
             pitch_deg.to_radians(),
         );
-        self.rotation_radians = [roll, yaw, pitch];
+        let rot = Mat4::from_rotation_x(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(pitch);
+        self.rotation_quat = Quat::from_mat4(&rot);
     }
 
-    /// Set MIP rotation angles in radians around X, Y, Z axes.
-    pub fn set_rotation_radians(&mut self, roll: f32, yaw: f32, pitch: f32) {
-        self.rotation_radians = [roll, yaw, pitch];
+    /// Set MIP rotation in quaternion around X, Y, Z axes.
+    pub fn set_rotation_quat(&mut self, rotation: [f32; 4]) -> KeplerResult<()> {
+        self.rotation_quat = Quat::from_array(rotation);
+        log::info!("MIP rotation set to {:?}", self.rotation_quat);
+        Ok(())
     }
-
     pub fn get_scale(&self) -> f32 {
         self.scale
     }
@@ -366,8 +381,8 @@ impl MipView {
         self.pan
     }
 
-    pub fn get_rotation_radians(&self) -> [f32; 3] {
-        self.rotation_radians
+    pub fn get_rotation_quat(&self) -> Quat {
+        self.rotation_quat
     }
 
     pub fn get_window_level(&self) -> [f32; 2] {
@@ -383,11 +398,7 @@ impl Renderable for MipView {
         let decode_params = self.wgpu_impl.render_content().decode_parameters();
 
         // Create uniforms
-        let rotation = Self::build_rotation_matrix(
-            self.rotation_radians[0],
-            self.rotation_radians[1],
-            self.rotation_radians[2],
-        );
+        let rotation = Mat4::from_quat(self.rotation_quat);
 
         let extent = self.wgpu_impl.render_content().texture.size();
         let w_vol = extent.width.max(1) as f32;

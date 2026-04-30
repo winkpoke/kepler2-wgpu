@@ -249,7 +249,7 @@ impl LayoutStrategy for LargeLeft3RightLayout {
         parent_dim: (u32, u32),
     ) -> ((i32, i32), (u32, u32)) {
         let w = parent_dim.0 as f32;
-        let h = parent_dim.1 as f32;
+        let _h = parent_dim.1 as f32;
 
         // 左侧大图占 70%
         let left_w = (w * 0.7) as u32;

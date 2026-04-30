@@ -305,7 +305,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let ray_dir = normalize((u_vol.rotation * vec4<f32>(0.0, 0.0, 1.0, 0.0)).xyz);
 
     let inter_vol = intersect_box(ray_origin, ray_dir, vec3<f32>(0.0), vec3<f32>(1.0));
-    var t_start = max(inter_vol.x, 0.0);
+    var t_start = inter_vol.x;
     var t_end = inter_vol.y;
     if (t_start >= t_end) {
         return vec4<f32>(0.0);

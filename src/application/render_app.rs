@@ -204,8 +204,8 @@ impl RenderApp {
                     state.set_slab_thickness(index, thickness);
                     log::info!("SlabThickness set to: index={index}, thickness={thickness}");
                 }
-                Event::UserEvent(UserEvent::SetMipRotationAngleDeg(index, roll_deg, yaw_deg, pitch_deg)) => {
-                    state.set_mip_rotation_angle_degrees(index, roll_deg, yaw_deg, pitch_deg);
+                Event::UserEvent(UserEvent::SetRotationAngleDeg(index, roll_deg, yaw_deg, pitch_deg)) => {
+                    state.set_rotation_angle_degrees(index, roll_deg, yaw_deg, pitch_deg);
                     log::info!(
                         "MipRotationAngleDeg set to: index={index}, roll_deg={roll_deg}, yaw_deg={yaw_deg}, pitch_deg={pitch_deg}"
                     );
@@ -238,17 +238,13 @@ impl RenderApp {
                     state.set_mesh_mode(mode);
                     log::info!("Mesh mode set to {:?}", mode);
                 }
-                Event::UserEvent(UserEvent::SetMeshRotationAngleDeg(_index, degrees_x, degrees_y)) => {
-                    state.set_mesh_rotation_angle_degrees(degrees_x, degrees_y);
-                    log::info!("Mesh rotation angle set to {:?}°", [degrees_x, degrees_y]);
+                Event::UserEvent(UserEvent::SetRotationDeg(index, degrees_x, degrees_y)) => {
+                    state.set_rotation_degrees(index, degrees_x, degrees_y);
+                    log::info!("View {} set rotation_degrees: dx={}, dy={}",index,degrees_x, degrees_y);
                 }
                 Event::UserEvent(UserEvent::SetRotationQuat(index, q)) => {
                     state.set_rotation(index, q);
                     log::debug!("Rotation set to {:?}", q);
-                }
-                Event::UserEvent(UserEvent::SetMeshRotationDegrees(_index, roll_deg, yaw_deg, pitch_deg)) => {
-                    state.set_mesh_rotation_degrees(roll_deg, yaw_deg, pitch_deg);
-                    log::debug!("Mesh rotation set to {:?}°", [roll_deg, yaw_deg, pitch_deg]);
                 }
                 Event::UserEvent(UserEvent::ViewClick(view_index, screen_x, screen_y, screen_z)) => {
                     state.handle_view_click(view_index, screen_x, screen_y, screen_z);
@@ -405,7 +401,7 @@ impl RenderApp {
                                 ..
                             } => {
                                 state.set_render_mode(2, Some(0), None, None, 1);
-                                state.set_mesh_rotation_angle_degrees(90.0, 0.0);
+                                state.set_rotation_degrees(0, 90.0, 0.0);
                                 // state.set_mesh_rotation_angle_degrees(0.0, 90.0);
                                 // state.set_mesh_rotation_angle_degrees(90.0, 0.0);
                                 // state.set_mesh_scale(2.0);
@@ -426,7 +422,7 @@ impl RenderApp {
                                 ..
                             } => {
                                 state.set_render_mode(2, Some(0), None, None, 1);
-                                state.set_mesh_rotation_degrees(-90.0, 90.0, 0.0);
+                                state.set_rotation_angle_degrees(0, -90.0, 90.0, 0.0);
                                 let roi_point_min = [-79.29739379882812, -50.16448974609375, -1241.34130859375];
                                 let roi_point_max = [86.64703369140625, 49.83551025390625, -978.4163208007812];
                                 state.set_mesh_roi(roi_point_min[0], roi_point_min[1], roi_point_min[2], roi_point_max[0], roi_point_max[1], roi_point_max[2]);
@@ -450,7 +446,7 @@ impl RenderApp {
                                 state.set_slab_thickness(3, 1.25);
                                 state.set_scale(3, 2.0);
                                 state.set_pan(3, 0.2, 0.2);
-                                state.set_mip_rotation_angle_degrees(3, 0.0, 180.0, 90.0);
+                                state.set_rotation_angle_degrees(3, 0.0, 180.0, 90.0);
                                 log::info!("KeyD pressed: 2*2 mode toggled to {}", true);
                             }
                             WindowEvent::KeyboardInput {

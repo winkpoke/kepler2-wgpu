@@ -158,7 +158,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let volume_ray_dir = normalize((u_mip.rotation * vec4<f32>(0.0, 0.0, 1.0, 0.0)).xyz);
 
     let intersection = intersect_volume(volume_ray_origin, volume_ray_dir);
-    let t_start = max(intersection.x, 0.0);
+    let t_start = intersection.x;
     let t_end = intersection.y;
 
     if (t_start >= t_end) {

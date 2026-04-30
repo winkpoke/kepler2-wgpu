@@ -895,7 +895,7 @@
       const rotation_x = parseFloat(byId('mip-rotation-x').value);
       const rotation_y = parseFloat(byId('mip-rotation-y').value);
       const rotation_z = parseFloat(byId('mip-rotation-z').value);
-      gl_canvas.set_mip_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
+      gl_canvas.set_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
     })
 
     byId('mip-mode').addEventListener('change', () => {
@@ -922,7 +922,7 @@
       gl_canvas.set_mesh_rotation_enabled(indexValue, state.enable_rotation);
       const rotation_x = parseFloat(byId('3d-rotation-x').value);
       const rotation_y = parseFloat(byId('3d-rotation-y').value);
-      gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y);
+      gl_canvas.set_rotation_degrees(indexValue, rotation_x, rotation_y);
     });
 
     bindInput(['3d-opacity'], async () => {

@@ -689,30 +689,11 @@ impl App {
         }
     }
 
-    pub fn set_mip_rotation_angle_degrees(
-        &mut self,
-        index: usize,
-        roll_deg: f32,
-        yaw_deg: f32,
-        pitch_deg: f32,
-    ) {
-        if let Err(e) = self
-            .app_view
-            .set_mip_rotation_angle_degrees(index, roll_deg, yaw_deg, pitch_deg)
-        {
-            log::warn!(
-                "set_mip_rotation_angle_degrees failed on view {}: {}",
-                index,
-                e
-            );
+    pub fn set_rotation_angle_degrees(&mut self, index: usize, roll_deg: f32, yaw_deg: f32, pitch_deg: f32) {
+        if let Err(e) = self.app_view.set_rotation_angle_degrees(index, roll_deg, yaw_deg, pitch_deg){
+            log::warn!("set_rotation_angle_degrees failed on view {}: {}",index,e);
         } else {
-            log::info!(
-                "View {} set_mip_rotation_angle_degrees: roll_deg={}, yaw_deg={}, pitch_deg={}",
-                index,
-                roll_deg,
-                yaw_deg,
-                pitch_deg
-            );
+            log::info!("View {} set_rotation_angle_degrees: roll_deg={}, yaw_deg={}, pitch_deg={}",index,roll_deg,yaw_deg,pitch_deg);
         }
     }
 
@@ -1048,17 +1029,12 @@ impl App {
     }
 
     /// Set mesh rotation angle in degrees for the first MeshView.
-    pub fn set_mesh_rotation_angle_degrees(&mut self, degrees_x: f32, degrees_y: f32) {
-        self.apply_to_mesh_view(|mesh_view| {
-            mesh_view.set_rotation_angle_degrees(degrees_x, degrees_y);
-        });
-    }
-
-    /// Apply a rotation delta to the first MeshView using mouse movement (pixels).
-    pub fn set_mesh_rotation_degrees(&mut self, roll_deg: f32, yaw_deg: f32, pitch_deg: f32) {
-        self.apply_to_mesh_view(|mesh_view| {
-            mesh_view.set_rotation_degrees(roll_deg, yaw_deg, pitch_deg);
-        });
+    pub fn set_rotation_degrees(&mut self, index: usize, degrees_x: f32, degrees_y: f32) {
+        if let Err(e) = self.app_view.set_rotation_degrees(index, degrees_x, degrees_y){
+            log::warn!("set_rotation_degrees failed on view {}: {}",index,e);
+        } else {
+            log::info!("View {} set_rotation_degrees: dx={}, dy={}",index,degrees_x,degrees_y);
+        }
     }
 
     /// Toggle the volume texture format (R16Float vs Rg8Unorm) and reload the CT volume.
