@@ -40,7 +40,7 @@ pub struct App {
     pub(crate) graphics_context: GraphicsContext,
     pub(crate) app_view: AppView,
     pub(crate) app_model: AppModel,
-    pub(crate) cached_mesh: Option<crate::mesh::mesh::Mesh>,
+    pub(crate) oblique_rotation: bool,
     pub(crate) saved_states: [usize; 4],
 }
 
@@ -93,7 +93,7 @@ impl App {
             graphics_context,
             app_view: AppView::new(layout, factory),
             app_model: AppModel::new(default_float),
-            cached_mesh: None,
+            oblique_rotation: false,
             saved_states: [0; 4],
         })
     }
@@ -212,10 +212,10 @@ impl App {
     }
 
     pub fn update(&mut self) {
-        self.sync_oblique_intersection();
-        self.app_view
-            .layout
-            .update(&self.graphics_context.graphics.queue);
+        if self.oblique_rotation {
+            self.sync_oblique_intersection();
+        }
+        self.app_view.layout.update(&self.graphics_context.graphics.queue);
     }
 
     fn sync_oblique_intersection(&mut self) {
@@ -444,6 +444,7 @@ impl App {
         &mut self,
         vol: &CTVolume,
     ) -> Result<Arc<RenderContent>, KeplerError> {
+        self.oblique_rotation = false;
         let texture = self.load_render_content(vol)?;
         let _ = self
             .app_view
@@ -500,6 +501,7 @@ impl App {
     ) {
         // Save current view states before layout switch
         self.app_view.save_view_states();
+        self.oblique_rotation = false;
         
         // Load current volume
         if let Some(vol) = self.app_model.volume().ok().map(|v| v.clone()) {
@@ -755,18 +757,11 @@ impl App {
         vertical_radians: f32,
         in_plane_radians: f32,
     ) {
+        self.oblique_rotation = true;
         if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                if let Err(e) = mpr_view.set_oblique_rotation_radians(
-                    horizontal_radians,
-                    vertical_radians,
-                    in_plane_radians,
-                ) {
-                    log::warn!(
-                        "set_oblique_rotation_radians failed on view {}: {}",
-                        index,
-                        e
-                    );
+                if let Err(e) = mpr_view.set_oblique_rotation_radians(horizontal_radians, vertical_radians,in_plane_radians) {
+                    log::warn!("set_oblique_rotation_radians failed on view {}: {}",index,e);
                 } else {
                     log::info!(
                         "View {} set_oblique_rotation_radians: horizontal={:?}, vertical={:?}, in_plane={:?},",

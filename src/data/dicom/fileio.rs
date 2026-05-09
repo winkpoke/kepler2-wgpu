@@ -435,38 +435,76 @@ pub async fn parse_mha_and_generate_ct(
     slope: f32,
     intercept: f32,
 ) -> Result<CTVolume, JsValue> {
-    let medical_volume = if data_bytes.is_none() {
-        MhaParser::parse_bytes(&header_bytes)
-            .map_err(|e| JsValue::from_str(&format!("MHA parse error: {}", e)))?
+    if data_bytes.is_none() {
+        // MHA file: parse metadata first, then extract raw data without creating intermediate MedicalVolume
+        let metadata = MhaParser::parse_metadata_only(&header_bytes)
+            .map_err(|e| JsValue::from_str(&format!("MHA metadata parse error: {}", e)))?;
+
+        let start_offset = metadata.data_offset.unwrap_or(0);
+        if start_offset >= header_bytes.len() {
+            return Err(JsValue::from_str(
+                "Invalid MHA: data offset beyond file end",
+            ));
+        }
+
+        let dimensions = metadata.dimensions;
+        let spacing = metadata.spacing;
+        let offset = metadata.offset;
+        let pixel_type = metadata.pixel_type;
+
+        log::info!(
+            "MHA direct path: offset={}, raw_size={} bytes, dim={:?}",
+            start_offset,
+            header_bytes.len() - start_offset,
+            dimensions
+        );
+
+        // Remove header portion in-place (no extra allocation, avoids 2x memory spike)
+        let mut raw_data = header_bytes;
+        raw_data.drain(..start_offset);
+
+        let orientation: Vec<f32> = vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        MedicalVolume::generate_ct_volume_mha(
+            [dimensions[0], dimensions[1], dimensions[2]],
+            raw_data,
+            pixel_type,
+            spacing,
+            offset,
+            orientation,
+            slope,
+            intercept,
+        )
+        .map_err(|e| JsValue::from_str(&e))
     } else {
+        // MHD path: data already separated
         let pixel_data = PixelData::UInt8(data_bytes.unwrap());
         let metadata = MhdParser::parse_metadata_only(&header_bytes)
             .map_err(|e| JsValue::from_str(&format!("MHD parse error: {}", e)))?;
-        MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
-            .map_err(|e| JsValue::from_str(&format!("Volume creation error: {}", e)))?
-    };
+        let medical_volume = MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
+            .map_err(|e| JsValue::from_str(&format!("Volume creation error: {}", e)))?;
 
-    match medical_volume.pixel_data {
-        PixelData::UInt8(data) => {
-            let dimensions = medical_volume.metadata.dimensions;
-            let spacing = medical_volume.metadata.spacing;
-            let offset = medical_volume.metadata.offset;
-            let orientation = medical_volume.metadata.orientation;
-            let transform: Vec<f32> = orientation.into_iter().flatten().collect();
+        match medical_volume.pixel_data {
+            PixelData::UInt8(data) => {
+                let dimensions = medical_volume.metadata.dimensions;
+                let spacing = medical_volume.metadata.spacing;
+                let offset = medical_volume.metadata.offset;
+                let orientation = medical_volume.metadata.orientation;
+                let transform: Vec<f32> = orientation.into_iter().flatten().collect();
 
-            MedicalVolume::generate_ct_volume_mha(
-                [dimensions[0], dimensions[1], dimensions[2]],
-                data,
-                medical_volume.metadata.pixel_type,
-                spacing,
-                offset,
-                transform,
-                slope,
-                intercept,
-            )
-            .map_err(|e| JsValue::from_str(&e))
+                MedicalVolume::generate_ct_volume_mha(
+                    [dimensions[0], dimensions[1], dimensions[2]],
+                    data,
+                    medical_volume.metadata.pixel_type,
+                    spacing,
+                    offset,
+                    transform,
+                    slope,
+                    intercept,
+                )
+                .map_err(|e| JsValue::from_str(&e))
+            }
+            _ => Err(JsValue::from_str("Unsupported pixel data type")),
         }
-        _ => Err(JsValue::from_str("Unsupported pixel data type")),
     }
 }
 
