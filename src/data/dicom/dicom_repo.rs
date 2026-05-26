@@ -6,7 +6,6 @@ use super::patient::Patient;
 use super::studyset::StudySet;
 use crate::core::coord::Base;
 use crate::data::ct_volume::{CTVolume, CTVolumeGenerator};
-use crate::data::medical_imaging::image_info::PatientPosition;
 use anyhow::Result;
 use glam::{Mat4, Vec3, Vec4};
 use std::cmp::Ordering;
@@ -194,12 +193,6 @@ impl DicomRepo {
         let image_orientation_patient = ct_images[0]
             .image_orientation_patient
             .ok_or_else(|| "ImageOrientationPatient is missing in the first CTImage".to_string())?;
-
-        let patient_position = match &ct_images[0].patient_position {
-            Some(pos_str) => PatientPosition::from_str(pos_str),
-            None => PatientPosition::HFS, // Default to HFS if no position specified
-        };
-        // let (flip_x, flip_y, flip_z) = PatientPosition::get_coordinate_transform(&patient_position);
 
         // Row and column direction vectors
         let row_direction = (

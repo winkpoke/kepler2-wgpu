@@ -28,13 +28,19 @@ pub struct MeshUniforms {
     pub rotation: [f32; 16],
     pub vol_dims: [f32; 3],
     pub preset: f32,
+    pub needle_entry: [f32; 3],
+    pub needle_enabled: f32,
+    pub needle_target: [f32; 3],
+    pub needle_radius: f32,
+    pub needle_pos: [f32; 3],
+    pub needle_length: f32,
 }
 
 impl Default for MeshUniforms {
     fn default() -> Self {
         Self {
-            ray_step_size: 0.0002,
-            max_steps: 512.0,
+            ray_step_size: 0.0004,
+            max_steps: 1500.0,
             is_packed_rg8: 1.0,
             bias: VolumeEncoding::DEFAULT_HU_OFFSET,
             window: 1500.0,
@@ -44,12 +50,18 @@ impl Default for MeshUniforms {
             roi_min: [0.0, 0.0, 0.0],
             scale: 1.0,
             roi_max: [1.0, 1.0, 1.0],
-            opacity_multiplier: 0.05,
+            opacity_multiplier: 1.0,
             light_dir: [0.5, 0.5, -1.0],
             aspect_ratio: 1.0,
             rotation: Mat4::IDENTITY.to_cols_array(),
             vol_dims: [512.0, 512.0, 300.0],
-            preset: 0.0,
+            preset: 1.0,
+            needle_entry: [0.5, 0.0, 0.5],
+            needle_enabled: 0.0,
+            needle_target: [0.5, 1.0, 0.5],
+            needle_radius: 0.015,
+            needle_pos: [0.0, 0.0, 0.0],
+            needle_length: 1.0,
         }
     }
 }

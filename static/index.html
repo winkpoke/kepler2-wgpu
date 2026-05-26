@@ -26,7 +26,7 @@
             background: #fff;
             border: 1px solid #cfcfcf;
             box-shadow: 0 1px 1px rgba(0,0,0,0.04);
-            overflow: hidden;
+            overflow: auto;
             display: flex;
             flex-direction: column;
             min-height: 0;
@@ -67,13 +67,6 @@
 
         input[type="number"] {
             width: 60px;
-        }
-
-        #render_app {
-            width: 100%;
-            height: 100%;
-            min-height: 0;
-            background-color: black;
         }
 
         canvas {
@@ -140,7 +133,6 @@
         }
 
         .tree-row.selected .icon svg,
-        .tree-row.selected .row-actions svg,
         .tree-row.selected .caret svg {
             fill: #fff;
             stroke: #fff;
@@ -186,18 +178,6 @@
             flex: 1 1 auto;
         }
 
-        .row-actions {
-            margin-left: auto;
-            display: inline-flex;
-            gap: 6px;
-            opacity: 0.65;
-            flex: 0 0 auto;
-        }
-
-        .tree-row:hover .row-actions {
-            opacity: 1;
-        }
-
         .row-action {
             width: 18px;
             height: 18px;
@@ -223,6 +203,245 @@
             border-top: 1px solid #cfcfcf;
             background: #fafafa;
         }
+
+        .server-status {
+            padding: 4px 8px;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            background: #f0f0f0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .server-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #ccc;
+        }
+
+        .server-dot.connected { background: #22c55e; }
+        .server-dot.disconnected { background: #ef4444; }
+
+        /* Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: #fff;
+            border: 1px solid #cfcfcf;
+            border-radius: 6px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            width: 450px;
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            border-bottom: 1px solid #cfcfcf;
+            background: linear-gradient(#f7f7f7, #eaeaea);
+            border-radius: 6px 6px 0 0;
+        }
+
+        .modal-title {
+            font-size: 14px;
+            font-weight: bold;
+            color: #222;
+            margin: 0;
+        }
+
+        .modal-close {
+            width: 24px;
+            height: 24px;
+            border: none;
+            background: transparent;
+            cursor: pointer;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            font-size: 18px;
+        }
+
+        .modal-close:hover {
+            background: #e0e0e0;
+            color: #222;
+        }
+
+        .modal-body {
+            padding: 16px;
+        }
+
+        .modal-footer {
+            padding: 12px 16px;
+            border-top: 1px solid #cfcfcf;
+            background: #fafafa;
+            display: flex;
+            gap: 8px;
+            justify-content: flex-end;
+            border-radius: 0 0 6px 6px;
+        }
+
+        .form-group {
+            margin-bottom: 12px;
+        }
+
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            color: #444;
+            margin-bottom: 4px;
+            font-weight: 500;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .form-row > * {
+            flex: 1;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 6px;
+            letter-spacing: 0.025em;
+        }
+
+        .form-group input[type="text"],
+        .form-group input[type="number"] {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #1f2937;
+            background-color: #f9fafb;
+            transition: all 0.2s ease;
+            box-sizing: border-box;
+        }
+
+        .form-group input[type="text"]:hover,
+        .form-group input[type="number"]:hover {
+            border-color: #9ca3af;
+            background-color: #fff;
+        }
+
+        .form-group input[type="text"]:focus,
+        .form-group input[type="number"]:focus {
+            outline: none;
+            border-color: #4a90d9;
+            background-color: #fff;
+            box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.15);
+        }
+
+        .form-group input::placeholder {
+            color: #9ca3af;
+        }
+
+        .form-row > * {
+            flex: 1;
+        }
+
+        .file-input-wrapper {
+            border: 2px dashed #d0d0d0;
+            border-radius: 4px;
+            padding: 16px;
+            text-align: center;
+            background: #fafafa;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+        }
+
+        .file-input-wrapper:hover {
+            border-color: #4a90d9;
+            background: #f0f7ff;
+        }
+
+        .file-input-wrapper input[type="file"] {
+            display: none;
+        }
+
+        .file-input-label {
+            font-size: 13px;
+            color: #666;
+        }
+
+        .file-input-label strong {
+            color: #4a90d9;
+        }
+
+        .btn {
+            padding: 6px 14px;
+            border: 1px solid #cfcfcf;
+            border-radius: 4px;
+            font-size: 13px;
+            cursor: pointer;
+            background: #f5f5f5;
+            color: #333;
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        .btn:hover {
+            background: #e8e8e8;
+            border-color: #bfbfbf;
+        }
+
+        .btn-primary {
+            background: #4a90d9;
+            border-color: #3a7bc8;
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            background: #3a7bc8;
+            border-color: #2d6cb5;
+        }
+
+        .btn-secondary {
+            background: #fff;
+            border-color: #cfcfcf;
+        }
+
+        .file-name-display {
+            font-size: 12px;
+            color: #666;
+            margin-top: 6px;
+            padding: 6px;
+            background: #f9f9f9;
+            border-radius: 4px;
+            word-break: break-all;
+        }
     </style>
 </head>
 
@@ -232,9 +451,21 @@
         <!-- 左侧面板：数据树和文件上传 -->
         <aside class="panel">
             <div class="panel-title">Data</div>
+            <div id="server-status" class="server-status">
+                <div id="server-dot" class="server-dot"></div>
+                <span id="server-text">Checking server...</span>
+            </div>
             <div id="tree-container" class="slicer-tree"></div>
             <div class="file-row">
-                <input type="file" id="file" multiple accept=".dcm" />
+                DICOM:<input type="file" id="file" multiple>
+            </div>
+            <div class="file-row">
+                <button id="openMhxModalBtn" class="btn">Import MHA/MHD</button>
+                <button id="rerender">Render</button>
+            </div>
+            <div class="file-row">
+               <button id="convertBtn">DICOM export</button>
+               <button id="convertBtn">MHA export</button> 
             </div>
         </aside>
 
@@ -261,6 +492,7 @@
                 <div>
                     <label for="index-input">viewIndex:</label>
                     <input type="number" id="index-input" step="1.0" value="0.0">
+                    <button id="apply-view">sub</button>
                 </div>
                 <div>
                     <span id="slab-thickness-input">slab</span>
@@ -286,7 +518,6 @@
                     <label>translate:</label>
                     x:<input type="number" id="trans-x" step="0.1" value="0.0" placeholder="x">
                     y:<input type="number" id="trans-y" step="0.1" value="0.0" placeholder="y">
-                    z:<input type="number" id="trans-z" step="0.1" value="0.0" placeholder="z">
                 </div>
                 <div>
                     <label for="window">window:</label><input type="number" id="window" step="10.0" value="0.0">
@@ -294,9 +525,19 @@
                 </div>
                 <div>
                     <label>resize:</label>
-                    w:<input type="number" id="width" step="10.0" value="0.0" placeholder="800" max="1200">
-                    h:<input type="number" id="height" step="10.0" value="0.0" placeholder="800" max="800">
+                    w:<input type="number" id="width" step="10.0" value="0.0" placeholder="800">
+                    h:<input type="number" id="height" step="10.0" value="0.0" placeholder="800">
                     <button id="resize-submit">submit</button>
+                </div>
+                <div>
+                    <button id="3d-reset">reset 3d</button>
+                </div>
+                <div>
+                    <span id="3d-mode-label">3D Mode:</span>
+                    <select id="3d-mode">
+                        <option value="0">BONE</option>
+                        <option value="1">SOFT</option>
+                    </select>
                 </div>
                 <div>
                     <span id="rotation-label">rotation:</span>
@@ -310,33 +551,122 @@
                     <span id="3d-rotation-y-label">dy:</span><input type="number" id="3d-rotation-y" step="5" value="0">
                 </div>
                 <div>
-                    <span id="roi-min-label">ROI Min:</span>
+                    <span id="roi-min-label">Min:</span>
                     <input type="number" id="roi-min-x" step="0.01" value="-79.29739379882812">
                     <input type="number" id="roi-min-y" step="0.01" value="-50.16448974609375">
                     <input type="number" id="roi-min-z" step="0.01" value="-1241.34130859375">
-                    <span id="roi-max-label">ROI Max:</span>
+                    <span id="roi-max-label">Max:</span>
                     <input type="number" id="roi-max-x" step="0.01" value="86.64703369140625">
                     <input type="number" id="roi-max-y" step="0.01" value="49.83551025390625">
                     <input type="number" id="roi-max-z" step="0.01" value="-978.4163208007812">
                     <button id="crop-roi">crop ROI</button>
+                    <button id="needle">needle</button>
+                </div>
+                <div>
                     <span id="3d-opacity-label">opacity:</span>
                     <input type="number" id="3d-opacity" step="0.1" value="1.0" min="0" max="1">
-                    <button id="3d-reset">reset 3d</button>
+                </div>
+                <div>
+                    <span>Reset to:</span>
+                    <select id="resetOptions" style="width: 100px">
+                        <option value="T">transverse</option>
+                        <option value="C">coronal</option>
+                        <option value="S">sagittal</option>
+                    </select>
+                    <label>Rotation:</label>
+                    <span>Horizontal:</span><input type="number" id="rotation-x-o" step="15" value="0" min="0" max="360"><br>
+                    <span>Vertical :</span><input type="number" id="rotation-y-o" step="15" value="0" min="0" max="360"><br>
+                    <span>In-plane :</span><input type="number" id="rotation-z-o" step="15" value="0" min="0" max="360"><br>
+                    <label>Rotation Quat:</label>
+                    <span>x:</span><input type="number" id="quat-x" step="0.01" value="0"><br>
+                    <span>y:</span><input type="number" id="quat-y" step="0.01" value="0"><br>
+                    <span>z:</span><input type="number" id="quat-z" step="0.01" value="0"><br>
+                    <span>w:</span><input type="number" id="quat-w" step="0.01" value="0"><br>
+                    <button id="submit-quat">submit</button>
                 </div>
             </div>
             
             <!-- 渲染区域 -->
-            <div style="flex:1; min-height:0; position: relative; background: black;">
+            <div style="flex:1; min-height:0; position: relative; background: rgb(255, 255, 255);">
                 <div id="wasm-example"></div>
-                <div id="render_app"></div>
             </div>
         </main>
     </div>
 
+    <!-- MHA/MHD Import Modal -->
+    <div id="mhxModal" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">Import MHA/MHD Volume</h3>
+                <button class="modal-close" id="closeModalBtn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Volume File (.mha, .mhd, .raw)</label>
+                    <div class="file-input-wrapper" id="fileDropZone">
+                        <input type="file" id="mhxInput" multiple accept=".mha,.mhd,.raw">
+                        <label for="mhxInput" class="file-input-label">
+                            Click to select or <strong>drag & drop</strong> files here
+                        </label>
+                        <div id="fileNames" class="file-name-display" style="display: none;"></div>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="id-input-modal">ID</label>
+                        <input type="text" id="id-input-modal">
+                    </div>
+                    <div class="form-group">
+                        <label for="name-input-modal">Name</label>
+                        <input type="text" id="name-input-modal">
+                    </div>
+                    <div class="form-group">
+                        <label for="study-input-modal">Study</label>
+                        <input type="text" id="study-input-modal">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="kv-input-modal">kV</label>
+                        <input type="number" id="kv-input-modal" step="0.5" value="100.0">
+                    </div>
+                    <div class="form-group">
+                        <label for="mas-input-modal">mAs</label>
+                        <input type="number" id="mas-input-modal" step="0.5" value="70.0">
+                    </div>
+                    <div class="form-group">
+                        <label for="slope-input-modal">Slope</label>
+                        <input type="number" id="slope-input-modal" step="0.001" value="1.0">
+                    </div>
+                    <div class="form-group">
+                        <label for="intercept-input-modal">Intercept</label>
+                        <input type="number" id="intercept-input-modal" step="0.001" value="0.0">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="cancelModalBtn">Cancel</button>
+                <button class="btn btn-primary" id="updateModalBtn">Import & Update</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
+        // 辅助工具函数
         const byId = (id) => document.getElementById(id);
         const deg2rad = (d) => d * Math.PI / 180;
         const rad2deg = (r) => r * 180 / Math.PI;
+
+        function log(msg, type = 'info') {
+            const colors = { info: '#4a90d9', success: '#22c55e', error: '#ef4444', warn: '#f59e0b' };
+            const color = colors[type] || colors.info;
+            if (typeof msg === 'object') {
+                console.log(`%c[${type.toUpperCase()}]`, `color: ${color}`, msg);
+            } else {
+                console.log(`%c[${type.toUpperCase()}] ${msg}`, `color: ${color}`);
+            }
+        }
+
         function bindInput(ids, handler) {
         ids.forEach(id => {
             const el = document.getElementById(id);
@@ -346,6 +676,21 @@
         });
         }
 
+        function toUint8Array(obj) {
+            const json = JSON.stringify(obj);
+            const enc = new TextEncoder();
+            return enc.encode(json);
+        }
+
+        function downloadBlob(blob, filename) {
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = filename;
+            a.click();
+        }
+
+        // 状态管理
+        const SERVER_URL = 'http://localhost:3000';
         var repo;
         let state = {
             wasmModule: null,
@@ -357,14 +702,86 @@
             width: 800,
             height: 800,
             rotation: [0, 0, 0],
+            indexValue: 0,
+            volume: null,
         };
-        
         let gl_canvas = null;
         let series_id;
         let fileLists = [];
         let flag = true;
-        let volume;
         let scaleValue = 0.1;
+        let serverConnected = false;
+        let serverVolumes = [];
+        let ws = null;
+        let wsReconnectTimer = null;
+
+        function connectWebSocket() {
+            if (ws && ws.readyState === WebSocket.OPEN) return;
+            const wsUrl = SERVER_URL.replace('http', 'ws') + '/ws';
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                ws.send(JSON.stringify({ kind: 'ping' }));
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    switch (msg.type) {
+                        case 'server_status':// 更新标题栏的 volume 数量
+                            document.getElementById('server-text').textContent = `Server (${msg.loaded_volumes} volumes) - ${msg.message}`;
+                            break;
+                        case 'parsing_progress': // 打印日志
+                            if (typeof log === 'function') log(`Parsing: ${msg.current_file}/${msg.total_files} files`, 'info');
+                            break;
+                        case 'export_progress': // 打印导出进度
+                            if (typeof log === 'function') log(`Export: ${msg.current_slice}/${msg.total_slices} slices`, 'info');
+                            break;
+                        case 'error': // 打印错误
+                            if (typeof log === 'function') log(`Server error: ${msg.message}`, 'error');
+                            break;
+                        case 'heartbeat':
+                            break;
+                    }
+                } catch (e) {
+                    // Ignore malformed messages
+                }
+            };
+
+            ws.onclose = () => {
+                if (typeof log === 'function') log('WebSocket disconnected', 'error');
+                document.getElementById('server-dot').className = 'server-dot disconnected';
+                document.getElementById('server-text').textContent = 'Server disconnected';
+                wsReconnectTimer = setTimeout(() => {
+                    if (serverConnected) connectWebSocket();
+                }, 3000);
+            };
+
+            ws.onerror = () => {
+                ws.close();
+            };
+        }
+
+        async function checkServer() {
+            try {
+                const resp = await fetch(`${SERVER_URL}/api/health`);
+                if (resp.ok) {
+                    const data = await resp.json();// data 就是后端返回的 JSON
+                    document.getElementById('server-dot').className = 'server-dot connected';
+                    document.getElementById('server-text').textContent = `Server (${data.loaded_volumes} volumes)`;
+                    serverConnected = true;
+                    connectWebSocket();
+                    return;
+                }
+                console.warn('Server health check failed:', resp.status, resp.statusText);
+            } catch (e) {
+                console.error('Cannot reach server:', e.message);
+            }
+            document.getElementById('server-dot').className = 'server-dot disconnected';
+            document.getElementById('server-text').textContent = 'Local WASM mode';
+            serverConnected = false;
+        }
 
         async function ensureWasm() {
             if (!state.wasmModule) {
@@ -373,10 +790,218 @@
             }
             return state.wasmModule;
         }
+
+        async function uploadToServer(params = {}) {
+            if (!serverConnected) return;
+            if (!state.mhx) {
+                log('No file selected', 'error');
+                return;
+            }
+            
+            try {
+                // Build query parameters
+                const queryParams = new URLSearchParams();
+                if (params.slope !== undefined) queryParams.append('slope', params.slope);
+                if (params.intercept !== undefined) queryParams.append('intercept', params.intercept);
+                if (params.kv !== undefined) queryParams.append('kv', params.kv);
+                if (params.m_as !== undefined) queryParams.append('m_as', params.m_as);
+                if (params.patient_name !== undefined) queryParams.append('patient_name', params.patient_name);
+                if (params.patient_id !== undefined) queryParams.append('patient_id', params.patient_id);
+                
+                const queryString = queryParams.toString();
+                const url = `${SERVER_URL}/api/volumes/upload${queryString ? '?' + queryString : ''}`;
+                
+                // Create multipart form data
+                const formData = new FormData();
+                formData.append('mha', state.mhx);
+                if (state.raw) {
+                    formData.append('data', state.raw);
+                } else {
+                    formData.append('data', new Blob([]), 'empty.raw');
+                }
+                
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    body: formData,
+                });
+                if (resp.ok) {
+                    const id = await resp.json();
+                    serverVolumes.push(id);
+                    log(`Volume uploaded (${serverVolumes.length} on server)`, 'success');
+                } else {
+                    const err = await resp.text();
+                    log(`Upload failed: ${err}`, 'error');
+                }
+            } catch (e) {
+                log(`Upload error: ${e.message}`, 'error');
+            }
+        }
+
+        // Modal functionality
+        const modal = byId('mhxModal');
+        const openModalBtn = byId('openMhxModalBtn');
+        const closeModalBtn = byId('closeModalBtn');
+        const cancelModalBtn = byId('cancelModalBtn');
+        const updateModalBtn = byId('updateModalBtn');
+        const fileNamesDisplay = byId('fileNames');
+        const mhxInput = byId('mhxInput');
+
+        // Modal input elements
+        const kvInputModal = byId('kv-input-modal');
+        const masInputModal = byId('mas-input-modal');
+        const slopeInputModal = byId('slope-input-modal');
+        const interceptInputModal = byId('intercept-input-modal');
+        const idInputModal = byId('id-input-modal');
+        const nameInputModal = byId('name-input-modal');
+        const studyInputModal = byId('study-input-modal');
+
+        function openModal() {
+            modal.classList.add('active');
+        }
+
+        function closeModal() {
+            modal.classList.remove('active');
+        }
+
+        openModalBtn.addEventListener('click', openModal);
+        closeModalBtn.addEventListener('click', closeModal);
+        cancelModalBtn.addEventListener('click', closeModal);
         
-        bindInput(['slice-input', 'index-input'], () => {
-            const sliceValue = byId('slice-input').value;
+        // Close modal when clicking on overlay
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+
+        // Handle file selection
+        mhxInput.addEventListener("change", async (e) => {
+            state.files = Array.from(e.target.files);
+            state.mha = state.files.find((f) => /\.mha$/i.test(f.name)) || null;
+            state.mhd = state.files.find((f) => /\.mhd$/i.test(f.name)) || null;
+            state.raw = state.files.find((f) => /\.raw$/i.test(f.name)) || null;
+            state.mhx = state.mha || state.mhd || null;
+
+            // Display selected file names
+            if (state.files.length > 0) {
+                const names = state.files.map(f => f.name).join(', ');
+                fileNamesDisplay.textContent = `Selected: ${names}`;
+                fileNamesDisplay.style.display = 'block';
+            } else {
+                fileNamesDisplay.style.display = 'none';
+            }
+        });
+
+        // Update button in modal
+        updateModalBtn.addEventListener('click', async () => {
+            if (!state.mhx) {
+                alert('Please select MHA/MHD file first!');
+                return;
+            }
+
+            const uploadParams = {
+                slope: parseFloat(slopeInputModal.value),
+                intercept: parseFloat(interceptInputModal.value),
+                kv: parseFloat(kvInputModal.value),
+                m_as: parseFloat(masInputModal.value),
+                patient_name: nameInputModal.value,
+                patient_id: idInputModal.value,
+                study_id: studyInputModal.value,
+            };
+
+            const info = {
+                kv: uploadParams.kv,
+                mAs: uploadParams.m_as,
+                slope: uploadParams.slope,
+                intercept: uploadParams.intercept,
+                patient_position: "HFS",
+                modality: "CT",
+            }
+            const infoUint8 = toUint8Array(info);
+
+            try {
+                const formData = new FormData();
+                formData.append('file', state.mhx);
+                await ensureWasm();
+                state.volume = await state.wasmModule.parse_common_files_wasm(state.files, infoUint8);
+                uploadToServer(uploadParams);
+                closeModal();
+                log('Volume imported successfully', 'success');
+            } catch (err) {
+                console.error("渲染错误详情:", err);
+                console.error("错误类型:", err.name);
+                console.error("错误消息:", err.message);
+                alert('Import failed: ' + err.message);
+            }
+        });
+
+        byId('rerender').addEventListener('click', async () => {
+            if (state.render_app == null) {
+                state.render_app = await state.wasmModule.get_render_app();
+                gl_canvas = state.render_app.get_glcanvas();
+                gl_canvas.load_data_from_ct_volume(state.volume);
+                gl_canvas = state.render_app.get_glcanvas();
+                state.render_app.run();
+            }
+            else {
+                console.log('render_app:', state.render_app);
+                gl_canvas.set_window_by_div_id('render_app', state.volume);
+            }
+        })
+
+        // ========= DICOM Export Button =========
+        byId('convertBtn').addEventListener('click', async () => {
+            if (!serverConnected) {
+                alert('DICOM export requires server connection');
+                return;
+            }
+
+            const loaded_volumes = serverVolumes;
+            if (loaded_volumes.length === 0) {
+                alert('No volumes on server. Load a volume first (DICOM or MHA).');
+                return;
+            }
+
+            // Use the first volume for export
+            const volumeId = loaded_volumes[0];
+            await exportDicom(volumeId);
+        });
+
+        // Export DICOM function
+        async function exportDicom(volumeId) {
+            try {
+                log(`Building DICOM for volume ${volumeId}...`, 'info');
+                const url = `${SERVER_URL}/api/dicom/build/${volumeId}`;
+                
+                const resp = await fetch(url, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+
+                if (!resp.ok) {
+                    throw new Error(`HTTP error! status: ${resp.status}`);
+                }
+                
+                const result = await resp.json();
+                log(`DICOM built successfully: ${result.id}`, 'success');
+                alert(`DICOM files have been exported to server's temp directory.\nVolume ID: ${result.id}`);
+            } catch (e) {
+                log(`DICOM export error: ${e.message}`, 'error');
+                alert('DICOM export error: ' + e.message);
+            }
+        }
+        
+        // 视图操作
+        byId('apply-view').addEventListener('click', () => {
             const indexValue = parseInt(byId('index-input').value);
+            state.indexValue = indexValue;
+        })
+
+        bindInput(['slice-input'], () => {
+            const sliceValue = byId('c').value;
+            const indexValue = state.indexValue;
             if (!gl_canvas) {
                 alert('Please select a series first!');
                 return;
@@ -384,9 +1009,9 @@
             gl_canvas.set_slice_mm(indexValue, sliceValue);
         })
 
-        bindInput(['slab-thickness', 'index-input'], () => {
+        bindInput(['slab-thickness'], () => {
             const thicknessValue = byId('slab-thickness').value;
-            const indexValue = parseInt(byId('index-input').value);
+            const indexValue = state.indexValue;
             if (!gl_canvas) {
                 alert('Please select a series first!');
                 return;
@@ -432,12 +1057,6 @@
             state.width = byId('width').value;
             state.height = byId('height').value;
             const indexValue = parseInt(byId('index-input').value);
-            if (state.width >= 1200 || state.height >= 800) {
-                state.width = 1200;
-                byId('width').value = state.width;
-                state.height = 800;
-                byId('height').value = state.height;
-            }
             if (!gl_canvas) {
                 alert('Please select a series first!');
                 return;
@@ -445,9 +1064,9 @@
             gl_canvas.resize(state.width, state.height);
         })
 
-        bindInput(['scale-input', 'index-input'], () => {
+        bindInput(['scale-input'], () => {
             const scaleValue = parseFloat(byId('scale-input').value);
-            const indexValue = parseInt(byId('index-input').value);
+            const indexValue = state.indexValue;
             if (!gl_canvas) {
                 alert('Please select a series first!');
                 return;
@@ -455,11 +1074,10 @@
             gl_canvas.set_scale(indexValue, scaleValue);
         });
 
-        bindInput(['trans-x', 'trans-y', 'index-input'], () => {
+        bindInput(['trans-x', 'trans-y'], () => {
             let x = parseFloat(byId('trans-x').value);
             let y = parseFloat(byId('trans-y').value);
-            const indexValue = parseInt(byId('index-input').value);
-            console.log('translate:', x, y);
+            const indexValue = state.indexValue;
             if (!gl_canvas) {
                 alert('Please select a series first!');
                 return;
@@ -467,10 +1085,10 @@
             gl_canvas.set_pan(indexValue, x, y);
         });
 
-        bindInput(['window', 'level', 'index-input'], () => {
+        bindInput(['window', 'level'], () => {
             const win = byId('window').value;
             const lev = byId('level').value;
-            const indexValue = parseInt(byId('index-input').value);
+            const indexValue = state.indexValue;
 
             if (!gl_canvas) {
                 alert('Please select a series first!');
@@ -514,16 +1132,92 @@
             gl_canvas.set_render_mode(mode, state.mesh_index, state.index, state.mip, index_orientation)
         });
 
-        bindInput(['3d-opacity', 'index-input'], async () => {
+        bindInput(['3d-opacity'], async () => {
             const opacity = parseFloat(byId('3d-opacity').value);
-            const indexValue = parseInt(byId('index-input').value);
+            const indexValue = state.indexValue;
             gl_canvas.set_mesh_opacity(indexValue, Math.max(0, Math.min(1, opacity)));
         });
 
         byId('3d-reset').addEventListener('click', () => {
-            const indexValue = parseInt(byId('index-input').value, 10);
+            const indexValue = state.indexValue;
+            byId('3d-opacity').value = 1.0;
+            byId('window').value = 1500;
+            byId('level').value = 400;
+            byId('trans-x').value = 0.0;
+            byId('trans-y').value = 0.0;
+            byId('scale-input').value = 1.0;
+            byId('slice-input').value = 0;
             gl_canvas.reset_mesh(indexValue);
         });
+
+        byId('3d-mode').addEventListener('change', () => {
+            if (!gl_canvas) return;
+            const preset = parseInt(byId('3d-mode').value, 10);
+            gl_canvas.set_mesh_mode(state.index, preset);
+        });
+
+        byId('resetOptions').addEventListener('change', () => {
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return;
+            }
+            const opt = byId('resetOptions').value;
+            state.index = parseInt(byId('index').value, 10);
+            if (opt == "T") {
+                gl_canvas.set_rotation_quat(state.index, [0, 0, 0, 1]);
+                gl_canvas.set_oblique_rotation_radians(state.index, 0, 0, 0);
+                state.oblique_rotation = [0, 0, 0]
+            } else if (opt == "C") {
+                gl_canvas.set_rotation_quat(state.index, [0, 0, 0, 1]);
+                gl_canvas.set_oblique_rotation_radians(state.index, deg2rad(-90), 0, 0);
+                state.oblique_rotation = [0, 0, 0]
+            } else if (opt == "S") {
+                gl_canvas.set_rotation_quat(state.index, [0, 0, 0, 1]);
+                gl_canvas.set_oblique_rotation_radians(state.index, deg2rad(90), deg2rad(-180), deg2rad(-90));
+                state.oblique_rotation = [0, 0, 0]
+            }
+        });
+
+        byId('submit-quat').addEventListener('click', async () => {
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return;
+            }
+            state.index = parseInt(byId('index-input').value, 10);
+            const x = parseFloat(byId("quat-x").value) || 0;
+            const y = parseFloat(byId("quat-y").value) || 0;
+            const z = parseFloat(byId("quat-z").value) || 0;
+            const w = parseFloat(byId("quat-w").value) || 0;
+
+            gl_canvas.set_rotation_quat(state.index, [x, y, z, w]);
+        });
+
+        bindInput(['rotation-x-o', 'rotation-y-o', 'rotation-z-o'], async() => {
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return;
+            }
+
+            const x_abs = parseFloat(byId("rotation-x-o").value) || 0;
+            const y_abs = parseFloat(byId("rotation-y-o").value) || 0;
+            const z_abs = parseFloat(byId("rotation-z-o").value) || 0;
+
+            const dx_deg = x_abs - state.oblique_rotation[0];
+            const dy_deg = y_abs - state.oblique_rotation[1];
+            const dz_deg = z_abs - state.oblique_rotation[2];
+
+            state.oblique_rotation[0] = x_abs;
+            state.oblique_rotation[1] = y_abs;
+            state.oblique_rotation[2] = z_abs;
+
+            const dx = deg2rad(dx_deg);
+            const dy = deg2rad(dy_deg);
+            const dz = deg2rad(dz_deg);
+
+            gl_canvas.set_oblique_rotation_radians(state.index, dx, dy, dz);
+            const rotation = JSON.parse(await gl_canvas.get_rotation(state.index))
+        })
+
 
         byId('submit-rot').addEventListener('click', () => {
             const indexValue = parseInt(byId('index-input').value);
@@ -564,14 +1258,41 @@
             gl_canvas.set_mesh_roi(indexValue, sx, sy, sz, lx, ly, lz);
         })
 
-        bindInput(['3d-rotation-x', '3d-rotation-y', 'index-input'], async () => {
+        byId('needle').addEventListener('click', () => {
+            const sx = parseFloat(byId('roi-min-x').value);
+            const sy = parseFloat(byId('roi-min-y').value);
+            const sz = parseFloat(byId('roi-min-z').value);
+            const lx = parseFloat(byId('roi-max-x').value);
+            const ly = parseFloat(byId('roi-max-y').value);
+            const lz = parseFloat(byId('roi-max-z').value);
+            const indexValue = parseInt(byId('index-input').value, 10);
+
+            if ([sx, sy, sz, lx, ly, lz].some(v => Number.isNaN(v))) {
+                alert('Please enter a valid number');
+                return;
+            }
+
+            if (sx >= lx || sy >= ly || sz >= lz) {
+                alert('Needle min must be less than max');
+                return;
+            }
+            
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return;
+            }
+            gl_canvas.set_mesh_needle_enabled(indexValue, true);
+            gl_canvas.set_mesh_needle_trajectory(indexValue, sx, sy, sz, lx, ly, lz);
+        })
+
+        bindInput(['3d-rotation-x', '3d-rotation-y'], async () => {
             const rotation_x = parseFloat(byId('3d-rotation-x').value) || 0;
             const rotation_y = parseFloat(byId('3d-rotation-y').value) || 0;
             const dx_deg = rotation_x - state.rotation[0];
             const dy_deg = rotation_y - state.rotation[1];
             state.rotation[0] = rotation_x;
             state.rotation[1] = rotation_y;
-            const indexValue = parseInt(byId('index-input').value);
+            const indexValue = state.indexValue;
             gl_canvas.set_rotation_degrees(indexValue, dx_deg, dy_deg);
         });
 
@@ -635,6 +1356,7 @@
 
         // ======================= Slicer =======================
         let selectedRowEl = null;
+        // 根据名称返回内联 SVG 图标的 HTML 字符串
         function svg(name) {
             if (name === 'caret-right') {
                 return `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 2 L7 5 L3 8 Z" fill="#333"></path></svg>`;
@@ -715,18 +1437,10 @@
             label.className = 'label';
             label.textContent = item.label ?? '';
 
-            const actions = document.createElement('span');
-            actions.className = 'row-actions';
-            actions.innerHTML = `
-                <button class="row-action" type="button" title="Visibility">${svg('eye')}</button>
-                <button class="row-action" type="button" title="Settings">${svg('gear')}</button>
-            `;
-
             row.appendChild(indent);
             row.appendChild(caretBtn);
             row.appendChild(icon);
             row.appendChild(label);
-            row.appendChild(actions);
             li.appendChild(row);
 
             let childWrap = null;
@@ -772,27 +1486,37 @@
                     setSelectedRow(row);
                     series_id = item.label;
                     let vol = repo.generate_ct_volume(series_id);
-                    volume = vol;
+                    state.volume = vol;
+                    uploadToServer({
+                        slope: 1.0,
+                        intercept: 0.0,
+                        kv: 120.0,
+                        m_as: 200.0,
+                        patient_name: 'DICOM Import',
+                        patient_id: 'DICOM',
+                    });
                     if (flag == true) {
                         if (state.render_app == null) {
                             state.render_app = await state.wasmModule.get_render_app();
                             gl_canvas = state.render_app.get_glcanvas();
-                            gl_canvas.load_data_from_ct_volume(volume);
+                            gl_canvas.load_data_from_ct_volume(state.volume);
                             gl_canvas = state.render_app.get_glcanvas();
                             state.render_app.run();
                         } else {
                             console.log('render_app:', state.render_app);
-                            gl_canvas.set_window_by_div_id('render_app', volume);
+                            gl_canvas.set_window_by_div_id('render_app', state.volume);
                             console.log(vol);
                         }
                         flag = false;
                     } else {
-                        gl_canvas.load_data_from_ct_volume(volume);
+                        gl_canvas.load_data_from_ct_volume(state.volume);
                     }
                 });
             }
             return li;
         }
+
+        checkServer();
     </script>
 </body>
 </html>

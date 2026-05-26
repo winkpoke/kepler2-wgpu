@@ -61,6 +61,8 @@ pub enum UserEvent {
     SetMeshRotation(usize, [f32; 16]),
     SetMeshRoi(usize, f32, f32, f32, f32, f32, f32),
     SetMeshMode(usize, usize),
+    SetMeshNeedleEnabled(usize, bool),
+    SetMeshNeedleTrajectory(usize, f32, f32, f32, f32, f32, f32),
 }
 
 #[macro_export]
@@ -499,4 +501,6 @@ impl_user_event_senders_for_glcanvas! {
     set_rotation_degrees => SetRotationDeg(degrees_x: f32, degrees_y: f32),
     set_mesh_roi => SetMeshRoi(sx: f32,sy: f32, sz: f32, lx: f32, ly: f32,lz: f32),
     set_mesh_mode => SetMeshMode(mode: usize),
+    set_mesh_needle_enabled => SetMeshNeedleEnabled(enabled: bool),
+    set_mesh_needle_trajectory => SetMeshNeedleTrajectory(x: f32, y: f32, z: f32, lx: f32, ly: f32, lz: f32),
 }

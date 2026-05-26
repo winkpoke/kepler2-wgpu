@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-05-20T16-00-00
+- **Oblique Parallel Plane Intersection Line Fix**
+  - Fixed full-screen red rendering when oblique plane is parallel/near-parallel to a standard MPR view.
+  - Added plane normal dot product check (`> 0.99`) to detect parallel planes.
+  - When planes are parallel, intersection line is constrained to center only (single line instead of full plane fill).
+  - Files:
+    - `src/rendering/shaders/shader_tex.wgsl`
+
+## 2026-05-20T09-44-19
+- **Virtual Needle Rendering in 3D Mesh View**
+  - Added virtual needle rendering capability in the 3D volume view (`mesh.wgsl`) for surgical planning and needle insertion simulation.
+  - Needle is rendered as a cylinder segment between entry and target points within the volume coordinate space.
+  - Implemented distance-based ray marching integration with proper alpha blending.
+  - Added needle control APIs to `MeshView`: enable/disable, set entry/target points, radius, and color.
+  - Extended `MeshUniforms` struct with needle parameters (entry, target, radius, color, enabled flag).
+  - Files:
+    - `src/rendering/shaders/mesh.wgsl`
+    - `src/rendering/view/mesh/mesh.rs`
+    - `src/rendering/view/mesh/mesh_view.rs`
+
 ## 2026-04-03T10-50-00
 - **Dual Orthogonal MPR Rendering**
   - Added support for rendering two orthogonal MPR slices simultaneously within the same canvas.

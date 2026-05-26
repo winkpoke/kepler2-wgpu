@@ -94,8 +94,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let p1 = (current_mat * vec4<f32>(local_x, in.tex_coords.y, depth, 1.0)).xyz;
         let n2 = normalize(vec3<f32>(u_uniform_frag.mat2[2][0], u_uniform_frag.mat2[2][1], u_uniform_frag.mat2[2][2]));
         let p2 = (u_uniform_frag.mat2 * vec4<f32>(0.5, 0.5, 0.0, 1.0)).xyz;
+        let n1 = normalize(vec3<f32>(current_mat[2][0], current_mat[2][1], current_mat[2][2]));
+        let planes_parallel = abs(dot(n1, n2)) > 0.99;
         let dist = dot(p1 - p2, n2);
-        if (abs(dist) < 0.003) {
+        if (planes_parallel) {
+            // When planes are parallel, only draw a center line
+            if (abs(dist) < 0.003 && abs(local_x - 0.5) < 0.003) {
+                draw_line = true;
+            }
+        } else if (abs(dist) < 0.003) {
+        // let dist = dot(p1 - p2, n2);
+        // if (abs(dist) < 0.003) {
             draw_line = true;
         }
     } else if (u_uniform_frag.is_dual_mode > 0.5) {
@@ -109,8 +118,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let p1 = (current_mat * vec4<f32>(local_x, in.tex_coords.y, depth, 1.0)).xyz;
             let n2 = normalize(vec3<f32>(u_uniform_frag.mat2[2][0], u_uniform_frag.mat2[2][1], u_uniform_frag.mat2[2][2]));
             let p2 = (u_uniform_frag.mat2 * vec4<f32>(0.5, 0.5, 0.0, 1.0)).xyz;
+            let n1 = normalize(vec3<f32>(current_mat[2][0], current_mat[2][1], current_mat[2][2]));
+            let planes_parallel = abs(dot(n1, n2)) > 0.99;
             let dist = dot(p1 - p2, n2);
-            if (abs(dist) < 0.003) {
+            if (planes_parallel) {
+                // When planes are parallel, only draw a center line
+                if (abs(dist) < 0.003 && abs(in.tex_coords.y - 0.5) < 0.003) {
+                    draw_line = true;
+                }
+            } else if (abs(dist) < 0.003) {
                 draw_line = true;
             }
             
@@ -124,8 +140,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let p2 = (current_mat * vec4<f32>(local_x, in.tex_coords.y, depth, 1.0)).xyz;
             let n1 = normalize(vec3<f32>(u_uniform_frag.mat[2][0], u_uniform_frag.mat[2][1], u_uniform_frag.mat[2][2]));
             let p1 = (u_uniform_frag.mat * vec4<f32>(0.5, 0.5, 0.0, 1.0)).xyz;
+            let n2 = normalize(vec3<f32>(current_mat[2][0], current_mat[2][1], current_mat[2][2]));
+            let planes_parallel = abs(dot(n1, n2)) > 0.99;
             let dist = dot(p2 - p1, n1);
-            if (abs(dist) < 0.003) {
+            if (planes_parallel) {
+                // When planes are parallel, only draw a center line
+                if (abs(dist) < 0.003 && abs(in.tex_coords.y - 0.5) < 0.003) {
+                    draw_line = true;
+                }
+            } else if (abs(dist) < 0.003) {
                 draw_line = true;
             }
             

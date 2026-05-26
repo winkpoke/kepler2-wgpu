@@ -72,6 +72,78 @@ impl CTVolume {
         let idx = z * rows * cols + y * cols + x;
         self.voxel_data.get(idx).copied()
     }
+
+    /// Downsample XY plane by 2x using 2x2 average pooling.
+    /// Keeps Z dimension unchanged. Reduces GPU memory by ~75%.
+    /// New dimensions: (rows/2, cols/2, slices)
+    /// New spacing: (spacing_x*2, spacing_y*2, spacing_z)
+    /// New Base: scales direction vectors by 2 to match new voxel size
+    pub fn downsample_2x(&self) -> CTVolume {
+        let (rows, cols, slices) = self.dimensions;
+        
+        let new_rows = rows / 2;
+        let new_cols = cols / 2;
+        
+        if new_rows == 0 || new_cols == 0 {
+            return self.clone();
+        }
+        
+        let new_data_len = new_rows * new_cols * slices;
+        let mut new_data = Vec::with_capacity(new_data_len);
+
+        for z in 0..slices {
+            for y in 0..new_rows {
+                for x in 0..new_cols {
+                    let x0 = x * 2;
+                    let y0 = y * 2;
+                    let x1 = x0 + 1;
+                    let y1 = y0 + 1;
+                    
+                    let mut sum = 0i32;
+                    let mut count = 0i32;
+                    
+                    if x0 < cols && y0 < rows {
+                        let idx = z * rows * cols + y0 * cols + x0;
+                        sum += self.voxel_data[idx] as i32;
+                        count += 1;
+                    }
+                    if x1 < cols && y0 < rows {
+                        let idx = z * rows * cols + y0 * cols + x1;
+                        sum += self.voxel_data[idx] as i32;
+                        count += 1;
+                    }
+                    if x0 < cols && y1 < rows {
+                        let idx = z * rows * cols + y1 * cols + x0;
+                        sum += self.voxel_data[idx] as i32;
+                        count += 1;
+                    }
+                    if x1 < cols && y1 < rows {
+                        let idx = z * rows * cols + y1 * cols + x1;
+                        sum += self.voxel_data[idx] as i32;
+                        count += 1;
+                    }
+                    
+                    let avg = if count > 0 { sum / count } else { 0 };
+                    new_data.push(avg as i16);
+                }
+            }
+        }
+
+        let (sx, sy, sz) = self.voxel_spacing;
+        
+        let mut new_base = self.base.clone();
+        let mut m = new_base.matrix;
+        m.x_axis = m.x_axis * 2.0;
+        m.y_axis = m.y_axis * 2.0;
+        new_base.matrix = m;
+        
+        CTVolume::new(
+            (new_rows, new_cols, slices),
+            (sx * 2.0, sy * 2.0, sz),
+            new_data,
+            new_base,
+        )
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]

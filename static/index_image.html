@@ -503,8 +503,8 @@
     const info = {
       kv: 100.0,
       mAs: 70.0,
-      slope: 1612.903,
-      intercept: - 1016.129,
+      slope: 1.0,
+      intercept: 0.0,
       patient_position: "HFS",
       modality: "CT",
     }
@@ -566,20 +566,56 @@
       log("开始渲染！")
       if (!state.mhx) {
         alert('请先选择重建文件！');
+        return;
       }
 
-      await ensureWasm();
-      volume = await state.wasmModule.parse_common_files_wasm(state.files, infoUint8);
-      if (state.render_app == null) {
-        state.render_app = await state.wasmModule.get_render_app();
-        gl_canvas = state.render_app.get_glcanvas();
-        gl_canvas.load_data_from_ct_volume(volume);
-        gl_canvas = state.render_app.get_glcanvas();
-        state.render_app.run();
-      }
-      else {
-        console.log('render_app:', state.render_app);
-        gl_canvas.set_window_by_div_id('render_app', volume);
+      try {
+        await ensureWasm();
+        
+        // 计算预计文件大小 (在 analyze 按钮点击后 state.dim 才会被设置)
+        if (state.dim && state.dim[0] > 0 && state.dim[1] > 0 && state.dim[2] > 0) {
+          const estimatedSize = state.dim[0] * state.dim[1] * state.dim[2] * 2;
+          console.log("预计数据大小:", (estimatedSize / 1024 / 1024).toFixed(2), "MB");
+          log(`预计数据大小: ${(estimatedSize / 1024 / 1024).toFixed(2)} MB`);
+        }
+        
+        // 显示加载进度
+        byId("progress").value = 10;
+        log("正在读取文件...");
+        
+        volume = await state.wasmModule.parse_common_files_wasm(state.files, infoUint8);
+        
+        byId("progress").value = 50;
+        log("文件解析完成，正在创建纹理...");
+        
+        if (state.render_app == null) {
+          state.render_app = await state.wasmModule.get_render_app();
+          gl_canvas = state.render_app.get_glcanvas();
+          gl_canvas.load_data_from_ct_volume(volume);
+          gl_canvas = state.render_app.get_glcanvas();
+          state.render_app.run();
+        }
+        else {
+          console.log('render_app:', state.render_app);
+          gl_canvas.set_window_by_div_id('render_app', volume);
+        }
+        
+        byId("progress").value = 100;
+        log("渲染完成！", "ok");
+        
+      } catch (err) {
+        console.error("渲染错误详情:", err);
+        console.error("错误类型:", err.name);
+        
+        if (err.name === 'NotFoundError' || err.message.includes('could not be read')) {
+          log("❌ 文件读取失败：文件可能过大或已损坏。请尝试：1) 刷新页面重新选择 2) 检查文件是否被其他程序占用", "error");
+        } else if (err.message && err.message.includes('MHA')) {
+          log("❌ MHA解析错误：" + err.message, "error");
+        } else {
+          log("渲染失败：" + (err.message || err), "error");
+        }
+        
+        byId("progress").value = 0;
       }
     })
 
@@ -1015,9 +1051,18 @@
         await ensureWasm();
         byId("progress").value = 0;
 
+        // 检查文件是否存在
+        if (!state.mhx) {
+          throw new Error("未选择MHA/MHX文件");
+        }
+        
+        console.log("开始读取文件:", state.mhx.name, "大小:", state.mhx.size, "字节");
+        
         // 读取MHX文件内容
         const mhxText = await state.mhx.text();
-        log(`读取MHX文件: ${state.mhx.name}`);
+        log(`读取MHX文件: ${state.mhx.name} (${mhxText.length} 字符)`);
+        
+        console.log("MHX文件头（前500字符）:", mhxText.substring(0, 500));
 
         // 解析MHX头信息
         const header = await parseMHXContent(mhxText);
@@ -1034,8 +1079,19 @@
         byId("progress").value = 100;
 
       } catch (err) {
-        log("解析失败：" + err.message, "error");
-        console.error(err);
+        console.error("详细错误:", err);
+        console.error("错误类型:", err.name);
+        console.error("错误消息:", err.message);
+        console.error("错误堆栈:", err.stack);
+        
+        // 针对 ERR_UPLOAD_FILE_CHANGED 错误的特殊处理
+        if (err.name === 'NotFoundError' || err.message.includes('could not be read')) {
+          log("❌ 文件读取失败：可能是文件过大或被占用。请尝试：1) 重新选择文件 2) 确保文件未被其他程序打开", "error");
+        } else if (err.name === 'SecurityError') {
+          log("❌ 安全错误：浏览器安全限制。请尝试使用HTTP服务器而非file://协议访问", "error");
+        } else {
+          log("解析失败：" + err.message, "error");
+        }
       }
     });
 

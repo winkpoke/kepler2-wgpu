@@ -45,6 +45,12 @@ struct MeshUniforms {
     rotation: mat4x4<f32>,
     vol_dims: vec3<f32>,
     preset: f32,
+    needle_entry: vec3<f32>,    // 针入口点 (归一化坐标 0-1)
+    needle_enabled: f32,        // 是否显示针 (0.0 或 1.0)
+    needle_target: vec3<f32>,   // 针目标点 (归一化坐标 0-1)
+    needle_radius: f32,         // 针半径 (归一化)
+    needle_pos: vec3<f32>,      // 针当前位置 (归一化坐标 0-1)
+    needle_length: f32,         // 针总长度 (归一化)
 }
 @group(1) @binding(0)
 var<uniform> u_vol: MeshUniforms;
@@ -100,9 +106,7 @@ fn hash(uv: vec2<f32>) -> f32 {
 }
 
 fn get_iso_threshold() -> f32 {
-    if (u_vol.preset > 0.5) {
-        return 250.0; // ANGIO
-    } else if (u_vol.preset < 1.5) {
+    if (u_vol.preset < 0.5) {
         return 300.0; // BONE
     }
     return u_vol.level; // SOFT
@@ -119,31 +123,54 @@ fn compute_normal(pos: vec3<f32>) -> vec3<f32> {
     return normalize(select(vec3<f32>(0.0,0.0,1.0), g, length(g) > 1e-6));
 }
 
-// Phong Lighting Model
-// Adds shading using normal, light direction, and view direction
+// Multi-Light Phong Lighting Model
+// Uses 3 lights positioned around the VIEW direction for uniform illumination.
+// The view direction changes with camera rotation, so lighting stays balanced.
+//   Light 0 (Key):   slightly right of camera, main illumination
+//   Light 1 (Fill):  left and behind camera, fills shadows
+//   Light 2 (Rim):   from behind, highlights silhouette edges
 fn compute_lighting(normal_in: vec3<f32>, view_dir_in: vec3<f32>, base_color: vec3<f32>) -> vec3<f32> {
     let n = normalize(normal_in);
     let v = normalize(view_dir_in);
-    // 假设光源来自相机略微偏右上的位置
-    let l = normalize(u_vol.light_dir + vec3<f32>(0.2, 0.2, 0.0)); 
 
-    let diff = max(dot(n, l), 0.0);
+    // Light 0: Key light (slightly right of camera)
+    let l0 = normalize(v + vec3<f32>(0.3, 0.1, -0.1));
+    let diff0 = max(dot(n, l0), 0.0);
+    let h0 = normalize(l0 + v);
+    let spec0 = pow(max(dot(n, h0), 0.0), 16.0);
+    let color0 = vec3<f32>(1.0, 0.99, 0.96);
+    let kd0 = 0.9;
+    let ks0 = 0.3;
 
-    let h = normalize(l + v);
-    // 降低高光指数 (shininess) 让高光点更大、更柔和 (原来是 48.0)
-    let spec = pow(max(dot(n, h), 0.0), 16.0); 
+    // Light 1: Fill light (left and behind camera, warm)
+    let l1 = normalize(-v + vec3<f32>(-0.3, 0.2, 0.1));
+    let diff1 = max(dot(n, l1), 0.0);
+    let h1 = normalize(l1 + v);
+    let spec1 = pow(max(dot(n, h1), 0.0), 4.0);
+    let color1 = vec3<f32>(1.0, 0.9, 0.78);
+    let kd1 = 0.6;
+    let ks1 = 0.12;
 
-    let ambient = 0.4;  // 稍微提高环境光，避免背光面死黑
-    let kd = 0.8;       // 漫反射系数
-    let ks = 0.3;       // 稍微增强高光强度
+    // Light 2: Rim light (from behind, edge highlight)
+    let l2 = normalize(v + vec3<f32>(0.0, -0.4, 0.5));
+    let diff2 = max(dot(n, l2), 0.0);
+    let h2 = normalize(l2 + v);
+    let spec2 = pow(max(dot(n, h2), 0.0), 24.0);
+    let color2 = vec3<f32>(0.88, 0.92, 1.0);
+    let kd2 = 0.35;
+    let ks2 = 0.2;
 
-    return base_color * (ambient + kd * diff) + vec3<f32>(1.0) * (ks * spec);
+    let ambient = 0.5;
+    let diffuse = color0 * kd0 * diff0 + color1 * kd1 * diff1 + color2 * kd2 * diff2;
+    let specular = color0 * ks0 * spec0 + color1 * ks1 * spec1 + color2 * ks2 * spec2;
+
+    return base_color * (ambient + diffuse) + specular;
 }
 
 fn bone_base_color(hu: f32) -> vec3<f32> {
     let t = clamp((hu - 200.0) / 1200.0, 0.0, 1.0);
-    let dark = vec3<f32>(0.45, 0.35, 0.25);
-    let light = vec3<f32>(0.90, 0.86, 0.78);
+    let dark = vec3<f32>(0.85, 0.85, 0.85);
+    let light = vec3<f32>(1.0, 1.0, 1.0);
     return mix(dark, light, t);
 }
 
@@ -172,6 +199,131 @@ fn transfer_function(hu: f32, grad_mag: f32) -> vec4<f32> {
     let final_alpha = clamp(base_alpha * edge_factor, 0.0, 1.0);
 
     return vec4<f32>(color, final_alpha);
+}
+
+// ==================== Needle Rendering Functions ====================
+// 虚拟针渲染：用于手术规划和穿刺模拟
+fn distance_to_line_segment(point: vec3<f32>, line_start: vec3<f32>, line_end: vec3<f32>) -> f32 {
+    let line_dir = line_end - line_start;
+    let line_len_sq = dot(line_dir, line_dir);
+    if (line_len_sq < 1e-12) {
+        return length(point - line_start);
+    }
+    let t = clamp(dot(point - line_start, line_dir) / line_len_sq, 0.0, 1.0);
+    let closest = line_start + t * line_dir;
+    return length(point - closest);
+}
+
+fn project_point_on_line(point: vec3<f32>, line_start: vec3<f32>, line_end: vec3<f32>) -> f32 {
+    let line_dir = line_end - line_start;
+    let line_len_sq = dot(line_dir, line_dir);
+    if (line_len_sq < 1e-12) {
+        return 0.0;
+    }
+    let t = dot(point - line_start, line_dir) / line_len_sq;
+    return t;
+}
+
+fn sample_needle_at_point(pos: vec3<f32>) -> vec4<f32> {
+    if (u_vol.needle_enabled < 0.5) {
+        return vec4<f32>(0.0);
+    }
+
+    let entry = u_vol.needle_entry;
+    let needle_pos = u_vol.needle_pos;
+    let needle_target = u_vol.needle_target;
+    let radius = u_vol.needle_radius;
+
+    let t = project_point_on_line(pos, entry, needle_target);
+    let dist = distance_to_line_segment(pos, entry, needle_target);
+
+    if (dist < radius) {
+        let edge_factor = 1.0 - smoothstep(0.0, radius, dist);
+        var color: vec3<f32>;
+        var alpha: f32;
+
+        if (t >= 0.0 && t <= 1.0) {
+            if (t < 1.0) {
+                let solid_t = project_point_on_line(needle_pos, entry, needle_target);
+                if (t <= solid_t) {
+                    color = vec3<f32>(1.0, 0.85, 0.0);
+                    let highlight = pow(edge_factor, 1.5);
+                    color = color * (0.7 + 0.3 * highlight);
+                    alpha = clamp(edge_factor * 0.95, 0.0, 1.0);
+                } else {
+                    let dash_scale = 20.0;
+                    let dash_pos = t * dash_scale;
+                    let dash = fract(dash_pos);
+                    if (dash < 0.5) {
+                        color = vec3<f32>(1.0, 0.5, 0.0);
+                        alpha = clamp(edge_factor * 0.7, 0.0, 1.0);
+                    } else {
+                        return vec4<f32>(0.0);
+                    }
+                }
+            } else {
+                return vec4<f32>(0.0);
+            }
+        } else {
+            return vec4<f32>(0.0);
+        }
+
+        return vec4<f32>(color, alpha);
+    }
+
+    return vec4<f32>(0.0);
+}
+
+fn sample_needle_along_ray(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end: f32) -> vec4<f32> {
+    if (u_vol.needle_enabled < 0.5) {
+        return vec4<f32>(0.0);
+    }
+
+    let entry = u_vol.needle_entry;
+    let needle_target_pt = u_vol.needle_target;
+    let radius = u_vol.needle_radius;
+
+    let needle_dir = needle_target_pt - entry;
+    let needle_len_sq = dot(needle_dir, needle_dir);
+    if (needle_len_sq < 1e-12) {
+        return vec4<f32>(0.0);
+    }
+
+    let ray_to_entry = entry - ray_origin;
+    let a = dot(ray_dir, ray_dir);
+    let b = -2.0 * dot(ray_dir, needle_dir);
+    let c = dot(needle_dir, needle_dir) * (radius * radius) - length(cross(ray_to_entry, needle_dir));
+
+    let discriminant = b * b - 4.0 * a * c;
+    if (discriminant < 0.0) {
+        let closest_dist = distance_to_line_segment(ray_origin, entry, needle_target_pt);
+        if (closest_dist >= radius) {
+            return vec4<f32>(0.0);
+        }
+    }
+
+    var accum_rgb = vec3<f32>(0.0);
+    var accum_a = 0.0;
+    var t = t_start;
+    let step = (t_end - t_start) / 64.0;
+
+    for (var i = 0u; i < 64u; i = i + 1u) {
+        if (t > t_end || accum_a > 0.95) {
+            break;
+        }
+
+        let pos = ray_origin + t * ray_dir;
+        let needle_sample = sample_needle_at_point(pos);
+
+        if (needle_sample.a > 0.005) {
+            accum_rgb += (1.0 - accum_a) * needle_sample.rgb * needle_sample.a;
+            accum_a += (1.0 - accum_a) * needle_sample.a;
+        }
+
+        t = t + step;
+    }
+
+    return vec4<f32>(accum_rgb, clamp(accum_a, 0.0, 1.0));
 }
 
 fn iso_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32, iso: f32) -> vec4<f32> {
@@ -221,7 +373,11 @@ fn iso_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32, is
             let base = bone_base_color(hu);
             let col = compute_lighting(n, v, base);
 
-            return vec4<f32>(col, 1.0);
+            // Exponential mapping
+            let mapped_opacity = pow(u_vol.opacity_multiplier, 6.0);
+            let density = mapped_opacity * 3.0;
+            let sample_alpha = 1.0 - exp(-density);
+            return vec4<f32>(col * sample_alpha, sample_alpha);
         }
 
         v_prev = v_cur;
@@ -269,11 +425,21 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
             let vdir = normalize(-ray_dir);
             let lit_color = compute_lighting(n, vdir, tf.rgb);
 
-            let density = tf.a * u_vol.opacity_multiplier * 50.0; 
-            let sample_alpha = 1.0 - exp(-density * step_len);
+            let mapped_opacity = pow(u_vol.opacity_multiplier, 6.0);
+            let density = tf.a * mapped_opacity * 3.0; 
+            let volume_alpha = 1.0 - exp(-density * step_len);
 
-            accum_rgb += (1.0 - accum_a) * lit_color * sample_alpha;
-            accum_a += (1.0 - accum_a) * sample_alpha;
+            let needle_sample = sample_needle_at_point(pos);
+            var final_color = lit_color;
+            var final_alpha = volume_alpha;
+
+            if (needle_sample.a > 0.005) {
+                final_color = mix(lit_color, needle_sample.rgb, needle_sample.a * 0.85);
+                final_alpha = max(volume_alpha, needle_sample.a * 0.9);
+            }
+
+            accum_rgb += (1.0 - accum_a) * final_color * final_alpha;
+            accum_a += (1.0 - accum_a) * final_alpha;
         }
 
         t = t + dt;
@@ -326,10 +492,29 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     t_start = t_start + hash(in.tex_coords) * dt;
 
-    if (u_vol.preset < 1.5) {
+    // Step 1: Render volume normally (ISO or DVR mode)
+    var volume_result: vec4<f32>;
+    if (u_vol.preset < 0.5) {
         let iso = get_iso_threshold();
-        return iso_ray_march(ray_origin, ray_dir, t_start, t_end, iso);
+        volume_result = iso_ray_march(ray_origin, ray_dir, t_start, t_end, iso);
+    } else {
+        volume_result = dvr_ray_march(ray_origin, ray_dir, t_start, t_end);
     }
 
-    return dvr_ray_march(ray_origin, ray_dir, t_start, t_end);
+    // Step 2: Render needle as overlay (always visible on top of volume)
+    let needle_overlay = sample_needle_along_ray(ray_origin, ray_dir, t_start, t_end);
+
+    // Step 3: Composite: needle over volume
+    if (needle_overlay.a > 0.001) {
+        let vol_rgb = volume_result.rgb;
+        let vol_a = volume_result.a;
+        let needle_a = needle_overlay.a;
+        let out_a = vol_a + (1.0 - vol_a) * needle_a;
+        if (out_a > 0.001) {
+            let out_rgb = (vol_rgb * vol_a * (1.0 - needle_a) + needle_overlay.rgb * needle_a) / out_a;
+            return vec4<f32>(out_rgb, out_a);
+        }
+    }
+
+    return volume_result;
 }

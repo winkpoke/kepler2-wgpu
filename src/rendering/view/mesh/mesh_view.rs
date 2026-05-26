@@ -109,6 +109,11 @@ pub struct MeshView {
     window_level: WindowLevel,
     slab_thickness: f32,
     mode: usize,
+    needle_enabled: bool,
+    needle_entry: [f32; 3],
+    needle_target: [f32; 3],
+    needle_radius: f32,
+    needle_pos: [f32; 3],
 }
 
 impl MeshView {
@@ -130,12 +135,17 @@ impl MeshView {
             last_frame_time: Instant::now(),
             scale_factor: 1.0,
             pan: [0.0, 0.0, 0.0],
-            opacity: 0.5,
+            opacity: 1.0,
             roi_min: [0.0, 0.0, 0.0],
             roi_max: [1.0, 1.0, 1.0],
             window_level: WindowLevel::new(),
             slab_thickness: 1.25,
-            mode: 2,
+            mode: 1,
+            needle_enabled: false,
+            needle_entry: [0.5, 0.0, 0.5],
+            needle_target: [0.5, 1.0, 0.5],
+            needle_radius: 0.015,
+            needle_pos: [0.5, 0.0, 0.5],
         }
     }
 
@@ -378,6 +388,39 @@ impl MeshView {
         self.roi_max = [1.0, 1.0, 1.0];
     }
 
+    pub fn set_needle_enabled(&mut self, enabled: bool) {
+        self.needle_enabled = enabled;
+        log::info!("Mesh needle rendering {}", if enabled { "enabled" } else { "disabled" });
+    }
+
+    pub fn is_needle_enabled(&self) -> bool {
+        self.needle_enabled
+    }
+
+    pub fn set_needle_trajectory(&mut self, entry: [f32; 3], pos: [f32; 3]) {
+        self.needle_entry = entry;
+        self.needle_pos = pos;
+        log::info!("Mesh needle trajectory set: entry={:?}, pos={:?}", entry, pos);
+    }
+
+    pub fn set_needle_position(&mut self, pos: [f32; 3]) {
+        self.needle_pos = pos;
+        log::debug!("Mesh needle position set to {:?}", pos);
+    }
+
+    pub fn get_needle_position(&self) -> [f32; 3] {
+        self.needle_pos
+    }
+
+    pub fn set_needle_radius(&mut self, radius: f32) {
+        self.needle_radius = radius.clamp(0.0005, 0.05);
+        log::debug!("Mesh needle radius set to {:.4}", self.needle_radius);
+    }
+
+    pub fn get_needle_radius(&self) -> f32 {
+        self.needle_radius
+    }
+
     pub fn set_window_level(&mut self, window: f32) -> KeplerResult<()> {
         let _ = self.window_level.set_window_level(window);
         log::info!("MIP window set to {:.3}", window);
@@ -451,30 +494,36 @@ impl MeshView {
                 aspect_ratio,
                 rotation: final_matrix.to_cols_array(),
                 vol_dims: [w, h, d],
-                preset: self.mode as f32
+                preset: self.mode as f32,
+                needle_enabled: if self.needle_enabled { 1.0 } else { 0.0 },
+                needle_entry: self.needle_entry,
+                needle_target: self.needle_target,
+                needle_radius: self.needle_radius,
+                needle_pos: self.needle_pos,
+                needle_length: 1.0,
             };
 
             // update
             vol_ctx.update_uniforms(queue, &vol_uniforms);
         }
 
-        // Update Orientation Cube Uniforms
-        if let Some(cube_ctx) = &self.orientation_cube_ctx {
-            let flip = Mat4::from_scale(Vec3::new(1.0, -1.0, -1.0));
-            let model_matrix = flip * Mat4::from_quat(self.rotation_quat.conjugate());
+        // // Update Orientation Cube Uniforms
+        // if let Some(cube_ctx) = &self.orientation_cube_ctx {
+        //     let flip = Mat4::from_scale(Vec3::new(1.0, -1.0, -1.0));
+        //     let model_matrix = flip * Mat4::from_quat(self.rotation_quat.conjugate());
 
-            // View: Standard fixed camera
-            // Place cube closer to camera (Z=5.0) than main mesh (Z=-2.0) to ensure it renders on top
-            // Orthographic range is -10 to 10, so 5.0 is well within range.
-            let view_matrix = Mat4::from_translation(Vec3::new(0.0, 0.0, 5.0));
+        //     // View: Standard fixed camera
+        //     // Place cube closer to camera (Z=5.0) than main mesh (Z=-2.0) to ensure it renders on top
+        //     // Orthographic range is -10 to 10, so 5.0 is well within range.
+        //     let view_matrix = Mat4::from_translation(Vec3::new(0.0, 0.0, 5.0));
 
-            // Proj: Fixed Ortho to fit unit cube (-1..1) with padding
-            // Unit cube diagonal is 1.73. 1.5 might clip corners if rotating.
-            let extent = 2.0;
-            let proj_matrix = Mat4::orthographic_rh(-extent, extent, -extent, extent, -10.0, 10.0);
-            let mvp_matrix = proj_matrix * view_matrix * model_matrix;
-            cube_ctx.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
-        }
+        //     // Proj: Fixed Ortho to fit unit cube (-1..1) with padding
+        //     // Unit cube diagonal is 1.73. 1.5 might clip corners if rotating.
+        //     let extent = 2.0;
+        //     let proj_matrix = Mat4::orthographic_rh(-extent, extent, -extent, extent, -10.0, 10.0);
+        //     let mvp_matrix = proj_matrix * view_matrix * model_matrix;
+        //     cube_ctx.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
+        // }
     }
 
     /// Function-level comment: Start frame timing for performance monitoring.
@@ -606,27 +655,27 @@ impl MeshView {
             log::warn!("BasicMeshView::try_render - Volume rendering requested but no volume context attached");
         }
 
-        // Render Orientation Cube (if available)
-        if let Some(cube_ctx) = &self.orientation_cube_ctx {
-            let cube_size = 120.0;
-            let padding = 10.0;
+        // // Render Orientation Cube (if available)
+        // if let Some(cube_ctx) = &self.orientation_cube_ctx {
+        //     let cube_size = 120.0;
+        //     let padding = 10.0;
 
-            // Calculate bottom-left position within the view
-            // Assuming (x, y) is top-left of the view
-            let view_x = self.pos.0 as f32;
-            let view_y = self.pos.1 as f32;
-            let view_h = self.dim.1 as f32;
+        //     // Calculate bottom-left position within the view
+        //     // Assuming (x, y) is top-left of the view
+        //     let view_x = self.pos.0 as f32;
+        //     let view_y = self.pos.1 as f32;
+        //     let view_h = self.dim.1 as f32;
 
-            // Bottom-left relative to view
-            let cube_x = view_x + padding;
-            let cube_y = view_y + view_h - cube_size - padding;
+        //     // Bottom-left relative to view
+        //     let cube_x = view_x + padding;
+        //     let cube_y = view_y + view_h - cube_size - padding;
 
-            // Ensure we don't draw outside the view if view is too small
-            if self.dim.0 > (cube_size as u32 + 20) && self.dim.1 > (cube_size as u32 + 20) {
-                render_pass.set_viewport(cube_x, cube_y, cube_size, cube_size, 0.0, 1.0);
-                cube_ctx.render(render_pass);
-            }
-        }
+        //     // Ensure we don't draw outside the view if view is too small
+        //     if self.dim.0 > (cube_size as u32 + 20) && self.dim.1 > (cube_size as u32 + 20) {
+        //         render_pass.set_viewport(cube_x, cube_y, cube_size, cube_size, 0.0, 1.0);
+        //         cube_ctx.render(render_pass);
+        //     }
+        // }
 
         // Record successful render
         let render_time_ms = start_time.elapsed().as_millis_f32();

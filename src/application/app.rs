@@ -390,7 +390,13 @@ impl App {
     }
 
     /// Internal helper to load volume and create RenderContent without modifying layout
-    fn load_render_content(&mut self, vol: &CTVolume) -> Result<Arc<RenderContent>, KeplerError> {
+    fn load_render_content(&mut self, vol_input: &CTVolume) -> Result<Arc<RenderContent>, KeplerError> {
+        let vol = if vol_input.dimensions.0 > 512 || vol_input.dimensions.1 > 512 {
+            vol_input.downsample_2x()
+        } else {
+            vol_input.clone()
+        };
+        
         let _ = self.app_model.load_volume(vol.clone());
         let mut winlev;
 
@@ -446,9 +452,11 @@ impl App {
     ) -> Result<Arc<RenderContent>, KeplerError> {
         self.oblique_rotation = false;
         let texture = self.load_render_content(vol)?;
+        // Use the volume that may have been downsampled by load_render_content
+        let vol_render = self.app_model.volume()?;
         let _ = self
             .app_view
-            .reset_to_default_mpr_layout(texture.clone(), vol)
+            .reset_to_default_mpr_layout(texture.clone(), vol_render)
             .map_err(|e| KeplerError::Graphics(e.to_string()));
         self.saved_states = [0, 1, 2, 0];
         Ok(texture)
@@ -503,13 +511,12 @@ impl App {
         self.app_view.save_view_states();
         self.oblique_rotation = false;
         
-        // Load current volume
         if let Some(vol) = self.app_model.volume().ok().map(|v| v.clone()) {
             if self.saved_states.is_empty() {
                 self.load_data_from_ct_volume(&vol).unwrap();
             }
             
-            // Load render texture
+            // Load render texture (may downsample internally and store in app_model)
             let texture = match self.load_render_content(&vol) {
                 Ok(t) => t,
                 Err(e) => {
@@ -518,18 +525,21 @@ impl App {
                 }
             };
 
+            // Use the volume that may have been downsampled by load_render_content
+            let vol_render = self.app_model.volume().unwrap();
+
             if let Some(idx) = mpr_index {
                 self.saved_states[idx] = orientation_index;
             }
 
-            // Switch rendering mode
+            // Switch rendering mode using the (potentially downsampled) volume
             match mode {
                 // === MPR ===
                 0 | 1 | 2  => {
                     log::info!("Switching to MPR mode (orientation: {})", orientation_index);
                     let _ = self.app_view.set_layout_mode_single(
                         texture.clone(),
-                        &vol,
+                        vol_render,
                         mode,
                         orientation_index,
                     );
@@ -541,7 +551,7 @@ impl App {
                     log::info!("Switching to LargeLeft3RightLayout");
                     let _ = self.app_view.set_layout_three(
                         texture.clone(),
-                        &vol,
+                        vol_render,
                         self.saved_states,
                         mip_index,
                         mesh_index,
@@ -552,7 +562,7 @@ impl App {
                 _ => {
                     let _ = self.app_view.configure_mesh_layout(
                         texture.clone(),
-                        &vol,
+                        vol_render,
                         self.saved_states,
                         mip_index,
                         mesh_index,
@@ -562,7 +572,7 @@ impl App {
                 }
             }
 
-            let thickness = vol.voxel_spacing.2 / vol.voxel_spacing.0;
+            let thickness = vol_render.voxel_spacing.2 / vol_render.voxel_spacing.0;
             for index_opt in [mesh_index, mip_index].iter() {
                 if let Some(index) = index_opt {
                     if let Err(e) = self.app_view.set_slab_thickness(*index, thickness) {
@@ -919,6 +929,18 @@ impl App {
         filterable && can_sample
     }
 
+    /// Helper method to apply an operation to the first available MeshView.
+    fn apply_to_mesh_view<F>(&mut self, f: F)
+    where
+        F: FnOnce(&mut MeshView),
+    {
+        if let Some(view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()){
+            f(view);
+        } else {
+            log::warn!("No MeshView found in layout");
+        }
+    }
+
     /// Function-level comment: Enable or disable Y-axis rotation for the mesh view.
     /// This method provides external control over mesh rotation animation.
     pub fn set_mesh_rotation_enabled(&mut self, enabled: bool) {
@@ -938,22 +960,52 @@ impl App {
         }
     }
 
-    /// Helper method to apply an operation to the first available MeshView.
-    fn apply_to_mesh_view<F>(&mut self, f: F)
-    where
-        F: FnOnce(&mut MeshView),
-    {
-        if let Some(view) = self
-            .app_view
-            .layout
-            .views_mut()
-            .iter_mut()
-            .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>())
-        {
-            f(view);
-        } else {
-            log::warn!("No MeshView found in layout");
+    pub fn set_mesh_needle_enabled(&mut self, enabled: bool) {
+        self.apply_to_mesh_view(|mesh_view| {
+            mesh_view.set_needle_enabled(enabled);
+            log::info!(
+                "Mesh needle {}",if enabled { "enabled" } else { "disabled" }
+            );
+        });
+    }
+
+    pub fn set_mesh_needle_trajectory(&mut self, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32) {
+        let entry_mm = [sx, sy, sz];
+        let pos_mm = [lx, ly, lz];
+        if let Ok(vol) = self.app_model.volume() {
+            let inv = vol.base.matrix.inverse();
+            let (nx, ny, nz) = vol.dimensions;
+
+            let to_vol = |p_mm: [f32; 3]| -> [f32; 3] {
+                let v = inv.transform_point3(glam::Vec3::from_array(p_mm));
+                [
+                    (v.x / (nx as f32 - 1.0)).clamp(0.0, 1.0),
+                    (v.y / (ny as f32 - 1.0)).clamp(0.0, 1.0),
+                    (v.z / (nz as f32 - 1.0)).clamp(0.0, 1.0),
+                ]
+            };
+
+            let entry_vol = to_vol(entry_mm);
+            let pos_vol = to_vol(pos_mm);
+
+            self.apply_to_mesh_view(|mesh_view| {
+                mesh_view.set_needle_trajectory(entry_vol, pos_vol);
+                log::info!(
+                    "Mesh needle trajectory set: entry_mm={:?} -> vol={:?}, pos_mm={:?} -> vol={:?}",
+                    entry_mm, entry_vol, pos_mm, pos_vol
+                );
+            });
         }
+    }
+
+    pub fn set_mesh_needle_radius(&mut self, radius: f32){
+        self.apply_to_mesh_view(|mesh_view| {
+            mesh_view.set_needle_radius(radius);
+            log::info!(
+                "Mesh needle radius set to {:.3}",
+                radius
+            );
+        });
     }
 
     /// Set rotation speed (radians/sec) for the first MeshView.
@@ -977,6 +1029,7 @@ impl App {
             mesh_view.reset_pan();
             mesh_view.reset_opacity();
             mesh_view.reset_roi();
+            mesh_view.set_needle_enabled(false);
             log::info!("Mesh reset via State control");
         });
     }
