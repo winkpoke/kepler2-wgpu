@@ -45,6 +45,12 @@ struct MeshUniforms {
     rotation: mat4x4<f32>,
     vol_dims: vec3<f32>,
     preset: f32,
+    needle_entry: vec3<f32>,    // 针入口点 (归一化坐标 0-1)
+    needle_enabled: f32,        // 是否显示针 (0.0 或 1.0)
+    needle_target: vec3<f32>,   // 针目标点 (归一化坐标 0-1)
+    needle_radius: f32,         // 针半径 (归一化)
+    needle_pos: vec3<f32>,      // 针当前位置 (归一化坐标 0-1)
+    needle_length: f32,         // 针总长度 (归一化)
 }
 @group(1) @binding(0)
 var<uniform> u_vol: MeshUniforms;
@@ -171,21 +177,153 @@ fn bone_base_color(hu: f32) -> vec3<f32> {
 fn transfer_function(hu: f32, grad_mag: f32) -> vec4<f32> {
     let norm = apply_window_level(hu);
     
+    // 如果值低于窗底，完全不可见
     if (norm <= 0.0) {
         return vec4<f32>(0.0);
     }
     
-    let color_low = vec3<f32>(0.18, 0.14, 0.12);
-    let color_mid = vec3<f32>(0.72, 0.55, 0.44);
-    let color_high = vec3<f32>(0.98, 0.96, 0.92);
+    // 基础颜色设定：从深红棕色（低值）过渡到浅黄色/白色（高值）
+    let color_low = vec3<f32>(0.18, 0.14, 0.12);   // 深灰褐色（空气/低密度组织过渡）
+    let color_mid = vec3<f32>(0.72, 0.55, 0.44);   // 肉色浅棕（软组织）
+    let color_high = vec3<f32>(0.98, 0.96, 0.92);  // 骨白色（高密度骨骼）
+
+    // 使用 smoothstep 根据 norm 在三种颜色之间平滑插值
     var color = mix(color_low, color_mid, smoothstep(0.0, 0.5, norm));
     color = mix(color, color_high, smoothstep(0.5, 0.9, norm));
 
-    var base_alpha = pow(norm, 2.5);
+    // Alpha (不透明度) 映射：
+    // 在 3D Slicer 中，低值通常更透明，高值更不透明。
+    // 这里我们使用非线性曲线（例如二次方或立方），让过渡更自然，剥离感更强。
+    var base_alpha = pow(norm, 2.5); // 指数越大，低值区域越透明，剥离感越强
     let edge_factor = 1.0 + 1.5 * smoothstep(0.01, 0.1, grad_mag);
     let final_alpha = clamp(base_alpha * edge_factor, 0.0, 1.0);
 
     return vec4<f32>(color, final_alpha);
+}
+
+// ==================== Needle Rendering Functions ====================
+// 虚拟针渲染：用于手术规划和穿刺模拟
+fn distance_to_line_segment(point: vec3<f32>, line_start: vec3<f32>, line_end: vec3<f32>) -> f32 {
+    let line_dir = line_end - line_start;
+    let line_len_sq = dot(line_dir, line_dir);
+    if (line_len_sq < 1e-12) {
+        return length(point - line_start);
+    }
+    let t = clamp(dot(point - line_start, line_dir) / line_len_sq, 0.0, 1.0);
+    let closest = line_start + t * line_dir;
+    return length(point - closest);
+}
+
+fn project_point_on_line(point: vec3<f32>, line_start: vec3<f32>, line_end: vec3<f32>) -> f32 {
+    let line_dir = line_end - line_start;
+    let line_len_sq = dot(line_dir, line_dir);
+    if (line_len_sq < 1e-12) {
+        return 0.0;
+    }
+    let t = dot(point - line_start, line_dir) / line_len_sq;
+    return t;
+}
+
+fn sample_needle_at_point(pos: vec3<f32>) -> vec4<f32> {
+    if (u_vol.needle_enabled < 0.5) {
+        return vec4<f32>(0.0);
+    }
+
+    let entry = u_vol.needle_entry;
+    let needle_pos = u_vol.needle_pos;
+    let needle_target = u_vol.needle_target;
+    let radius = u_vol.needle_radius;
+
+    let t = project_point_on_line(pos, entry, needle_target);
+    let dist = distance_to_line_segment(pos, entry, needle_target);
+
+    if (dist < radius) {
+        let edge_factor = 1.0 - smoothstep(0.0, radius, dist);
+        var color: vec3<f32>;
+        var alpha: f32;
+
+        if (t >= 0.0 && t <= 1.0) {
+            if (t < 1.0) {
+                let solid_t = project_point_on_line(needle_pos, entry, needle_target);
+                if (t <= solid_t) {
+                    color = vec3<f32>(1.0, 0.85, 0.0);
+                    let highlight = pow(edge_factor, 1.5);
+                    color = color * (0.7 + 0.3 * highlight);
+                    alpha = clamp(edge_factor * 0.95, 0.0, 1.0);
+                } else {
+                    let dash_scale = 20.0;
+                    let dash_pos = t * dash_scale;
+                    let dash = fract(dash_pos);
+                    if (dash < 0.5) {
+                        color = vec3<f32>(1.0, 0.5, 0.0);
+                        alpha = clamp(edge_factor * 0.7, 0.0, 1.0);
+                    } else {
+                        return vec4<f32>(0.0);
+                    }
+                }
+            } else {
+                return vec4<f32>(0.0);
+            }
+        } else {
+            return vec4<f32>(0.0);
+        }
+
+        return vec4<f32>(color, alpha);
+    }
+
+    return vec4<f32>(0.0);
+}
+
+fn sample_needle_along_ray(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end: f32) -> vec4<f32> {
+    if (u_vol.needle_enabled < 0.5) {
+        return vec4<f32>(0.0);
+    }
+
+    let entry = u_vol.needle_entry;
+    let needle_target_pt = u_vol.needle_target;
+    let radius = u_vol.needle_radius;
+
+    let needle_dir = needle_target_pt - entry;
+    let needle_len_sq = dot(needle_dir, needle_dir);
+    if (needle_len_sq < 1e-12) {
+        return vec4<f32>(0.0);
+    }
+
+    let ray_to_entry = entry - ray_origin;
+    let a = dot(ray_dir, ray_dir);
+    let b = -2.0 * dot(ray_dir, needle_dir);
+    let c = dot(needle_dir, needle_dir) * (radius * radius) - length(cross(ray_to_entry, needle_dir));
+
+    let discriminant = b * b - 4.0 * a * c;
+    if (discriminant < 0.0) {
+        let closest_dist = distance_to_line_segment(ray_origin, entry, needle_target_pt);
+        if (closest_dist >= radius) {
+            return vec4<f32>(0.0);
+        }
+    }
+
+    var accum_rgb = vec3<f32>(0.0);
+    var accum_a = 0.0;
+    var t = t_start;
+    let step = (t_end - t_start) / 64.0;
+
+    for (var i = 0u; i < 64u; i = i + 1u) {
+        if (t > t_end || accum_a > 0.95) {
+            break;
+        }
+
+        let pos = ray_origin + t * ray_dir;
+        let needle_sample = sample_needle_at_point(pos);
+
+        if (needle_sample.a > 0.005) {
+            accum_rgb += (1.0 - accum_a) * needle_sample.rgb * needle_sample.a;
+            accum_a += (1.0 - accum_a) * needle_sample.a;
+        }
+
+        t = t + step;
+    }
+
+    return vec4<f32>(accum_rgb, clamp(accum_a, 0.0, 1.0));
 }
 
 fn iso_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32, iso: f32) -> vec4<f32> {
@@ -248,12 +386,7 @@ fn iso_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32, is
     return vec4<f32>(0.0, 0.0, 0.0, 0.0);
 }
 
-struct DvrResult {
-    color: vec4<f32>,
-    first_hit_depth: f32,
-}
-
-fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) -> DvrResult {
+fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) -> vec4<f32> {
     let dims = u_vol.vol_dims;
     let ray_dir_vox = ray_dir * dims;
     let inv_len = 1.0 / max(length(ray_dir_vox), 1e-6);
@@ -265,7 +398,6 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
 
     var accum_rgb = vec3<f32>(0.0);
     var accum_a = 0.0;
-    var first_hit_t = t1;
     var t = t0;
 
     let center = u_vol.level;
@@ -295,38 +427,29 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
 
             let mapped_opacity = pow(u_vol.opacity_multiplier, 6.0);
             let density = tf.a * mapped_opacity * 3.0; 
-            let sample_alpha = 1.0 - exp(-density * step_len);
+            let volume_alpha = 1.0 - exp(-density * step_len);
 
-            accum_rgb += (1.0 - accum_a) * lit_color * sample_alpha;
-            accum_a += (1.0 - accum_a) * sample_alpha;
-        }
+            let needle_sample = sample_needle_at_point(pos);
+            var final_color = lit_color;
+            var final_alpha = volume_alpha;
 
-        if (first_hit_t >= t1 && accum_a > 0.05) {
-            first_hit_t = t;
+            if (needle_sample.a > 0.005) {
+                final_color = mix(lit_color, needle_sample.rgb, needle_sample.a * 0.85);
+                final_alpha = max(volume_alpha, needle_sample.a * 0.9);
+            }
+
+            accum_rgb += (1.0 - accum_a) * final_color * final_alpha;
+            accum_a += (1.0 - accum_a) * final_alpha;
         }
 
         t = t + dt;
     }
 
-    // Compute NDC Z-depth: transform hit position through rotation to match
-    // the needle's depth space (orthographic projection of [0,1] volume).
-    // Near plane: -0.5, Far plane: 1.5 → depth ∈ [0, 1] after normalization.
-    if (accum_a < 0.01) {
-        return DvrResult(vec4<f32>(accum_rgb, accum_a), 1.0);
-    }
-    let hit_pos = ray_origin + first_hit_t * ray_dir;
-    let ndc_z = (u_vol.rotation * vec4<f32>(hit_pos, 1.0)).z;
-    let norm_depth = clamp((ndc_z + 0.5) / 2.0, 0.0, 1.0);
-    return DvrResult(vec4<f32>(accum_rgb, accum_a), norm_depth);
-}
-
-struct FragmentOutput {
-    @location(0) color: vec4<f32>,
-    @builtin(frag_depth) depth: f32,
+    return vec4<f32>(accum_rgb, clamp(accum_a, 0.0, 1.0));
 }
 
 @fragment
-fn fs_main(in: VertexOutput) -> FragmentOutput {
+fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let scale = max(u_vol.scale, 0.0001);
     var uv_centered = in.tex_coords - vec2<f32>(0.5, 0.5);
 
@@ -338,7 +461,7 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
 
     let uv = (uv_centered / scale) + vec2<f32>(0.5, 0.5) + vec2<f32>(u_vol.pan_x, u_vol.pan_y);
     if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-        return FragmentOutput(vec4<f32>(0.0, 0.0, 0.0, 1.0), 1.0);
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
 
     let center = vec3<f32>(0.5, 0.5, 0.5);
@@ -351,14 +474,14 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     var t_start = inter_vol.x;
     var t_end = inter_vol.y;
     if (t_start >= t_end) {
-        return FragmentOutput(vec4<f32>(0.0), 1.0);
+        return vec4<f32>(0.0);
     }
 
     let inter_roi = intersect_box(ray_origin, ray_dir, u_vol.roi_min, u_vol.roi_max);
     t_start = max(t_start, inter_roi.x);
     t_end = min(t_end, inter_roi.y);
     if (t_start >= t_end) {
-        return FragmentOutput(vec4<f32>(0.0), 1.0);
+        return vec4<f32>(0.0);
     }
 
     let dims = u_vol.vol_dims;
@@ -369,15 +492,29 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     
     t_start = t_start + hash(in.tex_coords) * dt;
 
-    // Render volume (ISO or DVR mode)
+    // Step 1: Render volume normally (ISO or DVR mode)
+    var volume_result: vec4<f32>;
     if (u_vol.preset < 0.5) {
         let iso = get_iso_threshold();
-        return FragmentOutput(
-            iso_ray_march(ray_origin, ray_dir, t_start, t_end, iso),
-            0.5,
-        );
+        volume_result = iso_ray_march(ray_origin, ray_dir, t_start, t_end, iso);
     } else {
-        let result = dvr_ray_march(ray_origin, ray_dir, t_start, t_end);
-        return FragmentOutput(result.color, result.first_hit_depth);
+        volume_result = dvr_ray_march(ray_origin, ray_dir, t_start, t_end);
     }
+
+    // Step 2: Render needle as overlay (always visible on top of volume)
+    let needle_overlay = sample_needle_along_ray(ray_origin, ray_dir, t_start, t_end);
+
+    // Step 3: Composite: needle over volume
+    if (needle_overlay.a > 0.001) {
+        let vol_rgb = volume_result.rgb;
+        let vol_a = volume_result.a;
+        let needle_a = needle_overlay.a;
+        let out_a = vol_a + (1.0 - vol_a) * needle_a;
+        if (out_a > 0.001) {
+            let out_rgb = (vol_rgb * vol_a * (1.0 - needle_a) + needle_overlay.rgb * needle_a) / out_a;
+            return vec4<f32>(out_rgb, out_a);
+        }
+    }
+
+    return volume_result;
 }

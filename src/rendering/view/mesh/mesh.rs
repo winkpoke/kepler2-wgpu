@@ -28,12 +28,6 @@ pub struct MeshUniforms {
     pub rotation: [f32; 16],
     pub vol_dims: [f32; 3],
     pub preset: f32,
-    pub needle_entry: [f32; 3],
-    pub needle_enabled: f32,
-    pub needle_target: [f32; 3],
-    pub needle_radius: f32,
-    pub needle_pos: [f32; 3],
-    pub needle_length: f32,
 }
 
 impl Default for MeshUniforms {
@@ -56,12 +50,6 @@ impl Default for MeshUniforms {
             rotation: Mat4::IDENTITY.to_cols_array(),
             vol_dims: [512.0, 512.0, 300.0],
             preset: 1.0,
-            needle_entry: [0.5, 0.0, 0.5],
-            needle_enabled: 0.0,
-            needle_target: [0.5, 1.0, 0.5],
-            needle_radius: 0.015,
-            needle_pos: [0.0, 0.0, 0.0],
-            needle_length: 1.0,
         }
     }
 }
@@ -249,7 +237,72 @@ pub struct Mesh {
 }
 
 impl Mesh {
-    /// Function-level comment: Creates a unit cube mesh with different colors for each face
+    /// Function-level comment: Creates a colored cylinder mesh with high segment count for smooth appearance
+    pub fn cylinder() -> Self {
+        use std::f32::consts::TAU;
+
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+        let segments = 128;
+        let radius = 0.004;
+        let height = 20.0;
+        let color = [1.0, 0.85, 0.0];
+        let seg = segments.max(3);
+
+        for i in 0..seg {
+            let angle = (i as f32 / seg as f32) * TAU;
+            let nx = angle.cos();
+            let nz = angle.sin();
+
+            // Bottom ring vertex
+            vertices.push(MeshVertex {
+                position: [nx * radius, -height, nz * radius],
+                normal: [nx, 0.0, nz],
+                color: color,
+            });
+            // Top ring vertex (smaller, tapered tip for surgical needle)
+            vertices.push(MeshVertex {
+                position: [nx * radius, height, nz * radius],
+                normal: [nx, 0.0, nz],
+                color: color,
+            });
+        }
+
+        // Side wall indices — open tube (no caps)
+        for i in 0..seg {
+            let j = (i + 1) % seg;
+
+            let b0 = (i * 2) as u32;
+            let t0 = (i * 2 + 1) as u32;
+            let b1 = (j * 2) as u32;
+            let t1 = (j * 2 + 1) as u32;
+
+            indices.extend_from_slice(&[b0, t0, t1, b0, t1, b1]);
+        }
+
+        // Bottom cap (flat end of needle handle)
+        let bot_center = 2 * seg as u32;
+        vertices.push(MeshVertex {
+            position: [0.0, -height, 0.0],
+            normal: [0.0, -1.0, 0.0],
+            color: color,
+        });
+        for i in 0..seg {
+            let angle = (i as f32 / seg as f32) * TAU;
+            vertices.push(MeshVertex {
+                position: [angle.cos() * radius, -height, angle.sin() * radius],
+                normal: [0.0, -1.0, 0.0],
+                color: color,
+            });
+        }
+        for i in 0..seg {
+            let a = bot_center + 1 + ((i + 1) % seg);
+            let b = bot_center + 1 + i;
+            indices.extend_from_slice(&[bot_center, a, b]);
+        }
+        Self { vertices, indices }
+    }
+    
     /// Returns a cube with 24 vertices (4 per face) and 12 triangles for colorful 3D rendering
     pub fn unit_cube() -> Self {
         // Define distinct colors for each face

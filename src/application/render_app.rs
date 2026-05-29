@@ -258,6 +258,14 @@ impl RenderApp {
                     state.set_mesh_needle_trajectory(x, y, z, lx, ly, lz);
                     log::info!("Mesh needle trajectory set to {:?}", [x, y, z, lx, ly, lz]);
                 }
+                Event::UserEvent(UserEvent::SetMeshNeedlePosition(_index, x, y, z)) => {
+                    state.set_mesh_needle_position(x, y, z);
+                    log::info!("Mesh needle position set to {:?}", [x, y, z]);
+                }
+                Event::UserEvent(UserEvent::SetMeshNeedleRadius(_index, radius)) => {
+                    state.set_mesh_needle_radius(radius);
+                    log::info!("Mesh needle radius set to {:.3}", radius);
+                }
                 #[cfg(target_arch = "wasm32")]
                 Event::UserEvent(UserEvent::ViewClickGet(view_index, screen_x, screen_y, screen_z, sender)) => {
                     // Function-level comment: Compute view click result and send it back to JS via oneshot channel.

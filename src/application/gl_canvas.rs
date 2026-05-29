@@ -63,6 +63,8 @@ pub enum UserEvent {
     SetMeshMode(usize, usize),
     SetMeshNeedleEnabled(usize, bool),
     SetMeshNeedleTrajectory(usize, f32, f32, f32, f32, f32, f32),
+    SetMeshNeedlePosition(usize, f32, f32, f32),
+    SetMeshNeedleRadius(usize, f32),
 }
 
 #[macro_export]
@@ -503,4 +505,6 @@ impl_user_event_senders_for_glcanvas! {
     set_mesh_mode => SetMeshMode(mode: usize),
     set_mesh_needle_enabled => SetMeshNeedleEnabled(enabled: bool),
     set_mesh_needle_trajectory => SetMeshNeedleTrajectory(x: f32, y: f32, z: f32, lx: f32, ly: f32, lz: f32),
+    set_mesh_needle_position => SetMeshNeedlePosition(x: f32, y: f32, z: f32),
+    set_mesh_needle_radius => SetMeshNeedleRadius(radius: f32),
 }

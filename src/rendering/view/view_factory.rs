@@ -458,9 +458,12 @@ impl ViewFactory for DefaultViewFactory {
         mesh_view.move_to(pos);
         mesh_view.resize(size);
 
-        // // Initialize and attach orientation cube context (same as create_mesh_view)
+        // Initialize and attach orientation cube context (same as create_mesh_view)
+        let cyl_mesh = crate::rendering::mesh::mesh::Mesh::cylinder();
         // let cube_mesh = crate::rendering::mesh::mesh::Mesh::unit_cube();
+        let needle_ctx = BasicMeshContext::new(&self.device, &self.queue, &cyl_mesh, true);
         // let cube_ctx = BasicMeshContext::new(&self.device, &self.queue, &cube_mesh, true);
+        mesh_view.attach_needle_context(Arc::new(needle_ctx));
         // mesh_view.attach_orientation_cube_context(Arc::new(cube_ctx));
 
         info!(

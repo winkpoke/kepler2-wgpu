@@ -77,8 +77,8 @@ impl Default for FallbackMode {
 pub struct MeshView {
     view_id: usize,
     volume_ctx: Option<Arc<MeshRenderContext>>,
-    /// Context for the orientation cube (bottom-left gizmo)
-    orientation_cube_ctx: Option<Arc<BasicMeshContext>>,
+    // orientation_cube_ctx: Option<Arc<BasicMeshContext>>,
+    needle_ctx: Option<Arc<BasicMeshContext>>,
     pos: (i32, i32),
     dim: (u32, u32),
     /// Performance and error tracking
@@ -113,7 +113,7 @@ pub struct MeshView {
     needle_entry: [f32; 3],
     needle_target: [f32; 3],
     needle_radius: f32,
-    needle_pos: [f32; 3],
+    needle_position: [f32; 3],
 }
 
 impl MeshView {
@@ -121,7 +121,8 @@ impl MeshView {
         Self {
             view_id: 0,
             volume_ctx: None,
-            orientation_cube_ctx: None,
+            // orientation_cube_ctx: None,
+            needle_ctx: None,
             pos: (0, 0),
             dim: (0, 0),
             stats: RenderStats::default(),
@@ -144,8 +145,8 @@ impl MeshView {
             needle_enabled: false,
             needle_entry: [0.5, 0.0, 0.5],
             needle_target: [0.5, 1.0, 0.5],
-            needle_radius: 0.015,
-            needle_pos: [0.5, 0.0, 0.5],
+            needle_radius: 0.004,
+            needle_position: [0.5, 0.0, 0.5],
         }
     }
 
@@ -159,13 +160,21 @@ impl MeshView {
         log::debug!("MeshView::attach_context - Volume context attached successfully");
     }
 
-    /// Function-level comment: Attaches a basic mesh render context for the orientation cube
-    pub fn attach_orientation_cube_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
-        self.orientation_cube_ctx = Some(ctx);
+    /// Function-level comment: Attaches a basic mesh render context for the needle
+    pub fn attach_needle_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
+        self.needle_ctx = Some(ctx);
         log::debug!(
-            "MeshView::attach_orientation_cube_context - Orientation cube context attached"
+            "MeshView::attach_needle_context - Needle context attached"
         );
     }
+
+    // /// Function-level comment: Attaches a basic mesh render context for the orientation cube
+    // pub fn attach_orientation_cube_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
+    //     self.orientation_cube_ctx = Some(ctx);
+    //     log::debug!(
+    //         "MeshView::attach_orientation_cube_context - Orientation cube context attached"
+    //     );
+    // }
 
     /// Function-level comment: Get current rendering statistics for performance monitoring.
     pub fn get_stats(&self) -> &RenderStats {
@@ -399,26 +408,19 @@ impl MeshView {
 
     pub fn set_needle_trajectory(&mut self, entry: [f32; 3], pos: [f32; 3]) {
         self.needle_entry = entry;
-        self.needle_pos = pos;
+        self.needle_target = pos;
+        self.needle_position = entry;
         log::info!("Mesh needle trajectory set: entry={:?}, pos={:?}", entry, pos);
     }
 
     pub fn set_needle_position(&mut self, pos: [f32; 3]) {
-        self.needle_pos = pos;
+        self.needle_position = pos;
         log::debug!("Mesh needle position set to {:?}", pos);
     }
 
-    pub fn get_needle_position(&self) -> [f32; 3] {
-        self.needle_pos
-    }
-
     pub fn set_needle_radius(&mut self, radius: f32) {
-        self.needle_radius = radius.clamp(0.0005, 0.05);
+        self.needle_radius = radius.clamp(0.0004, 0.04);
         log::debug!("Mesh needle radius set to {:.4}", self.needle_radius);
-    }
-
-    pub fn get_needle_radius(&self) -> f32 {
-        self.needle_radius
     }
 
     pub fn set_window_level(&mut self, window: f32) -> KeplerResult<()> {
@@ -495,12 +497,6 @@ impl MeshView {
                 rotation: final_matrix.to_cols_array(),
                 vol_dims: [w, h, d],
                 preset: self.mode as f32,
-                needle_enabled: if self.needle_enabled { 1.0 } else { 0.0 },
-                needle_entry: self.needle_entry,
-                needle_target: self.needle_target,
-                needle_radius: self.needle_radius,
-                needle_pos: self.needle_pos,
-                needle_length: 1.0,
             };
 
             // update
@@ -524,6 +520,63 @@ impl MeshView {
         //     let mvp_matrix = proj_matrix * view_matrix * model_matrix;
         //     cube_ctx.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
         // }
+
+        // Update Needle Uniforms
+        if let Some(needle) = &self.needle_ctx {
+            let center = Vec3::splat(0.5);
+            let flip = Mat4::from_scale(Vec3::new(1.0, -1.0, 1.0));
+            let rotation = flip * Mat4::from_quat(self.rotation_quat.conjugate());
+            let view = Mat4::from_translation(center) * rotation * Mat4::from_translation(-center);
+
+            // Match volume shader's zoom + pan by adjusting orthographic frustum bounds.
+            // Volume shader: uv = (uv_centered / scale) + 0.5 + pan
+            // → Screen-space maps to volume region:
+            //   center = (0.5 + pan_x, 0.5 + pan_y), half-size = 0.5 / scale
+            let scale = self.scale_factor.max(0.0001);
+            let half_extent = 0.5 / scale;
+            let cx = 0.5 + self.pan[0];
+            let cy = 0.5 + self.pan[1];
+            let proj = Mat4::orthographic_rh(
+                cx - half_extent,
+                cx + half_extent,
+                cy - half_extent,
+                cy + half_extent,
+                -0.5,
+                1.5,
+            );
+
+            let entry = Vec3::from_array(self.needle_entry);
+            let tip = Vec3::from_array(self.needle_position);
+            let full_end = Vec3::from_array(self.needle_target);
+            let full_dir = full_end - entry;
+            let full_len = full_dir.length();
+
+            let mut model = Mat4::IDENTITY;
+            if full_len > 1e-6 {
+                let needle_start = tip - full_dir;
+                let mid = (needle_start + tip) * 0.5;
+
+                let radius_scale = self.needle_radius / 0.004;
+                let height_scale = full_len / 20.0;
+                let s = Mat4::from_scale(Vec3::new(radius_scale, height_scale, radius_scale));
+
+                let dir_norm = full_dir / full_len;
+                let r = if dir_norm.abs_diff_eq(Vec3::Y, 1e-6) {
+                    Mat4::IDENTITY
+                } else if dir_norm.abs_diff_eq(-Vec3::Y, 1e-6) {
+                    Mat4::from_rotation_z(std::f32::consts::PI)
+                } else {
+                    let axis = Vec3::Y.cross(dir_norm).normalize();
+                    let angle = Vec3::Y.dot(dir_norm).acos();
+                    Mat4::from_axis_angle(axis, angle)
+                };
+
+                model = Mat4::from_translation(mid) * r * s;
+            }
+
+            let mvp = proj * view * model;
+            needle.update_uniforms(queue, &mvp.to_cols_array_2d());
+        }
     }
 
     /// Function-level comment: Start frame timing for performance monitoring.
@@ -676,6 +729,13 @@ impl MeshView {
         //         cube_ctx.render(render_pass);
         //     }
         // }
+        
+        // Render Needle (if available)
+        if self.needle_enabled {
+            if let Some(needle) = &self.needle_ctx {
+                needle.render(render_pass);
+            }
+        }
 
         // Record successful render
         let render_time_ms = start_time.elapsed().as_millis_f32();

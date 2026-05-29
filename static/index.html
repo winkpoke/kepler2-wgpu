@@ -46,13 +46,13 @@
             padding: 8px;
             display: flex;
             flex-wrap: wrap;
-            gap: 12px;
+            gap: 10px;
             align-items: center;
             border-bottom: 1px solid #cfcfcf;
             background: #fafafa;
             font-size: 13px;
             overflow-y: auto;
-            max-height: 150px;
+            max-height: 200px;
         }
 
         .controls-container > div {
@@ -457,7 +457,7 @@
             </div>
             <div id="tree-container" class="slicer-tree"></div>
             <div class="file-row">
-                DICOM:<input type="file" id="file" multiple>
+                DICOM: <input type="file" id="file" multiple>
             </div>
             <div class="file-row">
                 <button id="openMhxModalBtn" class="btn">Import MHA/MHD</button>
@@ -552,32 +552,51 @@
                 </div>
                 <div>
                     <span id="roi-min-label">Min:</span>
-                    <input type="number" id="roi-min-x" step="0.01" value="-79.29739379882812">
-                    <input type="number" id="roi-min-y" step="0.01" value="-50.16448974609375">
-                    <input type="number" id="roi-min-z" step="0.01" value="-1241.34130859375">
+                    <input type="number" id="roi-min-x" step="0.01" value="0.720672607421875">
+                    <input type="number" id="roi-min-y" step="0.01" value="-137.5535888671875">
+                    <input type="number" id="roi-min-z" step="0.01" value="-1137.25">
                     <span id="roi-max-label">Max:</span>
-                    <input type="number" id="roi-max-x" step="0.01" value="86.64703369140625">
-                    <input type="number" id="roi-max-y" step="0.01" value="49.83551025390625">
-                    <input type="number" id="roi-max-z" step="0.01" value="-978.4163208007812">
+                    <input type="number" id="roi-max-x" step="0.01" value="168.91824340820312">
+                    <input type="number" id="roi-max-y" step="0.01" value="133.89395141601562">
+                    <input type="number" id="roi-max-z" step="0.01" value="-1037.25">
                     <button id="crop-roi">crop ROI</button>
-                    <button id="needle">needle</button>
                 </div>
                 <div>
                     <span id="3d-opacity-label">opacity:</span>
                     <input type="number" id="3d-opacity" step="0.1" value="1.0" min="0" max="1">
                 </div>
                 <div>
-                    <span>Reset to:</span>
+                    <span title="Needle insertion controls"><b>🗡️ Needle</b></span>
+                    <label><input type="checkbox" id="needle-enable"> Enable</label>
+                    <span style="border-left:1px solid #ccc;margin:0 4px;padding-left:4px">Entry:</span>
+                    <input type="number" id="needle-ex" step="0.1" value="-0.16" style="width:70px">
+                    <input type="number" id="needle-ey" step="0.1" value="116.84" style="width:70px">
+                    <input type="number" id="needle-ez" step="0.1" value="-1089.75" style="width:70px">
+                    <span style="border-left:1px solid #ccc;margin:0 4px;padding-left:4px">Target:</span>
+                    <input type="number" id="needle-tx" step="0.1" value="-1.95" style="width:70px">
+                    <input type="number" id="needle-ty" step="0.1" value="86.47" style="width:70px">
+                    <input type="number" id="needle-tz" step="0.1" value="-1089.75" style="width:70px">
+                    <button id="needle-apply">Apply</button>
+                    <span style="border-left:1px solid #ccc;margin:0 4px;padding-left:4px">Depth (mm):</span>
+                    <span id="needle-depth-val" style="min-width:80px;font-weight:bold;color:#e0a030">0.0mm (0%)</span>
+                    <input type="range" id="needle-depth" min="0" max="100" value="0" style="width:100px">
+                    <button id="needle-reset" title="Retract to entry" style="font-size:11px;color:#f55">Reset↺</button>
+                    <span style="border-left:1px solid #ccc;margin:0 4px;padding-left:4px">R:</span>
+                    <input type="range" id="needle-radius" min="0.001" max="0.01" step="0.001" value="0.002" style="width:80px">
+                    <span id="needle-radius-val">0.001mm</span>
+                </div>
+                <div>
+                    <span>Oblique:</span>
                     <select id="resetOptions" style="width: 100px">
                         <option value="T">transverse</option>
                         <option value="C">coronal</option>
                         <option value="S">sagittal</option>
                     </select>
-                    <label>Rotation:</label>
-                    <span>Horizontal:</span><input type="number" id="rotation-x-o" step="15" value="0" min="0" max="360"><br>
+                    <span style="border-left:1px solid #ccc;margin:0 4px;padding-left:4px">Rotation Horizontal:</span>
+                    <input type="number" id="rotation-x-o" step="15" value="0" min="0" max="360"><br>
                     <span>Vertical :</span><input type="number" id="rotation-y-o" step="15" value="0" min="0" max="360"><br>
                     <span>In-plane :</span><input type="number" id="rotation-z-o" step="15" value="0" min="0" max="360"><br>
-                    <label>Rotation Quat:</label>
+                    <span style="border-left:1px solid #ccc;margin:0 4px;padding-left:4px">Rotation Quat:</span>
                     <span>x:</span><input type="number" id="quat-x" step="0.01" value="0"><br>
                     <span>y:</span><input type="number" id="quat-y" step="0.01" value="0"><br>
                     <span>z:</span><input type="number" id="quat-z" step="0.01" value="0"><br>
@@ -601,6 +620,9 @@
                 <button class="modal-close" id="closeModalBtn">&times;</button>
             </div>
             <div class="modal-body">
+                <div class="form-group">
+                    <label>Projection File (.mha, .mhd, .raw)</label>
+                </div>
                 <div class="form-group">
                     <label>Volume File (.mha, .mhd, .raw)</label>
                     <div class="file-input-wrapper" id="fileDropZone">
@@ -1000,7 +1022,7 @@
         })
 
         bindInput(['slice-input'], () => {
-            const sliceValue = byId('c').value;
+            const sliceValue = byId('slice-input').value;
             const indexValue = state.indexValue;
             if (!gl_canvas) {
                 alert('Please select a series first!');
@@ -1258,32 +1280,69 @@
             gl_canvas.set_mesh_roi(indexValue, sx, sy, sz, lx, ly, lz);
         })
 
-        byId('needle').addEventListener('click', () => {
-            const sx = parseFloat(byId('roi-min-x').value);
-            const sy = parseFloat(byId('roi-min-y').value);
-            const sz = parseFloat(byId('roi-min-z').value);
-            const lx = parseFloat(byId('roi-max-x').value);
-            const ly = parseFloat(byId('roi-max-y').value);
-            const lz = parseFloat(byId('roi-max-z').value);
-            const indexValue = parseInt(byId('index-input').value, 10);
+        // ==================== Needle Controls ====================
+        const needleState = { depthMm: 0, trajLength: 100 };
 
-            if ([sx, sy, sz, lx, ly, lz].some(v => Number.isNaN(v))) {
-                alert('Please enter a valid number');
-                return;
+        function needleGetEntry() {
+            return [parseFloat(byId('needle-ex').value), parseFloat(byId('needle-ey').value), parseFloat(byId('needle-ez').value)].map(v => Number.isNaN(v) ? 0 : v);
+        }
+        function needleGetTarget() {
+            return [parseFloat(byId('needle-tx').value), parseFloat(byId('needle-ty').value), parseFloat(byId('needle-tz').value)].map(v => Number.isNaN(v) ? 0 : v);
+        }
+        function needleMoveToDepth(mm) {
+            const e = needleGetEntry();
+            const t = needleGetTarget();
+            const dx = t[0]-e[0], dy = t[1]-e[1], dz = t[2]-e[2];
+            const dir = [dx, dy, dz];
+            const length = needleState.trajLength;
+            if (length < 0.001) return;
+            const clamped = Math.max(0, Math.min(length, mm));
+            const frac = clamped / length;
+            const pos = [e[0] + dir[0]*frac, e[1] + dir[1]*frac, e[2] + dir[2]*frac];
+            const idx = state.indexValue;
+            if (gl_canvas) {
+                gl_canvas.set_mesh_needle_position(idx, pos[0], pos[1], pos[2]);
             }
+            const pct = length > 0.001 ? Math.round((clamped / length) * 100) : 0;
+            byId('needle-depth').value = Math.max(0, Math.min(100, pct));
+            byId('needle-depth-val').textContent = clamped.toFixed(1) + 'mm (' + pct + '%)';
+            needleState.depthMm = clamped;
+        }
 
-            if (sx >= lx || sy >= ly || sz >= lz) {
-                alert('Needle min must be less than max');
-                return;
+        byId('needle-enable').addEventListener('change', () => {
+            if (!gl_canvas) return;
+            gl_canvas.set_mesh_needle_enabled(state.indexValue, byId('needle-enable').checked);
+        });
+
+        byId('needle-apply').addEventListener('click', () => {
+            const idx = state.indexValue;
+            const e = needleGetEntry(), t = needleGetTarget();
+            if (!gl_canvas) { 
+                alert('Please select a series first!'); 
+                return; 
             }
-            
-            if (!gl_canvas) {
-                alert('Please select a series first!');
-                return;
+            gl_canvas.set_mesh_needle_trajectory(idx, e[0], e[1], e[2], t[0], t[1], t[2]);
+            needleMoveToDepth(0);
+        });
+
+        byId('needle-reset').addEventListener('click', () => needleMoveToDepth(0));
+
+        byId('needle-depth').addEventListener('input', () => {
+            const length = needleState.trajLength;
+            const pct = parseInt(byId('needle-depth').value, 10);
+            byId('needle-depth-val').textContent = (length * pct / 100).toFixed(1) + 'mm (' + pct + '%)';
+            if (length > 0.001) {
+                needleMoveToDepth(length * pct / 100);
             }
-            gl_canvas.set_mesh_needle_enabled(indexValue, true);
-            gl_canvas.set_mesh_needle_trajectory(indexValue, sx, sy, sz, lx, ly, lz);
-        })
+        });
+
+        byId('needle-radius').addEventListener('input', () => {
+            const val = parseFloat(byId('needle-radius').value);
+            byId('needle-radius-val').textContent = val.toFixed(3) + 'mm';
+            if (gl_canvas) {
+                gl_canvas.set_mesh_needle_radius(state.indexValue, val);
+            }
+        });
 
         bindInput(['3d-rotation-x', '3d-rotation-y'], async () => {
             const rotation_x = parseFloat(byId('3d-rotation-x').value) || 0;

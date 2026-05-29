@@ -1008,6 +1008,33 @@ impl App {
         });
     }
 
+    pub fn set_mesh_needle_position(&mut self, sx: f32, sy: f32, sz: f32) {
+        let pos_mm = [sx, sy, sz];
+        if let Ok(vol) = self.app_model.volume() {
+            let inv = vol.base.matrix.inverse();
+            let (nx, ny, nz) = vol.dimensions;
+
+            let to_vol = |p_mm: [f32; 3]| -> [f32; 3] {
+                let v = inv.transform_point3(glam::Vec3::from_array(p_mm));
+                [
+                    (v.x / (nx as f32 - 1.0)).clamp(0.0, 1.0),
+                    (v.y / (ny as f32 - 1.0)).clamp(0.0, 1.0),
+                    (v.z / (nz as f32 - 1.0)).clamp(0.0, 1.0),
+                ]
+            };
+
+            let pos_vol = to_vol(pos_mm);
+
+            self.apply_to_mesh_view(|mesh_view| {
+                mesh_view.set_needle_position(pos_vol);
+                log::info!(
+                    "Mesh needle position set: pos_mm={:?} -> vol={:?}",
+                    pos_mm, pos_vol
+                );
+            });
+        }
+    }
+
     /// Set rotation speed (radians/sec) for the first MeshView.
     pub fn set_mesh_rotation_speed(&mut self, speed_rad_per_sec: f32) {
         self.apply_to_mesh_view(|mesh_view| {
