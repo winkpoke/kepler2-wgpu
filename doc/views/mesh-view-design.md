@@ -145,7 +145,7 @@ Two resilience mechanisms exist:
 
 ## Related Shaders and Pipelines
 
-- Volume ray-marching shader: `mesh_volume.wgsl` via:`create_volume_pipeline`
+- Volume ray-marching shader: `mesh.wgsl` via:`create_volume_pipeline`
 - Orientation cube shader: `mesh_basic.wgsl` via:`create_basic_mesh_pipeline_with_lighting`
 
 ---

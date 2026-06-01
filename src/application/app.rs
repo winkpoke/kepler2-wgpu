@@ -714,11 +714,13 @@ impl App {
         if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
             let n = mpr_view.get_oblique_rotation();
             [n.x, n.y, n.z, n.w]
+        } else if let Some(mip_view) = view.as_any().downcast_ref::<MipView>() {
+            let n = mip_view.get_rotation_quat();
+            [n.x, n.y, n.z, n.w]
         } else if let Some(mesh_view) = view.as_any().downcast_ref::<MeshView>() {
             let n = mesh_view.get_rotation_quat();
             [n.x, n.y, n.z, n.w]
-        } 
-        else {
+        } else {
             [f32::NAN, f32::NAN, f32::NAN, f32::NAN]
         }
     }
@@ -811,12 +813,12 @@ impl App {
         view_index: usize,
         screen_x: f32,
         screen_y: f32,
-    ) -> f32 {
+    ) -> [f32; 4] {
         let view = self.app_view.layout.views().get(view_index).unwrap();
         let world_coord = if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
             mpr_view.screen_coord_to_world([screen_x, screen_y, 0.0])
         } else {
-            return -1000.0;
+            return [f32::NAN, f32::NAN, f32::NAN, f32::NAN];
         };
 
         let vol = self.app_model.volume().unwrap();
@@ -835,8 +837,9 @@ impl App {
         } else {
             -1000.0
         };
-        log::info!("pixel_value={}", pixel_value);
-        pixel_value
+        
+        log::info!("vx={}, vy={}, vz={}, pixel_value={:?}", vx, vy, vz, pixel_value);
+        [vx as f32, vy as f32, vz as f32, pixel_value]
     }
 
     /// Function-level comment: Handle view click for cross-sectional linking between MPR views.

@@ -13,7 +13,7 @@ When resizing the application window, the 3D volume view (`MeshView`) would dist
 In the previous implementation of `MeshView::update_uniforms`, the aspect ratio of the viewport (`self.dim`) was not factored into the projection scaling.
 
 Specifically:
-- The fragment shader `mesh_volume.wgsl` uses normalized texture coordinates `in.tex_coords` spanning `[0, 1]`.
+- The fragment shader `mesh.wgsl` uses normalized texture coordinates `in.tex_coords` spanning `[0, 1]`.
 - It calculates `uv_centered = in.tex_coords - vec2<f32>(0.5, 0.5)` without accounting for the actual screen aspect ratio.
 - Because `uv_centered` maps equally to the X and Y axes of the ray origin, an unequal screen dimension stretches the volume in the longer axis.
 
@@ -43,7 +43,7 @@ let aspect_ratio = if self.dim.1 > 0 && self.dim.0 > 0 {
 };
 ```
 
-### 3. Modified `mesh_volume.wgsl` Shader
+### 3. Modified `mesh.wgsl` Shader
 In the fragment shader, we conditionally scale `uv_centered.x` or `uv_centered.y` based on `aspect_ratio` to normalize the projection bounds.
 
 ```wgsl

@@ -52,7 +52,7 @@ pub enum UserEvent {
     /// View click with reply; returns [x_mm, y_mm, slice_mm, reserved]
     ViewClickGet(usize, f32, f32, f32, oneshot::Sender<[f32; 4]>),
     #[cfg(target_arch = "wasm32")]
-    GetPixelValue(usize, f32, f32, oneshot::Sender<f32>),
+    GetPixelValue(usize, f32, f32, oneshot::Sender<[f32; 4]>),
     // Mesh control events
     SetMeshRotationEnabled(usize, bool),
     SetMeshOpacity(usize, f32),
@@ -373,7 +373,7 @@ impl GLCanvas {
         index: usize,
         x: f32,
         y: f32,
-    ) -> Result<f32, String> {
+    ) -> Result<Box<[f32]>, String> {
         log::info!(
             "get_pixel_value_from_screen: index={}, x={}, y={}",
             index,
@@ -382,9 +382,7 @@ impl GLCanvas {
         );
         let (tx, rx) = oneshot::channel();
 
-        if let Err(e) = self
-            .proxy
-            .send_event(UserEvent::GetPixelValue(index, x, y, tx))
+        if let Err(e) = self.proxy.send_event(UserEvent::GetPixelValue(index, x, y, tx))
         {
             log::error!(
                 "Failed to send GetPixelValue event for window {}: {:?}",
