@@ -2,7 +2,7 @@
 
 use super::{
     basic_mesh_context::BasicMeshContext,
-    mesh::{MeshRenderContext, MeshUniforms},
+    mesh::{MeasureRenderContext, MeshRenderContext, MeshUniforms, Measurement},
     performance::{PerformanceStats, QualityController, QualityLevel},
 };
 use crate::{
@@ -78,7 +78,8 @@ pub struct MeshView {
     view_id: usize,
     volume_ctx: Option<Arc<MeshRenderContext>>,
     // orientation_cube_ctx: Option<Arc<BasicMeshContext>>,
-    needle_ctx: Option<Arc<BasicMeshContext>>,
+    // needle_ctx: Option<Arc<BasicMeshContext>>,
+    measure_ctx: Option<Arc<MeasureRenderContext>>,
     pos: (i32, i32),
     dim: (u32, u32),
     /// Performance and error tracking
@@ -114,6 +115,7 @@ pub struct MeshView {
     needle_target: [f32; 3],
     needle_radius: f32,
     needle_position: [f32; 3],
+    measurement: Measurement,
 }
 
 impl MeshView {
@@ -122,7 +124,8 @@ impl MeshView {
             view_id: 0,
             volume_ctx: None,
             // orientation_cube_ctx: None,
-            needle_ctx: None,
+            // needle_ctx: None,
+            measure_ctx: None,
             pos: (0, 0),
             dim: (0, 0),
             stats: RenderStats::default(),
@@ -147,6 +150,7 @@ impl MeshView {
             needle_target: [0.5, 1.0, 0.5],
             needle_radius: 0.004,
             needle_position: [0.5, 0.0, 0.5],
+            measurement: Measurement::new(),
         }
     }
 
@@ -161,10 +165,15 @@ impl MeshView {
     }
 
     /// Function-level comment: Attaches a basic mesh render context for the needle
-    pub fn attach_needle_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
-        self.needle_ctx = Some(ctx);
+    // pub fn attach_needle_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
+    //     self.needle_ctx = Some(ctx);
+    // }
+
+    /// Function-level comment: Attaches a measure render context for measurement overlays
+    pub fn attach_measure_context(&mut self, ctx: std::sync::Arc<MeasureRenderContext>) {
+        self.measure_ctx = Some(ctx);
         log::debug!(
-            "MeshView::attach_needle_context - Needle context attached"
+            "MeshView::attach_measure_context - Measure context attached"
         );
     }
 
@@ -397,30 +406,93 @@ impl MeshView {
         self.roi_max = [1.0, 1.0, 1.0];
     }
 
+    /// Function-level comment: Check if this view has active measurements
+    pub fn has_measurement(&self) -> bool {
+        self.measure_ctx.is_some() && self.measurement.start != self.measurement.end
+    }
+
+    /// Debug helper to log measurement state
+    pub fn debug_measurement(&self) {
+        log::info!(
+            "[MEASURE_DEBUG] measure_ctx={}, start={:?}, end={:?}, needle_enabled={}",
+            self.measure_ctx.is_some(),
+            self.measurement.start,
+            self.measurement.end,
+            self.needle_enabled,
+        );
+    }
+
+    pub fn clear_measurement(&mut self){
+        self.measurement.clear();
+    }
+
+    pub fn measure_click(&mut self, mouse_x:f32, mouse_y:f32){
+        if let Some(hit)= self.pick_volume_point(mouse_x,mouse_y){
+            self.measurement.set_point(false, hit);
+        }
+    }
+
+    fn pick_volume_point(&self, mouse_x:f32, mouse_y:f32)->Option<Vec3>{
+        let ctx = self.volume_ctx.as_ref()?;
+        let (origin,dir)= self.screen_to_ray(mouse_x,mouse_y);
+        let mut t=0.0;
+        while t<3.0
+        {
+            let p = origin+dir*t;
+            if p.min_element()<0.0 || p.max_element()>1.0{
+                t+=0.002;
+                continue;
+            }
+
+            let hu = ctx.render_content.sample_normalized(p.x,p.y,p.z);
+            if hu>300.0{
+                return Some(p);
+            }
+            t+=0.002;
+        }
+        None
+    }
+
+    fn screen_to_ray(&self, mouse_x:f32, mouse_y:f32)->(Vec3,Vec3){
+        let uv_x = mouse_x/self.dim.0 as f32;
+        let uv_y = mouse_y/self.dim.1 as f32;
+        let mut origin = Vec3::new(uv_x, 1.0-uv_y, -0.5);
+        let mut dir =Vec3::Z;
+        let rot = Mat4::from_quat(self.rotation_quat);
+        origin = rot.transform_point3(origin);
+        dir = rot.transform_vector3(dir);
+        (origin, dir.normalize())
+    }
+
     pub fn set_needle_enabled(&mut self, enabled: bool) {
         self.needle_enabled = enabled;
         log::info!("Mesh needle rendering {}", if enabled { "enabled" } else { "disabled" });
     }
 
-    pub fn is_needle_enabled(&self) -> bool {
-        self.needle_enabled
-    }
-
     pub fn set_needle_trajectory(&mut self, entry: [f32; 3], pos: [f32; 3]) {
+        self.needle_enabled = true;
+        self.measurement.set_start(Vec3::from_array(entry));
+        self.measurement.set_end(Vec3::from_array(pos));
         self.needle_entry = entry;
         self.needle_target = pos;
         self.needle_position = entry;
-        log::info!("Mesh needle trajectory set: entry={:?}, pos={:?}", entry, pos);
+        log::info!(
+            "[NEEDLE] set_needle_trajectory: entry={:?}, pos={:?}, enabled={}",
+            entry, pos, self.needle_enabled
+        );
     }
 
     pub fn set_needle_position(&mut self, pos: [f32; 3]) {
+        self.needle_enabled = true;
         self.needle_position = pos;
+        self.measurement.set_end(Vec3::from_array(pos));
         log::debug!("Mesh needle position set to {:?}", pos);
     }
 
     pub fn set_needle_radius(&mut self, radius: f32) {
         self.needle_radius = radius.clamp(0.0004, 0.04);
-        log::debug!("Mesh needle radius set to {:.4}", self.needle_radius);
+        self.measurement.radius = self.needle_radius;
+        log::debug!("Mesh needle radius set to {:.6}", self.needle_radius);
     }
 
     pub fn set_window_level(&mut self, window: f32) -> KeplerResult<()> {
@@ -452,31 +524,58 @@ impl MeshView {
             self.last_frame_time = current_time;
         }
 
-        if let Some(vol_ctx) = &self.volume_ctx {
-            let extent = vol_ctx.render_content.texture.size();
-            let w = extent.width.max(1) as f32;
-            let h = extent.height.max(1) as f32;
-            let d = extent.depth_or_array_layers.max(1) as f32;
-            let w_mm = w * 1.0;
-            let h_mm = h * 1.0;
-            let d_mm = d * self.slab_thickness;
-            let scale_viewport = Mat4::from_scale(Vec3::new(w, h, d));
-            let scale_texture = Mat4::from_scale(Vec3::new(1.0 / w_mm, 1.0 / h_mm, 1.0 / d_mm));
-            let rotation = Mat4::from_quat(self.rotation_quat);
-            let final_matrix = scale_texture * rotation * scale_viewport;
+        // Extract volume dimensions — shared by both volume and needle transforms
+        let vol_extent = self.volume_ctx
+            .as_ref()
+            .map(|ctx| ctx.render_content.texture.size())
+            .unwrap_or_default();
+        let w = vol_extent.width.max(1) as f32;
+        let h = vol_extent.height.max(1) as f32;
+        let d = vol_extent.depth_or_array_layers.max(1) as f32;
+        let d_mm = d * self.slab_thickness;
 
+        let aspect_ratio = if self.dim.1 > 0 && self.dim.0 > 0 {
+            self.dim.0 as f32 / self.dim.1 as f32
+        } else {
+            1.0
+        };
+
+        let scale_viewport = Mat4::from_scale(Vec3::new(w, h, d));
+        let scale_texture = Mat4::from_scale(Vec3::new(1.0 / w, 1.0 / h, 1.0 / d_mm));
+        let rotation_mat = Mat4::from_quat(self.rotation_quat);
+        let final_matrix = scale_texture * rotation_mat * scale_viewport;
+
+        let center = Vec3::splat(0.5);
+        let view = Mat4::from_translation(center)
+            * scale_viewport.inverse()
+            * Mat4::from_quat(self.rotation_quat.conjugate())
+            * scale_texture.inverse()
+            * Mat4::from_translation(-center);
+
+        let scale = self.scale_factor.max(0.0001);
+        let half_zoom = 0.5 / scale;
+        let measure_pan_y = -self.pan[1];
+        let (left, right, bottom, top) = if aspect_ratio > 1.0 {
+            let hw = half_zoom * aspect_ratio;
+            (0.5 + self.pan[0] - hw, 0.5 + self.pan[0] + hw,
+                0.5 + measure_pan_y - half_zoom, 0.5 + measure_pan_y + half_zoom)
+        } else {
+            let hh = half_zoom / aspect_ratio.max(0.001);
+            (0.5 + self.pan[0] - half_zoom, 0.5 + self.pan[0] + half_zoom,
+                0.5 + measure_pan_y - hh, 0.5 + measure_pan_y + hh)
+        };
+        // Y-flip: volume shader uses (1 - uv.y), so swap bottom/top
+        // to match the camera-space Y → screen-space Y mapping.
+        let proj = Mat4::orthographic_rh(left, right, top, bottom, -0.5, 1.5);
+
+        // Volume uniforms
+        if let Some(vol_ctx) = &self.volume_ctx {
             // Extract format and bias from RenderContent decode parameters
             let decode_params = vol_ctx.render_content.decode_parameters();
             let is_packed_rg8 = if decode_params.is_packed_flag == 1 {
                 1.0
             } else {
                 0.0
-            };
-
-            let aspect_ratio = if self.dim.1 > 0 && self.dim.0 > 0 {
-                self.dim.0 as f32 / self.dim.1 as f32
-            } else {
-                1.0
             };
 
             let vol_uniforms = MeshUniforms {
@@ -497,6 +596,10 @@ impl MeshView {
                 rotation: final_matrix.to_cols_array(),
                 vol_dims: [w, h, d],
                 preset: self.mode as f32,
+                needle_entry: self.needle_entry,
+                needle_enabled: if self.needle_enabled { 1.0 } else { 0.0 },
+                needle_tip: self.needle_position,
+                needle_radius: self.needle_radius,
             };
 
             // update
@@ -522,60 +625,63 @@ impl MeshView {
         // }
 
         // Update Needle Uniforms
-        if let Some(needle) = &self.needle_ctx {
-            let center = Vec3::splat(0.5);
-            let flip = Mat4::from_scale(Vec3::new(1.0, -1.0, 1.0));
-            let rotation = flip * Mat4::from_quat(self.rotation_quat.conjugate());
-            let view = Mat4::from_translation(center) * rotation * Mat4::from_translation(-center);
+        // if let Some(needle) = &self.needle_ctx {
+        //     let center = Vec3::splat(0.5);
+        //     let rot = Mat4::from_quat(self.rotation_quat);
 
-            // Match volume shader's zoom + pan by adjusting orthographic frustum bounds.
-            // Volume shader: uv = (uv_centered / scale) + 0.5 + pan
-            // → Screen-space maps to volume region:
-            //   center = (0.5 + pan_x, 0.5 + pan_y), half-size = 0.5 / scale
-            let scale = self.scale_factor.max(0.0001);
-            let half_extent = 0.5 / scale;
-            let cx = 0.5 + self.pan[0];
-            let cy = 0.5 + self.pan[1];
-            let proj = Mat4::orthographic_rh(
-                cx - half_extent,
-                cx + half_extent,
-                cy - half_extent,
-                cy + half_extent,
-                -0.5,
-                1.5,
+        //     let entry =
+        //         (rot * (Vec3::from_array(self.needle_entry) - center).extend(1.0))
+        //             .truncate()
+        //             + center;
+
+        //     let target =
+        //         (rot * (Vec3::from_array(self.needle_target) - center).extend(1.0))
+        //             .truncate()
+        //             + center;
+
+        //     let dir = target - entry;
+        //     let len = dir.length();
+
+        //     if len > 1e-6 {
+        //         let mid = (entry + target) * 0.5;
+
+        //         let q = Quat::from_rotation_arc(
+        //             Vec3::Y,
+        //             dir.normalize(),
+        //         );
+
+        //         let radius_scale =
+        //             self.needle_radius / 0.004;
+
+        //         let height_scale =
+        //             len / 20.0;
+
+        //         let model =
+        //             Mat4::from_translation(mid)
+        //             * Mat4::from_quat(q)
+        //             * Mat4::from_scale(
+        //                 Vec3::new(
+        //                     radius_scale,
+        //                     height_scale,
+        //                     radius_scale,
+        //                 ),
+        //             );
+
+        //         let mvp = proj * view * model;
+
+        //         needle.update_uniforms(
+        //             queue,
+        //             &mvp.to_cols_array_2d(),
+        //         );
+        //     }
+        // }
+        
+        if let Some(measure_ctx) = &self.measure_ctx {
+            measure_ctx.update_measurement(
+                queue,
+                &self.measurement,
+                proj * view,
             );
-
-            let entry = Vec3::from_array(self.needle_entry);
-            let tip = Vec3::from_array(self.needle_position);
-            let full_end = Vec3::from_array(self.needle_target);
-            let full_dir = full_end - entry;
-            let full_len = full_dir.length();
-
-            let mut model = Mat4::IDENTITY;
-            if full_len > 1e-6 {
-                let needle_start = tip - full_dir;
-                let mid = (needle_start + tip) * 0.5;
-
-                let radius_scale = self.needle_radius / 0.004;
-                let height_scale = full_len / 20.0;
-                let s = Mat4::from_scale(Vec3::new(radius_scale, height_scale, radius_scale));
-
-                let dir_norm = full_dir / full_len;
-                let r = if dir_norm.abs_diff_eq(Vec3::Y, 1e-6) {
-                    Mat4::IDENTITY
-                } else if dir_norm.abs_diff_eq(-Vec3::Y, 1e-6) {
-                    Mat4::from_rotation_z(std::f32::consts::PI)
-                } else {
-                    let axis = Vec3::Y.cross(dir_norm).normalize();
-                    let angle = Vec3::Y.dot(dir_norm).acos();
-                    Mat4::from_axis_angle(axis, angle)
-                };
-
-                model = Mat4::from_translation(mid) * r * s;
-            }
-
-            let mvp = proj * view * model;
-            needle.update_uniforms(queue, &mvp.to_cols_array_2d());
         }
     }
 
@@ -730,12 +836,12 @@ impl MeshView {
         //     }
         // }
         
-        // Render Needle (if available)
-        if self.needle_enabled {
-            if let Some(needle) = &self.needle_ctx {
-                needle.render(render_pass);
-            }
-        }
+        // // Render Needle (if available)
+        // if self.needle_enabled {
+        //     if let Some(needle) = &self.needle_ctx {
+        //         needle.render(render_pass);
+        //     }
+        // }
 
         // Record successful render
         let render_time_ms = start_time.elapsed().as_millis_f32();
@@ -755,6 +861,15 @@ impl MeshView {
         }
 
         Ok(())
+    }
+
+    /// Function-level comment: Render measurement overlays during MeasurePass
+    pub fn render_measure(&self, render_pass: &mut wgpu::RenderPass) {
+        if self.needle_enabled {
+            if let Some(ctx) = &self.measure_ctx {
+                ctx.render(render_pass);
+            } 
+        }
     }
 }
 

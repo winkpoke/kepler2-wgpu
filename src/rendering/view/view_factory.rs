@@ -13,7 +13,7 @@ use log::{debug, info};
 use std::sync::Arc;
 
 use crate::core::WindowLevel;
-use crate::rendering::view::mesh::basic_mesh_context::BasicMeshContext;
+use crate::rendering::view::mesh::mesh::MeasureRenderContext;
 use crate::rendering::view::mesh::mesh::MeshRenderContext;
 use crate::rendering::view::mesh::mesh_view::MeshView;
 use crate::rendering::view::mip::{MipView, MipViewWgpuImpl};
@@ -458,13 +458,9 @@ impl ViewFactory for DefaultViewFactory {
         mesh_view.move_to(pos);
         mesh_view.resize(size);
 
-        // Initialize and attach orientation cube context (same as create_mesh_view)
-        let cyl_mesh = crate::rendering::mesh::mesh::Mesh::cylinder();
-        // let cube_mesh = crate::rendering::mesh::mesh::Mesh::unit_cube();
-        let needle_ctx = BasicMeshContext::new(&self.device, &self.queue, &cyl_mesh, true);
-        // let cube_ctx = BasicMeshContext::new(&self.device, &self.queue, &cube_mesh, true);
-        mesh_view.attach_needle_context(Arc::new(needle_ctx));
-        // mesh_view.attach_orientation_cube_context(Arc::new(cube_ctx));
+        // Initialize and attach measure context for measurement overlays (replaces needle)
+        let measure_ctx = MeasureRenderContext::new(&self.device, self.surface_format);
+        mesh_view.attach_measure_context(Arc::new(measure_ctx));
 
         info!(
             "[DefaultViewFactory] Created Mesh view (with_content) at {:?} size {:?}",

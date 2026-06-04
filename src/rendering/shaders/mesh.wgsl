@@ -45,9 +45,30 @@ struct MeshUniforms {
     rotation: mat4x4<f32>,
     vol_dims: vec3<f32>,
     preset: f32,
+    needle_entry : vec3<f32>,
+    needle_enabled : f32,
+    needle_tip : vec3<f32>,
+    needle_radius : f32,
 }
 @group(1) @binding(0)
 var<uniform> u_vol: MeshUniforms;
+
+fn point_inside_needle(p : vec3<f32>,entry : vec3<f32>,tip : vec3<f32>,radius : f32) -> bool {
+    let axis = tip - entry;
+    let len = length(axis);
+    if(len < 0.00001){
+        return false;
+    }
+    let dir = axis / len;
+    let v = p - entry;
+    let t = dot(v, dir);
+    if(t < 0.0 || t > len){
+        return false;
+    }
+    let closest = entry + dir * t;
+    let dist = distance(p, closest);
+    return dist < radius;
+}
 
 // Ray-box intersection (Axis-Aligned Bounding Box [0,1]^3)
 // Computes entry and exit distances (tmin, tmax)
@@ -278,6 +299,17 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
         }
 
         let pos = ray_origin + t * ray_dir;
+        if(u_vol.needle_enabled > 0.5){
+            if(point_inside_needle(
+                pos,
+                u_vol.needle_entry,
+                u_vol.needle_tip,
+                u_vol.needle_radius
+            )){
+                t += u_vol.ray_step_size;
+                continue;
+            }
+        }
         let hu = sample_volume(pos);
 
         if (hu < min_val) {
@@ -301,7 +333,7 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
             accum_a += (1.0 - accum_a) * sample_alpha;
         }
 
-        if (first_hit_t >= t1 && accum_a > 0.05) {
+        if (first_hit_t >= t1 && accum_a > 0.08) {
             first_hit_t = t;
         }
 
@@ -314,7 +346,7 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
     if (accum_a < 0.01) {
         return DvrResult(vec4<f32>(accum_rgb, accum_a), 1.0);
     }
-    let hit_pos = ray_origin + first_hit_t * ray_dir;
+    let hit_pos = ray_origin + (first_hit_t + dt * 2.0) * ray_dir;
     let ndc_z = (u_vol.rotation * vec4<f32>(hit_pos, 1.0)).z;
     let norm_depth = clamp((ndc_z + 0.5) / 2.0, 0.0, 1.0);
     return DvrResult(vec4<f32>(accum_rgb, accum_a), norm_depth);

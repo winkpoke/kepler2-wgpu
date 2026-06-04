@@ -19,6 +19,7 @@ pub enum PassId {
     SlicePass,
     /// MIP (Maximum Intensity Projection) rendering pass (onscreen without depth buffer)
     MipPass,
+    MeasurePass,
 }
 
 /// Describes a render pass, including its name, output, and clearing behavior.
@@ -85,6 +86,17 @@ impl PassDescriptor {
                 b: 0.0,
                 a: 1.0,
             },
+            uses_depth: false,
+            clear_depth: false,
+        }
+    }
+
+    pub fn measure_pass(surface_format: wgpu::TextureFormat,) -> Self {
+        Self {
+            name: "MeasurePass".to_string(),
+            is_offscreen: false,
+            color_format: surface_format,
+            clear_color: wgpu::Color::BLACK,
             uses_depth: false,
             clear_depth: false,
         }
@@ -156,6 +168,7 @@ impl PassRegistry {
         has_mesh_view: bool,
         has_mip_view: bool,
         has_mpr_view: bool,
+        has_measure_view: bool,
     ) -> PassPlan {
         let mut plan = PassPlan::new();
 
@@ -180,6 +193,14 @@ impl PassRegistry {
             plan.add_pass(
                 PassId::SlicePass,
                 PassDescriptor::slice_pass(self.surface_format),
+            );
+        }
+
+        if has_measure_view{
+            log::info!("[PASS_PLAN] Adding MeasurePass to pass plan");
+            plan.add_pass(
+                PassId::MeasurePass,
+                PassDescriptor::measure_pass(self.surface_format),
             );
         }
 
@@ -347,6 +368,10 @@ impl PassExecutor {
                 log::warn!("MIP pass error: {}", error);
                 // MIP pass errors are non-critical, just log them
             }
+            PassId::MeasurePass => {
+                log::warn!("Measure pass error: {}", error);
+                // Measure pass errors are non-critical, just log them
+            }
         }
     }
 
@@ -396,6 +421,7 @@ impl PassExecutor {
         has_mesh_view: bool,
         has_mip_view: bool,
         has_mpr_view: bool,
+        has_measure_view: bool,
         mut render_fn: F,
     ) -> Result<(), Box<dyn std::error::Error>>
     where
@@ -407,9 +433,7 @@ impl PassExecutor {
 
         // Build the pass plan for this frame
         let effective_has_mesh_view = has_mesh_view && !self.mesh_pass_disabled;
-        let plan =
-            self.registry
-                .build_pass_plan(effective_has_mesh_view, has_mip_view, has_mpr_view);
+        let plan =self.registry.build_pass_plan(effective_has_mesh_view, has_mip_view, has_mpr_view, has_measure_view);
         let mut frame_success = true;
 
         log::trace!(
@@ -431,6 +455,7 @@ impl PassExecutor {
                 PassId::MeshPass => "MESH",
                 PassId::SlicePass => "SLICE",
                 PassId::MipPass => "MIP",
+                PassId::MeasurePass => "MEASURE",
             };
             log::trace!(
                 "[FRAME_EXEC] Executing {} pass: '{}'",
@@ -472,6 +497,14 @@ impl PassExecutor {
                         encoder,
                         frame_view,
                         texture_pool,
+                        descriptor,
+                        &mut render_fn,
+                    )
+                    .map_err(|e| PassExecutionError::RenderingFailed(e.to_string())),
+                PassId::MeasurePass => self
+                    .execute_measure_pass(
+                        encoder,
+                        frame_view,
                         descriptor,
                         &mut render_fn,
                     )
@@ -795,6 +828,82 @@ impl PassExecutor {
 
         render_result
     }
+
+    fn execute_measure_pass<F>(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        frame_view: &wgpu::TextureView,
+        descriptor: &PassDescriptor,
+        render_fn: &mut F,
+    ) -> Result<(), Box<dyn std::error::Error>>
+    where
+        F: FnMut(PassContext) -> Result<(), Box<dyn std::error::Error>>,
+    {
+        let start_time = Instant::now();
+        log::trace!(
+            "[MEASURE_PASS] Starting execution - Pass: '{}', Target: Surface (onscreen)",
+            descriptor.name
+        );
+
+        let render_pass_start = Instant::now();
+        let mut render_pass =
+            encoder.begin_render_pass(
+                &wgpu::RenderPassDescriptor {
+                    label: Some(&descriptor.name),
+                    color_attachments: &[
+                        Some(
+                            wgpu::RenderPassColorAttachment {
+                                view: frame_view,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Load,
+                                    store: wgpu::StoreOp::Store,
+                                },
+                            },
+                        ),
+                    ],
+                    depth_stencil_attachment: None,
+                    occlusion_query_set: None,
+                    timestamp_writes: None,
+                },
+            );
+        log::trace!(
+            "[MEASURE_PASS] Render pass creation completed in {:.2}ms",
+            render_pass_start.elapsed().as_millis_f64()
+        );
+        log::trace!("[MEASURE_PASS] Depth attachment: DISABLED (measure overlay)");
+
+        let rendering_start = Instant::now();
+        let ctx = PassContext::new(
+            &mut render_pass,
+            descriptor,
+            PassId::MeasurePass,
+        );
+        let render_result = render_fn(ctx);
+        let rendering_time = rendering_start.elapsed().as_millis_f64();
+
+        match &render_result {
+            Ok(_) => {
+                log::trace!(
+                    "[MEASURE_PASS] Rendering completed successfully in {:.2}ms",
+                    rendering_time
+                );
+                log::trace!(
+                    "[MEASURE_PASS] Total execution time: {:.2}ms",
+                    start_time.elapsed().as_millis_f64()
+                );
+            }
+            Err(e) => {
+                log::error!(
+                    "[MEASURE_PASS] Rendering failed after {:.2}ms: {}",
+                    rendering_time,
+                    e
+                );
+            }
+        }
+
+        render_result
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -834,7 +943,7 @@ mod tests {
     fn test_pass_registry_build_plan() {
         let fmt = wgpu::TextureFormat::Bgra8Unorm;
         let registry = PassRegistry::new(fmt);
-        let plan = registry.build_pass_plan(true, true, true);
+        let plan = registry.build_pass_plan(true, true, true, true);
         assert!(plan.has_pass(PassId::MeshPass));
         assert!(plan.has_pass(PassId::MipPass));
         assert!(plan.has_pass(PassId::SlicePass));

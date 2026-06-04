@@ -207,8 +207,8 @@ pub fn create_basic_mesh_pipeline_with_lighting(
         depth_stencil: if use_depth {
             Some(DepthStencilState {
                 format: get_mesh_depth_format(),
-                depth_write_enabled: false,
-                depth_compare: CompareFunction::Less,
+                depth_write_enabled: true,
+                depth_compare: CompareFunction::LessEqual,
                 stencil: StencilState::default(),
                 bias: DepthBiasState::default(),
             })
@@ -410,6 +410,78 @@ pub fn create_texture_quad_pipeline(
         multiview: None,
         cache: None,
     })
+}
+
+pub fn create_measure_pipeline(
+    device:&Device,
+    target_format:TextureFormat,
+)->RenderPipeline {
+    let shader= device.create_shader_module(ShaderModuleDescriptor {
+        label: Some("Measure Shader"),
+        source: ShaderSource::Wgsl(
+            include_str!("../shaders/line.wgsl").into(),
+        ),
+    });
+
+    let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+        label: Some("MeasureBindGroupLayout"),
+        entries: &[
+            BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::VERTEX,
+                ty: BindingType::Buffer {
+                    ty: BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+        ],
+    });
+
+    let pipeline_layout= device.create_pipeline_layout(&PipelineLayoutDescriptor{
+            label:Some("Measure"),
+            bind_group_layouts: &[&bind_group_layout],
+            push_constant_ranges: &[],
+        }
+    );
+
+    device.create_render_pipeline(&RenderPipelineDescriptor{
+            label:Some("Measure"),
+            layout:Some(&pipeline_layout),
+            vertex:VertexState{
+                module:&shader,
+                entry_point:Some("vs_main"),
+                buffers: &[
+                    VertexBufferLayout {
+                        array_stride: std::mem::size_of::<[f32; 3]>() as u64,
+                        step_mode: VertexStepMode::Vertex,
+                        attributes: &vertex_attr_array![0 => Float32x3],
+                    },
+                ],
+                compilation_options: PipelineCompilationOptions::default(),
+            },
+            primitive:PrimitiveState{
+                topology: PrimitiveTopology::LineList,
+                ..Default::default()
+            },
+            depth_stencil: None,
+            fragment:Some(FragmentState{
+                module:&shader,
+                entry_point: Some("fs_main"),
+                targets:&[Some(ColorTargetState{
+                    format:target_format,
+                    blend:Some(BlendState::ALPHA_BLENDING),
+                    write_mask:ColorWrites::ALL,
+                })],
+                compilation_options: PipelineCompilationOptions::default(),
+            }),
+            multisample:
+                MultisampleState::default(),
+            multiview:None,
+            cache: None,
+        }
+    )
 }
 
 /// Creates volume rendering pipelines.

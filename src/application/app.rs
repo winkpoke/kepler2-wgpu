@@ -274,6 +274,27 @@ impl App {
             .any(|view| view.as_any().downcast_ref::<view::MprView>().is_some())
     }
 
+    /// Function-level comment: Check if the layout contains any MeshView with measurement context.
+    fn has_measure_view(&self) -> bool {
+        let result = self.app_view
+            .layout
+            .views()
+            .iter()
+            .any(|view| {
+                if let Some(mesh_view) = view.as_any().downcast_ref::<view::MeshView>() {
+                    mesh_view.debug_measurement();
+                    let has = mesh_view.has_measurement();
+                    log::info!("[HAS_MEASURE] MeshView found, has_measurement={}", has);
+                    has
+                } else {
+                    log::trace!("[HAS_MEASURE] View is not MeshView");
+                    false
+                }
+            });
+        log::info!("[HAS_MEASURE] has_measure_view = {}", result);
+        result
+    }
+
     /// Function-level comment: Renders the frame using separate render passes for 3D mesh and 2D slice content.
     /// This architecture provides better performance and cleaner separation of concerns.
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -294,10 +315,11 @@ impl App {
         let has_mesh_view = self.has_mesh_view();
         let has_mip_view = self.has_mip_content();
         let has_mpr_view = self.has_mpr_view();
+        let has_measure_view = self.has_measure_view();
 
         // Debug logging for pass execution conditions
-        trace!("View-driven pass conditions - has_mesh_view: {}, has_mip_view: {}, has_mpr_view: {}, views_len: {}", 
-               has_mesh_view, has_mip_view, has_mpr_view, self.app_view.layout.views().len());
+        trace!("View-driven pass conditions - has_mesh_view: {}, has_mip_view: {}, has_mpr_view: {}, has_measure_view: {}, views_len: {}", 
+               has_mesh_view, has_mip_view, has_mpr_view, has_measure_view, self.app_view.layout.views().len());
 
         // Reset mesh pass error state if mesh view is present and pass executor is unhealthy
         // Do this before borrowing texture_pool to avoid borrowing conflicts
@@ -328,6 +350,7 @@ impl App {
                 has_mesh_view, // Whether there is a mesh view present in the layout
                 has_mip_view,  // Whether there is a MIP view present in the layout
                 has_mpr_view,  // Whether there is an MPR view present in the layout
+                has_measure_view, // Whether there is measurement content to render
                 |pass_context| {
                     match pass_context.pass_id {
                         crate::rendering::core::PassId::MeshPass => {
@@ -369,6 +392,18 @@ impl App {
                                 // Render MPR views only
                                 view.render(pass_context.pass)
                                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
+                            }
+                            Ok(())
+                        }
+                        crate::rendering::core::PassId::MeasurePass => {
+                            log::info!("[MEASURE_PASS] Dispatching MeasurePass");
+                            // Function-level comment: Render measurement overlays on top of all content
+                            for view in layout.views_mut().iter_mut() {
+                                if let Some(mesh_view) =
+                                    view.as_any_mut().downcast_mut::<MeshView>()
+                                {
+                                    mesh_view.render_measure(pass_context.pass);
+                                }
                             }
                             Ok(())
                         }
@@ -973,66 +1008,75 @@ impl App {
     }
 
     pub fn set_mesh_needle_trajectory(&mut self, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32) {
-        let entry_mm = [sx, sy, sz];
-        let pos_mm = [lx, ly, lz];
+        let entry_pixel = [sx, sy, sz];
+        let pos_pixel = [lx, ly, lz];
         if let Ok(vol) = self.app_model.volume() {
-            let inv = vol.base.matrix.inverse();
             let (nx, ny, nz) = vol.dimensions;
 
-            let to_vol = |p_mm: [f32; 3]| -> [f32; 3] {
-                let v = inv.transform_point3(glam::Vec3::from_array(p_mm));
+            let to_vol = |p_pixel: [f32; 3]| -> [f32; 3] {
                 [
-                    (v.x / (nx as f32 - 1.0)).clamp(0.0, 1.0),
-                    (v.y / (ny as f32 - 1.0)).clamp(0.0, 1.0),
-                    (v.z / (nz as f32 - 1.0)).clamp(0.0, 1.0),
+                    (p_pixel[0] / (nx as f32 - 1.0)).clamp(0.0, 1.0),
+                    (p_pixel[1] / (ny as f32 - 1.0)).clamp(0.0, 1.0),
+                    (p_pixel[2] / (nz as f32 - 1.0)).clamp(0.0, 1.0),
                 ]
             };
 
-            let entry_vol = to_vol(entry_mm);
-            let pos_vol = to_vol(pos_mm);
+            let entry_vol = to_vol(entry_pixel);
+            let pos_vol = to_vol(pos_pixel);
 
             self.apply_to_mesh_view(|mesh_view| {
                 mesh_view.set_needle_trajectory(entry_vol, pos_vol);
                 log::info!(
-                    "Mesh needle trajectory set: entry_mm={:?} -> vol={:?}, pos_mm={:?} -> vol={:?}",
-                    entry_mm, entry_vol, pos_mm, pos_vol
+                    "Mesh needle trajectory set: entry_pixel={:?} -> vol={:?}, pos_pixel={:?} -> vol={:?}",
+                    entry_pixel, entry_vol, pos_pixel, pos_vol
                 );
             });
         }
     }
 
-    pub fn set_mesh_needle_radius(&mut self, radius: f32){
+    pub fn set_mesh_needle_radius(&mut self, radius_mm: f32){
+        let radius_uv = if let Ok(vol) = self.app_model.volume() {
+            let (nx, ny, nz) = vol.dimensions();
+            let (sx, sy, sz) = vol.voxel_spacing();
+            let physical = [
+                nx as f32 * sx,
+                ny as f32 * sy,
+                nz as f32 * sz,
+            ];
+            let min_physical = physical.iter().cloned().reduce(f32::min).unwrap_or(1.0);
+            (radius_mm / min_physical).clamp(0.0001, 0.1)
+        } else {
+            radius_mm.clamp(0.0001, 0.1)
+        };
         self.apply_to_mesh_view(|mesh_view| {
-            mesh_view.set_needle_radius(radius);
+            mesh_view.set_needle_radius(radius_uv);
             log::info!(
-                "Mesh needle radius set to {:.3}",
-                radius
+                "Mesh needle radius set: {}mm -> {}uv",
+                radius_mm, radius_uv
             );
         });
     }
 
     pub fn set_mesh_needle_position(&mut self, sx: f32, sy: f32, sz: f32) {
-        let pos_mm = [sx, sy, sz];
+        let pos_pixel = [sx, sy, sz];
         if let Ok(vol) = self.app_model.volume() {
-            let inv = vol.base.matrix.inverse();
             let (nx, ny, nz) = vol.dimensions;
 
-            let to_vol = |p_mm: [f32; 3]| -> [f32; 3] {
-                let v = inv.transform_point3(glam::Vec3::from_array(p_mm));
+            let to_vol = |p_pixel: [f32; 3]| -> [f32; 3] {
                 [
-                    (v.x / (nx as f32 - 1.0)).clamp(0.0, 1.0),
-                    (v.y / (ny as f32 - 1.0)).clamp(0.0, 1.0),
-                    (v.z / (nz as f32 - 1.0)).clamp(0.0, 1.0),
+                    (p_pixel[0] / (nx as f32 - 1.0)).clamp(0.0, 1.0),
+                    (p_pixel[1] / (ny as f32 - 1.0)).clamp(0.0, 1.0),
+                    (p_pixel[2] / (nz as f32 - 1.0)).clamp(0.0, 1.0),
                 ]
             };
 
-            let pos_vol = to_vol(pos_mm);
+            let pos_vol = to_vol(pos_pixel);
 
             self.apply_to_mesh_view(|mesh_view| {
                 mesh_view.set_needle_position(pos_vol);
                 log::info!(
-                    "Mesh needle position set: pos_mm={:?} -> vol={:?}",
-                    pos_mm, pos_vol
+                    "Mesh needle position set: pos_pixel={:?} -> vol={:?}",
+                    pos_pixel, pos_vol
                 );
             });
         }
