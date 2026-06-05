@@ -274,27 +274,6 @@ impl App {
             .any(|view| view.as_any().downcast_ref::<view::MprView>().is_some())
     }
 
-    /// Function-level comment: Check if the layout contains any MeshView with measurement context.
-    fn has_measure_view(&self) -> bool {
-        let result = self.app_view
-            .layout
-            .views()
-            .iter()
-            .any(|view| {
-                if let Some(mesh_view) = view.as_any().downcast_ref::<view::MeshView>() {
-                    mesh_view.debug_measurement();
-                    let has = mesh_view.has_measurement();
-                    log::info!("[HAS_MEASURE] MeshView found, has_measurement={}", has);
-                    has
-                } else {
-                    log::trace!("[HAS_MEASURE] View is not MeshView");
-                    false
-                }
-            });
-        log::info!("[HAS_MEASURE] has_measure_view = {}", result);
-        result
-    }
-
     /// Function-level comment: Renders the frame using separate render passes for 3D mesh and 2D slice content.
     /// This architecture provides better performance and cleaner separation of concerns.
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -315,11 +294,10 @@ impl App {
         let has_mesh_view = self.has_mesh_view();
         let has_mip_view = self.has_mip_content();
         let has_mpr_view = self.has_mpr_view();
-        let has_measure_view = self.has_measure_view();
 
         // Debug logging for pass execution conditions
-        trace!("View-driven pass conditions - has_mesh_view: {}, has_mip_view: {}, has_mpr_view: {}, has_measure_view: {}, views_len: {}", 
-               has_mesh_view, has_mip_view, has_mpr_view, has_measure_view, self.app_view.layout.views().len());
+        trace!("View-driven pass conditions - has_mesh_view: {}, has_mip_view: {}, has_mpr_view: {}, views_len: {}", 
+               has_mesh_view, has_mip_view, has_mpr_view, self.app_view.layout.views().len());
 
         // Reset mesh pass error state if mesh view is present and pass executor is unhealthy
         // Do this before borrowing texture_pool to avoid borrowing conflicts
@@ -350,7 +328,6 @@ impl App {
                 has_mesh_view, // Whether there is a mesh view present in the layout
                 has_mip_view,  // Whether there is a MIP view present in the layout
                 has_mpr_view,  // Whether there is an MPR view present in the layout
-                has_measure_view, // Whether there is measurement content to render
                 |pass_context| {
                     match pass_context.pass_id {
                         crate::rendering::core::PassId::MeshPass => {
@@ -392,18 +369,6 @@ impl App {
                                 // Render MPR views only
                                 view.render(pass_context.pass)
                                     .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-                            }
-                            Ok(())
-                        }
-                        crate::rendering::core::PassId::MeasurePass => {
-                            log::info!("[MEASURE_PASS] Dispatching MeasurePass");
-                            // Function-level comment: Render measurement overlays on top of all content
-                            for view in layout.views_mut().iter_mut() {
-                                if let Some(mesh_view) =
-                                    view.as_any_mut().downcast_mut::<MeshView>()
-                                {
-                                    mesh_view.render_measure(pass_context.pass);
-                                }
                             }
                             Ok(())
                         }

@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use super::{
-    basic_mesh_context::BasicMeshContext,
-    mesh::{MeasureRenderContext, MeshRenderContext, MeshUniforms, Measurement},
+    // basic_mesh_context::BasicMeshContext,
+    mesh::{MeshRenderContext, MeshUniforms},
     performance::{PerformanceStats, QualityController, QualityLevel},
 };
 use crate::{
@@ -79,7 +79,6 @@ pub struct MeshView {
     volume_ctx: Option<Arc<MeshRenderContext>>,
     // orientation_cube_ctx: Option<Arc<BasicMeshContext>>,
     // needle_ctx: Option<Arc<BasicMeshContext>>,
-    measure_ctx: Option<Arc<MeasureRenderContext>>,
     pos: (i32, i32),
     dim: (u32, u32),
     /// Performance and error tracking
@@ -115,7 +114,6 @@ pub struct MeshView {
     needle_target: [f32; 3],
     needle_radius: f32,
     needle_position: [f32; 3],
-    measurement: Measurement,
 }
 
 impl MeshView {
@@ -125,7 +123,6 @@ impl MeshView {
             volume_ctx: None,
             // orientation_cube_ctx: None,
             // needle_ctx: None,
-            measure_ctx: None,
             pos: (0, 0),
             dim: (0, 0),
             stats: RenderStats::default(),
@@ -150,7 +147,6 @@ impl MeshView {
             needle_target: [0.5, 1.0, 0.5],
             needle_radius: 0.004,
             needle_position: [0.5, 0.0, 0.5],
-            measurement: Measurement::new(),
         }
     }
 
@@ -168,14 +164,6 @@ impl MeshView {
     // pub fn attach_needle_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
     //     self.needle_ctx = Some(ctx);
     // }
-
-    /// Function-level comment: Attaches a measure render context for measurement overlays
-    pub fn attach_measure_context(&mut self, ctx: std::sync::Arc<MeasureRenderContext>) {
-        self.measure_ctx = Some(ctx);
-        log::debug!(
-            "MeshView::attach_measure_context - Measure context attached"
-        );
-    }
 
     // /// Function-level comment: Attaches a basic mesh render context for the orientation cube
     // pub fn attach_orientation_cube_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
@@ -406,64 +394,6 @@ impl MeshView {
         self.roi_max = [1.0, 1.0, 1.0];
     }
 
-    /// Function-level comment: Check if this view has active measurements
-    pub fn has_measurement(&self) -> bool {
-        self.measure_ctx.is_some() && self.measurement.start != self.measurement.end
-    }
-
-    /// Debug helper to log measurement state
-    pub fn debug_measurement(&self) {
-        log::info!(
-            "[MEASURE_DEBUG] measure_ctx={}, start={:?}, end={:?}, needle_enabled={}",
-            self.measure_ctx.is_some(),
-            self.measurement.start,
-            self.measurement.end,
-            self.needle_enabled,
-        );
-    }
-
-    pub fn clear_measurement(&mut self){
-        self.measurement.clear();
-    }
-
-    pub fn measure_click(&mut self, mouse_x:f32, mouse_y:f32){
-        if let Some(hit)= self.pick_volume_point(mouse_x,mouse_y){
-            self.measurement.set_point(false, hit);
-        }
-    }
-
-    fn pick_volume_point(&self, mouse_x:f32, mouse_y:f32)->Option<Vec3>{
-        let ctx = self.volume_ctx.as_ref()?;
-        let (origin,dir)= self.screen_to_ray(mouse_x,mouse_y);
-        let mut t=0.0;
-        while t<3.0
-        {
-            let p = origin+dir*t;
-            if p.min_element()<0.0 || p.max_element()>1.0{
-                t+=0.002;
-                continue;
-            }
-
-            let hu = ctx.render_content.sample_normalized(p.x,p.y,p.z);
-            if hu>300.0{
-                return Some(p);
-            }
-            t+=0.002;
-        }
-        None
-    }
-
-    fn screen_to_ray(&self, mouse_x:f32, mouse_y:f32)->(Vec3,Vec3){
-        let uv_x = mouse_x/self.dim.0 as f32;
-        let uv_y = mouse_y/self.dim.1 as f32;
-        let mut origin = Vec3::new(uv_x, 1.0-uv_y, -0.5);
-        let mut dir =Vec3::Z;
-        let rot = Mat4::from_quat(self.rotation_quat);
-        origin = rot.transform_point3(origin);
-        dir = rot.transform_vector3(dir);
-        (origin, dir.normalize())
-    }
-
     pub fn set_needle_enabled(&mut self, enabled: bool) {
         self.needle_enabled = enabled;
         log::info!("Mesh needle rendering {}", if enabled { "enabled" } else { "disabled" });
@@ -471,8 +401,6 @@ impl MeshView {
 
     pub fn set_needle_trajectory(&mut self, entry: [f32; 3], pos: [f32; 3]) {
         self.needle_enabled = true;
-        self.measurement.set_start(Vec3::from_array(entry));
-        self.measurement.set_end(Vec3::from_array(pos));
         self.needle_entry = entry;
         self.needle_target = pos;
         self.needle_position = entry;
@@ -485,13 +413,11 @@ impl MeshView {
     pub fn set_needle_position(&mut self, pos: [f32; 3]) {
         self.needle_enabled = true;
         self.needle_position = pos;
-        self.measurement.set_end(Vec3::from_array(pos));
         log::debug!("Mesh needle position set to {:?}", pos);
     }
 
     pub fn set_needle_radius(&mut self, radius: f32) {
         self.needle_radius = radius.clamp(0.0004, 0.04);
-        self.measurement.radius = self.needle_radius;
         log::debug!("Mesh needle radius set to {:.6}", self.needle_radius);
     }
 
@@ -675,14 +601,6 @@ impl MeshView {
         //         );
         //     }
         // }
-        
-        if let Some(measure_ctx) = &self.measure_ctx {
-            measure_ctx.update_measurement(
-                queue,
-                &self.measurement,
-                proj * view,
-            );
-        }
     }
 
     /// Function-level comment: Start frame timing for performance monitoring.
@@ -861,15 +779,6 @@ impl MeshView {
         }
 
         Ok(())
-    }
-
-    /// Function-level comment: Render measurement overlays during MeasurePass
-    pub fn render_measure(&self, render_pass: &mut wgpu::RenderPass) {
-        if self.needle_enabled {
-            if let Some(ctx) = &self.measure_ctx {
-                ctx.render(render_pass);
-            } 
-        }
     }
 }
 

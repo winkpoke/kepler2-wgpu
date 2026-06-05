@@ -299,34 +299,59 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
         }
 
         let pos = ray_origin + t * ray_dir;
-        if(u_vol.needle_enabled > 0.5){
-            if(point_inside_needle(
+
+        var tf = vec4<f32>(0.0);
+        var is_needle = false;
+        var n = vec3<f32>(0.0);
+        if (u_vol.needle_enabled > 0.5) {
+            if (point_inside_needle(
                 pos,
                 u_vol.needle_entry,
                 u_vol.needle_tip,
                 u_vol.needle_radius
-            )){
-                t += u_vol.ray_step_size;
-                continue;
+            )) {
+                is_needle = true;
+
+                // compute tube axis shading
+                let axis = normalize(u_vol.needle_tip - u_vol.needle_entry);
+                let to_p = pos - u_vol.needle_entry;
+                let proj = dot(to_p, axis) * axis;
+                let radial = normalize(to_p - proj + vec3<f32>(1e-6));
+
+                n = radial; // cylindrical normal
+                let vdir = normalize(-ray_dir);
+
+                // metallic base color (steel)
+                let base_color = vec3<f32>(0.78, 0.79, 0.82);
+
+                let lit_color = compute_lighting(n, vdir, base_color);
+
+                // fully solid metal
+                let density = 4.0;
+                let alpha = 1.0 - exp(-density * step_len);
+
+                tf = vec4<f32>(lit_color, alpha);
             }
         }
-        let hu = sample_volume(pos);
 
-        if (hu < min_val) {
-            t = t + dt * 2.0;
-            continue;
+        if (!is_needle) {
+            let hu = sample_volume(pos);
+            if (hu < min_val) {
+                t = t + dt * 2.0;
+                continue;
+            }
+            n = compute_normal(pos);
+            let grad_mag = length(n);
+            tf = transfer_function(hu, grad_mag);
         }
-
-        let n = compute_normal(pos);
-        let grad_mag = length(n);
-        let tf = transfer_function(hu, grad_mag);
 
         if (tf.a > 0.005) {
             let vdir = normalize(-ray_dir);
-            let lit_color = compute_lighting(n, vdir, tf.rgb);
+            let lit_color = compute_lighting(n, vdir, tf.xyz);
 
             let mapped_opacity = pow(u_vol.opacity_multiplier, 6.0);
             let density = tf.a * mapped_opacity * 3.0; 
+
             let sample_alpha = 1.0 - exp(-density * step_len);
 
             accum_rgb += (1.0 - accum_a) * lit_color * sample_alpha;
@@ -340,9 +365,6 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
         t = t + dt;
     }
 
-    // Compute NDC Z-depth: transform hit position through rotation to match
-    // the needle's depth space (orthographic projection of [0,1] volume).
-    // Near plane: -0.5, Far plane: 1.5 → depth ∈ [0, 1] after normalization.
     if (accum_a < 0.01) {
         return DvrResult(vec4<f32>(accum_rgb, accum_a), 1.0);
     }

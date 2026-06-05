@@ -8,12 +8,12 @@
 use super::{Orientation, View};
 use crate::data::volume_encoding::VolumeEncoding;
 use crate::CTVolume;
+use crate::mesh::BasicMeshContext;
 
 use log::{debug, info};
 use std::sync::Arc;
 
 use crate::core::WindowLevel;
-use crate::rendering::view::mesh::mesh::MeasureRenderContext;
 use crate::rendering::view::mesh::mesh::MeshRenderContext;
 use crate::rendering::view::mesh::mesh_view::MeshView;
 use crate::rendering::view::mip::{MipView, MipViewWgpuImpl};
@@ -459,8 +459,11 @@ impl ViewFactory for DefaultViewFactory {
         mesh_view.resize(size);
 
         // Initialize and attach measure context for measurement overlays (replaces needle)
-        let measure_ctx = MeasureRenderContext::new(&self.device, self.surface_format);
-        mesh_view.attach_measure_context(Arc::new(measure_ctx));
+        // let cyl_mesh = crate::rendering::mesh::mesh::Mesh::cylinder();
+        // let cube_mesh = crate::rendering::mesh::mesh::Mesh::unit_cube();
+        // let needle_ctx = BasicMeshContext::new(&self.device, &self.queue, &cyl_mesh, true);
+        // let cube_ctx = BasicMeshContext::new(&self.device, &self.queue, &cube_mesh, true);
+        // mesh_view.attach_needle_context(Arc::new(needle_ctx));
 
         info!(
             "[DefaultViewFactory] Created Mesh view (with_content) at {:?} size {:?}",
