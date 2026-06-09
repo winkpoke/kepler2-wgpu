@@ -8,24 +8,26 @@ struct VertexOutput {
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     var out: VertexOutput;
-
-    // Generate fullscreen quad vertices
-    // Triangle strip: (-1,-1), (1,-1), (-1,1), (1,1)
     let x = f32(((vertex_index & 1u) * 2u)) - 1.0;
     let y = f32((vertex_index & 2u)) - 1.0;
-
     out.clip_position = vec4<f32>(x, y, 0.0, 1.0);
     out.tex_coords = vec2<f32>((x + 1.0) * 0.5, (y + 1.0) * 0.5);
-    
     return out;
 }
 
 // Fragment shader
-
 @group(0) @binding(0)
 var t_volume: texture_3d<f32>;
 @group(0) @binding(1)
 var s_volume: sampler;
+
+struct NeedleUniform {
+    entry : vec3<f32>,
+    radius : f32,
+    tip : vec3<f32>,
+    id : u32,
+    color : vec4<f32>,
+};
 
 struct MeshUniforms {
     ray_step_size: f32,
@@ -45,13 +47,25 @@ struct MeshUniforms {
     rotation: mat4x4<f32>,
     vol_dims: vec3<f32>,
     preset: f32,
-    needle_entry : vec3<f32>,
-    needle_enabled : f32,
-    needle_tip : vec3<f32>,
-    needle_radius : f32,
+    needle_count : u32,
+    needle_enabled: f32,
+    needle_index: u32,
+    _pad: u32,
+    needles : array<NeedleUniform, 32>,
 }
 @group(1) @binding(0)
 var<uniform> u_vol: MeshUniforms;
+
+fn point_inside_disc(p: vec3<f32>,center: vec3<f32>,axis: vec3<f32>,radius: f32,thickness: f32) -> bool{
+    let v = p - center;
+    let h = dot(v, axis);
+    if (abs(h) > thickness * 0.5)
+    {
+        return false;
+    }
+    let radial = v - h * axis;
+    return dot(radial, radial) <= radius * radius;
+}
 
 fn point_inside_needle(p : vec3<f32>,entry : vec3<f32>,tip : vec3<f32>,radius : f32) -> bool {
     let axis = tip - entry;
@@ -303,38 +317,51 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
         var tf = vec4<f32>(0.0);
         var is_needle = false;
         var n = vec3<f32>(0.0);
-        if (u_vol.needle_enabled > 0.5) {
-            if (point_inside_needle(
-                pos,
-                u_vol.needle_entry,
-                u_vol.needle_tip,
-                u_vol.needle_radius
-            )) {
-                is_needle = true;
 
-                // compute tube axis shading
-                let axis = normalize(u_vol.needle_tip - u_vol.needle_entry);
-                let to_p = pos - u_vol.needle_entry;
-                let proj = dot(to_p, axis) * axis;
-                let radial = normalize(to_p - proj + vec3<f32>(1e-6));
-
-                n = radial; // cylindrical normal
-                let vdir = normalize(-ray_dir);
-
-                // metallic base color (steel)
-                let base_color = vec3<f32>(0.78, 0.79, 0.82);
-
-                let lit_color = compute_lighting(n, vdir, base_color);
-
-                // fully solid metal
-                let density = 4.0;
-                let alpha = 1.0 - exp(-density * step_len);
-
-                tf = vec4<f32>(lit_color, alpha);
+        if (u_vol.needle_enabled > 0.5 && u_vol.needle_enabled < 2.5) {
+            for (var k:u32 = 0u; k < u_vol.needle_count; k = k + 1u)
+            {
+                let needle = u_vol.needles[k];
+                let axis = normalize(needle.tip - needle.entry);
+                let inside_shaft = point_inside_needle(pos,needle.entry,needle.tip,needle.radius);
+                let inside_head = point_inside_disc(pos,needle.entry,axis,needle.radius * 2.0,needle.radius * 2.0);
+                    
+                if (inside_shaft || inside_head)
+                {
+                    is_needle = true;
+                    let to_p = pos - needle.entry;
+                    let proj = dot(to_p, axis) * axis;
+                    let radial = normalize(to_p - proj + vec3<f32>(1e-6));
+                    n = radial; // cylindrical normal
+                    let vdir = normalize(-ray_dir);
+                    let base_color = needle.color.xyz;
+                    let lit_color = compute_lighting(n, vdir, base_color);
+                    let density = 4.0;
+                    let alpha = 1.0 - exp(-density * step_len);
+                    tf = vec4<f32>(lit_color, alpha);
+                    break;
+                }
             }
         }
-
+        
         if (!is_needle) {
+            if (u_vol.needle_enabled > 1.5 && u_vol.needle_enabled < 2.5){
+                let needle = u_vol.needles[u_vol.needle_index];
+                let v0 = needle.entry - needle.tip;
+                let v1 = vec3<f32>(0.0, 0.0, needle.tip.z) - needle.tip;
+                let normal = normalize(cross(v0, v1));
+                let d = -dot(normal, needle.tip);
+                if (dot(normal, pos) + d < 0.0) {
+                    t += dt;
+                    continue;
+                }
+            } else{
+                if (any(pos < u_vol.roi_min) || any(pos > u_vol.roi_max)) {
+                    t += dt;
+                    continue;
+                }
+            }
+
             let hu = sample_volume(pos);
             if (hu < min_val) {
                 t = t + dt * 2.0;
@@ -404,13 +431,6 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let inter_vol = intersect_box(ray_origin, ray_dir, vec3<f32>(0.0), vec3<f32>(1.0));
     var t_start = inter_vol.x;
     var t_end = inter_vol.y;
-    if (t_start >= t_end) {
-        return FragmentOutput(vec4<f32>(0.0), 1.0);
-    }
-
-    let inter_roi = intersect_box(ray_origin, ray_dir, u_vol.roi_min, u_vol.roi_max);
-    t_start = max(t_start, inter_roi.x);
-    t_end = min(t_end, inter_roi.y);
     if (t_start >= t_end) {
         return FragmentOutput(vec4<f32>(0.0), 1.0);
     }

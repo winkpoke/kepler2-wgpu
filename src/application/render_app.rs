@@ -250,16 +250,20 @@ impl RenderApp {
                     state.handle_view_click(view_index, screen_x, screen_y, screen_z);
                     log::info!("ViewClick processed for view {}: screen_x={screen_x}, screen_y={screen_y}, screen_z={screen_z}", view_index);
                 }
-                Event::UserEvent(UserEvent::SetMeshNeedleTrajectory(_index, x, y, z, lx, ly, lz)) => {
-                    state.set_mesh_needle_trajectory(x, y, z, lx, ly, lz);
-                    log::info!("Mesh needle trajectory set to {:?}", [x, y, z, lx, ly, lz]);
+                Event::UserEvent(UserEvent::SetMeshNeedleEnabled(_index, enabled)) => {
+                    state.set_mesh_needle_enabled(enabled);
+                    log::info!("Mesh needle enabled={}", enabled);
                 }
-                Event::UserEvent(UserEvent::SetMeshNeedlePosition(_index, x, y, z)) => {
-                    state.set_mesh_needle_position(x, y, z);
+                Event::UserEvent(UserEvent::SetMeshNeedleTrajectory(_index, id, x, y, z, lx, ly, lz, r, g, b)) => {
+                    state.set_new_needle_mm(id, x, y, z, lx, ly, lz, r, g, b);
+                    log::info!("Mesh needle set to {:?}", [x, y, z, lx, ly, lz]);
+                }
+                Event::UserEvent(UserEvent::SetMeshNeedlePosition(_index, id, x, y, z)) => {
+                    state.set_needle_position_mm(id, x, y, z);
                     log::info!("Mesh needle position set to {:?}", [x, y, z]);
                 }
-                Event::UserEvent(UserEvent::SetMeshNeedleRadius(_index, radius)) => {
-                    state.set_mesh_needle_radius(radius);
+                Event::UserEvent(UserEvent::SetMeshNeedleRadius(_index, id, radius)) => {
+                    state.set_needle_radius(id, radius);
                     log::info!("Mesh needle radius set to {:.3}", radius);
                 }
                 #[cfg(target_arch = "wasm32")]
@@ -419,13 +423,13 @@ impl RenderApp {
                                 state.set_scale(0, 2.0);
                                 state.set_window_width(0, 300.0);
                                 state.set_window_level(0, 300.0);
-                                let needle_entry_mm = [-0.16, 116.84, -1089.75];
-                                let needle_pos_mm = [-1.95, 86.47, -1089.75];
-                                state.set_mesh_needle_trajectory(
-                                    needle_entry_mm[0], needle_entry_mm[1], needle_entry_mm[2],
-                                    needle_pos_mm[0], needle_pos_mm[1], needle_pos_mm[2],
-                                );
-                                log::info!("KeyB pressed: 2*2 mode toggled to {}, needle entry_mm={:?}, pos_mm={:?}", true, needle_entry_mm, needle_pos_mm);
+                                // let needle_entry_mm = [-0.16, 116.84, -1089.75];
+                                // let needle_pos_mm = [-1.95, 86.47, -1089.75];
+                                // state.set_mesh_needle_trajectory(
+                                //     needle_entry_mm[0], needle_entry_mm[1], needle_entry_mm[2],
+                                //     needle_pos_mm[0], needle_pos_mm[1], needle_pos_mm[2],
+                                // );
+                                // log::info!("KeyB pressed: 2*2 mode toggled to {}, needle entry_mm={:?}, pos_mm={:?}", true, needle_entry_mm, needle_pos_mm);
                             }
                             WindowEvent::KeyboardInput {
                                 event:

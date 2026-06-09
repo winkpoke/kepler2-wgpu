@@ -114,7 +114,8 @@ impl PixelData {
             PixelType::Float32 => {
                 for chunk in raw_data.chunks_exact(4).take(voxel_count) {
                     let val = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
-                    let val = (val - 0.2269) / 0.2269 * 1000.0;
+                    // let val = (val - 0.2269) / 0.2269 * 1000.0;
+                    let val = (val - 0.019) / 0.019 * 1000.0;
                     let val = (val * slope + intercept).round() as i16;
                     voxel_data.push(val);
                 }

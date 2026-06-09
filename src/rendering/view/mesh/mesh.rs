@@ -7,6 +7,16 @@ use std::sync::Arc;
 use glam::Mat4;
 use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, RenderPipeline};
 
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct NeedleUniform {
+    pub entry: [f32; 3],
+    pub radius: f32,
+    pub tip: [f32; 3],
+    pub id: u32,
+    pub color: [f32; 4],
+}
+
 /// Volume rendering parameters (sent to fragment shader)
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -28,14 +38,22 @@ pub struct MeshUniforms {
     pub rotation: [f32; 16],
     pub vol_dims: [f32; 3],
     pub preset: f32,
-    pub needle_entry : [f32; 3],
-    pub needle_enabled : f32,
-    pub needle_tip : [f32; 3],
-    pub needle_radius : f32,
+    pub needle_count: u32,
+    pub needle_enabled:f32,
+    pub needle_index: u32,
+    pub _pad: u32,
+    pub needles: [NeedleUniform; 32],
 }
 
 impl Default for MeshUniforms {
     fn default() -> Self {
+        let empty_needle = NeedleUniform {
+            entry: [0.0;3],
+            radius: 0.0,
+            tip: [0.0;3],
+            id: 0,
+            color: [0.0;4],
+        };
         Self {
             ray_step_size: 0.0004,
             max_steps: 1500.0,
@@ -54,10 +72,11 @@ impl Default for MeshUniforms {
             rotation: Mat4::IDENTITY.to_cols_array(),
             vol_dims: [512.0, 512.0, 300.0],
             preset: 1.0,
-            needle_entry: [0.5, 0.0, 0.5],
+            needle_count: 0,
             needle_enabled: 0.0,
-            needle_tip: [0.0, 0.0, 0.0],
-            needle_radius: 0.5,
+            needle_index: 0,
+            _pad: 0,
+            needles: [empty_needle; 32],
         }
     }
 }

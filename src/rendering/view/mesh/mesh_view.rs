@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 
 use super::{
-    // basic_mesh_context::BasicMeshContext,
-    mesh::{MeshRenderContext, MeshUniforms},
+    basic_mesh_context::BasicMeshContext,
+    mesh::{MeshRenderContext, MeshUniforms, NeedleUniform},
     performance::{PerformanceStats, QualityController, QualityLevel},
 };
 use crate::{
@@ -77,8 +77,7 @@ impl Default for FallbackMode {
 pub struct MeshView {
     view_id: usize,
     volume_ctx: Option<Arc<MeshRenderContext>>,
-    // orientation_cube_ctx: Option<Arc<BasicMeshContext>>,
-    // needle_ctx: Option<Arc<BasicMeshContext>>,
+    needle_ctx: Option<Arc<BasicMeshContext>>,
     pos: (i32, i32),
     dim: (u32, u32),
     /// Performance and error tracking
@@ -109,12 +108,18 @@ pub struct MeshView {
     window_level: WindowLevel,
     slab_thickness: f32,
     mode: usize,
-    needle_enabled: bool,
-    needle_entry: [f32; 3],
-    needle_target: [f32; 3],
-    needle_radius: f32,
-    needle_position: [f32; 3],
+    needle_enabled: f32,
+    needle_index: u32,
+    needles: Vec<NeedleUniform>,
 }
+
+const INIT_NEEDLE: NeedleUniform = NeedleUniform {
+    entry: [0.2, 0.3, 0.5],
+    radius: 0.004,
+    tip: [0.2, 0.5, 0.5],
+    id: 0,
+    color: [0.2, 0.9, 0.2, 1.0],
+};
 
 impl MeshView {
     pub fn new() -> Self {
@@ -122,7 +127,7 @@ impl MeshView {
             view_id: 0,
             volume_ctx: None,
             // orientation_cube_ctx: None,
-            // needle_ctx: None,
+            needle_ctx: None,
             pos: (0, 0),
             dim: (0, 0),
             stats: RenderStats::default(),
@@ -142,11 +147,9 @@ impl MeshView {
             window_level: WindowLevel::new(),
             slab_thickness: 1.25,
             mode: 1,
-            needle_enabled: false,
-            needle_entry: [0.5, 0.0, 0.5],
-            needle_target: [0.5, 1.0, 0.5],
-            needle_radius: 0.004,
-            needle_position: [0.5, 0.0, 0.5],
+            needle_enabled: 0.0,
+            needle_index: 0,
+            needles: Vec::new(),
         }
     }
 
@@ -161,17 +164,9 @@ impl MeshView {
     }
 
     /// Function-level comment: Attaches a basic mesh render context for the needle
-    // pub fn attach_needle_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
-    //     self.needle_ctx = Some(ctx);
-    // }
-
-    // /// Function-level comment: Attaches a basic mesh render context for the orientation cube
-    // pub fn attach_orientation_cube_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
-    //     self.orientation_cube_ctx = Some(ctx);
-    //     log::debug!(
-    //         "MeshView::attach_orientation_cube_context - Orientation cube context attached"
-    //     );
-    // }
+    pub fn attach_needle_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
+        self.needle_ctx = Some(ctx);
+    }
 
     /// Function-level comment: Get current rendering statistics for performance monitoring.
     pub fn get_stats(&self) -> &RenderStats {
@@ -394,31 +389,37 @@ impl MeshView {
         self.roi_max = [1.0, 1.0, 1.0];
     }
 
-    pub fn set_needle_enabled(&mut self, enabled: bool) {
+    pub fn set_needle_enabled(&mut self, enabled: f32) {
         self.needle_enabled = enabled;
-        log::info!("Mesh needle rendering {}", if enabled { "enabled" } else { "disabled" });
+        log::info!("[NEEDLE] Mesh needle rendering {}", enabled);
     }
 
-    pub fn set_needle_trajectory(&mut self, entry: [f32; 3], pos: [f32; 3]) {
-        self.needle_enabled = true;
-        self.needle_entry = entry;
-        self.needle_target = pos;
-        self.needle_position = entry;
-        log::info!(
-            "[NEEDLE] set_needle_trajectory: entry={:?}, pos={:?}, enabled={}",
-            entry, pos, self.needle_enabled
-        );
+    pub fn set_new_needle(&mut self, id: u32, entry: [f32; 3], pos: [f32; 3], color: [f32; 4]) {
+        let needle = self.needles.iter_mut().find(|n| n.id == id);
+        if let Some(needle) = needle {
+            needle.entry = entry;
+            needle.tip = pos;
+            needle.color = color;
+        } else {
+            self.needles.push(NeedleUniform { entry, tip: pos, radius: INIT_NEEDLE.radius, id, color});
+            log::info!("[NEEDLE] set_new_needle {} : entry={:?}, pos={:?}",id, entry, pos);
+        }
     }
 
-    pub fn set_needle_position(&mut self, pos: [f32; 3]) {
-        self.needle_enabled = true;
-        self.needle_position = pos;
-        log::debug!("Mesh needle position set to {:?}", pos);
+    pub fn set_needle_position(&mut self, id: u32, pos: [f32; 3]) {
+        let needle = self.needles.iter_mut().find(|n| n.id == id);
+        if let Some(needle) = needle {
+            needle.tip = pos;
+        }
+        log::debug!("[NEEDLE]Mesh needle {} position set to {:?}", id, pos);
     }
 
-    pub fn set_needle_radius(&mut self, radius: f32) {
-        self.needle_radius = radius.clamp(0.0004, 0.04);
-        log::debug!("Mesh needle radius set to {:.6}", self.needle_radius);
+    pub fn set_needle_radius(&mut self, id: u32, radius: f32) {
+        let needle = self.needles.iter_mut().find(|n| n.id == id);
+        if let Some(needle) = needle {
+            needle.radius = radius.clamp(0.0004, 0.04);
+        }
+        log::debug!("[NEEDLE]Mesh needle radius set to {:.6}", radius);
     }
 
     pub fn set_window_level(&mut self, window: f32) -> KeplerResult<()> {
@@ -471,38 +472,22 @@ impl MeshView {
         let rotation_mat = Mat4::from_quat(self.rotation_quat);
         let final_matrix = scale_texture * rotation_mat * scale_viewport;
 
-        let center = Vec3::splat(0.5);
-        let view = Mat4::from_translation(center)
-            * scale_viewport.inverse()
-            * Mat4::from_quat(self.rotation_quat.conjugate())
-            * scale_texture.inverse()
-            * Mat4::from_translation(-center);
-
-        let scale = self.scale_factor.max(0.0001);
-        let half_zoom = 0.5 / scale;
-        let measure_pan_y = -self.pan[1];
-        let (left, right, bottom, top) = if aspect_ratio > 1.0 {
-            let hw = half_zoom * aspect_ratio;
-            (0.5 + self.pan[0] - hw, 0.5 + self.pan[0] + hw,
-                0.5 + measure_pan_y - half_zoom, 0.5 + measure_pan_y + half_zoom)
-        } else {
-            let hh = half_zoom / aspect_ratio.max(0.001);
-            (0.5 + self.pan[0] - half_zoom, 0.5 + self.pan[0] + half_zoom,
-                0.5 + measure_pan_y - hh, 0.5 + measure_pan_y + hh)
-        };
-        // Y-flip: volume shader uses (1 - uv.y), so swap bottom/top
-        // to match the camera-space Y → screen-space Y mapping.
-        let proj = Mat4::orthographic_rh(left, right, top, bottom, -0.5, 1.5);
-
         // Volume uniforms
         if let Some(vol_ctx) = &self.volume_ctx {
             // Extract format and bias from RenderContent decode parameters
             let decode_params = vol_ctx.render_content.decode_parameters();
-            let is_packed_rg8 = if decode_params.is_packed_flag == 1 {
-                1.0
-            } else {
-                0.0
-            };
+            let is_packed_rg8 = if decode_params.is_packed_flag == 1 { 1.0 } else { 0.0 };
+
+            let mut gpu_needles = [INIT_NEEDLE; 32];
+            for (i, needle) in self.needles.iter().take(32).enumerate() {
+                gpu_needles[i] = NeedleUniform {
+                    entry: needle.entry,
+                    radius: needle.radius,
+                    tip: needle.tip,
+                    id: needle.id,
+                    color: needle.color
+                };
+            }
 
             let vol_uniforms = MeshUniforms {
                 ray_step_size: 0.004,
@@ -522,10 +507,11 @@ impl MeshView {
                 rotation: final_matrix.to_cols_array(),
                 vol_dims: [w, h, d],
                 preset: self.mode as f32,
-                needle_entry: self.needle_entry,
-                needle_enabled: if self.needle_enabled { 1.0 } else { 0.0 },
-                needle_tip: self.needle_position,
-                needle_radius: self.needle_radius,
+                needle_count: self.needles.len().min(32) as u32,
+                needle_enabled: self.needle_enabled,
+                needle_index: self.needle_index,
+                _pad: 0,
+                needles: gpu_needles,
             };
 
             // update
@@ -553,53 +539,53 @@ impl MeshView {
         // Update Needle Uniforms
         // if let Some(needle) = &self.needle_ctx {
         //     let center = Vec3::splat(0.5);
-        //     let rot = Mat4::from_quat(self.rotation_quat);
+        //     let flip = Mat4::from_scale(Vec3::new(1.0, -1.0, 1.0));
+        //     let rotation = flip * Mat4::from_quat(self.rotation_quat.conjugate());
+        //     let view = Mat4::from_translation(center) * rotation * Mat4::from_translation(-center);
 
-        //     let entry =
-        //         (rot * (Vec3::from_array(self.needle_entry) - center).extend(1.0))
-        //             .truncate()
-        //             + center;
+        //     let scale = self.scale_factor.max(0.0001);
+        //     let half_extent = 0.5 / scale;
+        //     let cx = 0.5 + self.pan[0];
+        //     let cy = 0.5 + self.pan[1];
+        //     let proj = Mat4::orthographic_rh(
+        //         cx - half_extent,
+        //         cx + half_extent,
+        //         cy - half_extent,
+        //         cy + half_extent,
+        //         -0.5,
+        //         1.5,
+        //     );
 
-        //     let target =
-        //         (rot * (Vec3::from_array(self.needle_target) - center).extend(1.0))
-        //             .truncate()
-        //             + center;
+        //     let entry = Vec3::from_array(self.needle_entry);
+        //     let tip = Vec3::from_array(self.needle_position);
+        //     let full_end = Vec3::from_array(self.needle_target);
+        //     let full_dir = full_end - entry;
+        //     let full_len = full_dir.length();
+        //     let mut model = Mat4::IDENTITY;
+        //     if full_len > 1e-6 {
+        //         let needle_start = tip - full_dir;
+        //         let mid = (needle_start + tip) * 0.5;
 
-        //     let dir = target - entry;
-        //     let len = dir.length();
+        //         let radius_scale = self.needle_radius / 0.004;
+        //         let height_scale = full_len / 20.0;
+        //         let s = Mat4::from_scale(Vec3::new(radius_scale, height_scale, radius_scale));
 
-        //     if len > 1e-6 {
-        //         let mid = (entry + target) * 0.5;
+        //         let dir_norm = full_dir / full_len;
+        //         let r = if dir_norm.abs_diff_eq(Vec3::Y, 1e-6) {
+        //             Mat4::IDENTITY
+        //         } else if dir_norm.abs_diff_eq(-Vec3::Y, 1e-6) {
+        //             Mat4::from_rotation_z(std::f32::consts::PI)
+        //         } else {
+        //             let axis = Vec3::Y.cross(dir_norm).normalize();
+        //             let angle = Vec3::Y.dot(dir_norm).acos();
+        //             Mat4::from_axis_angle(axis, angle)
+        //         };
 
-        //         let q = Quat::from_rotation_arc(
-        //             Vec3::Y,
-        //             dir.normalize(),
-        //         );
-
-        //         let radius_scale =
-        //             self.needle_radius / 0.004;
-
-        //         let height_scale =
-        //             len / 20.0;
-
-        //         let model =
-        //             Mat4::from_translation(mid)
-        //             * Mat4::from_quat(q)
-        //             * Mat4::from_scale(
-        //                 Vec3::new(
-        //                     radius_scale,
-        //                     height_scale,
-        //                     radius_scale,
-        //                 ),
-        //             );
-
-        //         let mvp = proj * view * model;
-
-        //         needle.update_uniforms(
-        //             queue,
-        //             &mvp.to_cols_array_2d(),
-        //         );
+        //         model = Mat4::from_translation(mid) * r * s;
         //     }
+
+        //     let mvp = proj * view * model;
+        //     needle.update_uniforms(queue, &mvp.to_cols_array_2d());
         // }
     }
 
@@ -754,12 +740,12 @@ impl MeshView {
         //     }
         // }
         
-        // // Render Needle (if available)
-        // if self.needle_enabled {
-        //     if let Some(needle) = &self.needle_ctx {
-        //         needle.render(render_pass);
-        //     }
-        // }
+        // Render Needle (if available)
+        if self.needle_enabled > 2.5 {
+            if let Some(needle) = &self.needle_ctx {
+                needle.render(render_pass);
+            }
+        }
 
         // Record successful render
         let render_time_ms = start_time.elapsed().as_millis_f32();

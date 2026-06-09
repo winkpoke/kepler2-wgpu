@@ -963,43 +963,45 @@ impl App {
         }
     }
 
-    pub fn set_mesh_needle_enabled(&mut self, enabled: bool) {
+    pub fn set_mesh_needle_enabled(&mut self, enabled: f32) {
         self.apply_to_mesh_view(|mesh_view| {
             mesh_view.set_needle_enabled(enabled);
             log::info!(
-                "Mesh needle {}",if enabled { "enabled" } else { "disabled" }
+                "Mesh needle {}", if enabled == 0.0 { "disabled" } else if enabled == 1.0 { "enabled" } else { "crop" }
             );
         });
     }
 
-    pub fn set_mesh_needle_trajectory(&mut self, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32) {
-        let entry_pixel = [sx, sy, sz];
-        let pos_pixel = [lx, ly, lz];
+    pub fn set_new_needle_mm(&mut self, id: u32, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32, r: f32, g: f32, b: f32) {
+        let entry_mm = [sx, sy, sz];
+        let pos_mm = [lx, ly, lz];
         if let Ok(vol) = self.app_model.volume() {
+            let inv = vol.base.matrix.inverse();
             let (nx, ny, nz) = vol.dimensions;
 
-            let to_vol = |p_pixel: [f32; 3]| -> [f32; 3] {
+            let to_vol = |p_mm: [f32; 3]| -> [f32; 3] {
+                let v = inv.transform_point3(glam::Vec3::from_array(p_mm));
                 [
-                    (p_pixel[0] / (nx as f32 - 1.0)).clamp(0.0, 1.0),
-                    (p_pixel[1] / (ny as f32 - 1.0)).clamp(0.0, 1.0),
-                    (p_pixel[2] / (nz as f32 - 1.0)).clamp(0.0, 1.0),
+                    (v.x / (nx as f32 - 1.0)).clamp(0.0, 1.0),
+                    (v.y / (ny as f32 - 1.0)).clamp(0.0, 1.0),
+                    (v.z / (nz as f32 - 1.0)).clamp(0.0, 1.0),
                 ]
             };
 
-            let entry_vol = to_vol(entry_pixel);
-            let pos_vol = to_vol(pos_pixel);
+            let entry_vol = to_vol(entry_mm);
+            let pos_vol = to_vol(pos_mm);
 
             self.apply_to_mesh_view(|mesh_view| {
-                mesh_view.set_needle_trajectory(entry_vol, pos_vol);
-                log::info!(
-                    "Mesh needle trajectory set: entry_pixel={:?} -> vol={:?}, pos_pixel={:?} -> vol={:?}",
-                    entry_pixel, entry_vol, pos_pixel, pos_vol
+                mesh_view.set_new_needle(id, entry_vol, pos_vol, [r, g, b, 1.0]);
+                log::info!("
+                    Mesh needle {} set: entry_mm={:?} -> vol={:?}, pos_mm={:?} -> vol={:?}",
+                    id, entry_mm, entry_vol, pos_mm, pos_vol
                 );
             });
         }
     }
 
-    pub fn set_mesh_needle_radius(&mut self, radius_mm: f32){
+    pub fn set_needle_radius(&mut self, id: u32, radius_mm: f32){
         let radius_uv = if let Ok(vol) = self.app_model.volume() {
             let (nx, ny, nz) = vol.dimensions();
             let (sx, sy, sz) = vol.voxel_spacing();
@@ -1014,35 +1016,31 @@ impl App {
             radius_mm.clamp(0.0001, 0.1)
         };
         self.apply_to_mesh_view(|mesh_view| {
-            mesh_view.set_needle_radius(radius_uv);
-            log::info!(
-                "Mesh needle radius set: {}mm -> {}uv",
-                radius_mm, radius_uv
-            );
+            mesh_view.set_needle_radius(id, radius_uv);
+            log::info!("Mesh needle {} radius set: {}mm -> {}uv",id, radius_mm, radius_uv);
         });
     }
 
-    pub fn set_mesh_needle_position(&mut self, sx: f32, sy: f32, sz: f32) {
-        let pos_pixel = [sx, sy, sz];
+    pub fn set_needle_position_mm(&mut self, id: u32, sx: f32, sy: f32, sz: f32) {
+        let pos_mm = [sx, sy, sz];
         if let Ok(vol) = self.app_model.volume() {
+            let inv = vol.base.matrix.inverse();
             let (nx, ny, nz) = vol.dimensions;
 
-            let to_vol = |p_pixel: [f32; 3]| -> [f32; 3] {
+            let to_vol = |p_mm: [f32; 3]| -> [f32; 3] {
+                let v = inv.transform_point3(glam::Vec3::from_array(p_mm));
                 [
-                    (p_pixel[0] / (nx as f32 - 1.0)).clamp(0.0, 1.0),
-                    (p_pixel[1] / (ny as f32 - 1.0)).clamp(0.0, 1.0),
-                    (p_pixel[2] / (nz as f32 - 1.0)).clamp(0.0, 1.0),
+                    (v.x / (nx as f32 - 1.0)).clamp(0.0, 1.0),
+                    (v.y / (ny as f32 - 1.0)).clamp(0.0, 1.0),
+                    (v.z / (nz as f32 - 1.0)).clamp(0.0, 1.0),
                 ]
             };
 
-            let pos_vol = to_vol(pos_pixel);
+            let pos_vol = to_vol(pos_mm);
 
             self.apply_to_mesh_view(|mesh_view| {
-                mesh_view.set_needle_position(pos_vol);
-                log::info!(
-                    "Mesh needle position set: pos_pixel={:?} -> vol={:?}",
-                    pos_pixel, pos_vol
-                );
+                mesh_view.set_needle_position(id, pos_vol);
+                log::info!("Mesh needle {} position set: pos_mm={:?} -> vol={:?}", id, pos_mm, pos_vol);
             });
         }
     }
@@ -1068,7 +1066,7 @@ impl App {
             mesh_view.reset_pan();
             mesh_view.reset_opacity();
             mesh_view.reset_roi();
-            mesh_view.set_needle_enabled(false);
+            mesh_view.set_needle_enabled(0.0);
             log::info!("Mesh reset via State control");
         });
     }
