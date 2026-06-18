@@ -41,7 +41,11 @@ pub struct MeshUniforms {
     pub needle_count: u32,
     pub needle_enabled:f32,
     pub needle_index: u32,
-    pub _pad: u32,
+    pub plane_rotation_angle: f32,
+    pub oblique_center: [f32; 3],
+    pub oblique_visible: f32,
+    pub oblique_normal: [f32; 3],
+    pub plane_alpha: f32,
     pub needles: [NeedleUniform; 32],
 }
 
@@ -75,7 +79,11 @@ impl Default for MeshUniforms {
             needle_count: 0,
             needle_enabled: 0.0,
             needle_index: 0,
-            _pad: 0,
+            plane_rotation_angle: 180.0,
+            oblique_center: [0.5; 3],
+            oblique_visible: 0.0,
+            oblique_normal: [0.0, 0.0, 1.0],
+            plane_alpha: 0.40,
             needles: [empty_needle; 32],
         }
     }

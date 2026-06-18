@@ -138,6 +138,75 @@
             stroke: #fff;
         }
 
+        .needle-card {
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 2px;
+            padding: 6px 8px;
+            width: 100%;
+            box-sizing: border-box;
+            background: #fff;
+            border-top: 1px solid #cfcfcf;
+        }
+        .needle-title {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-weight: bold;
+            font-size: 13px;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 3px;
+            margin-bottom: 3px;
+        }
+        .needle-title .needle-hint {
+            font-weight: normal;
+            font-size: 11px;
+            color: #888;
+        }
+        .needle-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 4px;
+            padding: 1px 0;
+            font-size: 12px;
+        }
+        .needle-row .needle-label {
+            color: #555;
+            min-width: 50px;
+        }
+        .needle-row label.needle-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            cursor: pointer;
+            user-select: none;
+            font-size: 12px;
+        }
+        .needle-row .swatch {
+            width: 24px;
+            height: 18px;
+            padding: 0;
+            border: 1px solid #bbb;
+            border-radius: 2px;
+            cursor: pointer;
+            background: transparent;
+        }
+        .needle-row input[type="number"] {
+            width: 65px;
+        }
+        .needle-row .solid-swatch-bar {
+            display: inline-block;
+            width: 18px;
+            border-top: 2px solid #22cc88;
+        }
+        .needle-row .dashed-swatch-bar {
+            display: inline-block;
+            width: 18px;
+            border-top: 2px dashed #f59e0b;
+        }
+
         .indent {
             width: 0;
             flex: 0 0 auto;
@@ -465,7 +534,73 @@
             </div>
             <div class="file-row">
                <button id="convertBtn">DICOM export</button>
-               <button id="convertBtn">MHA export</button> 
+               <button id="convertBtn">MHA export</button>
+            </div>
+            <div class="needle-card">
+                <div class="needle-title">
+                    <span>Needle</span>
+                    <span class="needle-hint">geometry · path · insertion</span>
+                </div>
+                <div class="needle-row">
+                    <span class="needle-label" style="margin-left:8px">ID</span>
+                    <input type="number" id="needle-id" step="1" value="0" min="0" style="width:50px">
+                    <span class="needle-label">Mode</span>
+                    <select id="needle-enable" title="Needle insertion mode">
+                        <option value="0">clear</option>
+                        <option value="1">inside</option>
+                        <option value="2">inside crop</option>
+                        <option value="3">plan</option>
+                    </select>
+                    <span class="needle-label" style="margin-left:6px">Length</span>
+                    <input type="number" id="needle-length" step="1" value="120" min="0" style="width:55px">mm
+                    <span class="needle-label">Angle</span>
+                    <input type="number" id="needle-angle" step="15" value="0" min="0" max="360" style="width:50px">°
+                </div>
+                <div class="needle-row">
+                    <span class="needle-label">Radius</span>
+                    <input type="range" id="needle-radius" min="0.1" max="3.0" step="0.1" value="1.0" style="width:50%">
+                    <span id="needle-radius-val">1.0mm</span>
+                </div>
+                <div class="needle-row">
+                    <span class="needle-label">Entry</span>
+                    <input type="number" id="needle-ex" step="0.1" value="-15.036041">
+                    <input type="number" id="needle-ey" step="0.1" value="5.2710266">
+                    <input type="number" id="needle-ez" step="0.1" value="-59.510986">
+                </div>
+                <div class="needle-row">
+                    <span class="needle-label">Tip</span>
+                    <input type="number" id="needle-tx" step="0.1" value="9.541512">
+                    <input type="number" id="needle-ty" step="0.1" value="5.2710266">
+                    <input type="number" id="needle-tz" step="0.1" value="-56.513733">
+                </div>
+                <div class="needle-row">
+                    <span class="needle-label">Color</span>
+                    <input type="number" id="needle-cx" step="0.1" value="0.2" min="0" max="1" title="Red">
+                    <input type="number" id="needle-cy" step="0.1" value="0.9" min="0" max="1" title="Green">
+                    <input type="number" id="needle-cz" step="0.1" value="0.2" min="0" max="1" title="Blue">
+                    <input type="color" id="needle-swatch" value="#33e633" title="Pick needle color (RGB)">
+                    <button id="needle-apply" title="Apply geometry/colors to active needle ID">Apply</button>
+                </div>
+                <div class="needle-row">
+                    <span class="needle-label">Depth</span>
+                    <span id="needle-depth-val" style="min-width:80px;font-weight:bold;color:#e0a030">0.0mm (0%)</span>
+                    <input type="range" id="needle-depth" min="0" max="100" value="0" style="width:30%">
+                    <button id="needle-reset" title="Retract to entry" style="font-size:11px;color:#f55">Reset↺</button>
+                </div>
+
+                <!-- Plan vs Inserted: solid (inserted) + dashed (planned) -->
+                <div class="needle-row">
+                    <label class="needle-toggle" title="Show the inserted portion from entry to depth (solid)">
+                        <input type="checkbox" id="needle-show-solid" checked>
+                        <span class="solid-swatch-bar"></span>inserted
+                        <input type="color" id="needle-solid-swatch" value="#22cc88" class="swatch">
+                    </label>
+                    <label class="needle-toggle" title="Show the planned trajectory from entry to tip (dashed)">
+                        <input type="checkbox" id="needle-show-planned" checked>
+                        <span class="dashed-swatch-bar"></span>planned
+                        <input type="color" id="needle-planned-swatch" value="#f59e0b" class="swatch">
+                    </label>
+                </div>
             </div>
         </aside>
 
@@ -566,36 +701,6 @@
                     <input type="number" id="3d-opacity" step="0.1" value="1.0" min="0" max="1">
                 </div>
                 <div>
-                    <span title="Needle insertion controls"><b>Needle</b></span>
-                    <select id="needle-enable">
-                        <option value="0">clear</option>
-                        <option value="1">inside</option>
-                        <option value="2">inside crop</option>
-                        <option value="3">outside</option>
-                    </select>
-                    ID: <input type="number" id="needle-id" step="1" value="0">
-                    <span style="border-left:1px solid #ccc;margin:0 4px;padding-left:4px">Entry:</span>
-                    <input type="number" id="needle-ex" step="0.1" value="-15.036041">
-                    <input type="number" id="needle-ey" step="0.1" value="5.2710266">
-                    <input type="number" id="needle-ez" step="0.1" value="-59.510986">
-                    Tip: <input type="number" id="needle-tx" step="0.1" value="9.541512">
-                    <input type="number" id="needle-ty" step="0.1" value="5.2710266">
-                    <input type="number" id="needle-tz" step="0.1" value="-56.513733">
-                    Color: <input type="number" id="needle-cx" step="0.1" value="0.2">
-                    <input type="number" id="needle-cy" step="0.1" value="0.9">
-                    <input type="number" id="needle-cz" step="0.1" value="0.2">
-                    <button id="needle-apply">Apply</button>
-                    <span style="border-left:1px solid #ccc;margin:0 4px;padding-left:4px">Length:</span>
-                    <input type="number" id="needle-length" step="1" value="120">
-                    <span style="border-left:1px solid #ccc;margin:0 4px;padding-left:4px">Depth:</span>
-                    <span id="needle-depth-val" style="min-width:80px;font-weight:bold;color:#e0a030">0.0mm (0%)</span>
-                    <input type="range" id="needle-depth" min="0" max="100" value="0" style="width:100px">
-                    <button id="needle-reset" title="Retract to entry" style="font-size:11px;color:#f55">Reset↺</button>
-                    <span style="border-left:1px solid #ccc;margin:0 4px;padding-left:4px">R:</span>
-                    <input type="range" id="needle-radius" min="0.1" max="3.0" step="0.1" value="1.0" style="width:80px">
-                    <span id="needle-radius-val">1.0mm</span>
-                </div>
-                <div>
                     <span title="Oblique view controls"><b>Oblique</b></span>
                     <select id="resetOptions" style="width: 100px">
                         <option value="T">transverse</option>
@@ -681,7 +786,7 @@
                 <button class="btn btn-primary" id="updateModalBtn">Import & Update</button>
             </div>
         </div>
-    </div>
+    </div> 
 
     <script type="module">
         // 辅助工具函数
@@ -1189,6 +1294,7 @@
         });
 
         byId('resetOptions').addEventListener('change', () => {
+            const idx = parseInt(byId('index-input').value, 10);
             if (!gl_canvas) {
                 alert('Please select a series first!');
                 return;
@@ -1198,14 +1304,17 @@
             if (opt == "T") {
                 gl_canvas.set_rotation_quat(state.index, [0, 0, 0, 1]);
                 gl_canvas.set_oblique_rotation_radians(state.index, 0, 0, 0);
+                gl_canvas.set_rotation_angle_degrees(idx, 0, 0, 0);
                 state.oblique_rotation = [0, 0, 0]
             } else if (opt == "C") {
                 gl_canvas.set_rotation_quat(state.index, [0, 0, 0, 1]);
                 gl_canvas.set_oblique_rotation_radians(state.index, deg2rad(-90), 0, 0);
+                gl_canvas.set_rotation_angle_degrees(idx, -90, 0, 0);
                 state.oblique_rotation = [0, 0, 0]
             } else if (opt == "S") {
                 gl_canvas.set_rotation_quat(state.index, [0, 0, 0, 1]);
                 gl_canvas.set_oblique_rotation_radians(state.index, deg2rad(90), deg2rad(-180), deg2rad(-90));
+                gl_canvas.set_rotation_angle_degrees(idx, -90, -90, 0);
                 state.oblique_rotation = [0, 0, 0]
             }
         });
@@ -1247,7 +1356,6 @@
             const dz = deg2rad(dz_deg);
 
             gl_canvas.set_oblique_rotation_radians(state.index, dx, dy, dz);
-            const rotation = JSON.parse(await gl_canvas.get_rotation(state.index))
         })
 
 
@@ -1358,6 +1466,37 @@
             }
         });
 
+        // Color <-> swatch two-way sync
+        function needleRgbToHex(r, g, b) {
+            const clamp01 = v => Math.min(1, Math.max(0, v));
+            const to2 = v => Math.round(clamp01(v) * 255).toString(16).padStart(2, '0');
+            return '#' + to2(r) + to2(g) + to2(b);
+        }
+        function needleHexToRgb(hex) {
+            const m = /^#?([0-9a-fA-F]{6})$/.exec(hex || '');
+            if (!m) return null;
+            const n = parseInt(m[1], 16);
+            return [((n >> 16) & 0xff) / 255, ((n >> 8) & 0xff) / 255, (n & 0xff) / 255];
+        }
+        // RGB number inputs -> swatch
+        ['needle-cx', 'needle-cy', 'needle-cz'].forEach(id => {
+            byId(id).addEventListener('input', () => {
+                const r = parseFloat(byId('needle-cx').value);
+                const g = parseFloat(byId('needle-cy').value);
+                const b = parseFloat(byId('needle-cz').value);
+                byId('needle-swatch').value = needleRgbToHex(r, g, b);
+            });
+        });
+        // Swatch -> RGB number inputs
+        byId('needle-swatch').addEventListener('input', () => {
+            const rgb = needleHexToRgb(byId('needle-swatch').value);
+            if (rgb) {
+                byId('needle-cx').value = rgb[0].toFixed(2);
+                byId('needle-cy').value = rgb[1].toFixed(2);
+                byId('needle-cz').value = rgb[2].toFixed(2);
+            }
+        });
+
         byId('needle-apply').addEventListener('click', () => {
             const idx = state.indexValue;
             needleState.id = parseInt(byId('needle-id').value, 10);
@@ -1400,6 +1539,13 @@
             needleUpdateTrajLength();
             const pct = parseInt(byId('needle-depth').value,10);
             needleMoveToDepth(needleState.trajLength * pct / 100);
+        });
+
+        byId('needle-angle').addEventListener('change', () => {
+            const val = parseInt(byId('needle-angle').value, 10);
+            if (gl_canvas) {
+                gl_canvas.set_needle_angle(state.indexValue, needleState.id, deg2rad(val));
+            }
         });
 
         bindInput(['3d-rotation-x', '3d-rotation-y'], async () => {

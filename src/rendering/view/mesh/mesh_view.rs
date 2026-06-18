@@ -1,7 +1,6 @@
 #![allow(dead_code)]
 
 use super::{
-    basic_mesh_context::BasicMeshContext,
     mesh::{MeshRenderContext, MeshUniforms, NeedleUniform},
     performance::{PerformanceStats, QualityController, QualityLevel},
 };
@@ -77,7 +76,6 @@ impl Default for FallbackMode {
 pub struct MeshView {
     view_id: usize,
     volume_ctx: Option<Arc<MeshRenderContext>>,
-    needle_ctx: Option<Arc<BasicMeshContext>>,
     pos: (i32, i32),
     dim: (u32, u32),
     /// Performance and error tracking
@@ -110,7 +108,12 @@ pub struct MeshView {
     mode: usize,
     needle_enabled: f32,
     needle_index: u32,
+    plane_rotation_angle: f32,
     needles: Vec<NeedleUniform>,
+    oblique_center: [f32; 3],
+    oblique_normal: [f32; 3],
+    oblique_visible: bool,
+    plane_alpha: f32,
 }
 
 const INIT_NEEDLE: NeedleUniform = NeedleUniform {
@@ -126,8 +129,6 @@ impl MeshView {
         Self {
             view_id: 0,
             volume_ctx: None,
-            // orientation_cube_ctx: None,
-            needle_ctx: None,
             pos: (0, 0),
             dim: (0, 0),
             stats: RenderStats::default(),
@@ -135,9 +136,9 @@ impl MeshView {
             consecutive_errors: 0,
             last_success_time: Instant::now(),
             quality_controller: QualityController::default(),
-            rotation_enabled: true,
+            rotation_enabled: false,
             rotation_quat: Quat::IDENTITY,
-            rotation_speed: FRAC_PI_2, // 90 degrees per second
+            rotation_speed: FRAC_PI_2, // 90 degrees per second (only used when enabled)
             last_frame_time: Instant::now(),
             scale_factor: 1.0,
             pan: [0.0, 0.0, 0.0],
@@ -149,7 +150,12 @@ impl MeshView {
             mode: 1,
             needle_enabled: 0.0,
             needle_index: 0,
+            plane_rotation_angle: 180.0,
             needles: Vec::new(),
+            oblique_center: [0.0, 0.0, 0.0],
+            oblique_normal: [0.0, 0.0, 1.0],
+            oblique_visible: false,
+            plane_alpha: 0.40,
         }
     }
 
@@ -161,11 +167,6 @@ impl MeshView {
     pub fn attach_context(&mut self, ctx: std::sync::Arc<MeshRenderContext>) {
         self.volume_ctx = Some(ctx);
         log::debug!("MeshView::attach_context - Volume context attached successfully");
-    }
-
-    /// Function-level comment: Attaches a basic mesh render context for the needle
-    pub fn attach_needle_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
-        self.needle_ctx = Some(ctx);
     }
 
     /// Function-level comment: Get current rendering statistics for performance monitoring.
@@ -414,12 +415,42 @@ impl MeshView {
         log::debug!("[NEEDLE]Mesh needle {} position set to {:?}", id, pos);
     }
 
+    /// Set the oblique cutting plane that is composited in `dvr_ray_march`.
+    /// Driven by the active MPR view's oblique rotation (REQ-025/026/027).
+    ///
+    /// # Arguments
+    /// * `center`    - world-space center of the plane
+    /// * `normal`    - world-space normal of the plane (will be normalized
+    ///                 in-shader; do not assume a unit length on the CPU side)
+    /// * `visible`   - whether the plane is composited this frame
+    /// * `alpha`     - 0..=1 compositing opacity
+    pub fn set_oblique_plane(&mut self, center: [f32; 3], normal: [f32; 3], visible: bool, alpha: f32) {
+        self.oblique_center = [center[0], center[1], center[2]];
+        self.oblique_normal = [normal[0], normal[1], normal[2]];
+        self.oblique_visible = visible;
+        self.plane_alpha = alpha;
+        log::info!(
+            "[OBLIQUE→3D] MeshView::set_oblique_plane: center={:?} normal={:?} visible={} alpha={}",
+            self.oblique_center,
+            self.oblique_normal,
+            visible,
+            alpha
+        );
+    }
+
     pub fn set_needle_radius(&mut self, id: u32, radius: f32) {
         let needle = self.needles.iter_mut().find(|n| n.id == id);
         if let Some(needle) = needle {
             needle.radius = radius.clamp(0.0004, 0.04);
         }
         log::debug!("[NEEDLE]Mesh needle radius set to {:.6}", radius);
+    }
+
+    pub fn set_needle_angle(&mut self, id: u32, angle: f32) {
+        if self.needle_enabled > 1.5 {
+            self.needle_index = id;
+            self.plane_rotation_angle = angle;
+        }
     }
 
     pub fn set_window_level(&mut self, window: f32) -> KeplerResult<()> {
@@ -510,83 +541,17 @@ impl MeshView {
                 needle_count: self.needles.len().min(32) as u32,
                 needle_enabled: self.needle_enabled,
                 needle_index: self.needle_index,
-                _pad: 0,
+                plane_rotation_angle: self.plane_rotation_angle,
+                oblique_center: self.oblique_center,
+                oblique_normal: self.oblique_normal,
+                oblique_visible: if self.oblique_visible { 1.0 } else { 0.0 },
+                plane_alpha: self.plane_alpha,
                 needles: gpu_needles,
             };
 
             // update
             vol_ctx.update_uniforms(queue, &vol_uniforms);
         }
-
-        // // Update Orientation Cube Uniforms
-        // if let Some(cube_ctx) = &self.orientation_cube_ctx {
-        //     let flip = Mat4::from_scale(Vec3::new(1.0, -1.0, -1.0));
-        //     let model_matrix = flip * Mat4::from_quat(self.rotation_quat.conjugate());
-
-        //     // View: Standard fixed camera
-        //     // Place cube closer to camera (Z=5.0) than main mesh (Z=-2.0) to ensure it renders on top
-        //     // Orthographic range is -10 to 10, so 5.0 is well within range.
-        //     let view_matrix = Mat4::from_translation(Vec3::new(0.0, 0.0, 5.0));
-
-        //     // Proj: Fixed Ortho to fit unit cube (-1..1) with padding
-        //     // Unit cube diagonal is 1.73. 1.5 might clip corners if rotating.
-        //     let extent = 2.0;
-        //     let proj_matrix = Mat4::orthographic_rh(-extent, extent, -extent, extent, -10.0, 10.0);
-        //     let mvp_matrix = proj_matrix * view_matrix * model_matrix;
-        //     cube_ctx.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
-        // }
-
-        // Update Needle Uniforms
-        // if let Some(needle) = &self.needle_ctx {
-        //     let center = Vec3::splat(0.5);
-        //     let flip = Mat4::from_scale(Vec3::new(1.0, -1.0, 1.0));
-        //     let rotation = flip * Mat4::from_quat(self.rotation_quat.conjugate());
-        //     let view = Mat4::from_translation(center) * rotation * Mat4::from_translation(-center);
-
-        //     let scale = self.scale_factor.max(0.0001);
-        //     let half_extent = 0.5 / scale;
-        //     let cx = 0.5 + self.pan[0];
-        //     let cy = 0.5 + self.pan[1];
-        //     let proj = Mat4::orthographic_rh(
-        //         cx - half_extent,
-        //         cx + half_extent,
-        //         cy - half_extent,
-        //         cy + half_extent,
-        //         -0.5,
-        //         1.5,
-        //     );
-
-        //     let entry = Vec3::from_array(self.needle_entry);
-        //     let tip = Vec3::from_array(self.needle_position);
-        //     let full_end = Vec3::from_array(self.needle_target);
-        //     let full_dir = full_end - entry;
-        //     let full_len = full_dir.length();
-        //     let mut model = Mat4::IDENTITY;
-        //     if full_len > 1e-6 {
-        //         let needle_start = tip - full_dir;
-        //         let mid = (needle_start + tip) * 0.5;
-
-        //         let radius_scale = self.needle_radius / 0.004;
-        //         let height_scale = full_len / 20.0;
-        //         let s = Mat4::from_scale(Vec3::new(radius_scale, height_scale, radius_scale));
-
-        //         let dir_norm = full_dir / full_len;
-        //         let r = if dir_norm.abs_diff_eq(Vec3::Y, 1e-6) {
-        //             Mat4::IDENTITY
-        //         } else if dir_norm.abs_diff_eq(-Vec3::Y, 1e-6) {
-        //             Mat4::from_rotation_z(std::f32::consts::PI)
-        //         } else {
-        //             let axis = Vec3::Y.cross(dir_norm).normalize();
-        //             let angle = Vec3::Y.dot(dir_norm).acos();
-        //             Mat4::from_axis_angle(axis, angle)
-        //         };
-
-        //         model = Mat4::from_translation(mid) * r * s;
-        //     }
-
-        //     let mvp = proj * view * model;
-        //     needle.update_uniforms(queue, &mvp.to_cols_array_2d());
-        // }
     }
 
     /// Function-level comment: Start frame timing for performance monitoring.
@@ -716,35 +681,6 @@ impl MeshView {
             vol_ctx.render(render_pass);
         } else {
             log::warn!("BasicMeshView::try_render - Volume rendering requested but no volume context attached");
-        }
-
-        // // Render Orientation Cube (if available)
-        // if let Some(cube_ctx) = &self.orientation_cube_ctx {
-        //     let cube_size = 120.0;
-        //     let padding = 10.0;
-
-        //     // Calculate bottom-left position within the view
-        //     // Assuming (x, y) is top-left of the view
-        //     let view_x = self.pos.0 as f32;
-        //     let view_y = self.pos.1 as f32;
-        //     let view_h = self.dim.1 as f32;
-
-        //     // Bottom-left relative to view
-        //     let cube_x = view_x + padding;
-        //     let cube_y = view_y + view_h - cube_size - padding;
-
-        //     // Ensure we don't draw outside the view if view is too small
-        //     if self.dim.0 > (cube_size as u32 + 20) && self.dim.1 > (cube_size as u32 + 20) {
-        //         render_pass.set_viewport(cube_x, cube_y, cube_size, cube_size, 0.0, 1.0);
-        //         cube_ctx.render(render_pass);
-        //     }
-        // }
-        
-        // Render Needle (if available)
-        if self.needle_enabled > 2.5 {
-            if let Some(needle) = &self.needle_ctx {
-                needle.render(render_pass);
-            }
         }
 
         // Record successful render

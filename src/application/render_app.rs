@@ -84,15 +84,12 @@ impl RenderApp {
             match event {
                 Event::UserEvent(UserEvent::SetWindowLevel(index, window_level)) => {
                     state.set_window_level(index, window_level);
-                    log::info!("Window level set to: {}", window_level);
                 }
                 Event::UserEvent(UserEvent::SetWindowWidth(index, window_width)) => {
                     state.set_window_width(index, window_width);
-                    log::info!("Window width set to: {}", window_width);
                 }
                 Event::UserEvent(UserEvent::SetSliceMM(index, z)) => {
                     state.set_slice_mm(index, z);
-                    log::info!("Slice set to: {} mm", z);
                 }
                 Event::UserEvent(UserEvent::SetScale(index, scale)) => {
                     state.set_scale(index, scale);
@@ -212,10 +209,6 @@ impl RenderApp {
                 }
                 Event::UserEvent(UserEvent::SetObliqueRotation(index, horizontal_radians, vertical_radians, in_plane_radians)) => {
                     state.set_oblique_rotation_radians(index, horizontal_radians, vertical_radians, in_plane_radians);
-                    log::info!(
-                        "ObliqueRotation set to: index={index}, horizontal={:?}, vertical={:?}, in_plane={:?}",
-                        horizontal_radians, vertical_radians, in_plane_radians
-                    );
                 }
                 // Mesh control events
                 Event::UserEvent(UserEvent::SetMeshRotationEnabled(_index, enabled)) => {
@@ -266,14 +259,16 @@ impl RenderApp {
                     state.set_needle_radius(id, radius);
                     log::info!("Mesh needle radius set to {:.3}", radius);
                 }
+                Event::UserEvent(UserEvent::SetMeshNeedleAngle(_index, id, angle)) => {
+                    state.set_needle_angle(id, angle);
+                    log::info!("Mesh needle {} angle set: {}°",id, angle);
+                }
                 #[cfg(target_arch = "wasm32")]
                 Event::UserEvent(UserEvent::ViewClickGet(view_index, screen_x, screen_y, screen_z, sender)) => {
                     // Function-level comment: Compute view click result and send it back to JS via oneshot channel.
                     let result = state.handle_view_click(view_index, screen_x, screen_y, screen_z);
                     if let Err(_) = sender.send(result) {
                         log::error!("Failed to send ViewClickGet result for view {}", view_index);
-                    } else {
-                        log::info!("Sent ViewClickGet result for view {}: {:?}", view_index, result);
                     }
                 }
                 #[cfg(target_arch = "wasm32")]
@@ -281,9 +276,7 @@ impl RenderApp {
                     let result = state.get_pixel_value_from_screen(view_index, screen_x, screen_y);
                     if let Err(_) = sender.send(result) {
                         log::error!("Failed to send GetPixelValue result for view {}", view_index);
-                    } else {
-                        log::info!("Sent GetPixelValue result for view {}: {:?}", view_index, result);
-                    }
+                    } 
                 }
                 #[cfg(target_arch = "wasm32")]
                 Event::UserEvent(UserEvent::GetScreenCoordInMM(index, coord, sender)) => {
@@ -291,8 +284,6 @@ impl RenderApp {
                     let result = state.get_screen_coord_in_mm(index, coord);
                     if let Err(_) = sender.send(result) {
                         log::error!("Failed to send GetScreenCoordInMM result for window {}", index);
-                    } else {
-                        log::info!("Sent GetScreenCoordInMM result for window {}: {:?}", index, result);
                     }
                 }
                 #[cfg(target_arch = "wasm32")]
@@ -300,8 +291,6 @@ impl RenderApp {
                     let result = state.get_window_level(index);
                     if let Err(_) = sender.send(result) {
                         log::error!("Failed to send GetWindowLevel result for window {}", index);
-                    } else {
-                        log::info!("Sent GetWindowLevel result for window {}: {:?}", index, result);
                     }
                 }
                 #[cfg(target_arch = "wasm32")]
@@ -309,8 +298,6 @@ impl RenderApp {
                     let result = state.get_base_screen(index);
                     if let Err(_) = sender.send(result) {
                         log::error!("Failed to send GetBaseScreen result for window {}", index);
-                    } else {
-                        log::info!("Sent GetBaseScreen result for window {}: {:?}", index, result);
                     }
                 }
                 #[cfg(target_arch = "wasm32")]
@@ -318,8 +305,6 @@ impl RenderApp {
                     let result = state.get_rotation(index);
                     if let Err(_) = sender.send(result) {
                         log::error!("Failed to send GetRotation result for window {}", index);
-                    } else {
-                        log::info!("Sent GetRotation result for window {}: {:?}", index, result);
                     }
                 }
                 #[cfg(target_arch = "wasm32")]
@@ -327,8 +312,6 @@ impl RenderApp {
                     let result = state.get_translate_in_screen_coord(index);
                     if let Err(_) = sender.send(result) {
                         log::error!("Failed to send GetPan result for window {}", index);
-                    } else {
-                        log::info!("Sent GetPan result for window {}: {:?}", index, result);
                     }
                 }
                 #[cfg(target_arch = "wasm32")]
@@ -337,8 +320,6 @@ impl RenderApp {
                     let result = state.world_coord_to_screen(index, coord);
                     if let Err(_) = sender.send(result) {
                         log::error!("Failed to send WorldCoordToScreen result for window {}", index);
-                    } else {
-                        log::info!("Sent WorldCoordToScreen result for window {}: {:?}", index, result);
                     }
                 }
                 Event::WindowEvent {

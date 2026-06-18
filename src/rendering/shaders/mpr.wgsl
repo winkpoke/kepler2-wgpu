@@ -1,5 +1,4 @@
 // Vertex shader
-
 struct Uniforms {
     rotation_angle_y: f32,
     rotation_angle_z: f32,
@@ -21,25 +20,27 @@ struct VertexOutput {
 }
 
 @vertex
-fn vs_main(
-    model: VertexInput,
-) -> VertexOutput {
+fn vs_main(model: VertexInput) -> VertexOutput {
     var out: VertexOutput;
 
-    // Apply rotation (you may want to adjust this)
-    let u_rotation_z = u_uniform.rotation_angle_z;
+    let cz = cos(u_uniform.rotation_angle_z);
+    let sz = sin(u_uniform.rotation_angle_z);
+
+    let cy = cos(u_uniform.rotation_angle_y);
+    let sy = sin(u_uniform.rotation_angle_y);
+
     let rotation_matrix_z = mat4x4<f32>(
-        cos(u_rotation_z), sin(u_rotation_z), 0.0, 0.0,
-       -sin(u_rotation_z), cos(u_rotation_z), 0.0, 0.0,
-        0.0,               0.0,                1.0, 0.0,
-        0.0,               0.0,                0.0, 1.0
+        cz,  sz, 0.0, 0.0,
+       -sz,  cz, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        0.0, 0.0, 0.0, 1.0
     );
-    let u_rotation_y = u_uniform.rotation_angle_y;
+
     let rotation_matrix_y = mat4x4<f32>(
-        cos(u_rotation_y), 0.0, -sin(u_rotation_y), 0.0,
-        0.0,               1.0,  0.0,               0.0,
-        sin(u_rotation_y), 0.0,  cos(u_rotation_y), 0.0,
-        0.0,               0.0,  0.0,               1.0
+        cy, 0.0, -sy, 0.0,
+        0.0, 1.0,  0.0, 0.0,
+        sy, 0.0,  cy, 0.0,
+        0.0, 0.0,  0.0, 1.0
     );
 
     let scale_matrix = mat4x4<f32>(
@@ -51,15 +52,13 @@ fn vs_main(
 
     // Set the output
     out.tex_coords = model.tex_coords;
-    // out.clip_position = vec4<f32>(model.position, 1.0);
     out.clip_position = rotation_matrix_z * rotation_matrix_y * scale_matrix * vec4<f32>(model.position, 1.0);
     out.clip_position.z += 0.5;
     return out;
 }
-// Fragment shader
 
+// Fragment shader
 @group(0) @binding(0)
-// var t_diffuse: texture_2d<f32>;
 var t_diffuse: texture_3d<f32>;
 @group(0) @binding(1)
 var s_diffuse: sampler;
@@ -91,10 +90,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     if (u_uniform_frag.is_dual_mode > 1.5) {
         // Single view, but draw intersection with mat2 (Oblique plane)
+        let n1 = normalize(vec3<f32>(current_mat[2][0], current_mat[2][1], current_mat[2][2]));
         let p1 = (current_mat * vec4<f32>(local_x, in.tex_coords.y, depth, 1.0)).xyz;
         let n2 = normalize(vec3<f32>(u_uniform_frag.mat2[2][0], u_uniform_frag.mat2[2][1], u_uniform_frag.mat2[2][2]));
         let p2 = (u_uniform_frag.mat2 * vec4<f32>(0.5, 0.5, 0.0, 1.0)).xyz;
-        let n1 = normalize(vec3<f32>(current_mat[2][0], current_mat[2][1], current_mat[2][2]));
+        
         let planes_parallel = abs(dot(n1, n2)) > 0.99;
         let dist = dot(p1 - p2, n2);
         if (planes_parallel) {
@@ -103,60 +103,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
                 draw_line = true;
             }
         } else if (abs(dist) < 0.003) {
-        // let dist = dot(p1 - p2, n2);
-        // if (abs(dist) < 0.003) {
             draw_line = true;
         }
-    } else if (u_uniform_frag.is_dual_mode > 0.5) {
-        if (in.tex_coords.x < 0.498) {
-            // Left view: use mat1
-            local_x = in.tex_coords.x * 2.0;
-            current_mat = u_uniform_frag.mat;
-            depth = 0.0;
-            
-            // Calculate intersection with plane 2
-            let p1 = (current_mat * vec4<f32>(local_x, in.tex_coords.y, depth, 1.0)).xyz;
-            let n2 = normalize(vec3<f32>(u_uniform_frag.mat2[2][0], u_uniform_frag.mat2[2][1], u_uniform_frag.mat2[2][2]));
-            let p2 = (u_uniform_frag.mat2 * vec4<f32>(0.5, 0.5, 0.0, 1.0)).xyz;
-            let n1 = normalize(vec3<f32>(current_mat[2][0], current_mat[2][1], current_mat[2][2]));
-            let planes_parallel = abs(dot(n1, n2)) > 0.99;
-            let dist = dot(p1 - p2, n2);
-            if (planes_parallel) {
-                // When planes are parallel, only draw a center line
-                if (abs(dist) < 0.003 && abs(in.tex_coords.y - 0.5) < 0.003) {
-                    draw_line = true;
-                }
-            } else if (abs(dist) < 0.003) {
-                draw_line = true;
-            }
-            
-        } else if (in.tex_coords.x > 0.502) {
-            // Right view: use mat2
-            local_x = (in.tex_coords.x - 0.5) * 2.0;
-            current_mat = u_uniform_frag.mat2;
-            depth = 0.0;
-            
-            // Calculate intersection with plane 1
-            let p2 = (current_mat * vec4<f32>(local_x, in.tex_coords.y, depth, 1.0)).xyz;
-            let n1 = normalize(vec3<f32>(u_uniform_frag.mat[2][0], u_uniform_frag.mat[2][1], u_uniform_frag.mat[2][2]));
-            let p1 = (u_uniform_frag.mat * vec4<f32>(0.5, 0.5, 0.0, 1.0)).xyz;
-            let n2 = normalize(vec3<f32>(current_mat[2][0], current_mat[2][1], current_mat[2][2]));
-            let planes_parallel = abs(dot(n1, n2)) > 0.99;
-            let dist = dot(p2 - p1, n1);
-            if (planes_parallel) {
-                // When planes are parallel, only draw a center line
-                if (abs(dist) < 0.003 && abs(in.tex_coords.y - 0.5) < 0.003) {
-                    draw_line = true;
-                }
-            } else if (abs(dist) < 0.003) {
-                draw_line = true;
-            }
-            
-        } else {
-            // Divider
-            return vec4<f32>(0.2, 0.2, 0.2, 1.0);
-        }
-    }
+    } 
 
     let tex_coords_3d = (current_mat * vec4<f32>(local_x, in.tex_coords.y, depth, 1.0)).xyz;
 
@@ -169,7 +118,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // Sample the texture using the 3D coordinates
-    // sampled_value = textureSample(t_diffuse, s_diffuse, tex_coords_3d);
     var sampled_value: vec4<f32>;
     if (u_uniform_frag.aliasing == 0) {
         sampled_value = textureSample(t_diffuse, s_diffuse, tex_coords_3d);
@@ -205,7 +153,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     var final_color = vec3<f32>(v);
     if (draw_line) {
-        // Red indicator line
         final_color = vec3<f32>(1.0, 0.0, 0.0);
     }
 

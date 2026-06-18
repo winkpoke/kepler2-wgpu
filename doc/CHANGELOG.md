@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-06-16T16-00-00
+- **Add Oblique Cutting Plane to 3D Mesh View (REQ-025/026/027)**
+  - Added a second plane-quad overlay to `dvr_ray_march` in `mesh.wgsl`. The new plane is driven by `u_vol.oblique_center`, `u_vol.oblique_normal`, `u_vol.oblique_visible`, and `u_vol.oblique_alpha`.
+  - The two tangent vectors spanning the plane are derived in-shader from the normal using a stable world-Y / world-X reference, so the quad stays numerically stable for any oblique angle.
+  - Color is warm yellow `(1.00, 0.85, 0.20)` to distinguish it from the green perpendicular needle plane.
+  - `MeshUniforms` (WGSL + Rust) gained the four matching fields, placed *before* the `needles` array so the array's 16-byte stride is not disturbed.
+  - `MeshView` gained a `set_oblique_plane(center, normal, visible, alpha)` API and four private state fields drained into the uniforms each frame.
+  - `MprView` gained a `get_oblique_center_world()` helper.
+  - Linkage: in `App::set_oblique_rotation_radians`, after the MprView rotation succeeds, the (center, normal) is pushed to the 3D mesh view so the dvr_ray_march overlay tracks the oblique rotation in real time.
+  - Build verified with `cargo check` — no errors, no new warnings.
+  - Files:
+    - `src/rendering/shaders/mesh.wgsl`
+    - `src/rendering/view/mesh/mesh.rs`
+    - `src/rendering/view/mesh/mesh_view.rs`
+    - `src/rendering/view/mpr/mpr_view.rs`
+    - `src/application/app.rs`
+
 ## 2026-05-20T16-00-00
 - **Oblique Parallel Plane Intersection Line Fix**
   - Fixed full-screen red rendering when oblique plane is parallel/near-parallel to a standard MPR view.

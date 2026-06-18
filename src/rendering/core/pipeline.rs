@@ -363,7 +363,7 @@ pub fn create_texture_quad_pipeline(
     target_format: TextureFormat,
 ) -> RenderPipeline {
     // Single shader module with both vertex and fragment entry points.
-    let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/shader_tex.wgsl"));
+    let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/mpr.wgsl"));
 
     // Pipeline layout defines bind group layout order; must match shader binding expectations.
     let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {

@@ -7,7 +7,7 @@ use std::fmt;
 use wasm_bindgen::prelude::*;
 
 use crate::core::coord::Base;
-use glam::{Mat4, Vec2, Vec3};
+use glam::Mat4;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -91,40 +91,24 @@ impl CTVolume {
         let new_data_len = new_rows * new_cols * slices;
         let mut new_data = Vec::with_capacity(new_data_len);
 
+        // new_rows = rows/2, new_cols = cols/2 (integer division) guarantee
+        // y0=2y, y1=2y+1 < rows and x0=2x, x1=2x+1 < cols for all y<x in range,
+        // so the 2x2 source block is always fully present — no per-pixel bounds checks needed.
         for z in 0..slices {
+            let z_off = z * rows * cols;
             for y in 0..new_rows {
+                let y0 = z_off + 2 * y * cols;
+                // One slice covers two full rows (row y and row y+1)
+                let pair = &self.voxel_data[y0..y0 + 2 * cols];
                 for x in 0..new_cols {
-                    let x0 = x * 2;
-                    let y0 = y * 2;
-                    let x1 = x0 + 1;
-                    let y1 = y0 + 1;
-                    
-                    let mut sum = 0i32;
-                    let mut count = 0i32;
-                    
-                    if x0 < cols && y0 < rows {
-                        let idx = z * rows * cols + y0 * cols + x0;
-                        sum += self.voxel_data[idx] as i32;
-                        count += 1;
-                    }
-                    if x1 < cols && y0 < rows {
-                        let idx = z * rows * cols + y0 * cols + x1;
-                        sum += self.voxel_data[idx] as i32;
-                        count += 1;
-                    }
-                    if x0 < cols && y1 < rows {
-                        let idx = z * rows * cols + y1 * cols + x0;
-                        sum += self.voxel_data[idx] as i32;
-                        count += 1;
-                    }
-                    if x1 < cols && y1 < rows {
-                        let idx = z * rows * cols + y1 * cols + x1;
-                        sum += self.voxel_data[idx] as i32;
-                        count += 1;
-                    }
-                    
-                    let avg = if count > 0 { sum / count } else { 0 };
-                    new_data.push(avg as i16);
+                    let base = 2 * x;
+                    let sum = pair[base] as i32
+                        + pair[base + 1] as i32
+                        + pair[cols + base] as i32
+                        + pair[cols + base + 1] as i32;
+                    // Use /4 (truncation toward zero) rather than >>2 to keep correct
+                    // behavior for negative i16 averages.
+                    new_data.push((sum / 4) as i16);
                 }
             }
         }
@@ -202,103 +186,6 @@ impl CTVolume {
         }
         
         js_sys::Uint8Array::from(mha_data.as_slice())
-    }
-
-    #[wasm_bindgen(js_name = export_mha_with_effects)]
-    pub fn export_mha_with_effects(
-        &self,
-        apply_noise: bool,
-        noise_intensity: f32,
-        js_matrix: JsValue,
-    ) -> js_sys::Uint8Array {
-        let mut mha_data = Vec::new();
-
-        // 解析前端传来的矩阵 (Float32Array)
-        let float32_array = js_sys::Float32Array::new(&js_matrix);
-        let mut m = vec![0.0f32; 16];
-        if float32_array.length() == 16 {
-            float32_array.copy_to(&mut m);
-        } else {
-            // 如果不是 16 个元素，给一个单位阵
-            m[0] = 1.0; m[5] = 1.0; m[10] = 1.0; m[15] = 1.0;
-        }
-
-        let col0 = Vec3::new(m[0], m[1], m[2]);
-        let col1 = Vec3::new(m[4], m[5], m[6]);
-        let col2 = Vec3::new(m[8], m[9], m[10]);
-        let offset = Vec3::new(m[12], m[13], m[14]);
-
-        let dir0 = if col0.length() > 0.0 { col0.normalize() } else { Vec3::X };
-        let dir1 = if col1.length() > 0.0 { col1.normalize() } else { Vec3::Y };
-        let dir2 = if col2.length() > 0.0 { col2.normalize() } else { Vec3::Z };
-
-        let header = format!(
-            "ObjectType = Image\n\
-            NDims = 3\n\
-            BinaryData = True\n\
-            BinaryDataByteOrderMSB = False\n\
-            CompressedData = False\n\
-            TransformMatrix = {} {} {} {} {} {} {} {} {}\n\
-            Offset = {} {} {}\n\
-            CenterOfRotation = 0 0 0\n\
-            AnatomicalOrientation = RAI\n\
-            ElementSpacing = {} {} {}\n\
-            DimSize = {} {} {}\n\
-            ElementType = MET_SHORT\n\
-            ElementDataFile = LOCAL\n",
-            dir0.x, dir1.x, dir2.x,
-            dir0.y, dir1.y, dir2.y,
-            dir0.z, dir1.z, dir2.z,
-            offset.x, offset.y, offset.z,
-            self.voxel_spacing.0, self.voxel_spacing.1, self.voxel_spacing.2,
-            self.dimensions.0, self.dimensions.1, self.dimensions.2
-        );
-
-        mha_data.extend_from_slice(header.as_bytes());
-        mha_data.reserve_exact(self.voxel_data.len() * 2);
-
-        // 原有高斯噪声逻辑
-        if apply_noise {
-            let dim_x = self.dimensions.0 as f32;
-            let dim_y = self.dimensions.1 as f32;
-            let dim_z = self.dimensions.2 as f32;
-
-            for z in 0..self.dimensions.2 {
-                for y in 0..self.dimensions.1 {
-                    for x in 0..self.dimensions.0 {
-                        let idx = x + y * self.dimensions.0 + z * self.dimensions.0 * self.dimensions.1;
-                        let v = self.voxel_data[idx] as f32;
-                        let uv = Vec2::new(x as f32 / dim_x * 512.0, y as f32 / dim_y * 512.0);
-                        let noise = Self::gaussian_noise(uv) * noise_intensity;
-                        let factor = ((v + 800.0) / 1100.0).clamp(0.0, 1.0);
-                        let noise_scaled = noise * (1.0 - factor);
-                        let noisy_v = if v < 1000.0 { (v + noise_scaled).clamp(-32768.0, 32767.0) } else { v };
-                        mha_data.extend_from_slice(&(noisy_v as i16).to_le_bytes());
-                    }
-                }
-            }
-        } else {
-            for &v in &self.voxel_data {
-                mha_data.extend_from_slice(&v.to_le_bytes());
-            }
-        }
-
-        js_sys::Uint8Array::from(mha_data.as_slice())
-    }
-
-    fn fract(x: f32) -> f32 { x - x.floor() }
-
-    fn rand(p: Vec2) -> f32 {
-        Self::fract((p.x * 12.9898 + p.y * 78.233).sin() * 43758.5453)
-    }
-
-    // 近似高斯，但严格在 [-1,1]
-    fn gaussian_noise(p: Vec2) -> f32 {
-        let n1 = Self::rand(p);
-        let n2 = Self::rand(p + Vec2::new(0.37, 0.17));
-        let n3 = Self::rand(p + Vec2::new(1.17, 2.31));
-        let n4 = Self::rand(p + Vec2::new(2.11, 0.73));
-        (n1 + n2 + n3 + n4) / 2.0 - 1.0
     }
 }
 

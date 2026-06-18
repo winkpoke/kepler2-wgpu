@@ -27,6 +27,14 @@ var t_volume: texture_3d<f32>;
 @group(0) @binding(1)
 var s_volume: sampler;
 
+struct NeedleUniform {
+    entry : vec3<f32>,
+    radius : f32,
+    tip : vec3<f32>,
+    id : u32,
+    color : vec4<f32>,
+};
+
 struct MipUniforms {
     ray_step_size: f32,
     max_steps: f32,
@@ -40,6 +48,11 @@ struct MipUniforms {
     mode: f32,
     lower_threshold: f32,
     upper_threshold: f32,
+    needle_enabled: f32,
+    needle_count : u32,
+    _pad: f32,
+    _pad2: f32,
+    needles : array<NeedleUniform, 32>,
     rotation: mat4x4<f32>,
 }
 @group(1) @binding(0)
@@ -88,7 +101,23 @@ fn apply_window_level(value: f32) -> f32 {
     return clamp(v, 0.0, 1.0);
 }
 
-// Ray march with MIP / MinIP / AvgIP
+fn point_inside_needle(p: vec3<f32>, entry: vec3<f32>, tip: vec3<f32>, radius: f32) -> bool {
+    let axis = tip - entry;
+    let len = length(axis);
+    if (len < 0.00001) { 
+        return false; 
+    }
+    let dir = axis / len;
+    let v = p - entry;
+    let t = dot(v, dir);
+    if (t < 0.0 || t > len) { 
+        return false; 
+    }
+    let closest = entry + dir * t;
+    return distance(p, closest) < radius;
+}
+
+// Ray march with MIP / MinIP / AvgIP, with optional needle overlay
 fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end: f32) -> f32 {
     var max_intensity = -1e20;
     var min_intensity = 1e20;
@@ -109,11 +138,23 @@ fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end:
         if (t > t_end) { break; }
 
         let sample_pos = ray_origin + t * ray_dir;
-        let intensity = sample_volume(sample_pos);
+        var intensity = sample_volume(sample_pos);
 
         // threshold filtering (uniform-driven)
         if (intensity < u_mip.lower_threshold || intensity > u_mip.upper_threshold) {
             continue;
+        }
+
+        // check for needle overlay
+        if (u_mip.needle_enabled > 0.5) {
+            for (var k: u32 = 0u; k < u_mip.needle_count; k = k + 1u) {
+                let needle = u_mip.needles[k];
+                let axis = normalize(needle.tip - needle.entry);
+                if (point_inside_needle(sample_pos, needle.entry, needle.tip, needle.radius)) {
+                    intensity = 0.0;
+                    break;
+                }
+            }
         }
 
         // choose aggregator by mode: mode ~ 0 => MIP, mode ~1 => MinIP, else AvgIP

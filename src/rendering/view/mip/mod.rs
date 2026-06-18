@@ -6,6 +6,7 @@ use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::{Renderable, View};
 use crate::core::{WindowLevel,KeplerResult};
 use crate::rendering::pipeline::*;
+use crate::rendering::view::mesh::mesh::NeedleUniform;
 use glam::{Mat4, Vec3, Quat};
 use std::{any::Any, sync::Arc};
 use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, Queue, RenderPipeline};
@@ -73,8 +74,21 @@ pub struct MipUniforms {
     pub mip_mode: f32,
     pub lower_threshold: f32,
     pub upper_threshold: f32,
+    pub needle_enabled:f32,
+    pub needle_count: u32,
+    pub _pad: f32,
+    pub _pad2:f32,
+    pub needles: [NeedleUniform; 32],
     pub rotation: [f32; 16],
 }
+
+const INIT_NEEDLE: NeedleUniform = NeedleUniform {
+    entry: [0.2, 0.3, 0.5],
+    radius: 0.004,
+    tip: [0.2, 0.5, 0.5],
+    id: 0,
+    color: [0.2, 0.9, 0.2, 1.0],
+};
 
 impl Default for MipUniforms {
     fn default() -> Self {
@@ -91,6 +105,11 @@ impl Default for MipUniforms {
             mip_mode: 0.0,
             lower_threshold: -1024.0,
             upper_threshold: 3071.0,
+            needle_enabled: 0.0,
+            needle_count: 0,
+            _pad: 0.0,
+            _pad2: 0.0,
+            needles: [INIT_NEEDLE; 32],
             rotation: Mat4::IDENTITY.to_cols_array(),
         }
     }
@@ -244,6 +263,8 @@ pub struct MipView {
     content_dimensions: (f32, f32),
     /// Window/level parameters for CT display
     window_level: WindowLevel,
+    needle_enabled: f32,
+    needles: Vec<NeedleUniform>,
 }
 
 impl MipView {
@@ -260,6 +281,8 @@ impl MipView {
             rotation_quat: Quat::IDENTITY,
             content_dimensions: (1.0, 1.0),
             window_level: WindowLevel::new(),
+            needle_enabled: 0.0,
+            needles: Vec::new(),
         }
     }
 
@@ -388,6 +411,39 @@ impl MipView {
     pub fn get_window_level(&self) -> [f32; 2] {
         [self.window_level.window_level(), self.window_level.window_width()]
     }
+
+    pub fn set_needle_enabled(&mut self, enabled: f32) {
+        self.needle_enabled = enabled;
+    }
+
+    pub fn set_new_needle(&mut self, id: u32, entry: [f32; 3], pos: [f32; 3]) {
+        let needle = self.needles.iter_mut().find(|n| n.id == id);
+        if let Some(needle) = needle {
+            needle.entry = entry;
+            needle.tip = pos;
+        } else {
+            self.needles.push(NeedleUniform { 
+                entry, 
+                tip: pos, 
+                radius: INIT_NEEDLE.radius, 
+                id, 
+                color: INIT_NEEDLE.color});
+        }
+    }
+
+    pub fn set_needle_position(&mut self, id: u32, pos: [f32; 3]) {
+        let needle = self.needles.iter_mut().find(|n| n.id == id);
+        if let Some(needle) = needle {
+            needle.tip = pos;
+        }
+    }
+
+    pub fn set_needle_radius(&mut self, id: u32, radius: f32) {
+        let needle = self.needles.iter_mut().find(|n| n.id == id);
+        if let Some(needle) = needle {
+            needle.radius = radius.clamp(0.0004, 0.04);
+        }
+    }
 }
 
 impl Renderable for MipView {
@@ -424,6 +480,17 @@ impl Renderable for MipView {
         let scale_texture = Mat4::from_scale(Vec3::new(1.0 / w_mm, 1.0 / h_mm, 1.0 / d_mm));
         let final_matrix = scale_texture * rotation * scale_viewport;
 
+        let mut gpu_needles = [INIT_NEEDLE; 32];
+        for (i, needle) in self.needles.iter().take(32).enumerate() {
+            gpu_needles[i] = NeedleUniform {
+                entry: needle.entry,
+                radius: needle.radius,
+                tip: needle.tip,
+                id: needle.id,
+                color: needle.color
+            };
+        }
+
         let uniforms = MipUniforms {
             ray_step_size: self.config.ray_step_size,
             max_steps: self.config.max_steps,
@@ -437,6 +504,11 @@ impl Renderable for MipView {
             mip_mode: self.config.mip_mode as f32,
             lower_threshold : self.config.lower_threshold,
             upper_threshold : self.config.upper_threshold,
+            needle_enabled: self.needle_enabled,
+            needle_count: self.needles.len().min(32) as u32,
+            _pad: 0.0,
+            _pad2: 0.0,
+            needles: gpu_needles,
             rotation: final_matrix.to_cols_array(),
         };
 

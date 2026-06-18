@@ -212,9 +212,9 @@ impl App {
     }
 
     pub fn update(&mut self) {
-        if self.oblique_rotation {
-            self.sync_oblique_intersection();
-        }
+        // if self.oblique_rotation {
+        //     self.sync_oblique_intersection();
+        // }
         self.app_view.layout.update(&self.graphics_context.graphics.queue);
     }
 
@@ -770,21 +770,21 @@ impl App {
         in_plane_radians: f32,
     ) {
         self.oblique_rotation = true;
+        let mut captured: Option<[f32; 3]> = None;
         if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
                 if let Err(e) = mpr_view.set_oblique_rotation_radians(horizontal_radians, vertical_radians,in_plane_radians) {
                     log::warn!("set_oblique_rotation_radians failed on view {}: {}",index,e);
                 } else {
-                    log::info!(
-                        "View {} set_oblique_rotation_radians: horizontal={:?}, vertical={:?}, in_plane={:?},",
-                        index,
-                        horizontal_radians,
-                        vertical_radians,
-                        in_plane_radians
-                    );
+                    captured = Some(mpr_view.get_oblique_normal().to_array());
                 }
             }
         }
+        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+            if let Some(normal) = captured {
+                mesh_view.set_oblique_plane([0.5, 0.5, 0.5], normal, true, 0.4);
+            }
+        };
     }
 
     /// Get screen coordinate in millimeters for the specified view
@@ -932,18 +932,6 @@ impl App {
         filterable && can_sample
     }
 
-    /// Helper method to apply an operation to the first available MeshView.
-    fn apply_to_mesh_view<F>(&mut self, f: F)
-    where
-        F: FnOnce(&mut MeshView),
-    {
-        if let Some(view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()){
-            f(view);
-        } else {
-            log::warn!("No MeshView found in layout");
-        }
-    }
-
     /// Function-level comment: Enable or disable Y-axis rotation for the mesh view.
     /// This method provides external control over mesh rotation animation.
     pub fn set_mesh_rotation_enabled(&mut self, enabled: bool) {
@@ -964,12 +952,22 @@ impl App {
     }
 
     pub fn set_mesh_needle_enabled(&mut self, enabled: f32) {
-        self.apply_to_mesh_view(|mesh_view| {
+        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
             mesh_view.set_needle_enabled(enabled);
-            log::info!(
-                "Mesh needle {}", if enabled == 0.0 { "disabled" } else if enabled == 1.0 { "enabled" } else { "crop" }
-            );
-        });
+        };
+        if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
+            mip_view.set_needle_enabled(enabled);
+        }
+        log::info!(
+            "Needle {}", if enabled == 0.0 { "disabled" } else if enabled == 1.0 { "enabled" } else { "crop" }
+        );
+    }
+
+    pub fn set_needle_angle(&mut self, id: u32, angle: f32) {
+        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+            mesh_view.set_needle_angle(id, angle);
+            log::info!("Mesh needle {} angle set: {}",id, angle);
+        };
     }
 
     pub fn set_new_needle_mm(&mut self, id: u32, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32, r: f32, g: f32, b: f32) {
@@ -991,13 +989,16 @@ impl App {
             let entry_vol = to_vol(entry_mm);
             let pos_vol = to_vol(pos_mm);
 
-            self.apply_to_mesh_view(|mesh_view| {
+            if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
                 mesh_view.set_new_needle(id, entry_vol, pos_vol, [r, g, b, 1.0]);
-                log::info!("
-                    Mesh needle {} set: entry_mm={:?} -> vol={:?}, pos_mm={:?} -> vol={:?}",
-                    id, entry_mm, entry_vol, pos_mm, pos_vol
-                );
-            });
+            };
+            if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
+                mip_view.set_new_needle(id, entry_vol, pos_vol);
+            }
+            log::info!(
+                "Needle {} set: entry_mm={:?} -> vol={:?}, pos_mm={:?} -> vol={:?}",
+                id, entry_mm, entry_vol, pos_mm, pos_vol
+            );
         }
     }
 
@@ -1015,10 +1016,13 @@ impl App {
         } else {
             radius_mm.clamp(0.0001, 0.1)
         };
-        self.apply_to_mesh_view(|mesh_view| {
+        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
             mesh_view.set_needle_radius(id, radius_uv);
-            log::info!("Mesh needle {} radius set: {}mm -> {}uv",id, radius_mm, radius_uv);
-        });
+        };
+        if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
+            mip_view.set_needle_radius(id, radius_uv);
+        }
+        log::info!("Needle {} radius set: {}mm -> {}uv",id, radius_mm, radius_uv);
     }
 
     pub fn set_needle_position_mm(&mut self, id: u32, sx: f32, sy: f32, sz: f32) {
@@ -1038,29 +1042,32 @@ impl App {
 
             let pos_vol = to_vol(pos_mm);
 
-            self.apply_to_mesh_view(|mesh_view| {
+            if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
                 mesh_view.set_needle_position(id, pos_vol);
-                log::info!("Mesh needle {} position set: pos_mm={:?} -> vol={:?}", id, pos_mm, pos_vol);
-            });
+            };
+            if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
+                mip_view.set_needle_position(id, pos_vol);
+            }
+            log::info!("Needle {} position set: pos_mm={:?} -> vol={:?}", id, pos_mm, pos_vol);
         }
     }
 
     /// Set rotation speed (radians/sec) for the first MeshView.
     pub fn set_mesh_rotation_speed(&mut self, speed_rad_per_sec: f32) {
-        self.apply_to_mesh_view(|mesh_view| {
+        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
             mesh_view.set_rotation_speed(speed_rad_per_sec);
             log::info!(
                 "Mesh rotation speed set to {:.3} rad/s ({:.1}°/s) via State control",
                 speed_rad_per_sec,
                 speed_rad_per_sec.to_degrees()
             );
-        });
+        };
     }
 
     /// Function-level comment: Reset the mesh rotation angle to zero.
     /// Useful for returning the mesh to its initial orientation.
     pub fn reset_mesh(&mut self) {
-        self.apply_to_mesh_view(|mesh_view| {
+        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
             mesh_view.reset_rotation();
             mesh_view.reset_scale_factor();
             mesh_view.reset_pan();
@@ -1068,21 +1075,21 @@ impl App {
             mesh_view.reset_roi();
             mesh_view.set_needle_enabled(0.0);
             log::info!("Mesh reset via State control");
-        });
+        };
     }
 
     pub fn set_mesh_opacity(&mut self, alpha: f32) {
-        self.apply_to_mesh_view(|mesh_view| {
+        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
             mesh_view.set_opacity(alpha);
             log::info!("Mesh opacity set to {:.3}", alpha);
-        });
+        };
     }
 
     pub fn set_mesh_mode(&mut self, mode: usize) {
-        self.apply_to_mesh_view(|mesh_view| {
+        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
             mesh_view.set_mode(mode);
             log::info!("Mesh mode set to {:?}", mode);
-        });
+        };
     }
 
     pub fn set_mesh_roi(&mut self, sx: f32,sy: f32, sz: f32, lx: f32, ly: f32,lz: f32){
@@ -1106,10 +1113,10 @@ impl App {
 
             let roi_min = [a[0].min(b[0]), a[1].min(b[1]), a[2].min(b[2])];
             let roi_max = [a[0].max(b[0]), a[1].max(b[1]), a[2].max(b[2])];
-            self.apply_to_mesh_view(|mesh_view| {
+            if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
                 mesh_view.set_roi(roi_min, roi_max);
                 log::info!("Mesh roi set from {:?} to {:?}", roi_point_min, roi_point_max);
-            });
+            };
         }
     }
 

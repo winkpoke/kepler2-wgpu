@@ -209,13 +209,6 @@ fn inject_image<S: DicomSink>(
             _ => return Err(anyhow!("UNSUPPORTED mha element type: {:?}", metadata.pixel_type)),
         };
 
-        if z == 5 {
-            log::info!("➡️ CT 切片维度：col={}, row={}, depth={}", col, row, depth);
-            log::info!("➡️ CT 切片体素间距：dx={:.3}, dy={:.3}, dz={:.3}", spacing[0], spacing[1], spacing[2]);
-            log::info!("➡️ CT 切片位置：base={:?}, col_dir={:?}, row_dir={:?}", base, col_dir, row_dir);
-            log::info!("➡️ CT 切片位置起点：pos={:?}", pos);
-        }
-
         // save DICOM slice
         let filename = format!("CT_{:04}.dcm", z + 1);
         write_ct_dicom_slice(

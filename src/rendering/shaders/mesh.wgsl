@@ -1,5 +1,36 @@
+// =============================================================================
 // Mesh Volume Rendering Shader
-// Vertex shader for fullscreen quad rendering
+// =============================================================================
+// Renders a 3D medical volume (CT / MR) for a single fullscreen quad view.
+//
+// Two rendering modes are supported, selected by `u_vol.preset`:
+//   * preset < 0.5  → ISO surface raymarching (binary isosurface, 4-iter bisection)
+//   * preset >= 0.5 → DVR (front-to-back alpha compositing with transfer function)
+//
+// Within the DVR path, `u_vol.needle_enabled` selects one of four sub-modes:
+//   * < 0.5         → needles off
+//   * [0.5, 1.5)    → needles visible (shaft + head disc), volume unclipped
+//   * [1.5, 2.5)    → needles visible + half-space clip by the rotating plane
+//   * >= 2.5        → needles visible + plane visualized as a finite quad
+//                     (volume stays unclipped; the quad is composited on top)
+//
+// Features:
+//   * Dual texture format support: R16Float (preferred) and packed RG8 (RGBA8 → u16)
+//   * DICOM window/level mapping to normalized intensity
+//   * 3-light Phong shading for surface rendering
+//   * Needle overlays (shaft + head disc) for biopsy/insertion guidance
+//   * ROI cropping when needle plane clipping is active
+//   * Per-pixel blue-noise dithering to hide DVR banding
+//
+// Bindings:
+//   group(0): volume texture (3D) + sampler
+//   group(1): MeshUniforms uniform buffer
+// =============================================================================
+
+
+// -----------------------------------------------------------------------------
+// Vertex shader: fullscreen triangle (3 verts, no VBO)
+// -----------------------------------------------------------------------------
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) tex_coords: vec2<f32>,
@@ -15,7 +46,10 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     return out;
 }
 
-// Fragment shader
+
+// -----------------------------------------------------------------------------
+// Fragment bindings
+// -----------------------------------------------------------------------------
 @group(0) @binding(0)
 var t_volume: texture_3d<f32>;
 @group(0) @binding(1)
@@ -50,33 +84,46 @@ struct MeshUniforms {
     needle_count : u32,
     needle_enabled: f32,
     needle_index: u32,
-    _pad: u32,
+    plane_rotation_angle: f32,
+    oblique_center: vec3<f32>,
+    oblique_visible: f32,
+    oblique_normal: vec3<f32>,
+    plane_alpha: f32,
     needles : array<NeedleUniform, 32>,
 }
 @group(1) @binding(0)
 var<uniform> u_vol: MeshUniforms;
 
-fn point_inside_disc(p: vec3<f32>,center: vec3<f32>,axis: vec3<f32>,radius: f32,thickness: f32) -> bool{
+
+// -----------------------------------------------------------------------------
+// Geometry helpers
+// -----------------------------------------------------------------------------
+
+// Returns true if `p` lies inside a finite-thickness disc centred at `center`,
+// with face-normal `axis` and radius `radius`. Thickness is measured as
+// `thickness` along `axis` (i.e. the disc is a cylinder cap with `thickness` height).
+fn point_inside_disc(p: vec3<f32>, center: vec3<f32>, axis: vec3<f32>, radius: f32, thickness: f32) -> bool {
     let v = p - center;
     let h = dot(v, axis);
-    if (abs(h) > thickness * 0.5)
-    {
+    if (abs(h) > thickness * 0.5) {
         return false;
     }
     let radial = v - h * axis;
     return dot(radial, radial) <= radius * radius;
 }
 
-fn point_inside_needle(p : vec3<f32>,entry : vec3<f32>,tip : vec3<f32>,radius : f32) -> bool {
+// Returns true if `p` lies inside a finite cylinder between `entry` and `tip`
+// with the given `radius`. Treats degenerate (entry≈tip) needles as empty.
+fn point_inside_needle(p: vec3<f32>, entry: vec3<f32>, tip: vec3<f32>, radius: f32) -> bool {
     let axis = tip - entry;
     let len = length(axis);
-    if(len < 0.00001){
+    if (len < 0.00001) {
         return false;
     }
     let dir = axis / len;
     let v = p - entry;
     let t = dot(v, dir);
-    if(t < 0.0 || t > len){
+    if (t < 0.0 || t > len) {
         return false;
     }
     let closest = entry + dir * t;
@@ -98,6 +145,41 @@ fn intersect_box(ray_origin: vec3<f32>, ray_dir: vec3<f32>, box_min: vec3<f32>, 
     let tmax = min(min(max(t0.x,t1.x), max(t0.y,t1.y)), max(t0.z,t1.z));
 
     return vec2<f32>(tmin, tmax);
+}
+
+// Ray vs finite plane-quad. The quad is the set of points
+//   `center + a*u + b*v` for a,b in [-half_size, +half_size],
+// where `u` and `v` are assumed to be mutually orthogonal unit vectors
+// spanning the plane. Returns the ray parameter t > 0 of the hit, or -1.0
+// if the ray misses (or runs parallel to) the quad. O(1) work per ray,
+// so the cost of drawing the cutting plane is independent of step count.
+fn intersect_plane_quad(
+    ray_origin: vec3<f32>,
+    ray_dir: vec3<f32>,
+    center: vec3<f32>,
+    u: vec3<f32>,
+    v: vec3<f32>,
+    half_size: f32,
+) -> f32 {
+    let n = normalize(cross(u, v));
+    let denom = dot(ray_dir, n);
+    // Ray parallel to the plane: no single intersection point.
+    if (abs(denom) < 1e-6) {
+        return -1.0;
+    }
+    let t = dot(center - ray_origin, n) / denom;
+    // Plane is behind the ray origin: skip.
+    if (t < 0.0) {
+        return -1.0;
+    }
+    let p = ray_origin + t * ray_dir;
+    // Reject hits that fall outside the [-half, +half] x [-half, +half] quad.
+    let a = dot(p - center, u);
+    let b = dot(p - center, v);
+    if (abs(a) > half_size || abs(b) > half_size) {
+        return -1.0;
+    }
+    return t;
 }
 
 // Sample volume texture
@@ -155,9 +237,9 @@ fn compute_normal(pos: vec3<f32>) -> vec3<f32> {
 // Multi-Light Phong Lighting Model
 // Uses 3 lights positioned around the VIEW direction for uniform illumination.
 // The view direction changes with camera rotation, so lighting stays balanced.
-//   Light 0 (Key):   slightly right of camera, main illumination
-//   Light 1 (Fill):  left and behind camera, fills shadows
-//   Light 2 (Rim):   from behind, highlights silhouette edges
+// Light 0 (Key):   slightly right of camera, main illumination
+// Light 1 (Fill):  left and behind camera, fills shadows
+// Light 2 (Rim):   from behind, highlights silhouette edges
 fn compute_lighting(normal_in: vec3<f32>, view_dir_in: vec3<f32>, base_color: vec3<f32>) -> vec3<f32> {
     let n = normalize(normal_in);
     let v = normalize(view_dir_in);
@@ -196,6 +278,7 @@ fn compute_lighting(normal_in: vec3<f32>, view_dir_in: vec3<f32>, base_color: ve
     return base_color * (ambient + diffuse) + specular;
 }
 
+// Ramps a HU value from dark to light bone color, saturating above ~1400 HU.
 fn bone_base_color(hu: f32) -> vec3<f32> {
     let t = clamp((hu - 200.0) / 1200.0, 0.0, 1.0);
     let dark = vec3<f32>(0.85, 0.85, 0.85);
@@ -203,13 +286,14 @@ fn bone_base_color(hu: f32) -> vec3<f32> {
     return mix(dark, light, t);
 }
 
+// Maps a HU value to an RGBA color/opacity using a 3-stop color ramp and a
+// power-curve alpha. The edge_factor boosts opacity at high gradient regions
+// (tissue boundaries) to make surfaces pop.
 fn transfer_function(hu: f32, grad_mag: f32) -> vec4<f32> {
     let norm = apply_window_level(hu);
-    
     if (norm <= 0.0) {
         return vec4<f32>(0.0);
     }
-    
     let color_low = vec3<f32>(0.18, 0.14, 0.12);
     let color_mid = vec3<f32>(0.72, 0.55, 0.44);
     let color_high = vec3<f32>(0.98, 0.96, 0.92);
@@ -223,6 +307,30 @@ fn transfer_function(hu: f32, grad_mag: f32) -> vec4<f32> {
     return vec4<f32>(color, final_alpha);
 }
 
+// Rodrigues rotation
+fn rotate_vec_around_axis(v: vec3<f32>, axis: vec3<f32>, angle: f32) -> vec3<f32> {
+    let cos_a = cos(angle);
+    let sin_a = sin(angle);
+    return v * cos_a + cross(axis, v) * sin_a + axis * dot(axis, v) * (1.0 - cos_a);
+}
+
+fn build_basis(n: vec3<f32>) -> mat3x3<f32> {
+    let up = vec3<f32>(0.0, 1.0, 0.0);
+    let right = vec3<f32>(1.0, 0.0, 0.0);
+    let a = select(up, right, abs(n.y) > 0.9);
+    let u = normalize(cross(a, n));
+    let v = cross(n, u);
+    return mat3x3<f32>(u, v, n);
+}
+
+// -----------------------------------------------------------------------------
+// Raymarching: ISO surface
+// -----------------------------------------------------------------------------
+//
+// Walks the ray in voxel units (1.0 voxel step) and detects a sign change in
+// (sample - iso). When detected, performs a 4-iteration bisection to refine
+// the surface hit, then shades it with Phong lighting and returns an
+// alpha-blended color.
 fn iso_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32, iso: f32) -> vec4<f32> {
     let dims = u_vol.vol_dims;
     let ray_dir_vox = ray_dir * dims;
@@ -236,7 +344,7 @@ fn iso_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32, is
     var v_prev = sample_volume(ray_origin + t * ray_dir) - iso;
 
     for (var i = 0u; i < max_steps; i = i + 1u) {
-        t = t + dt;
+        t += dt;
         if (t > t1) {
             break;
         }
@@ -283,20 +391,21 @@ fn iso_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32, is
     return vec4<f32>(0.0, 0.0, 0.0, 0.0);
 }
 
+
+// -----------------------------------------------------------------------------
+// Raymarching: Direct Volume Rendering (DVR)
+// -----------------------------------------------------------------------------
 struct DvrResult {
     color: vec4<f32>,
     first_hit_depth: f32,
 }
-
 fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) -> DvrResult {
-    let dims = u_vol.vol_dims;
-    let ray_dir_vox = ray_dir * dims;
-    let inv_len = 1.0 / max(length(ray_dir_vox), 1e-6);
-    
     let step_vox = 0.5; 
-    let dt = step_vox * inv_len;
+    let dt = step_vox / max(length(ray_dir * u_vol.vol_dims), 1e-6);
     let step_len = step_vox; 
     let max_steps = u32(max(u_vol.max_steps, 1.0));
+
+    let mapped_opacity = pow(u_vol.opacity_multiplier, 6.0);
 
     var accum_rgb = vec3<f32>(0.0);
     var accum_a = 0.0;
@@ -318,21 +427,18 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
         var is_needle = false;
         var n = vec3<f32>(0.0);
 
-        if (u_vol.needle_enabled > 0.5 && u_vol.needle_enabled < 2.5) {
-            for (var k:u32 = 0u; k < u_vol.needle_count; k = k + 1u)
-            {
+        if (u_vol.needle_enabled > 0.5) {
+            for (var k: u32 = 0u; k < u_vol.needle_count; k = k + 1u) {
                 let needle = u_vol.needles[k];
                 let axis = normalize(needle.tip - needle.entry);
-                let inside_shaft = point_inside_needle(pos,needle.entry,needle.tip,needle.radius);
-                let inside_head = point_inside_disc(pos,needle.entry,axis,needle.radius * 2.0,needle.radius * 2.0);
-                    
-                if (inside_shaft || inside_head)
-                {
+                let inside_shaft = point_inside_needle(pos, needle.entry, needle.tip, needle.radius);
+                let inside_head = point_inside_disc(pos, needle.entry, axis, needle.radius * 2.0, needle.radius * 2.0);
+
+                if (inside_shaft || inside_head) {
                     is_needle = true;
                     let to_p = pos - needle.entry;
                     let proj = dot(to_p, axis) * axis;
-                    let radial = normalize(to_p - proj + vec3<f32>(1e-6));
-                    n = radial; // cylindrical normal
+                    n = normalize(to_p - proj + vec3<f32>(1e-6));
                     let vdir = normalize(-ray_dir);
                     let base_color = needle.color.xyz;
                     let lit_color = compute_lighting(n, vdir, base_color);
@@ -343,19 +449,44 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
                 }
             }
         }
-        
+
         if (!is_needle) {
-            if (u_vol.needle_enabled > 1.5 && u_vol.needle_enabled < 2.5){
+            if (u_vol.needle_enabled > 1.5 && u_vol.needle_enabled < 2.5) {
                 let needle = u_vol.needles[u_vol.needle_index];
                 let v0 = needle.entry - needle.tip;
-                let v1 = vec3<f32>(0.0, 0.0, needle.tip.z) - needle.tip;
-                let normal = normalize(cross(v0, v1));
+                let axis = normalize(needle.tip - needle.entry);
+                let angle = u_vol.plane_rotation_angle;
+                let ref_vec = rotate_vec_around_axis(vec3<f32>(1.0, 0.0, 0.0), axis, angle);
+                let normal = normalize(cross(v0, ref_vec));
                 let d = -dot(normal, needle.tip);
                 if (dot(normal, pos) + d < 0.0) {
                     t += dt;
                     continue;
                 }
-            } else{
+            } else if (u_vol.oblique_visible > 0.5) {
+                let n_raw = u_vol.oblique_normal;
+                let n = select(normalize(n_raw), vec3<f32>(0.0, 0.0, 1.0), length(n_raw) < 1e-6);
+                let c = u_vol.oblique_center;
+                let denom = dot(n, ray_dir);
+                if (abs(denom) > 1e-6) {
+                    let t_align = dot(n, c - ray_origin) / denom;
+                    let aligned_origin = ray_origin + ray_dir * t_align;
+                    let pos2 = aligned_origin + ray_dir * (t - t_align);
+                    let d = dot(n, pos2 - c);
+                    let origin_sign = dot(n, vec3<f32>(0.0,0.0,0.0) - c);
+                    if (origin_sign > 0.0) {
+                        if (d > 0.0) {
+                            t += dt;
+                            continue;
+                        }
+                    } else {
+                        if (d < 0.0) {
+                            t += dt;
+                            continue;
+                        }
+                    }
+                }
+            }else {
                 if (any(pos < u_vol.roi_min) || any(pos > u_vol.roi_max)) {
                     t += dt;
                     continue;
@@ -364,7 +495,7 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
 
             let hu = sample_volume(pos);
             if (hu < min_val) {
-                t = t + dt * 2.0;
+                t += dt * 2.0;
                 continue;
             }
             n = compute_normal(pos);
@@ -376,9 +507,8 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
             let vdir = normalize(-ray_dir);
             let lit_color = compute_lighting(n, vdir, tf.xyz);
 
-            let mapped_opacity = pow(u_vol.opacity_multiplier, 6.0);
-            let density = tf.a * mapped_opacity * 3.0; 
-
+            let opacity_scale = select(mapped_opacity, 1.0, is_needle);
+            let density = tf.a * opacity_scale * 3.0;
             let sample_alpha = 1.0 - exp(-density * step_len);
 
             accum_rgb += (1.0 - accum_a) * lit_color * sample_alpha;
@@ -389,7 +519,49 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
             first_hit_t = t;
         }
 
-        t = t + dt;
+        t += dt;
+    }
+
+    if (u_vol.needle_enabled > 2.5) {
+        let needle = u_vol.needles[u_vol.needle_index];
+        let axis = normalize(needle.tip - needle.entry);
+        let angle = u_vol.plane_rotation_angle;
+        let ref_vec = rotate_vec_around_axis(vec3<f32>(1.0, 0.0, 0.0), axis, angle);
+        let plane_center = needle.tip;
+        let t_plane = intersect_plane_quad(
+            ray_origin, ray_dir,
+            plane_center, axis, ref_vec,
+            0.5,  // half_size: square of side 1.0 (matches the unit-cube edge)
+        );
+        if (t_plane >= t0 && t_plane <= t1) {
+            let plane_rgb = vec3<f32>(0.30, 0.85, 0.50); // soft green
+            let plane_alpha = 0.40;
+            accum_rgb += (1.0 - accum_a) * plane_rgb * plane_alpha;
+            accum_a += (1.0 - accum_a) * plane_alpha;
+        }
+    }
+
+    if (u_vol.oblique_visible > 0.5) {
+        let n_raw = u_vol.oblique_normal;
+        let n = select(normalize(n_raw), vec3<f32>(0.0,0.0,1.0), length(n_raw) < 1e-6);
+        let c = u_vol.oblique_center;
+        let basis = build_basis(n);
+        let denom = dot(n, ray_dir);
+        if (abs(denom) > 1e-6) {
+            let t_plane = dot(n, c - ray_origin) / denom;
+            if (t_plane >= t0 && t_plane <= t1) {
+                let p = ray_origin + ray_dir * t_plane;
+                let local = p - c;
+                let u = dot(local, basis[0]);
+                let v = dot(local, basis[1]);
+                if (abs(u) <= 0.5 && abs(v) <= 0.5) {
+                    let oblique_rgb = vec3<f32>(0.30, 0.85, 0.50);
+                    let plane_alpha = 0.40;
+                    accum_rgb += (1.0 - accum_a) * oblique_rgb * plane_alpha;
+                    accum_a += (1.0 - accum_a) * plane_alpha;
+                }
+            }
+        }
     }
 
     if (accum_a < 0.01) {
@@ -401,6 +573,10 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
     return DvrResult(vec4<f32>(accum_rgb, accum_a), norm_depth);
 }
 
+
+// -----------------------------------------------------------------------------
+// Fragment shader entry point
+// -----------------------------------------------------------------------------
 struct FragmentOutput {
     @location(0) color: vec4<f32>,
     @builtin(frag_depth) depth: f32,
@@ -408,6 +584,7 @@ struct FragmentOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> FragmentOutput {
+    // Screen-space UV with aspect ratio, scale, and pan
     let scale = max(u_vol.scale, 0.0001);
     var uv_centered = in.tex_coords - vec2<f32>(0.5, 0.5);
 
@@ -422,12 +599,14 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
         return FragmentOutput(vec4<f32>(0.0, 0.0, 0.0, 1.0), 1.0);
     }
 
+    // Build the ray in volume space
     let center = vec3<f32>(0.5, 0.5, 0.5);
     let base_ray_origin = vec3<f32>(uv.x, 1.0 - uv.y, -0.5);
 
     let ray_origin = (u_vol.rotation * vec4<f32>(base_ray_origin - center, 1.0)).xyz + center;
     let ray_dir = normalize((u_vol.rotation * vec4<f32>(0.0, 0.0, 1.0, 0.0)).xyz);
 
+    // Clip ray to the [0,1]^3 AABB
     let inter_vol = intersect_box(ray_origin, ray_dir, vec3<f32>(0.0), vec3<f32>(1.0));
     var t_start = inter_vol.x;
     var t_end = inter_vol.y;
@@ -438,12 +617,10 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let dims = u_vol.vol_dims;
     let ray_dir_vox = ray_dir * dims;
     let inv_len = 1.0 / max(length(ray_dir_vox), 1e-6);
-    let step_vox = 0.5;
-    let dt = step_vox * inv_len;
-    
+    let dt = 0.5 * inv_len;
     t_start = t_start + hash(in.tex_coords) * dt;
 
-    // Render volume (ISO or DVR mode)
+    // Dispatch to ISO or DVR
     if (u_vol.preset < 0.5) {
         let iso = get_iso_threshold();
         return FragmentOutput(

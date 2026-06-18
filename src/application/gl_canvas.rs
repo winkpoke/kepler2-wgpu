@@ -65,6 +65,7 @@ pub enum UserEvent {
     SetMeshNeedleTrajectory(usize, u32, f32, f32, f32, f32, f32, f32, f32, f32, f32),
     SetMeshNeedlePosition(usize, u32, f32, f32, f32),
     SetMeshNeedleRadius(usize, u32, f32),
+    SetMeshNeedleAngle(usize, u32, f32),
 }
 
 #[macro_export]
@@ -468,8 +469,6 @@ impl GLCanvas {
             .send_event(UserEvent::SetRotationQuat(index, arr))
         {
             log::error!("Failed to send SetObliqueRotationQuat event: {:?}", e);
-        } else {
-            log::info!("Sent SetObliqueRotationQuat event for window {}", index);
         }
     }
 }
@@ -505,4 +504,5 @@ impl_user_event_senders_for_glcanvas! {
     set_new_needle => SetMeshNeedleTrajectory(id: u32, x: f32, y: f32, z: f32, lx: f32, ly: f32, lz: f32, r:f32, g:f32, b:f32),
     set_needle_position => SetMeshNeedlePosition(id: u32, x: f32, y: f32, z: f32),
     set_needle_radius => SetMeshNeedleRadius(id: u32, radius: f32),
+    set_needle_angle => SetMeshNeedleAngle(id: u32, angle: f32),
 }

@@ -8,7 +8,6 @@
 use super::{Orientation, View};
 use crate::data::volume_encoding::VolumeEncoding;
 use crate::CTVolume;
-use crate::mesh::BasicMeshContext;
 
 use log::{debug, info};
 use std::sync::Arc;
@@ -457,13 +456,6 @@ impl ViewFactory for DefaultViewFactory {
         mesh_view.attach_context(Arc::new(vol_ctx));
         mesh_view.move_to(pos);
         mesh_view.resize(size);
-
-        // Initialize and attach measure context for measurement overlays (replaces needle)
-        let cyl_mesh = crate::rendering::mesh::mesh::Mesh::cylinder();
-        // let cube_mesh = crate::rendering::mesh::mesh::Mesh::unit_cube();
-        let needle_ctx = BasicMeshContext::new(&self.device, &self.queue, &cyl_mesh, true);
-        // let cube_ctx = BasicMeshContext::new(&self.device, &self.queue, &cube_mesh, true);
-        mesh_view.attach_needle_context(Arc::new(needle_ctx));
 
         info!(
             "[DefaultViewFactory] Created Mesh view (with_content) at {:?} size {:?}",
