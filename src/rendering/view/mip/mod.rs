@@ -416,7 +416,7 @@ impl MipView {
         self.needle_enabled = enabled;
     }
 
-    pub fn set_new_needle(&mut self, id: u32, entry: [f32; 3], pos: [f32; 3]) {
+    pub fn set_new_needle(&mut self, id: u32, entry: [f32; 3], pos: [f32; 3], color: [f32; 4]) {
         let needle = self.needles.iter_mut().find(|n| n.id == id);
         if let Some(needle) = needle {
             needle.entry = entry;
@@ -427,7 +427,7 @@ impl MipView {
                 tip: pos, 
                 radius: INIT_NEEDLE.radius, 
                 id, 
-                color: INIT_NEEDLE.color});
+                color});
         }
     }
 
@@ -588,7 +588,7 @@ mod tests {
     fn test_mip_uniforms_size() {
         let size = std::mem::size_of::<MipUniforms>();
         assert_eq!(size % 16, 0);
-        assert_eq!(size, 112);
+        assert_eq!(size, 1664);
     }
 
     #[test]

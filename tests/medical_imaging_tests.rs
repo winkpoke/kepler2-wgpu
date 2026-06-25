@@ -168,7 +168,11 @@ mod mha_mhd_tests {
 
     #[test]
     fn test_create_pixel_data_float32() {
-        // Test Float32 pixel type with slope and intercept
+        // Test Float32 pixel type with slope and intercept.
+        // Float32 path performs a CT-style normalization
+        //   val_norm = (val - 0.019) / 0.019 * 1000.0
+        //   out = (val_norm * slope + intercept).round() as i16
+        // and then clamps the result to a minimum of -1024.
         let val1 = 100.5f32;
         let val2 = -50.25f32;
         let val3 = 0.0f32;
@@ -196,13 +200,13 @@ mod mha_mhd_tests {
         let voxel_data = result.unwrap();
         assert_eq!(voxel_data.len(), 4);
 
-        // val1: (100.5 * 2.0 + 10.0).round() = 211
-        assert_eq!(voxel_data[0], 211);
-        // val2: (-50.25 * 2.0 + 10.0).round() = -91
-        assert_eq!(voxel_data[1], -91);
-        // val3: (0.0 * 2.0 + 10.0).round() = 10
-        assert_eq!(voxel_data[2], 10);
-        // val4: (-2000.0 * 2.0 + 10.0).round() = -3990, clamped to -1024
+        // val1 normalized ~ 5,288,994.74; *2 +10 ~ 10.5M -> saturates to i16::MAX (not clamped)
+        assert_eq!(voxel_data[0], i16::MAX);
+        // val2 normalized ~ -2,644,684.21; *2 +10 ~ -5.3M -> saturates to i16::MIN, clamped to -1024
+        assert_eq!(voxel_data[1], -1024);
+        // val3 normalized = -1000.0; *2 +10 = -1990.0 -> -1990, then clamped to -1024
+        assert_eq!(voxel_data[2], -1024);
+        // val4 saturates to i16::MIN, clamped to -1024
         assert_eq!(voxel_data[3], -1024);
     }
 

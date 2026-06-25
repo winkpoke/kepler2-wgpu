@@ -7,13 +7,7 @@ use crate::rendering::{view, Graphics, GraphicsContext};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io};
-
-// use wgpu::util::DeviceExt;
-#[cfg(target_arch = "wasm32")]
-use async_lock::Mutex;
-
 use winit::{event::*, window::Window};
-
 use crate::core::{error::KeplerError, WindowLevel};
 use crate::data::dicom::*;
 use crate::data::volume_encoding::VolumeEncoding;
@@ -21,26 +15,19 @@ use crate::data::{ct_volume::*, AppModel};
 use crate::rendering::view::mesh::mesh_texture_pool::MeshTexturePool;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::*;
-
-// static STATE: Lazy<Arc<Mutex<Option<State>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
-
-// thread_local! {
-//     static STATE: OnceCell<Rc<RefCell<State>>> = OnceCell::new();
-// }
-
+use crate::application::appview::AppView;
+#[cfg(target_arch = "wasm32")]
+use async_lock::Mutex;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use crate::application::appview::AppView;
-
-// #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 /// Main application logic and state management
 pub struct App {
     /// Graphics context that encapsulates both hardware abstraction and rendering pipeline orchestration
     pub(crate) graphics_context: GraphicsContext,
     pub(crate) app_view: AppView,
     pub(crate) app_model: AppModel,
-    pub(crate) oblique_rotation: bool,
+    pub(crate) oblique: Option<usize>,
     pub(crate) saved_states: [usize; 4],
 }
 
@@ -93,7 +80,7 @@ impl App {
             graphics_context,
             app_view: AppView::new(layout, factory),
             app_model: AppModel::new(default_float),
-            oblique_rotation: false,
+            oblique: None,
             saved_states: [0; 4],
         })
     }
@@ -212,7 +199,7 @@ impl App {
     }
 
     pub fn update(&mut self) {
-        // if self.oblique_rotation {
+        // if self.oblique.is_some() {
         //     self.sync_oblique_intersection();
         // }
         self.app_view.layout.update(&self.graphics_context.graphics.queue);
@@ -450,7 +437,7 @@ impl App {
         &mut self,
         vol: &CTVolume,
     ) -> Result<Arc<RenderContent>, KeplerError> {
-        self.oblique_rotation = false;
+        self.oblique = None;
         let texture = self.load_render_content(vol)?;
         // Use the volume that may have been downsampled by load_render_content
         let vol_render = self.app_model.volume()?;
@@ -509,7 +496,6 @@ impl App {
     ) {
         // Save current view states before layout switch
         self.app_view.save_view_states();
-        self.oblique_rotation = false;
         
         if let Some(vol) = self.app_model.volume().ok().map(|v| v.clone()) {
             if self.saved_states.is_empty() {
@@ -534,7 +520,6 @@ impl App {
 
             // Switch rendering mode using the (potentially downsampled) volume
             match mode {
-                // === MPR ===
                 0 | 1 | 2  => {
                     log::info!("Switching to MPR mode (orientation: {})", orientation_index);
                     let _ = self.app_view.set_layout_mode_single(
@@ -582,10 +567,45 @@ impl App {
                     }
                 }
             }
+
+            self.oblique = self.app_view.layout.views_mut().iter_mut().enumerate().find_map(|(index, view)| {
+                view.as_any_mut()
+                    .downcast_mut::<MprView>()
+                    .filter(|m| matches!(m.get_orientation(), Orientation::Oblique))
+                    .map(|_| index)
+            });
         } else {
             log::info!(
                 "MPR/MIP layout requested without loaded volume; will apply on next data load."
             );
+        }
+    }
+
+    fn mm_to_uv(&mut self, mm: [f32; 3]) -> [f32; 3]{
+        if let Ok(vol) = self.app_model.volume() {
+            let inv = vol.base.matrix.inverse();
+            let (nx, ny, nz) = vol.dimensions;
+            let to_roi = |p_mm: [f32; 3]| -> [f32; 3] {
+                let v = inv.transform_point3(glam::Vec3::from_array(p_mm));
+                [
+                    (v.x / (nx as f32)).clamp(0.0, 1.0),
+                    (v.y / (ny as f32)).clamp(0.0, 1.0),
+                    (v.z / (nz as f32)).clamp(0.0, 1.0),
+                ]
+            };
+            to_roi(mm)
+        } else {
+            mm
+        }
+    }
+
+    fn normal_mm_to_uv(&mut self, mm: [f32; 3]) -> [f32; 3] {
+        if let Ok(vol) = self.app_model.volume() {
+            let inv = vol.base.matrix.inverse().transpose();
+            let v = inv.transform_vector3(glam::Vec3::from_array(mm)).normalize_or_zero();
+            [v.x, v.y, v.z]
+        } else {
+            mm
         }
     }
 
@@ -609,8 +629,6 @@ impl App {
     pub fn set_window_width(&mut self, index: usize, window_width: f32) {
         if let Err(e) = self.app_view.set_window_width(index, window_width) {
             log::warn!("set_window_width failed on view {}: {}", index, e);
-        } else {
-            log::info!("View {} set_window_width: {}", index, window_width);
         }
     }
 
@@ -626,8 +644,13 @@ impl App {
     pub fn set_slice_mm(&mut self, index: usize, z: f32) {
         if let Err(e) = self.app_view.set_slice_mm(index, z) {
             log::warn!("set_slice_mm failed on view {}: {}", index, e);
+        }
+        if let Some(oblique_view) = self.oblique{
+            if oblique_view == index{
+                self.sync_oblique_to_3d(index, true);
+            }
         } else {
-            log::info!("View {} set_slice: {}", index, z);
+            self.sync_oblique_to_3d(index, false);
         }
     }
 
@@ -762,6 +785,25 @@ impl App {
         }
     }
 
+    pub fn sync_oblique_to_3d(&mut self, index: usize, oblique_visible: bool){
+        let mut raw: Option<([f32; 3], [f32; 3])> = None;
+        if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                let base = mpr_view.get_base();
+                let slice_center_world = base.transform_point3(glam::Vec3::new(0.5, 0.5, 0.0));
+                let normal_world  = base.col(2).truncate().normalize_or_zero();
+                raw = Some((normal_world.to_array(), [slice_center_world.x, slice_center_world.y, slice_center_world.z]))
+            } 
+        } ;
+        if let Some((normal_mm, slice_center_mm)) = raw {
+            let normal_uv = self.normal_mm_to_uv(normal_mm);
+            let slice_center_uv = self.mm_to_uv(slice_center_mm);
+            if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()){
+                mesh_view.set_oblique_plane(slice_center_uv, normal_uv, oblique_visible, 0.5);
+            }
+        }
+    }
+
     pub fn set_oblique_rotation_radians(
         &mut self,
         index: usize,
@@ -769,22 +811,14 @@ impl App {
         vertical_radians: f32,
         in_plane_radians: f32,
     ) {
-        self.oblique_rotation = true;
-        let mut captured: Option<[f32; 3]> = None;
         if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
                 if let Err(e) = mpr_view.set_oblique_rotation_radians(horizontal_radians, vertical_radians,in_plane_radians) {
                     log::warn!("set_oblique_rotation_radians failed on view {}: {}",index,e);
-                } else {
-                    captured = Some(mpr_view.get_oblique_normal().to_array());
                 }
             }
         }
-        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
-            if let Some(normal) = captured {
-                mesh_view.set_oblique_plane([0.5, 0.5, 0.5], normal, true, 0.4);
-            }
-        };
+        self.sync_oblique_to_3d(index, true);
     }
 
     /// Get screen coordinate in millimeters for the specified view
@@ -916,7 +950,6 @@ impl App {
                 return mpr_view.world_coord_to_screen(world_coord);
             }
         }
-        // Return the original coordinate if view not found or not an MprView
         world_coord
     }
 
@@ -951,6 +984,62 @@ impl App {
         }
     }
 
+    /// Set rotation speed (radians/sec) for the first MeshView.
+    pub fn set_mesh_rotation_speed(&mut self, speed_rad_per_sec: f32) {
+        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+            mesh_view.set_rotation_speed(speed_rad_per_sec);
+        };
+    }
+
+    /// Set mesh rotation angle in degrees
+    pub fn set_rotation_degrees(&mut self, index: usize, degrees_x: f32, degrees_y: f32) {
+        if let Err(e) = self.app_view.set_rotation_degrees(index, degrees_x, degrees_y){
+            log::warn!("set_rotation_degrees failed on view {}: {}",index,e);
+        }
+        self.sync_oblique_to_3d(index, self.oblique == Some(index));
+    }
+
+    /// Reset the mesh for returning the mesh to its initial orientation
+    pub fn reset_mesh(&mut self) {
+        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+            mesh_view.reset_rotation();
+            mesh_view.reset_scale_factor();
+            mesh_view.reset_pan();
+            mesh_view.reset_opacity();
+            mesh_view.reset_roi();
+            mesh_view.set_oblique_plane([0.5 ,0.5 ,0.5], [0.0, 0.0, 1.0], false, 0.5);
+            log::info!("Mesh reset via State control");
+        };
+    }
+
+    pub fn set_mesh_opacity(&mut self, alpha: f32) {
+        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+            mesh_view.set_opacity(alpha);
+            log::info!("Mesh opacity set to {:.3}", alpha);
+        };
+    }
+
+    pub fn set_mesh_mode(&mut self, mode: usize) {
+        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+            mesh_view.set_mode(mode);
+            log::info!("Mesh mode set to {:?}", mode);
+        };
+    }
+
+    pub fn set_mesh_roi(&mut self, sx: f32,sy: f32, sz: f32, lx: f32, ly: f32,lz: f32){
+        let roi_point_min = [sx, sy, sz];
+        let roi_point_max = [lx, ly, lz];
+        let a = self.mm_to_uv(roi_point_min);
+        let b = self.mm_to_uv(roi_point_max);
+        let roi_min = [a[0].min(b[0]), a[1].min(b[1]), a[2].min(b[2])];
+        let roi_max = [a[0].max(b[0]), a[1].max(b[1]), a[2].max(b[2])];
+        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+            mesh_view.set_roi(roi_min, roi_max);
+            log::info!("Mesh roi set from {:?} to {:?}", roi_point_min, roi_point_max);
+        };
+    }
+
+    // NEEDLE
     pub fn set_mesh_needle_enabled(&mut self, enabled: f32) {
         if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
             mesh_view.set_needle_enabled(enabled);
@@ -973,33 +1062,19 @@ impl App {
     pub fn set_new_needle_mm(&mut self, id: u32, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32, r: f32, g: f32, b: f32) {
         let entry_mm = [sx, sy, sz];
         let pos_mm = [lx, ly, lz];
-        if let Ok(vol) = self.app_model.volume() {
-            let inv = vol.base.matrix.inverse();
-            let (nx, ny, nz) = vol.dimensions;
+        let entry_vol = self.mm_to_uv(entry_mm);
+        let pos_vol = self.mm_to_uv(pos_mm);
 
-            let to_vol = |p_mm: [f32; 3]| -> [f32; 3] {
-                let v = inv.transform_point3(glam::Vec3::from_array(p_mm));
-                [
-                    (v.x / (nx as f32 - 1.0)).clamp(0.0, 1.0),
-                    (v.y / (ny as f32 - 1.0)).clamp(0.0, 1.0),
-                    (v.z / (nz as f32 - 1.0)).clamp(0.0, 1.0),
-                ]
-            };
-
-            let entry_vol = to_vol(entry_mm);
-            let pos_vol = to_vol(pos_mm);
-
-            if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
-                mesh_view.set_new_needle(id, entry_vol, pos_vol, [r, g, b, 1.0]);
-            };
-            if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
-                mip_view.set_new_needle(id, entry_vol, pos_vol);
-            }
-            log::info!(
-                "Needle {} set: entry_mm={:?} -> vol={:?}, pos_mm={:?} -> vol={:?}",
-                id, entry_mm, entry_vol, pos_mm, pos_vol
-            );
+        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+            mesh_view.set_new_needle(id, entry_vol, pos_vol, [r, g, b, 1.0]);
+        };
+        if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
+            mip_view.set_new_needle(id, entry_vol, pos_vol,[r, g, b, 0.5]);
         }
+        log::info!(
+            "Needle {} set: entry_mm={:?} -> vol={:?}, pos_mm={:?} -> vol={:?}",
+            id, entry_mm, entry_vol, pos_mm, pos_vol
+        );
     }
 
     pub fn set_needle_radius(&mut self, id: u32, radius_mm: f32){
@@ -1027,106 +1102,15 @@ impl App {
 
     pub fn set_needle_position_mm(&mut self, id: u32, sx: f32, sy: f32, sz: f32) {
         let pos_mm = [sx, sy, sz];
-        if let Ok(vol) = self.app_model.volume() {
-            let inv = vol.base.matrix.inverse();
-            let (nx, ny, nz) = vol.dimensions;
+        let pos_vol = self.mm_to_uv(pos_mm);
 
-            let to_vol = |p_mm: [f32; 3]| -> [f32; 3] {
-                let v = inv.transform_point3(glam::Vec3::from_array(p_mm));
-                [
-                    (v.x / (nx as f32 - 1.0)).clamp(0.0, 1.0),
-                    (v.y / (ny as f32 - 1.0)).clamp(0.0, 1.0),
-                    (v.z / (nz as f32 - 1.0)).clamp(0.0, 1.0),
-                ]
-            };
-
-            let pos_vol = to_vol(pos_mm);
-
-            if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
-                mesh_view.set_needle_position(id, pos_vol);
-            };
-            if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
-                mip_view.set_needle_position(id, pos_vol);
-            }
-            log::info!("Needle {} position set: pos_mm={:?} -> vol={:?}", id, pos_mm, pos_vol);
+        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+            mesh_view.set_needle_position(id, pos_vol);
+        };
+        if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
+            mip_view.set_needle_position(id, pos_vol);
         }
-    }
-
-    /// Set rotation speed (radians/sec) for the first MeshView.
-    pub fn set_mesh_rotation_speed(&mut self, speed_rad_per_sec: f32) {
-        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
-            mesh_view.set_rotation_speed(speed_rad_per_sec);
-            log::info!(
-                "Mesh rotation speed set to {:.3} rad/s ({:.1}°/s) via State control",
-                speed_rad_per_sec,
-                speed_rad_per_sec.to_degrees()
-            );
-        };
-    }
-
-    /// Function-level comment: Reset the mesh rotation angle to zero.
-    /// Useful for returning the mesh to its initial orientation.
-    pub fn reset_mesh(&mut self) {
-        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
-            mesh_view.reset_rotation();
-            mesh_view.reset_scale_factor();
-            mesh_view.reset_pan();
-            mesh_view.reset_opacity();
-            mesh_view.reset_roi();
-            mesh_view.set_needle_enabled(0.0);
-            log::info!("Mesh reset via State control");
-        };
-    }
-
-    pub fn set_mesh_opacity(&mut self, alpha: f32) {
-        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
-            mesh_view.set_opacity(alpha);
-            log::info!("Mesh opacity set to {:.3}", alpha);
-        };
-    }
-
-    pub fn set_mesh_mode(&mut self, mode: usize) {
-        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
-            mesh_view.set_mode(mode);
-            log::info!("Mesh mode set to {:?}", mode);
-        };
-    }
-
-    pub fn set_mesh_roi(&mut self, sx: f32,sy: f32, sz: f32, lx: f32, ly: f32,lz: f32){
-        let roi_point_min = [sx, sy, sz];
-        let roi_point_max = [lx, ly, lz];
-        if let Ok(vol) = self.app_model.volume() {
-            let inv = vol.base.matrix.inverse();
-            let (nx, ny, nz) = vol.dimensions;
-
-            let to_roi = |p_mm: [f32; 3]| -> [f32; 3] {
-                let v = inv.transform_point3(glam::Vec3::from_array(p_mm));
-                [
-                    (v.x / (nx as f32 - 1.0)).clamp(0.0, 1.0),
-                    (v.y / (ny as f32 - 1.0)).clamp(0.0, 1.0),
-                    (v.z / (nz as f32 - 1.0)).clamp(0.0, 1.0),
-                ]
-            };
-
-            let a = to_roi(roi_point_min);
-            let b = to_roi(roi_point_max);
-
-            let roi_min = [a[0].min(b[0]), a[1].min(b[1]), a[2].min(b[2])];
-            let roi_max = [a[0].max(b[0]), a[1].max(b[1]), a[2].max(b[2])];
-            if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
-                mesh_view.set_roi(roi_min, roi_max);
-                log::info!("Mesh roi set from {:?} to {:?}", roi_point_min, roi_point_max);
-            };
-        }
-    }
-
-    /// Set mesh rotation angle in degrees for the first MeshView.
-    pub fn set_rotation_degrees(&mut self, index: usize, degrees_x: f32, degrees_y: f32) {
-        if let Err(e) = self.app_view.set_rotation_degrees(index, degrees_x, degrees_y){
-            log::warn!("set_rotation_degrees failed on view {}: {}",index,e);
-        } else {
-            log::info!("View {} set_rotation_degrees: dx={}, dy={}",index,degrees_x,degrees_y);
-        }
+        log::info!("Needle {} position set: pos_mm={:?} -> vol={:?}", id, pos_mm, pos_vol);
     }
 
     /// Toggle the volume texture format (R16Float vs Rg8Unorm) and reload the CT volume.
@@ -1234,6 +1218,4 @@ use js_sys::Array;
 pub fn load_data_from_repo_wasm(/*repo: &DicomRepo,*/ image_series_number: &str) {
     warn!(".....................");
     warn!("Image Series Number: {image_series_number}");
-    // let state = State::get_instance().await;
-    // state.borrow_mut().load_data_from_repo(repo, image_series_number);
 }

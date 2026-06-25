@@ -467,23 +467,18 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
                 let n_raw = u_vol.oblique_normal;
                 let n = select(normalize(n_raw), vec3<f32>(0.0, 0.0, 1.0), length(n_raw) < 1e-6);
                 let c = u_vol.oblique_center;
-                let denom = dot(n, ray_dir);
-                if (abs(denom) > 1e-6) {
-                    let t_align = dot(n, c - ray_origin) / denom;
-                    let aligned_origin = ray_origin + ray_dir * t_align;
-                    let pos2 = aligned_origin + ray_dir * (t - t_align);
-                    let d = dot(n, pos2 - c);
-                    let origin_sign = dot(n, vec3<f32>(0.0,0.0,0.0) - c);
-                    if (origin_sign > 0.0) {
-                        if (d > 0.0) {
-                            t += dt;
-                            continue;
-                        }
-                    } else {
-                        if (d < 0.0) {
-                            t += dt;
-                            continue;
-                        }
+                let pos = ray_origin + ray_dir * t;
+                let d = dot(n, pos - c);
+                let keep_positive_side = true;
+                if (keep_positive_side) {
+                    if (d < 0.0) {
+                        t += dt;
+                        continue;
+                    }
+                } else {
+                    if (d > 0.0) {
+                        t += dt;
+                        continue;
                     }
                 }
             }else {
@@ -554,7 +549,7 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
                 let local = p - c;
                 let u = dot(local, basis[0]);
                 let v = dot(local, basis[1]);
-                if (abs(u) <= 0.5 && abs(v) <= 0.5) {
+                if (abs(u) <= 2.0 && abs(v) <= 2.0) {
                     let oblique_rgb = vec3<f32>(0.30, 0.85, 0.50);
                     let plane_alpha = 0.40;
                     accum_rgb += (1.0 - accum_a) * oblique_rgb * plane_alpha;

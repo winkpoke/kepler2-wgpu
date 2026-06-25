@@ -311,13 +311,31 @@ impl MprView {
         Ok(())
     }
 
+    /// Set the current oblique rotation angle using degrees for convenience
+    pub fn set_oblique_rotation_angle_degrees(&mut self, degrees_x: f32, degrees_y: f32) {
+        let right = self.oblique_rotation * Vec3::Y;
+        let up = self.oblique_rotation * Vec3::X;
+        let dx = degrees_x.to_radians();
+        let dy = degrees_y.to_radians();
+        let qx = Quat::from_axis_angle(up.normalize(), dx);
+        let qy = Quat::from_axis_angle(right.normalize(), dy);
+        let delta = qy * qx;
+        self.oblique_rotation = (delta * self.oblique_rotation).normalize();
+        self.oblique_center_world();
+        log::info!(
+            "Oblique rotation set to (deg_x: {}, deg_y: {})",
+            degrees_x,
+            degrees_y
+        );
+    }
+
     fn oblique_center_world(&mut self) {
         let r = Mat4::from_quat(self.oblique_rotation);
         let center = self.base_screen_raw.transform_point3(Vec3::new(0.5, 0.5, 0.0));
         let t1 = Mat4::from_translation(-center);
         let t2 = Mat4::from_translation(center);
         self.base_screen = t2 * r * t1 * self.base_screen_raw;
-        self.oblique_normal = r.transform_vector3(Vec3::Z).normalize_or_zero();
+        self.oblique_normal = self.base_screen.col(2).truncate().normalize_or_zero();
     }
 
     pub fn get_base_screen(&self) -> Mat4 {

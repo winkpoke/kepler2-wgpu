@@ -14,7 +14,6 @@ use std::sync::Arc;
 pub struct AppModel {
     pub(crate) vol: Option<CTVolume>,
     pub enable_float_volume_texture: bool,
-    pub enable_mesh: bool,
 }
 
 impl AppModel {
@@ -25,7 +24,6 @@ impl AppModel {
         Self {
             vol: None,
             enable_float_volume_texture,
-            enable_mesh: false,
         }
     }
 

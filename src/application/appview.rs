@@ -600,7 +600,7 @@ impl AppView {
                     .map_err(|e| e.to_string())?;
                 Ok(())
             } else {
-                Err(format!("View {} is not an MPR view", index))
+                Err(format!("View {} is not an MPR/MIP/3D view", index))
             }
         } else {
             Err(format!("View index {} out of bounds", index))
@@ -626,7 +626,7 @@ impl AppView {
                     .map_err(|e| e.to_string())?;
                 Ok(())
             } else {
-                Err(format!("View {} is not an MPR view", index))
+                Err(format!("View {} is not an MPR/MIP/3D view", index))
             }
         } else {
             Err(format!("View index {} out of bounds", index))
@@ -841,8 +841,16 @@ impl AppView {
             } else if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
                 mesh_view.set_rotation_angle_degrees(dx,dy);
                 Ok(())
+            } else if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>()
+                .filter(|m| matches!(m.get_orientation(), Orientation::Oblique))
+            {
+                mpr_view.set_oblique_rotation_angle_degrees(dx, dy);
+                if let Some(mesh_view) = self.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+                    mesh_view.set_rotation_angle_degrees(dx,dy);
+                };
+                Ok(())
             } else {
-                Err(format!("View {} is not a MIP or Mesh view", index))
+                Err(format!("View {} is not a MIP, Mesh, or Oblique MPR view", index))
             }
         } else {
             Err(format!("View index {} out of bounds", index))

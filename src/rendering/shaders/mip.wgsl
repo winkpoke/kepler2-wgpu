@@ -118,11 +118,12 @@ fn point_inside_needle(p: vec3<f32>, entry: vec3<f32>, tip: vec3<f32>, radius: f
 }
 
 // Ray march with MIP / MinIP / AvgIP, with optional needle overlay
-fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end: f32) -> f32 {
+fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end: f32) -> vec4<f32> {
     var max_intensity = -1e20;
     var min_intensity = 1e20;
     var sum_intensity = 0.0;
     var count: u32 = 0u;
+    var needle_color = vec3<f32>(0.0);  // (0,0,0) = no needle hit yet
 
     let step_size = max(u_mip.ray_step_size, 1e-6);
     let max_steps = u32(max(u_mip.max_steps, 1.0));
@@ -149,9 +150,8 @@ fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end:
         if (u_mip.needle_enabled > 0.5) {
             for (var k: u32 = 0u; k < u_mip.needle_count; k = k + 1u) {
                 let needle = u_mip.needles[k];
-                let axis = normalize(needle.tip - needle.entry);
                 if (point_inside_needle(sample_pos, needle.entry, needle.tip, needle.radius)) {
-                    intensity = 0.0;
+                    needle_color = needle.color.rgb;
                     break;
                 }
             }
@@ -169,16 +169,18 @@ fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end:
     }
 
     // Fallback: if nothing sampled, return lower_threshold (so MinIP will invert to bright)
+    var final_intensity: f32;
     if (u_mip.mode < 0.5) {
-        if (max_intensity < -1e19) { return u_mip.lower_threshold; }
-        return max_intensity;
+        if (max_intensity < -1e19) { final_intensity = u_mip.lower_threshold; }
+        final_intensity = max_intensity;
     } else if (u_mip.mode < 1.5) {
-        if (min_intensity > 1e19) { return u_mip.lower_threshold; }
-        return min_intensity;
+        if (min_intensity > 1e19) { final_intensity = u_mip.lower_threshold; }
+        final_intensity = min_intensity;
     } else {
-        if (count == 0u) { return u_mip.lower_threshold; }
-        return sum_intensity / f32(count);
+        if (count == 0u) { final_intensity = u_mip.lower_threshold; }
+        final_intensity = sum_intensity / f32(count);
     }
+    return vec4<f32>(final_intensity, needle_color);
 }
 
 @fragment
@@ -206,10 +208,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
 
-    let intensity = mip_ray_march(volume_ray_origin, volume_ray_dir, t_start, t_end);
+    let mip_result = mip_ray_march(volume_ray_origin, volume_ray_dir, t_start, t_end);
+    let intensity = mip_result.r;
+    let needle_color = mip_result.gba;
+
+    // Needle overlay: if any needle was hit during raymarching, show needle color
+    if (needle_color.r + needle_color.g + needle_color.b > 0.001) {
+        return vec4<f32>(needle_color, 0.4);
+    }
 
     // Map intensity -> display value using window/level
-    var processed = apply_window_level(intensity);
+    let processed = apply_window_level(intensity);
 
     return vec4<f32>(processed, processed, processed, 1.0);
 }
