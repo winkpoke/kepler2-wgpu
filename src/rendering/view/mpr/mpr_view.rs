@@ -342,6 +342,26 @@ impl MprView {
         self.base_screen
     }
 
+    /// Return the UV space base matrix
+    pub fn get_oblique_rotation_uv(&self) -> Vec3 {
+        let screen_to_uv = self.base_uv.inverse() * self.base_screen;
+        let r_screen = Mat4::from_quat(self.oblique_rotation);
+        let r_uv = screen_to_uv * r_screen * screen_to_uv.inverse();
+
+        // Extract basis vectors and normalize to handle non-uniform scaling
+        let right = (r_uv * glam::Vec4::new(1.0, 0.0, 0.0, 0.0)).truncate().normalize();
+        let up = (r_uv * glam::Vec4::new(0.0, 1.0, 0.0, 0.0)).truncate().normalize();
+        let n = right.cross(up).normalize();
+
+        // Mat4::from_cols(
+        //     glam::Vec4::new(right.x, right.y, right.z, 0.0),
+        //     glam::Vec4::new(up.x, up.y, up.z, 0.0),
+        //     glam::Vec4::new(n.x, n.y, n.z, 0.0),
+        //     glam::Vec4::new(0.0, 0.0, 0.0, 1.0),
+        // )
+        n
+    }
+
     /// Return the current screen base matrix (including translation, scaling)
     pub fn get_base(&self) -> Mat4 {
         // Apply the same transformation chain as update_transform_matrix

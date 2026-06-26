@@ -469,17 +469,9 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
                 let c = u_vol.oblique_center;
                 let pos = ray_origin + ray_dir * t;
                 let d = dot(n, pos - c);
-                let keep_positive_side = true;
-                if (keep_positive_side) {
-                    if (d < 0.0) {
-                        t += dt;
-                        continue;
-                    }
-                } else {
-                    if (d > 0.0) {
-                        t += dt;
-                        continue;
-                    }
+                if (d < 0.0) {
+                    t += dt;
+                    continue;
                 }
             }else {
                 if (any(pos < u_vol.roi_min) || any(pos > u_vol.roi_max)) {

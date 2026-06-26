@@ -599,16 +599,6 @@ impl App {
         }
     }
 
-    fn normal_mm_to_uv(&mut self, mm: [f32; 3]) -> [f32; 3] {
-        if let Ok(vol) = self.app_model.volume() {
-            let inv = vol.base.matrix.inverse().transpose();
-            let v = inv.transform_vector3(glam::Vec3::from_array(mm)).normalize_or_zero();
-            [v.x, v.y, v.z]
-        } else {
-            mm
-        }
-    }
-
     pub fn set_window_level(&mut self, index: usize, window_level: f32) {
         if let Err(e) = self.app_view.set_window_level(index, window_level) {
             log::warn!(
@@ -789,14 +779,12 @@ impl App {
         let mut raw: Option<([f32; 3], [f32; 3])> = None;
         if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                let base = mpr_view.get_base();
-                let slice_center_world = base.transform_point3(glam::Vec3::new(0.5, 0.5, 0.0));
-                let normal_world  = base.col(2).truncate().normalize_or_zero();
-                raw = Some((normal_world.to_array(), [slice_center_world.x, slice_center_world.y, slice_center_world.z]))
-            } 
+                let slice_center_world = mpr_view.get_base().transform_point3(glam::Vec3::new(0.5, 0.5, 0.0));
+                let normal_uv = mpr_view.get_oblique_rotation_uv().to_array();
+                raw = Some((normal_uv, [slice_center_world.x, slice_center_world.y, slice_center_world.z]))
+            }
         } ;
-        if let Some((normal_mm, slice_center_mm)) = raw {
-            let normal_uv = self.normal_mm_to_uv(normal_mm);
+        if let Some((normal_uv, slice_center_mm)) = raw {
             let slice_center_uv = self.mm_to_uv(slice_center_mm);
             if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()){
                 mesh_view.set_oblique_plane(slice_center_uv, normal_uv, oblique_visible, 0.5);
