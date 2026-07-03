@@ -209,6 +209,11 @@ impl RenderApp {
                 }
                 Event::UserEvent(UserEvent::SetObliqueRotation(index, horizontal_radians, vertical_radians, in_plane_radians)) => {
                     state.set_oblique_rotation_radians(index, horizontal_radians, vertical_radians, in_plane_radians);
+                    log::info!("Oblique Rotation radians set to horizontal={horizontal_radians}, vertical={vertical_radians}, in plane={in_plane_radians}");
+                }
+                Event::UserEvent(UserEvent::SetObliquePlane(index, oblique_crop, alpha)) => {
+                    state.sync_oblique_to_3d(index, oblique_crop, alpha);
+                    log::info!("Oblique view {} plane {} alpha={:?}", index, oblique_crop, alpha);
                 }
                 // Mesh control events
                 Event::UserEvent(UserEvent::SetMeshRotationEnabled(_index, enabled)) => {
@@ -382,8 +387,6 @@ impl RenderApp {
                                     },
                                 ..
                             } => {
-                                // state.set_render_mode(0, None, None, None, 2);
-                                // let _ = state.set_dual_mpr_mode(0, true, 0);
                                 state.set_render_mode(3, None, Some(0), None, 3);
                                 state.set_oblique_rotation_radians(0, 0.0, 20.0, 0.0);
                                 log::info!("KeyA pressed: mpr mode toggled to {}", true);
@@ -404,13 +407,6 @@ impl RenderApp {
                                 state.set_scale(0, 2.0);
                                 state.set_window_width(0, 300.0);
                                 state.set_window_level(0, 300.0);
-                                // let needle_entry_mm = [-0.16, 116.84, -1089.75];
-                                // let needle_pos_mm = [-1.95, 86.47, -1089.75];
-                                // state.set_mesh_needle_trajectory(
-                                //     needle_entry_mm[0], needle_entry_mm[1], needle_entry_mm[2],
-                                //     needle_pos_mm[0], needle_pos_mm[1], needle_pos_mm[2],
-                                // );
-                                // log::info!("KeyB pressed: 2*2 mode toggled to {}, needle entry_mm={:?}, pos_mm={:?}", true, needle_entry_mm, needle_pos_mm);
                             }
                             WindowEvent::KeyboardInput {
                                 event:

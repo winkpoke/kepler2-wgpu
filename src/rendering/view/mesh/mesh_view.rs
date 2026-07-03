@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use super::{
-    mesh::{MeshRenderContext, MeshUniforms, NeedleUniform},
+    mesh::{MeshRenderContext, MeshUniforms, NeedleUniform, ObliquePlaneUniform},
     performance::{PerformanceStats, QualityController, QualityLevel},
 };
 use crate::{
@@ -110,19 +110,8 @@ pub struct MeshView {
     needle_index: u32,
     plane_rotation_angle: f32,
     needles: Vec<NeedleUniform>,
-    oblique_center: [f32; 3],
-    oblique_normal: [f32; 3],
-    oblique_visible: bool,
-    plane_alpha: f32,
+    oblique_planes: [ObliquePlaneUniform; 4],
 }
-
-const INIT_NEEDLE: NeedleUniform = NeedleUniform {
-    entry: [0.2, 0.3, 0.5],
-    radius: 0.004,
-    tip: [0.2, 0.5, 0.5],
-    id: 0,
-    color: [0.2, 0.9, 0.2, 1.0],
-};
 
 impl MeshView {
     pub fn new() -> Self {
@@ -152,10 +141,7 @@ impl MeshView {
             needle_index: 0,
             plane_rotation_angle: 180.0,
             needles: Vec::new(),
-            oblique_center: [0.0, 0.0, 0.0],
-            oblique_normal: [0.0, 0.0, 1.0],
-            oblique_visible: false,
-            plane_alpha: 0.40,
+            oblique_planes: [ObliquePlaneUniform::default(); 4],
         }
     }
 
@@ -402,7 +388,13 @@ impl MeshView {
             needle.tip = pos;
             needle.color = color;
         } else {
-            self.needles.push(NeedleUniform { entry, tip: pos, radius: INIT_NEEDLE.radius, id, color});
+            self.needles.push(NeedleUniform {
+                entry, 
+                tip: pos, 
+                radius: NeedleUniform::default().radius, 
+                id, 
+                color
+            });
             log::info!("[NEEDLE] set_new_needle {} : entry={:?}, pos={:?}",id, entry, pos);
         }
     }
@@ -415,27 +407,30 @@ impl MeshView {
         log::debug!("[NEEDLE]Mesh needle {} position set to {:?}", id, pos);
     }
 
-    /// Set the oblique cutting plane that is composited in `dvr_ray_march`.
-    /// Driven by the active MPR view's oblique rotation (REQ-025/026/027).
+    /// Set the visibility of the oblique cutting plane.
     ///
     /// # Arguments
     /// * `center`    - world-space center of the plane
     /// * `normal`    - world-space normal of the plane (will be normalized
     ///                 in-shader; do not assume a unit length on the CPU side)
+    /// * `index`     - index of the plane to set
     /// * `visible`   - whether the plane is composited this frame
-    /// * `alpha`     - 0..=1 compositing opacity
-    pub fn set_oblique_plane(&mut self, center: [f32; 3], normal: [f32; 3], visible: bool, alpha: f32) {
-        self.oblique_center = [center[0], center[1], center[2]];
-        self.oblique_normal = [normal[0], normal[1], normal[2]];
-        self.oblique_visible = visible;
-        self.plane_alpha = alpha;
+    /// * `alpha`     - 0..=1 compositing opacity shared by all 4 planes
+    pub fn set_oblique_plane(&mut self, center: [f32; 3], normal: [f32; 3], index: usize, oblique_crop: f32, alpha: f32) {
+        self.oblique_planes[index] = ObliquePlaneUniform {
+            center,
+            visible: oblique_crop,
+            normal,
+            plane_alpha: alpha,
+        };
         log::info!(
-            "[OBLIQUE→3D] MeshView::set_oblique_plane: center={:?} normal={:?} visible={} alpha={}",
-            self.oblique_center,
-            self.oblique_normal,
-            visible,
-            alpha
+            "[OBLIQUE→3D] View {:?} set_oblique_plane: center={:?} normal={:?} oblique_crop={} alpha={}",
+            index, center, normal, oblique_crop, alpha
         );
+    }
+
+    pub fn get_oblique_planes(&self) -> [ObliquePlaneUniform; 4] {
+        self.oblique_planes
     }
 
     pub fn set_needle_radius(&mut self, id: u32, radius: f32) {
@@ -509,7 +504,7 @@ impl MeshView {
             let decode_params = vol_ctx.render_content.decode_parameters();
             let is_packed_rg8 = if decode_params.is_packed_flag == 1 { 1.0 } else { 0.0 };
 
-            let mut gpu_needles = [INIT_NEEDLE; 32];
+            let mut gpu_needles = [NeedleUniform::default(); 32];
             for (i, needle) in self.needles.iter().take(32).enumerate() {
                 gpu_needles[i] = NeedleUniform {
                     entry: needle.entry,
@@ -542,10 +537,7 @@ impl MeshView {
                 needle_enabled: self.needle_enabled,
                 needle_index: self.needle_index,
                 plane_rotation_angle: self.plane_rotation_angle,
-                oblique_center: self.oblique_center,
-                oblique_normal: self.oblique_normal,
-                oblique_visible: if self.oblique_visible { 1.0 } else { 0.0 },
-                plane_alpha: self.plane_alpha,
+                oblique_planes: self.oblique_planes,
                 needles: gpu_needles,
             };
 

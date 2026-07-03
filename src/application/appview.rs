@@ -10,6 +10,7 @@ use crate::rendering::view::{
     DefaultViewFactory, DynamicLayout, MipView, MprView, Orientation, View, ViewState,
     ALL_ORIENTATIONS, LargeLeft3RightLayout,GridLayout, LayoutContainer, OneCellLayout,
 };
+use crate::rendering::view::mesh::mesh::ObliquePlaneUniform;
 use crate::rendering::StatefulView;
 use crate::CTVolume;
 use std::sync::Arc;
@@ -38,6 +39,7 @@ pub enum CapturedViewState {
         scale: f32,
         pan: [f32; 3],
         opacity: f32,
+        oblique_planes: [ObliquePlaneUniform; 4],
     },
 }
 
@@ -98,6 +100,7 @@ impl AppView {
                             scale: mesh_view.get_scale_factor(),
                             pan: mesh_view.get_pan(),
                             opacity: mesh_view.get_opacity(),
+                            oblique_planes: mesh_view.get_oblique_planes(),
                         })
                     } else {
                         None
@@ -195,6 +198,7 @@ impl AppView {
                     scale,
                     pan,
                     opacity,
+                    oblique_planes,
                     ..
                 }) = states.iter().find(|s| {
                     matches!(s, CapturedViewState::Mesh { view_id, .. }
@@ -204,6 +208,10 @@ impl AppView {
                     mesh_view.set_scale_factor(*scale);
                     mesh_view.set_pan(pan[0], pan[1]);
                     mesh_view.set_opacity(*opacity);
+                    let planes = *oblique_planes;
+                    for (i, plane) in planes.iter().enumerate() {
+                        mesh_view.set_oblique_plane(plane.center, plane.normal, i, plane.visible, plane.plane_alpha);
+                    }
                 }
             }
         }
@@ -693,34 +701,6 @@ impl AppView {
         }
     }
 
-    /// Enable or disable dual orthogonal MPR mode for a specific view.
-    pub fn set_dual_mpr_mode(
-        &mut self,
-        index: usize,
-        enable: bool,
-        vol: &CTVolume,
-        orientation2: Option<Orientation>,
-    ) -> Result<(), String> {
-        if let Some(view) = self.layout.views_mut().get_mut(index) {
-            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                if enable {
-                    if let Some(o2) = orientation2 {
-                        mpr_view.enable_dual_mode(vol, o2);
-                    } else {
-                        return Err("orientation2 is required to enable dual MPR mode".to_string());
-                    }
-                } else {
-                    mpr_view.disable_dual_mode();
-                }
-                Ok(())
-            } else {
-                Err(format!("View {} is not an MPR view", index))
-            }
-        } else {
-            Err(format!("View index {} out of bounds", index))
-        }
-    }
-    
     /// Set the pan (X, Y) for a specific view.
     pub fn set_pan(&mut self, index: usize, x: f32, y: f32) -> Result<(), String> {
         if let Some(view) = self.layout.views_mut().get_mut(index) {

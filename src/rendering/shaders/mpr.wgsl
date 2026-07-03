@@ -85,28 +85,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var local_x = in.tex_coords.x;
     var current_mat = u_uniform_frag.mat;
     
-    // Intersection line drawing
-    var draw_line = false;
-    
-    if (u_uniform_frag.is_dual_mode > 1.5) {
-        // Single view, but draw intersection with mat2 (Oblique plane)
-        let n1 = normalize(vec3<f32>(current_mat[2][0], current_mat[2][1], current_mat[2][2]));
-        let p1 = (current_mat * vec4<f32>(local_x, in.tex_coords.y, depth, 1.0)).xyz;
-        let n2 = normalize(vec3<f32>(u_uniform_frag.mat2[2][0], u_uniform_frag.mat2[2][1], u_uniform_frag.mat2[2][2]));
-        let p2 = (u_uniform_frag.mat2 * vec4<f32>(0.5, 0.5, 0.0, 1.0)).xyz;
-        
-        let planes_parallel = abs(dot(n1, n2)) > 0.99;
-        let dist = dot(p1 - p2, n2);
-        if (planes_parallel) {
-            // When planes are parallel, only draw a center line
-            if (abs(dist) < 0.003 && abs(local_x - 0.5) < 0.003) {
-                draw_line = true;
-            }
-        } else if (abs(dist) < 0.003) {
-            draw_line = true;
-        }
-    } 
-
     let tex_coords_3d = (current_mat * vec4<f32>(local_x, in.tex_coords.y, depth, 1.0)).xyz;
 
     // Component-wise comparison for out-of-bounds check
@@ -151,10 +129,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     v = clamp(v, 0.0, 1.0);
     
-    var final_color = vec3<f32>(v);
-    if (draw_line) {
-        final_color = vec3<f32>(1.0, 0.0, 0.0);
-    }
+    let final_color = vec3<f32>(v);
 
     // Return the final computed color
     return vec4<f32>(final_color, 1.0);

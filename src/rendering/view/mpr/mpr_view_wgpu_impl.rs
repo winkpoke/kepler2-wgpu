@@ -181,11 +181,6 @@ impl MprViewWgpuImpl {
         self.uniforms.frag.mat2 = matrix;
     }
 
-    /// Enable or disable dual mode
-    pub fn set_dual_mode(&mut self, is_dual: bool) {
-        self.uniforms.frag.is_dual_mode = if is_dual { 1.0 } else { 0.0 };
-    }
-
     /// Set slice position
     ///
     /// # Arguments

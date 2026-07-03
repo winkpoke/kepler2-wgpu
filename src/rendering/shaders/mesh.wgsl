@@ -63,6 +63,13 @@ struct NeedleUniform {
     color : vec4<f32>,
 };
 
+struct ObliquePlane {
+    center : vec3<f32>,
+    visible : f32,
+    normal : vec3<f32>,
+    plane_alpha: f32,
+};
+
 struct MeshUniforms {
     ray_step_size: f32,
     max_steps: f32,
@@ -85,10 +92,7 @@ struct MeshUniforms {
     needle_enabled: f32,
     needle_index: u32,
     plane_rotation_angle: f32,
-    oblique_center: vec3<f32>,
-    oblique_visible: f32,
-    oblique_normal: vec3<f32>,
-    plane_alpha: f32,
+    oblique_planes: array<ObliquePlane, 4>,
     needles : array<NeedleUniform, 32>,
 }
 @group(1) @binding(0)
@@ -415,6 +419,14 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
     let center = u_vol.level;
     let width = max(u_vol.window, 1e-6);
     let min_val = center - 0.5 - (width - 1.0) * 0.5;
+    let any_oblique_visible = (u_vol.oblique_planes[0].visible > 0.5) ||
+        (u_vol.oblique_planes[1].visible > 0.5) ||
+        (u_vol.oblique_planes[2].visible > 0.5) ||
+        (u_vol.oblique_planes[3].visible > 0.5);
+    let any_oblique_visible_plane = (u_vol.oblique_planes[0].plane_alpha > 0.0) ||
+        (u_vol.oblique_planes[1].plane_alpha > 0.0) ||
+        (u_vol.oblique_planes[2].plane_alpha > 0.0) ||
+        (u_vol.oblique_planes[3].plane_alpha > 0.0);
 
     for (var i = 0u; i < max_steps; i = i + 1u) {
         if (t > t1 || accum_a > 0.97) {
@@ -463,13 +475,22 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
                     t += dt;
                     continue;
                 }
-            } else if (u_vol.oblique_visible > 0.5) {
-                let n_raw = u_vol.oblique_normal;
-                let n = select(normalize(n_raw), vec3<f32>(0.0, 0.0, 1.0), length(n_raw) < 1e-6);
-                let c = u_vol.oblique_center;
-                let pos = ray_origin + ray_dir * t;
-                let d = dot(n, pos - c);
-                if (d < 0.0) {
+            } else if (any_oblique_visible) {
+                var rejected = false;
+                for (var i: i32 = 0; i < 4; i = i + 1) {
+                    let plane = u_vol.oblique_planes[i];
+                    if (plane.visible < 0.5) {
+                        continue;
+                    }
+                    let n_raw = plane.normal;
+                    let n = select(normalize(n_raw), vec3<f32>(0.0, 0.0, 1.0), length(n_raw) < 1e-6);
+                    let d = dot(n, pos - plane.center);
+                    if (d < 0.0) {
+                        rejected = true;
+                        break;
+                    }
+                }
+                if (rejected) {
                     t += dt;
                     continue;
                 }
@@ -528,26 +549,40 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
         }
     }
 
-    if (u_vol.oblique_visible > 0.5) {
-        let n_raw = u_vol.oblique_normal;
-        let n = select(normalize(n_raw), vec3<f32>(0.0,0.0,1.0), length(n_raw) < 1e-6);
-        let c = u_vol.oblique_center;
-        let basis = build_basis(n);
-        let denom = dot(n, ray_dir);
-        if (abs(denom) > 1e-6) {
-            let t_plane = dot(n, c - ray_origin) / denom;
-            if (t_plane >= t0 && t_plane <= t1) {
-                let p = ray_origin + ray_dir * t_plane;
-                let local = p - c;
-                let u = dot(local, basis[0]);
-                let v = dot(local, basis[1]);
-                if (abs(u) <= 2.0 && abs(v) <= 2.0) {
-                    let oblique_rgb = vec3<f32>(0.30, 0.85, 0.50);
-                    let plane_alpha = 0.40;
-                    accum_rgb += (1.0 - accum_a) * oblique_rgb * plane_alpha;
-                    accum_a += (1.0 - accum_a) * plane_alpha;
-                }
+    if (any_oblique_visible_plane) {
+        let plane_colors = array<vec3<f32>, 4>(
+            vec3<f32>(0.9, 0.2, 0.2),
+            vec3<f32>(0.3, 0.85, 0.5),
+            vec3<f32>(1.0, 0.85, 0.2),
+            vec3<f32>(0.4, 0.7, 1.0),
+        );
+        for (var pi: i32 = 0; pi < 4; pi = pi + 1) {
+            let plane = u_vol.oblique_planes[pi];
+            if (plane.plane_alpha <= 0.0) {
+                continue;
             }
+            let n_raw = plane.normal;
+            let n = select(normalize(n_raw), vec3<f32>(0.0, 0.0, 1.0), length(n_raw) < 1e-6);
+            let c = plane.center;
+            let basis = build_basis(n);
+            let denom = dot(n, ray_dir);
+            if (abs(denom) < 1e-6) {
+                continue;
+            }
+            let t_plane = dot(n, c - ray_origin) / denom;
+            if (t_plane < t0 || t_plane > t1) {
+                continue;
+            }
+            let p = ray_origin + ray_dir * t_plane;
+            let local = p - c;
+            let u = dot(local, basis[0]);
+            let v = dot(local, basis[1]);
+            if (abs(u) > 2.0 || abs(v) > 2.0) {
+                continue;
+            }
+            let plane_alpha = plane.plane_alpha;
+            accum_rgb += (1.0 - accum_a) * plane_colors[pi] * plane_alpha;
+            accum_a += (1.0 - accum_a) * plane_alpha;
         }
     }
 

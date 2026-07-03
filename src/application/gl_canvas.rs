@@ -48,6 +48,7 @@ pub enum UserEvent {
     ViewClick(usize, f32, f32, f32), // view_index, screen_x, screen_y, screen_z
     SetObliqueRotation(usize, f32, f32, f32),
     SetRotationQuat(usize, [f32; 4]),
+    SetObliquePlane(usize, f32, f32),
     #[cfg(target_arch = "wasm32")]
     /// View click with reply; returns [x_mm, y_mm, slice_mm, reserved]
     ViewClickGet(usize, f32, f32, f32, oneshot::Sender<[f32; 4]>),
@@ -184,8 +185,6 @@ impl GLCanvas {
             orientation_index,
         )) {
             log::error!("Failed to send SetRenderMode event: {:?}", e);
-        } else {
-            log::info!("Sent SetRenderMode event: mode={},  mip={:?}, mesh_index={:?}, mpr_index={:?}, orientation_index={}", mode, mip_index, mesh_index, mpr_index, orientation_index);
         }
     }
 
@@ -489,6 +488,7 @@ impl_user_event_senders_for_glcanvas! {
     set_aliasing => SetAliasing(aliasing: bool),
     handle_view_click => ViewClick(screen_x: f32, screen_y: f32, screen_z: f32),
     set_oblique_rotation_radians => SetObliqueRotation(horizontal_radians: f32, vertical_radians: f32, in_plane_radians: f32),
+    sync_oblique_to_3d => SetObliquePlane(oblique_crop: f32, alpha: f32),
     // Mip controls
     set_mip_mode => SetMipMode(mode: u32),
     set_slab_thickness => SetSlabThickness(thickness: f32),

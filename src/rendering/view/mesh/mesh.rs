@@ -17,6 +17,38 @@ pub struct NeedleUniform {
     pub color: [f32; 4],
 }
 
+impl Default for NeedleUniform {
+    fn default() -> Self {
+        Self {
+            entry: [0.0; 3],
+            radius: 0.0,
+            tip: [0.0; 3],
+            id: 0,
+            color: [0.0; 4],
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ObliquePlaneUniform {
+    pub center: [f32; 3],
+    pub visible: f32,
+    pub normal: [f32; 3],
+    pub plane_alpha: f32,
+}
+
+impl Default for ObliquePlaneUniform {
+    fn default() -> Self {
+        Self {
+            center: [0.5; 3],
+            visible: 0.0,
+            normal: [0.0, 0.0, 1.0],
+            plane_alpha: 0.0,
+        }
+    }
+}
+
 /// Volume rendering parameters (sent to fragment shader)
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -42,22 +74,12 @@ pub struct MeshUniforms {
     pub needle_enabled:f32,
     pub needle_index: u32,
     pub plane_rotation_angle: f32,
-    pub oblique_center: [f32; 3],
-    pub oblique_visible: f32,
-    pub oblique_normal: [f32; 3],
-    pub plane_alpha: f32,
+    pub oblique_planes: [ObliquePlaneUniform; 4],
     pub needles: [NeedleUniform; 32],
 }
 
 impl Default for MeshUniforms {
     fn default() -> Self {
-        let empty_needle = NeedleUniform {
-            entry: [0.0;3],
-            radius: 0.0,
-            tip: [0.0;3],
-            id: 0,
-            color: [0.0;4],
-        };
         Self {
             ray_step_size: 0.0004,
             max_steps: 1500.0,
@@ -80,11 +102,8 @@ impl Default for MeshUniforms {
             needle_enabled: 0.0,
             needle_index: 0,
             plane_rotation_angle: 180.0,
-            oblique_center: [0.5; 3],
-            oblique_visible: 0.0,
-            oblique_normal: [0.0, 0.0, 1.0],
-            plane_alpha: 0.40,
-            needles: [empty_needle; 32],
+            oblique_planes: [ObliquePlaneUniform::default(); 4],
+            needles: [NeedleUniform::default(); 32],
         }
     }
 }

@@ -27,7 +27,6 @@ pub struct App {
     pub(crate) graphics_context: GraphicsContext,
     pub(crate) app_view: AppView,
     pub(crate) app_model: AppModel,
-    pub(crate) oblique: Option<usize>,
     pub(crate) saved_states: [usize; 4],
 }
 
@@ -80,7 +79,6 @@ impl App {
             graphics_context,
             app_view: AppView::new(layout, factory),
             app_model: AppModel::new(default_float),
-            oblique: None,
             saved_states: [0; 4],
         })
     }
@@ -199,39 +197,7 @@ impl App {
     }
 
     pub fn update(&mut self) {
-        // if self.oblique.is_some() {
-        //     self.sync_oblique_intersection();
-        // }
         self.app_view.layout.update(&self.graphics_context.graphics.queue);
-    }
-
-    fn sync_oblique_intersection(&mut self) {
-        let mut oblique_mat = None;
-        for view in self.app_view.layout.views() {
-            if let Some(mpr_view) = view.as_any().downcast_ref::<view::MprView>() {
-                if matches!(mpr_view.get_orientation(), view::Orientation::Oblique) {
-                    oblique_mat = Some(mpr_view.get_transform_matrix());
-                    break;
-                }
-            }
-        }
-        
-        if let Some(mat) = oblique_mat {
-            let mat_array = mat.to_cols_array();
-            for view in self.app_view.layout.views_mut() {
-                if let Some(mpr_view) = view.as_any_mut().downcast_mut::<view::MprView>() {
-                    if !matches!(mpr_view.get_orientation(), view::Orientation::Oblique) {
-                        mpr_view.show_intersection_line(mat_array);
-                    }
-                }
-            }
-        } else {
-            for view in self.app_view.layout.views_mut() {
-                if let Some(mpr_view) = view.as_any_mut().downcast_mut::<view::MprView>() {
-                    mpr_view.hide_intersection_line();
-                }
-            }
-        }
     }
 
     /// Function-level comment: Check if the layout contains any MIP views for MIP pass execution.
@@ -437,7 +403,6 @@ impl App {
         &mut self,
         vol: &CTVolume,
     ) -> Result<Arc<RenderContent>, KeplerError> {
-        self.oblique = None;
         let texture = self.load_render_content(vol)?;
         // Use the volume that may have been downsampled by load_render_content
         let vol_render = self.app_model.volume()?;
@@ -456,19 +421,6 @@ impl App {
         }
     }
 
-    pub fn set_dual_mpr_mode(&mut self, view_index: usize, enable: bool, orientation2_index: usize) -> Result<(), String> {
-        if let Ok(vol) = self.app_model.volume() {
-            let o2 = if enable {
-                Some(crate::rendering::view::ALL_ORIENTATIONS[orientation2_index % crate::rendering::view::ALL_ORIENTATIONS.len()])
-            } else {
-                None
-            };
-            self.app_view.set_dual_mpr_mode(view_index, enable, vol, o2)
-        } else {
-            Err("No volume loaded".to_string())
-        }
-    }
-
     /// Render mode setter for MPR, MIP, and Mesh.
     ///
     /// Function-level comment:
@@ -477,15 +429,11 @@ impl App {
     /// when switching between single-cell and multi-cell layouts.
     ///
     /// Parameters:
-    /// - mode: 0 = MPR, 1 = MIP, 2 = Mesh
-    /// - save_mesh: if true, reuse cached mesh if available
-    /// - crop: whether to crop the ROI with given world bounds
-    /// - sx..lz: world bounds
-    /// - one_cell: whether to switch to single-view layout
+    /// - mode: 0 = MPR, 1 = MIP, 2 = Mesh, 3 = 2*2, 4 = 1+3
     /// - mesh_index: the target cell index for mesh view
-    /// - iso_min, iso_max: ISO range for mesh extraction
-    /// - mip: optional parameter for MIP config
-    /// - orientation_index: orientation for MPR=
+    /// - mpr_index: the target cell index for for MPR view
+    /// - mip_index: the target cell index for for Mip view
+    /// - orientation_index: orientation for MPR
     pub fn set_render_mode(
         &mut self,
         mode: usize,
@@ -521,7 +469,7 @@ impl App {
             // Switch rendering mode using the (potentially downsampled) volume
             match mode {
                 0 | 1 | 2  => {
-                    log::info!("Switching to MPR mode (orientation: {})", orientation_index);
+                    log::info!("Switching to OneCellLayout");
                     let _ = self.app_view.set_layout_mode_single(
                         texture.clone(),
                         vol_render,
@@ -545,6 +493,7 @@ impl App {
                     self.app_view.restore_view_states();
                 }
                 _ => {
+                    log::info!("Switching to 2*2GridLayout");
                     let _ = self.app_view.configure_mesh_layout(
                         texture.clone(),
                         vol_render,
@@ -562,18 +511,9 @@ impl App {
                 if let Some(index) = index_opt {
                     if let Err(e) = self.app_view.set_slab_thickness(*index, thickness) {
                         log::warn!("set_slab_thickness failed on view {}: {}", index, e);
-                    } else {
-                        log::info!("View {} set_slab_thickness: {}", index, thickness);
                     }
                 }
             }
-
-            self.oblique = self.app_view.layout.views_mut().iter_mut().enumerate().find_map(|(index, view)| {
-                view.as_any_mut()
-                    .downcast_mut::<MprView>()
-                    .filter(|m| matches!(m.get_orientation(), Orientation::Oblique))
-                    .map(|_| index)
-            });
         } else {
             log::info!(
                 "MPR/MIP layout requested without loaded volume; will apply on next data load."
@@ -635,13 +575,6 @@ impl App {
         if let Err(e) = self.app_view.set_slice_mm(index, z) {
             log::warn!("set_slice_mm failed on view {}: {}", index, e);
         }
-        if let Some(oblique_view) = self.oblique{
-            if oblique_view == index{
-                self.sync_oblique_to_3d(index, true);
-            }
-        } else {
-            self.sync_oblique_to_3d(index, false);
-        }
     }
 
     pub fn set_scale(&mut self, index: usize, scale: f32) {
@@ -701,8 +634,6 @@ impl App {
     pub fn set_slab_thickness(&mut self, index: usize, thickness: f32) {
         if let Err(e) = self.app_view.set_slab_thickness(index, thickness) {
             log::warn!("set_slab_thickness failed on view {}: {}", index, e);
-        } else {
-            log::info!("View {} set_slab_thickness: {}", index, thickness);
         }
     }
 
@@ -775,7 +706,7 @@ impl App {
         }
     }
 
-    pub fn sync_oblique_to_3d(&mut self, index: usize, oblique_visible: bool){
+    pub fn sync_oblique_to_3d(&mut self, index: usize, oblique_crop: f32, alpha: f32){
         let mut raw: Option<([f32; 3], [f32; 3])> = None;
         if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
@@ -787,7 +718,7 @@ impl App {
         if let Some((normal_uv, slice_center_mm)) = raw {
             let slice_center_uv = self.mm_to_uv(slice_center_mm);
             if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()){
-                mesh_view.set_oblique_plane(slice_center_uv, normal_uv, oblique_visible, 0.5);
+                mesh_view.set_oblique_plane(slice_center_uv, normal_uv, index, oblique_crop, alpha);
             }
         }
     }
@@ -806,7 +737,6 @@ impl App {
                 }
             }
         }
-        self.sync_oblique_to_3d(index, true);
     }
 
     /// Get screen coordinate in millimeters for the specified view
@@ -984,7 +914,6 @@ impl App {
         if let Err(e) = self.app_view.set_rotation_degrees(index, degrees_x, degrees_y){
             log::warn!("set_rotation_degrees failed on view {}: {}",index,e);
         }
-        self.sync_oblique_to_3d(index, self.oblique == Some(index));
     }
 
     /// Reset the mesh for returning the mesh to its initial orientation
@@ -995,7 +924,6 @@ impl App {
             mesh_view.reset_pan();
             mesh_view.reset_opacity();
             mesh_view.reset_roi();
-            mesh_view.set_oblique_plane([0.5 ,0.5 ,0.5], [0.0, 0.0, 1.0], false, 0.5);
             log::info!("Mesh reset via State control");
         };
     }

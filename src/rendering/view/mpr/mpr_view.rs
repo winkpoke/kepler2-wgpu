@@ -63,14 +63,6 @@ pub struct MprView {
     orientation: Orientation,
     /// Antialiasing flag
     aliasing: bool,
-    /// Second view parameters for dual mode
-    dual_mode: bool,
-    orientation2: Option<Orientation>,
-    base_screen2: Mat4,
-    base_uv2: Mat4,
-    slice2: f32,
-    pan2: Vec3,
-    scale2: f32,
     /// Physical in-plane content width in millimeters
     content_w_mm: f32,
     /// Physical in-plane content height in millimeters
@@ -221,13 +213,6 @@ impl MprView {
             window_level, // Use provided WindowLevel with configured bias
             orientation,  // Store orientation for cross-sectional linking
             aliasing: false,
-            dual_mode: false,
-            orientation2: None,
-            base_screen2: Mat4::IDENTITY,
-            base_uv2: Mat4::IDENTITY,
-            slice2: 0.0,
-            pan2: Vec3::ZERO,
-            scale2: scale,
             content_w_mm,
             content_h_mm,
             padding_px: 0,
@@ -264,14 +249,6 @@ impl MprView {
 
         // Set the transformation matrix using the new architecture
         self.wgpu_impl.set_matrix(transform_matrix.to_cols_array());
-
-        if self.dual_mode {
-            let t_pan2 = Mat4::from_translation(-self.pan2);
-            let s_scale2 = Mat4::from_scale(Vec3::splat(self.scale2).with_z(1.0));
-            let transform_matrix_screen2 = self.base_screen2 * t_pan2 * t_center * s_scale2 * t_uncenter;
-            let transform_matrix2 = self.base_uv2.inverse() * transform_matrix_screen2;
-            self.wgpu_impl.set_matrix2(transform_matrix2.to_cols_array());
-        }
     }
 
     pub fn set_oblique_rotation_radians(
@@ -352,13 +329,6 @@ impl MprView {
         let right = (r_uv * glam::Vec4::new(1.0, 0.0, 0.0, 0.0)).truncate().normalize();
         let up = (r_uv * glam::Vec4::new(0.0, 1.0, 0.0, 0.0)).truncate().normalize();
         let n = right.cross(up).normalize();
-
-        // Mat4::from_cols(
-        //     glam::Vec4::new(right.x, right.y, right.z, 0.0),
-        //     glam::Vec4::new(up.x, up.y, up.z, 0.0),
-        //     glam::Vec4::new(n.x, n.y, n.z, 0.0),
-        //     glam::Vec4::new(0.0, 0.0, 0.0, 1.0),
-        // )
         n
     }
 
@@ -372,30 +342,6 @@ impl MprView {
         let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
 
         self.base_screen * t_pan * t_center * s_scale * t_uncenter
-    }
-
-    /// Enable dual orthogonal MPR rendering.
-    /// Sets the second orientation based on the provided volume and orientation.
-    pub fn enable_dual_mode(&mut self, vol: &CTVolume, orientation2: Orientation) {
-        let base_screen_legacy = orientation2.build_base(vol);
-        let base_uv_legacy = GeometryBuilder::build_uv_base(vol);
-        self.base_screen2 = base_screen_legacy.matrix;
-        self.base_uv2 = base_uv_legacy.matrix;
-        self.orientation2 = Some(orientation2);
-        self.dual_mode = true;
-        
-        // Match initial pan and scale if possible, or set to center
-        self.scale2 = self.scale;
-        self.pan2 = Vec3::ZERO;
-        
-        self.wgpu_impl.set_dual_mode(true);
-        self.update_transform_matrix();
-    }
-
-    pub fn disable_dual_mode(&mut self) {
-        self.dual_mode = false;
-        self.wgpu_impl.set_dual_mode(false);
-        self.update_transform_matrix();
     }
 
     pub fn set_aliasing(&mut self, aliasing: bool) {
@@ -454,9 +400,6 @@ impl Renderable for MprView {
 
         // Set slice position for volume sampling
         self.wgpu_impl.set_slice(self.slice);
-        if self.dual_mode {
-            self.wgpu_impl.set_slice2(self.slice2);
-        }
 
         // Recalculate transformation matrix if view parameters changed
         self.update_transform_matrix();
@@ -860,27 +803,6 @@ impl MprView {
 
     pub fn get_oblique_rotation(&self) -> Quat {
         self.oblique_rotation
-    }
-
-    pub fn show_intersection_line(&mut self, oblique_matrix: [f32; 16]) {
-        self.wgpu_impl.set_matrix2(oblique_matrix);
-        self.wgpu_impl.uniforms.frag.is_dual_mode = 2.0;
-    }
-
-    pub fn hide_intersection_line(&mut self) {
-        if !self.dual_mode {
-            self.wgpu_impl.uniforms.frag.is_dual_mode = 0.0;
-        }
-    }
-
-    pub fn get_transform_matrix(&self) -> Mat4 {
-        // 计算并提取从屏幕坐标到 UV 空间映射的变换矩
-        let t_pan = Mat4::from_translation(-self.pan);
-        let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
-        let s_scale = Mat4::from_scale(Vec3::splat(self.scale).with_z(1.0));
-        let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
-        let transform_matrix_screen = self.base_screen * t_pan * t_center * s_scale * t_uncenter;
-        self.base_uv.inverse() * transform_matrix_screen
     }
 
     pub fn set_oblique_rotation(&mut self, q: [f32; 4]) -> KeplerResult<()> {

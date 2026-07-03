@@ -2,17 +2,10 @@
 
 use anyhow::Result;
 use std::fmt;
-
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-
 use crate::core::coord::Base;
 use glam::Mat4;
-
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-#[cfg(target_arch = "wasm32")]
-use js_sys::Array;
 
 // Define the CTVolume struct to hold 3D data
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
