@@ -63,6 +63,14 @@ var t_diffuse: texture_3d<f32>;
 @group(0) @binding(1)
 var s_diffuse: sampler;
 
+struct NeedleUniform {
+    entry: vec3<f32>,
+    radius: f32,
+    tip: vec3<f32>,
+    id: u32,
+    color: vec4<f32>,
+};
+
 struct UniformsFrag {
     window: f32,
     level: f32,
@@ -74,10 +82,27 @@ struct UniformsFrag {
     aliasing: u32, 
     mat: mat4x4<f32>,
     mat2: mat4x4<f32>,
+    needle_count: u32,
+    needle_enabled: f32,
+    _pad0: f32,
+    _pad1: f32,
+    needles: array<NeedleUniform, 32>,
 }
 
 @group(2) @binding(0)
 var<uniform> u_uniform_frag: UniformsFrag;
+
+// 3D point-to-segment distance in volume-UV space
+fn distance_point_to_segment_3d(p: vec3<f32>, a: vec3<f32>, b: vec3<f32>) -> f32 {
+    let ab = b - a;
+    let len_sq = dot(ab, ab);
+    if (len_sq < 1e-10) {
+        return distance(p, a);
+    }
+    let t = clamp(dot(p - a, ab) / len_sq, 0.0, 1.0);
+    let foot = a + t * ab;
+    return distance(p, foot);
+}
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
@@ -130,6 +155,30 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     v = clamp(v, 0.0, 1.0);
     
     let final_color = vec3<f32>(v);
+
+    // 3D needle intersection on the slice
+    if (u_uniform_frag.needle_enabled > 0.5 && u_uniform_frag.needle_count > 0u) {
+        var best_dist = 1e20;
+        var best_color = vec3<f32>(0.0);
+        var best_alpha: f32 = 0.0;
+
+        for (var k: u32 = 0u; k < u_uniform_frag.needle_count; k = k + 1u) {
+            let needle = u_uniform_frag.needles[k];
+            let d = distance_point_to_segment_3d(tex_coords_3d, needle.entry, needle.tip);
+            if (d < needle.radius && d < best_dist) {
+                best_dist = d;
+                best_color = needle.color.rgb;
+                // Soft edge falloff for anti-aliased look
+                let edge = clamp((needle.radius - d) / max(needle.radius, 1e-6), 0.0, 1.0);
+                best_alpha = 0.55 + 0.45 * edge;
+            }
+        }
+
+        if (best_alpha > 0.0) {
+            // Composite needle over the slice using straight alpha
+            return vec4<f32>(mix(final_color, best_color, best_alpha), 1.0);
+        }
+    }
 
     // Return the final computed color
     return vec4<f32>(final_color, 1.0);

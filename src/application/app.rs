@@ -723,6 +723,15 @@ impl App {
         }
     }
 
+    pub fn get_oblique_normal(&self, index: usize) -> [f32; 3] {
+        let view = self.app_view.layout.views().get(index).unwrap();
+        if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
+            mpr_view.get_oblique_normal().to_array()
+        } else {
+            [f32::NAN, f32::NAN, f32::NAN]
+        }
+    }
+
     pub fn set_oblique_rotation_radians(
         &mut self,
         index: usize,
@@ -963,6 +972,13 @@ impl App {
         if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
             mip_view.set_needle_enabled(enabled);
         }
+        // Mirror to every MPR view so the orthogonal projection tracks the
+        // 3D needle visibility toggle in real time.
+        for view in self.app_view.layout.views_mut().iter_mut() {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_needle_enabled(enabled > 0.0);
+            }
+        }
         log::info!(
             "Needle {}", if enabled == 0.0 { "disabled" } else if enabled == 1.0 { "enabled" } else { "crop" }
         );
@@ -986,6 +1002,12 @@ impl App {
         };
         if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
             mip_view.set_new_needle(id, entry_vol, pos_vol,[r, g, b, 0.5]);
+        }
+        // Push the same trajectory to every MPR view for orthogonal projection.
+        for view in self.app_view.layout.views_mut().iter_mut() {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_new_needle(id, entry_vol, pos_vol, [r, g, b, 1.0]);
+            }
         }
         log::info!(
             "Needle {} set: entry_mm={:?} -> vol={:?}, pos_mm={:?} -> vol={:?}",
@@ -1013,6 +1035,11 @@ impl App {
         if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
             mip_view.set_needle_radius(id, radius_uv);
         }
+        for view in self.app_view.layout.views_mut().iter_mut() {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_needle_radius(id, radius_uv);
+            }
+        }
         log::info!("Needle {} radius set: {}mm -> {}uv",id, radius_mm, radius_uv);
     }
 
@@ -1025,6 +1052,11 @@ impl App {
         };
         if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
             mip_view.set_needle_position(id, pos_vol);
+        }
+        for view in self.app_view.layout.views_mut().iter_mut() {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_needle_position(id, pos_vol);
+            }
         }
         log::info!("Needle {} position set: pos_mm={:?} -> vol={:?}", id, pos_mm, pos_vol);
     }

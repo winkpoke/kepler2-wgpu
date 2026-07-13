@@ -583,6 +583,9 @@
                    <button id="convertBtn_dicom">DICOM export</button>
                    <button id="convertBtn_mhx">MHA export</button>
                 </div>
+                <div class="file-row">
+                    <button id="spineMask">Spine Mask</button>
+                </div>
             </div>
             <div id="tab-needle" class="tab-content">
                 <div class="needle-card" style="border-top:none">
@@ -1145,6 +1148,20 @@
             }
         })
 
+        // ========= Spine Mask Button ===========
+        byId('spineMask').addEventListener('click', async () => {
+            if (!serverConnected) {
+                alert('Server connection required for spine mask operation');
+                return;
+            }
+            const loaded_volumes = serverVolumes;
+            if (loaded_volumes.length === 0) {
+                alert('No volumes on server. Load a volume first (DICOM or MHA).');
+                return;
+            }
+            const volumeId = loaded_volumes[0];
+        })
+
         // ========= DICOM Export Button =========
         byId('convertBtn_dicom').addEventListener('click', async () => {
             if (!serverConnected) {
@@ -1369,7 +1386,7 @@
                 return;
             }
             const opt = byId('resetOptions').value;
-            state.index = parseInt(byId('index').value, 10);
+            state.index = parseInt(byId('oblique-view-input').value, 10);
             if (opt == "T") {
                 gl_canvas.set_rotation_quat(state.index, [0, 0, 0, 1]);
                 gl_canvas.set_oblique_rotation_radians(state.index, 0, 0, 0);
@@ -1390,7 +1407,7 @@
                 alert('Please select a series first!');
                 return;
             }
-            state.index = parseInt(byId('index-input').value, 10);
+            state.index = parseInt(byId('oblique-view-input').value, 10);
             const x = parseFloat(byId("quat-x").value) || 0;
             const y = parseFloat(byId("quat-y").value) || 0;
             const z = parseFloat(byId("quat-z").value) || 0;

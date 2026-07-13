@@ -15,7 +15,7 @@ async fn main() {
         .and_then(|p| p.parse().ok())
         .unwrap_or(kepler_wgpu::server::DEFAULT_PORT);
 
-    let server_mode = std::env::args().any(|arg| arg == "--server");
+    let server_mode = std::env::args().any(|arg| arg == "server");
 
     if server_mode {
         log::info!("Starting Kepler2-WGPU in server mode on port {}", port);

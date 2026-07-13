@@ -43,6 +43,8 @@ pub enum UserEvent {
     GetPan(usize, oneshot::Sender<[f32; 3]>),
     #[cfg(target_arch = "wasm32")]
     WorldCoordToScreen(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
+    #[cfg(target_arch = "wasm32")]
+    GetObliqueNormal(usize, oneshot::Sender<[f32; 3]>),
     SetSlabThickness(usize, f32),
     SetRotationAngleDeg(usize, f32, f32, f32),
     ViewClick(usize, f32, f32, f32), // view_index, screen_x, screen_y, screen_z
@@ -332,6 +334,23 @@ impl GLCanvas {
         }
 
         log::info!("Sent GetPan event for window {}", index);
+
+        match rx.await {
+            Ok(result) => Ok(result.into()),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn get_oblique_normal(&self, index: usize) -> Result<Box<[f32]>, String> {
+        let (tx, rx) = oneshot::channel();
+
+        if let Err(e) = self.proxy.send_event(UserEvent::GetObliqueNormal(index, tx)) {
+            log::error!("Failed to send GetObliqueNormal event for window {}: {:?}", index, e);
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+
+        log::info!("Sent GetObliqueNormal event for window {}", index);
 
         match rx.await {
             Ok(result) => Ok(result.into()),

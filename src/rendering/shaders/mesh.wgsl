@@ -607,19 +607,19 @@ struct FragmentOutput {
 @fragment
 fn fs_main(in: VertexOutput) -> FragmentOutput {
     // Screen-space UV with aspect ratio, scale, and pan
-    let scale = max(u_vol.scale, 0.0001);
+    let scale = max(u_vol.scale * 1.5, 0.0001);
     var uv_centered = in.tex_coords - vec2<f32>(0.5, 0.5);
 
-    if (u_vol.aspect_ratio > 1.0) {
-        uv_centered.x = uv_centered.x * u_vol.aspect_ratio;
-    } else if (u_vol.aspect_ratio < 1.0 && u_vol.aspect_ratio > 0.0) {
-        uv_centered.y = uv_centered.y / u_vol.aspect_ratio;
-    }
+    // if (u_vol.aspect_ratio > 1.0) {
+    //     uv_centered.x = uv_centered.x * u_vol.aspect_ratio;
+    // } else if (u_vol.aspect_ratio < 1.0 && u_vol.aspect_ratio > 0.0) {
+    //     uv_centered.y = uv_centered.y / u_vol.aspect_ratio;
+    // }
 
-    let uv = (uv_centered / scale) + vec2<f32>(0.5, 0.5) + vec2<f32>(u_vol.pan_x, u_vol.pan_y);
-    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-        return FragmentOutput(vec4<f32>(0.0, 0.0, 0.0, 1.0), 1.0);
-    }
+    let uv = (uv_centered * scale) + vec2<f32>(0.5, 0.5) + vec2<f32>(u_vol.pan_x, u_vol.pan_y);
+    // if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+    //     return FragmentOutput(vec4<f32>(0.0, 0.0, 0.0, 1.0), 1.0);
+    // }
 
     // Build the ray in volume space
     let center = vec3<f32>(0.5, 0.5, 0.5);

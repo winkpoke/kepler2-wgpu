@@ -6,7 +6,9 @@ use crate::{
         GeometryBuilder, WindowLevel,
     },
     data::CTVolume,
-    rendering::{Orientation, RenderContent, StatefulView, ViewState},
+    rendering::{
+        view::mesh::mesh::NeedleUniform, Orientation, RenderContent, StatefulView, ViewState,
+    },
     Renderable, View,
 };
 use super::{MprRenderContext, MprViewWgpuImpl};
@@ -69,6 +71,13 @@ pub struct MprView {
     content_h_mm: f32,
     /// Uniform viewport padding in pixels
     padding_px: u32,
+    /// Whether to orthogonally project 3D needles onto the slice plane.
+    needle_enabled: bool,
+    /// Active needle list (volume-UV coordinates). Synced into the GPU
+    /// fragment uniforms each frame.
+    needles: Vec<NeedleUniform>,
+    /// Cached last-uploaded needle count, used to avoid redundant GPU writes.
+    last_uploaded_needle_count: usize,
 }
 
 impl MprView {
@@ -216,6 +225,9 @@ impl MprView {
             content_w_mm,
             content_h_mm,
             padding_px: 0,
+            needle_enabled: false,
+            needles: Vec::new(),
+            last_uploaded_needle_count: 0,
         }
     }
 
@@ -348,6 +360,68 @@ impl MprView {
         self.aliasing = aliasing;
         self.wgpu_impl.set_aliasing(aliasing);
     }
+
+    /// Toggle the orthogonal projection of 3D needles onto the slice plane.
+    pub fn set_needle_enabled(&mut self, enabled: bool) {
+        self.needle_enabled = enabled;
+        self.wgpu_impl.set_needles_enabled(enabled);
+    }
+
+    /// Insert or update a needle by id. Coordinates are in volume-UV space
+    /// (i.e. what `mm_to_uv` returns in the application layer). Color is RGBA
+    /// in linear [0,1] range.
+    pub fn set_new_needle(
+        &mut self,
+        id: u32,
+        entry: [f32; 3],
+        tip: [f32; 3],
+        color: [f32; 4],
+    ) {
+        if let Some(needle) = self.needles.iter_mut().find(|n| n.id == id) {
+            needle.entry = entry;
+            needle.tip = tip;
+            needle.color = color;
+        } else if self.needles.len() < 32 {
+            self.needles.push(NeedleUniform {
+                entry,
+                radius: NeedleUniform::default().radius,
+                tip,
+                id,
+                color,
+            });
+        } else {
+            log::warn!(
+                "[NEEDLE→MPR] Needle capacity (32) reached; ignoring needle {}",
+                id
+            );
+        }
+    }
+
+    /// Update only the tip of an existing needle (keeps the entry fixed).
+    pub fn set_needle_position(&mut self, id: u32, tip: [f32; 3]) {
+        if let Some(needle) = self.needles.iter_mut().find(|n| n.id == id) {
+            needle.tip = tip;
+        }
+    }
+
+    /// Set the radius (volume-UV units) of an existing needle.
+    pub fn set_needle_radius(&mut self, id: u32, radius: f32) {
+        if let Some(needle) = self.needles.iter_mut().find(|n| n.id == id) {
+            needle.radius = radius.clamp(0.0001, 0.1);
+        }
+    }
+
+    /// Replace the entire needle list (e.g. when syncing from the mesh view).
+    /// `enabled` is forwarded to the GPU as well.
+    pub fn set_needles(&mut self, needles: &[NeedleUniform], enabled: bool) {
+        self.needles.clear();
+        for n in needles.iter().take(32) {
+            self.needles.push(*n);
+        }
+        self.needle_enabled = enabled;
+        self.wgpu_impl.set_needles(&self.needles, enabled);
+        self.last_uploaded_needle_count = self.needles.len();
+    }
 }
 
 #[cfg(test)]
@@ -403,6 +477,14 @@ impl Renderable for MprView {
 
         // Recalculate transformation matrix if view parameters changed
         self.update_transform_matrix();
+
+        // Sync needle overlay state to the GPU
+        if self.needles.len() != self.last_uploaded_needle_count {
+            self.wgpu_impl.set_needles(&self.needles, self.needle_enabled);
+            self.last_uploaded_needle_count = self.needles.len();
+        } else if self.needle_enabled {
+            self.wgpu_impl.set_needles(&self.needles, self.needle_enabled);
+        }
 
         // Update GPU buffers with all current uniform values
         self.wgpu_impl.update_uniforms_buffers(queue);

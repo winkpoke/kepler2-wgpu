@@ -1,6 +1,10 @@
 pub mod handlers;
 pub mod routes;
 pub mod state;
+pub mod ai;
+pub mod ai_task;
+pub mod ai_model;
+pub mod ai_handler;
 mod ws;
 
 pub use routes::create_router;

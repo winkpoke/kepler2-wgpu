@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use super::mpr_render_context::MprRenderContext;
+use crate::rendering::view::mesh::mesh::NeedleUniform;
 use crate::rendering::view::render_content::RenderContent;
 use std::sync::Arc;
 
@@ -12,7 +13,7 @@ pub struct UniformsVert {
 }
 
 #[repr(C)]
-#[derive(Copy, Clone, Default, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct UniformsFrag {
     pub window_width: f32,
     pub window_level: f32,
@@ -24,6 +25,33 @@ pub struct UniformsFrag {
     pub aliasing: u32,  // Change from bool to u32
     pub mat: [f32; 16],
     pub mat2: [f32; 16],
+    pub needle_count: u32,
+    pub needle_enabled: f32,
+    pub _pad0: f32,
+    pub _pad1: f32,
+    pub needles: [NeedleUniform; 32],
+}
+
+impl Default for UniformsFrag {
+    fn default() -> Self {
+        Self {
+            window_width: 0.0,
+            window_level: 0.0,
+            slice: 0.0,
+            is_packed_rg8: 0.0,
+            bias: 0.0,
+            is_dual_mode: 0.0,
+            slice2: 0.0,
+            aliasing: 0,
+            mat: [0.0; 16],
+            mat2: [0.0; 16],
+            needle_count: 0,
+            needle_enabled: 0.0,
+            _pad0: 0.0,
+            _pad1: 0.0,
+            needles: [NeedleUniform::default(); 32],
+        }
+    }
 }
 
 #[repr(C)]
@@ -96,7 +124,11 @@ impl MprViewWgpuImpl {
             aliasing: 0,
             mat: transform_matrix.to_cols_array(),
             mat2: glam::Mat4::IDENTITY.to_cols_array(),
-            ..Default::default()
+            needle_count: 0,
+            needle_enabled: 0.0,
+            _pad0: 0.0,
+            _pad1: 0.0,
+            needles: [NeedleUniform::default(); 32],
         };
 
         log::info!(
@@ -232,8 +264,26 @@ impl MprViewWgpuImpl {
     pub fn set_fragment_uniforms(&mut self, fragment_uniforms: UniformsFrag) {
         self.uniforms.frag = fragment_uniforms;
 
-        log::trace!("Set fragment uniform values with window_width: {:.1}, window_level: {:.1}, slice: {:.1}", 
+        log::trace!("Set fragment uniform values with window_width: {:.1}, window_level: {:.1}, slice: {:.1}",
                    fragment_uniforms.window_width, fragment_uniforms.window_level, fragment_uniforms.slice);
+    }
+
+    /// Replace the entire needle array (up to 32 entries) and its enabled flag.
+    /// The caller is responsible for keeping the slice short enough to fit.
+    pub fn set_needles(&mut self, needles: &[NeedleUniform], enabled: bool) {
+        let mut gpu_needles = [NeedleUniform::default(); 32];
+        let n = needles.len().min(32);
+        for (i, ndl) in needles.iter().take(n).enumerate() {
+            gpu_needles[i] = *ndl;
+        }
+        self.uniforms.frag.needles = gpu_needles;
+        self.uniforms.frag.needle_count = n as u32;
+        self.uniforms.frag.needle_enabled = if enabled { 1.0 } else { 0.0 };
+    }
+
+    /// Toggle needle rendering on/off without touching the needle list.
+    pub fn set_needles_enabled(&mut self, enabled: bool) {
+        self.uniforms.frag.needle_enabled = if enabled { 1.0 } else { 0.0 };
     }
 
     /// Update vertex uniform buffer with current uniform values
@@ -337,7 +387,9 @@ mod tests {
     #[test]
     fn test_uniforms_frag_size_alignment() {
         let size = std::mem::size_of::<UniformsFrag>();
-        assert_eq!(size, 160);
+        // Layout: 32 bytes header + 16 (mat) + 16 (mat2) + 16 (needle header+pad)
+        //        + 32 * NeedleUniform (48 bytes each) = 1712 bytes.
+        assert_eq!(size, 1712);
         let vert_size = std::mem::size_of::<UniformsVert>();
         assert_eq!(vert_size, 16);
         let uniforms_size = std::mem::size_of::<Uniforms>();
