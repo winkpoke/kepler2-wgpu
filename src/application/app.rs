@@ -13,6 +13,7 @@ use crate::data::dicom::*;
 use crate::data::volume_encoding::VolumeEncoding;
 use crate::data::{ct_volume::*, AppModel};
 use crate::rendering::view::mesh::mesh_texture_pool::MeshTexturePool;
+use crate::rendering::view::mesh::mesh::spine;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::*;
 use crate::application::appview::AppView;
@@ -674,6 +675,62 @@ impl App {
         if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
                 mpr_view.set_aliasing(aliasing);
+            }
+        }
+    }
+
+    pub fn set_ai_segmentation(&mut self, raw: Vec<u8>, width: u32, height: u32, depth: u32) {
+        if raw.is_empty(){
+            let device = &self.graphics_context.graphics.device;
+            for view in self.app_view.layout.views_mut().iter_mut() {
+                if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>()
+                    {
+                        mpr_view.set_segmentation(device, None);
+                    }
+                if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>()
+                {
+                    mesh_view.set_spine_meshes(device, Vec::new());
+                }
+            }
+        } else {
+            let device = &self.graphics_context.graphics.device;
+            let queue = &self.graphics_context.graphics.queue;
+            match RenderContent::from_labels_r8(device, queue, &raw, "ai_segmentation", width, height, depth) {
+                Ok(seg_content) => {
+                    let seg_arc = std::sync::Arc::new(seg_content);
+                    let mut applied = 0usize;
+                    for view in self.app_view.layout.views_mut().iter_mut() {
+                        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>()
+                        {
+                            mpr_view.set_segmentation(device, Some(seg_arc.clone()));
+                            applied += 1;
+                        }
+                    }
+                    log::info!("SetSegmentationAll: applied to {} MPR view(s)", applied);
+
+                    let (dims, spacing) = match self.app_model.volume() {
+                        Ok(vol) => (vol.dimensions(), vol.voxel_spacing()),
+                        Err(_) => {
+                            log::warn!("SetSegmentationAll: no CT volume loaded, skipping 3D mesh extraction");
+                            return;
+                        }
+                    };
+                    let label_ids: [u8; 7] = [1, 2, 3, 4, 5, 6, 7];
+                    let spine_meshes = spine(&raw, dims, spacing, &label_ids, 0.3);
+                    log::info!(
+                        "SetSegmentationAll: extracted {} vertebra mesh(es) from dims={:?} spacing={:?}",
+                        spine_meshes.len(), dims, spacing
+                    );
+
+                    for view in self.app_view.layout.views().iter() {
+                        if let Some(mesh_view) = view.as_any().downcast_ref::<MeshView>() {
+                            mesh_view.set_spine_meshes(device, spine_meshes.clone());
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("SetSegmentationAll: failed to build RenderContent: {}", e);
+                }
             }
         }
     }

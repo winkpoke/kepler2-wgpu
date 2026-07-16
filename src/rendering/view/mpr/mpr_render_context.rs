@@ -3,6 +3,7 @@
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use crate::rendering::pipeline::*;
+use crate::rendering::view::render_content::RenderContent;
 
 /// Global GPU state shared across all MPR views
 /// Contains pipeline, bind group layouts, and shared vertex/index buffers
@@ -27,6 +28,9 @@ pub struct MprRenderContext {
 
     /// Number of indices in the index buffer
     pub num_indices: u32,
+
+    /// Default "empty" segmentation texture
+    pub default_seg_content: Arc<RenderContent>,
 }
 
 #[repr(C)]
@@ -80,9 +84,9 @@ impl MprRenderContext {
     ///
     /// # Returns
     /// A new MprRenderContext with initialized shared resources
-    pub fn new(device: &wgpu::Device) -> Self {
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
         // Create bind group layout for 3D texture and sampler
-        let texture_bind_group_layout = create_texture_bind_group_layout(device);
+        let texture_bind_group_layout = create_texture_bind_group_layout_addseg(device);
 
         // Create bind group layouts for uniforms
         let vertex_bind_group_layout =
@@ -112,7 +116,7 @@ impl MprRenderContext {
             &vertex_bind_group_layout,
             &fragment_bind_group_layout,
         ];
-        
+
         let render_pipeline = Arc::new(create_texture_quad_pipeline(
             device,
             bgls,
@@ -135,6 +139,14 @@ impl MprRenderContext {
         });
         let num_indices = INDICES.len() as u32;
 
+        // Build the 1x1x1 "empty" segmentation texture used as the default
+        // for binding 2/3 until an AI result has been uploaded. A single
+        // zero byte is uploaded so the texture is a valid R8Uint image.
+        let default_seg_content = Arc::new(
+            RenderContent::from_labels_r8(device, queue, &[0u8], "MPR Default Seg", 1, 1, 1)
+            .expect("failed to build default seg content"),
+        );
+
         log::info!("MprRenderContext initialized with shared GPU resources");
 
         Self {
@@ -145,6 +157,7 @@ impl MprRenderContext {
             vertex_buffer,
             index_buffer,
             num_indices,
+            default_seg_content,
         }
     }
 }

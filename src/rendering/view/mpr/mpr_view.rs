@@ -422,6 +422,23 @@ impl MprView {
         self.wgpu_impl.set_needles(&self.needles, enabled);
         self.last_uploaded_needle_count = self.needles.len();
     }
+
+    /// Swap the segmentation texture for this view. 
+    /// Pass `None` to revert to the default empty texture and hide the overlay.
+    /// The `device` is required to rebuild the per-view texture bind group
+    /// after the segmentation `RenderContent` changes.
+    pub fn set_segmentation(
+        &mut self,
+        device: &wgpu::Device,
+        seg: Option<Arc<RenderContent>>,
+    ) {
+        self.wgpu_impl.set_segmentation(device, seg);
+    }
+
+    /// Returns the current overlay-enabled flag.
+    pub fn is_segmentation_enabled(&self) -> bool {
+        self.wgpu_impl.uniforms.frag.seg_enabled > 0.5
+    }
 }
 
 #[cfg(test)]

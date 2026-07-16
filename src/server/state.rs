@@ -1,8 +1,11 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use serde::Serialize;
 use tokio::sync::{broadcast, RwLock};
 
+use crate::server::ai::AiService;
+use crate::server::ai_task::TaskManager;
 use crate::server::ws::WsMessage;
 use crate::data::dicom::Patient;
 use crate::data::dicom::StudySet;
@@ -16,6 +19,13 @@ pub struct StoredVolume {
     #[serde(skip_serializing)]
     pub mhx_path: Option<Vec<u8>>,
     pub data_path: Option<Vec<u8>>,
+    /// Absolute path on disk where the MHA file for this volume is persisted.
+    /// The Python AI service (`src/server/python/app.py`) reads from this
+    /// path; we populate it in `upload_volume` so that the same id is
+    /// usable as a `series_id` for `/api/segment` without any extra
+    /// round-trip.
+    #[serde(skip_serializing)]
+    pub mha_disk_path: Option<PathBuf>,
     /// Timestamp when volume was loaded (ISO 8601)
     pub loaded_at: String,
     pub patient: Patient,
@@ -31,21 +41,93 @@ pub struct StoredVolume {
 /// Shared application state for the Axum server
 #[derive(Clone)]
 pub struct ServerState {
+    /// AI service for segmenting volumes
+    pub ai: Arc<AiService>,
+    /// Task manager that tracks the lifecycle of every segmentation task.
+    pub tasks: TaskManager,
     /// Map of volume ID -> StoredVolume
     pub volumes: Arc<RwLock<HashMap<String, StoredVolume>>>,
     /// Server start time (ISO 8601)
     pub start_time: String,
     /// Broadcast channel for WebSocket events (capacity: 256)
     pub ws_tx: broadcast::Sender<WsMessage>,
+    /// Directory where uploaded MHA files 
+    pub series_dir: PathBuf,
+    /// Whether to actually write MHA files to `series_dir`. 
+    pub persist_mha_to_disk: bool,
 }
 
 impl ServerState {
     pub fn new() -> Self {
         let (ws_tx, _) = broadcast::channel(256);
+
+        // Resolve the on-disk series directory. Honour the same env var the
+        // Python service uses (`KEPLER_SERIES_DIR`) so the two sides agree
+        // on the file location. Default to `$TMPDIR/kepler_series`, which
+        // works on Linux, macOS and Windows (`std::env::temp_dir()`
+        // returns the platform-appropriate temp directory).
+        //
+        // The Python FastAPI service (`src/server/python/app.py`) reads
+        // from exactly this path; if we fall back to the temp directory
+        // while the Python side was started with a custom
+        // `KEPLER_SERIES_DIR`, segmentation requests will fail with
+        // "Series <id> not found on disk" because the two sides will be
+        // looking at different folders. Warn loudly when we hit the
+        // fallback so the user can align the two env vars.
+        let series_dir_from_env = std::env::var_os("KEPLER_SERIES_DIR")
+            .map(PathBuf::from)
+            .filter(|p| !p.as_os_str().is_empty());
+
+        let (series_dir, using_fallback) = match series_dir_from_env {
+            Some(p) => (p, false),
+            None => (std::env::temp_dir().join("kepler_series"), true),
+        };
+
+        if using_fallback {
+            eprintln!(
+                "\n\
+                 ============================================================\n\
+                 [kepler-wgpu] KEPLER_SERIES_DIR is not set.\n\
+                 [kepler-wgpu]   Uploaded volumes will be kept in memory only\n\
+                 [kepler-wgpu]   and NOT persisted to disk.\n\
+                 [kepler-wgpu]   The Python AI service (src/server/python/app.py)\n\
+                 [kepler-wgpu]   will not be able to read MHA files for\n\
+                 [kepler-wgpu]   segmentation.\n\
+                 [kepler-wgpu]\n\
+                 [kepler-wgpu]   If you need AI segmentation, set\n\
+                 [kepler-wgpu]     $env:KEPLER_SERIES_DIR = \"path\\\\to\\\\share\"\n\
+                 [kepler-wgpu]   on BOTH the Rust and Python terminals.\n\
+                 ============================================================\n"
+            );
+            log::warn!(
+                "KEPLER_SERIES_DIR not set; uploaded volumes stay in memory only. \
+                 Set KEPLER_SERIES_DIR on both Rust and Python sides if you need AI segmentation."
+            );
+        }
+
+        let persist_mha_to_disk = !using_fallback;
+
+        if persist_mha_to_disk {
+            // Best-effort directory creation.
+            if let Err(e) = std::fs::create_dir_all(&series_dir) {
+                log::warn!(
+                    "Failed to create KEPLER_SERIES_DIR at {:?}: {}",
+                    series_dir,
+                    e
+                );
+            } else {
+                log::info!("Persisting uploaded MHAs under {:?}", series_dir);
+            }
+        }
+
         Self {
+            ai: Arc::new(AiService::new()),
+            tasks: TaskManager::new(),
             volumes: Arc::new(RwLock::new(HashMap::new())),
             start_time: chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
             ws_tx,
+            series_dir,
+            persist_mha_to_disk,
         }
     }
 
@@ -64,6 +146,17 @@ impl ServerState {
     /// Get volume count
     pub async fn volume_count(&self) -> usize {
         self.volumes.read().await.len()
+    }
+
+    /// Absolute on-disk path where the MHA file for `series_id` should
+    /// live. This matches the convention in
+    /// `src/server/python/app.py::_run_task`:
+    ///
+    /// ```python
+    /// series_path = os.path.join(SERIES_DIR, f"{series_id}.mha")
+    /// ```
+    pub fn series_path(&self, series_id: &str) -> PathBuf {
+        self.series_dir.join(format!("{}.mha", series_id))
     }
 }
 

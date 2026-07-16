@@ -3,6 +3,7 @@
 use super::mpr_render_context::MprRenderContext;
 use crate::rendering::view::mesh::mesh::NeedleUniform;
 use crate::rendering::view::render_content::RenderContent;
+use crate::rendering::view::LABEL_COLORS;
 use std::sync::Arc;
 
 /// Uniform data structures for MPR rendering
@@ -27,9 +28,10 @@ pub struct UniformsFrag {
     pub mat2: [f32; 16],
     pub needle_count: u32,
     pub needle_enabled: f32,
+    pub seg_enabled: f32,
     pub _pad0: f32,
-    pub _pad1: f32,
     pub needles: [NeedleUniform; 32],
+    pub label_colors: [[f32; 4]; 8],
 }
 
 impl Default for UniformsFrag {
@@ -47,9 +49,10 @@ impl Default for UniformsFrag {
             mat2: [0.0; 16],
             needle_count: 0,
             needle_enabled: 0.0,
+            seg_enabled: 0.0,
             _pad0: 0.0,
-            _pad1: 0.0,
             needles: [NeedleUniform::default(); 32],
+            label_colors: LABEL_COLORS,
         }
     }
 }
@@ -71,7 +74,10 @@ pub struct MprViewWgpuImpl {
     /// Reference to shared texture content
     pub render_content: Arc<RenderContent>,
 
-    /// View-specific texture bind group
+    /// Active segmentation texture
+    pub seg_content: Arc<RenderContent>,
+
+    /// View-specific texture bind group (volume + segmentation)
     pub texture_bind_group: wgpu::BindGroup,
 
     /// View-specific vertex uniform buffer
@@ -126,9 +132,10 @@ impl MprViewWgpuImpl {
             mat2: glam::Mat4::IDENTITY.to_cols_array(),
             needle_count: 0,
             needle_enabled: 0.0,
+            seg_enabled: 0.0,
             _pad0: 0.0,
-            _pad1: 0.0,
             needles: [NeedleUniform::default(); 32],
+            label_colors: LABEL_COLORS,
         };
 
         log::info!(
@@ -143,21 +150,20 @@ impl MprViewWgpuImpl {
             frag: u_frag_data,
         };
 
-        // Create view-specific texture bind group using shared layout
-        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &render_context.texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&render_content.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&render_content.sampler),
-                },
-            ],
-            label: Some("mpr_view_texture_bind_group"),
-        });
+        // Start with the shared default (1x1x1 zero label) seg content.
+        let seg_content = Arc::clone(&render_context.default_seg_content);
+
+        // Create view-specific texture bind group using shared layout.
+        // Bindings 0/1 = volume texture + sampler (filterable).
+        // Bindings 2/3 = segmentation texture + sampler (R8Uint,
+        // non-filterable). The bind group must include all 4 entries
+        // because the layout declares them.
+        let texture_bind_group = Self::create_texture_bind_group(
+            device,
+            &render_context.texture_bind_group_layout,
+            &render_content,
+            &seg_content,
+        );
 
         // Create view-specific vertex uniform buffer and bind group
         let (uniform_vert_buffer, uniform_vert_bind_group) = Self::create_vertex_uniform_bind_group(
@@ -179,6 +185,7 @@ impl MprViewWgpuImpl {
         Self {
             render_context,
             render_content,
+            seg_content,
             texture_bind_group,
             uniform_vert_buffer,
             uniform_vert_bind_group,
@@ -186,6 +193,68 @@ impl MprViewWgpuImpl {
             uniform_frag_bind_group,
             uniforms,
         }
+    }
+
+    /// Helper that builds a texture bind group covering both the volume
+    /// (bindings 0/1) and the segmentation texture (bindings 2/3).
+    fn create_texture_bind_group(
+        device: &wgpu::Device,
+        layout: &wgpu::BindGroupLayout,
+        volume: &RenderContent,
+        seg: &RenderContent,
+    ) -> wgpu::BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&volume.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&volume.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&seg.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&seg.sampler),
+                },
+            ],
+            label: Some("mpr_view_texture_bind_group"),
+        })
+    }
+
+    /// Swap the segmentation texture and rebuild the texture bind group
+    /// so the new R8Uint label volume is sampled by the fragment shader.
+    /// Also toggles `seg_enabled` to 1.0 (use the overlay). 
+    /// Pass `None` to revert to the default empty texture and disable the overlay.
+    pub fn set_segmentation(
+        &mut self,
+        device: &wgpu::Device,
+        seg: Option<Arc<RenderContent>>,
+    ) {
+        let enable = seg.is_some();
+        self.seg_content = match seg {
+            Some(c) => c,
+            None => Arc::clone(&self.render_context.default_seg_content),
+        };
+        self.texture_bind_group = Self::create_texture_bind_group(
+            device,
+            &self.render_context.texture_bind_group_layout,
+            &self.render_content,
+            &self.seg_content,
+        );
+        self.uniforms.frag.seg_enabled = if enable { 1.0 } else { 0.0 };
+        log::info!(
+            "MprViewWgpuImpl: segmentation {} ({}x{}x{})",
+            if self.uniforms.frag.seg_enabled > 0.5 { "enabled" } else { "disabled" },
+            self.seg_content.texture.size().width,
+            self.seg_content.texture.size().height,
+            self.seg_content.texture.size().depth_or_array_layers,
+        );
     }
 
     /// Set the uniform values for this view
@@ -387,9 +456,16 @@ mod tests {
     #[test]
     fn test_uniforms_frag_size_alignment() {
         let size = std::mem::size_of::<UniformsFrag>();
-        // Layout: 32 bytes header + 16 (mat) + 16 (mat2) + 16 (needle header+pad)
-        //        + 32 * NeedleUniform (48 bytes each) = 1712 bytes.
-        assert_eq!(size, 1712);
+        // Layout:
+        //   32 bytes header (7 f32 + 1 u32)
+        // + 64 bytes mat
+        // + 64 bytes mat2
+        // + 16 bytes needle header + _pad0 (1 u32 + 3 f32)
+        // + 32 * 48 bytes NeedleUniform = 1536 bytes
+        // + 8 * 16 bytes label_colors (vec4, 4th component is padding
+        //   so the byte layout matches the WGSL `array<vec4<f32>, 8>`)
+        // = 1840 bytes
+        assert_eq!(size, 1840);
         let vert_size = std::mem::size_of::<UniformsVert>();
         assert_eq!(vert_size, 16);
         let uniforms_size = std::mem::size_of::<Uniforms>();

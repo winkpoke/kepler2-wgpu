@@ -7,6 +7,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
+use crate::server::ai_handler;
+use crate::server::ai_model::{CancelRequest, SegmentRequest, SegmentResponse};
 use crate::data::dicom::{build_ct_dicom, FsSink, generate_uid, Patient, StudySet};
 use crate::server::state::{ServerState, StoredVolume};
 use crate::server::ws::WsMessage;
@@ -75,7 +77,41 @@ async fn handle_socket(mut socket: axum::extract::ws::WebSocket, state: ServerSt
                 match result {
                     Some(Ok(msg)) => match msg {
                         axum::extract::ws::Message::Text(text) => {
-                            if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
+                            if let Ok(cmd) = serde_json::from_str::<crate::server::ws::WsClientCommand>(&text) {
+                                match cmd {
+                                    crate::server::ws::WsClientCommand::Segment { model, series } => {
+                                        log::info!("WS: start segment model={} series={}", model, series);
+                                        if let Err(e) = ai_handler::handle_segment(
+                                            state.clone(),
+                                            model,
+                                            series,
+                                        )
+                                        .await
+                                        {
+                                            log::error!("WS segment dispatch failed: {e}");
+                                        }
+                                    }
+                                    crate::server::ws::WsClientCommand::SegmentCancel { task_id } => {
+                                        log::info!("WS: cancel segment task_id={}", task_id);
+                                        if let Err(e) = ai_handler::handle_cancel(
+                                            state.clone(),
+                                            CancelRequest { task_id: task_id.clone() },
+                                        )
+                                        .await
+                                        {
+                                            log::error!("WS segment cancel failed: {e}");
+                                        }
+                                    }
+                                    crate::server::ws::WsClientCommand::SegmentProgressQuery { task_id } => {
+                                        if let Some(t) = state.tasks.get(&task_id).await {
+                                            let _ = state.ws_tx.send(WsMessage::SegmentProgress {
+                                                task_id: task_id.clone(),
+                                                value: t.progress,
+                                            });
+                                        }
+                                    }
+                                }
+                            } else if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
                                 if client_msg.kind == "ping" {
                                     let hb = WsMessage::Heartbeat {
                                         timestamp: chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
@@ -159,10 +195,38 @@ pub async fn upload_volume(
 
     let id = generate_uid();
     let now = chrono::Local::now();
+
+    // Optionally persist the MHA to disk so the Python AI service can
+    // read it for segmentation. This only happens when the user has
+    // explicitly set KEPLER_SERIES_DIR (indicated by
+    // `persist_mha_to_disk`). The default is to keep the volume in
+    // memory only — the browser wasm path already renders it.
+    let mha_disk_path = if state.persist_mha_to_disk {
+        let path = state.series_path(&id);
+        if let Err(e) = tokio::fs::write(&path, &mha_bytes).await {
+            log::error!(
+                "Failed to persist MHA for volume {} to {:?}: {}",
+                id,
+                path,
+                e
+            );
+            return Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to persist MHA to {}: {}", path.display(), e),
+            ));
+        }
+        log::info!("Persisted MHA for volume {} ({} bytes)", id, mha_bytes.len());
+        Some(path)
+    } else {
+        log::debug!("Skipped MHA disk persist (KEPLER_SERIES_DIR not set)");
+        None
+    };
+
     let stored = StoredVolume {
         id: id.clone(),
         mhx_path: Some(mha_bytes),
         data_path: Some(data_bytes),
+        mha_disk_path,
         loaded_at: now.format("%Y-%m-%dT%H:%M:%S").to_string(),
         patient: Patient {
             patient_id: params.patient_id.clone().unwrap_or_else(|| "UPLOAD".to_string()),
@@ -241,4 +305,112 @@ pub async fn build_ct_dicom_axum(
 
     log::info!("DICOM exported to {:?}", temp_dir);
     Ok(Json(stored))
+}
+
+pub async fn start_segmentation(
+    State(state): State<ServerState>,
+    Json(req): Json<SegmentRequest>,
+) -> Result<Json<SegmentResponse>, (StatusCode, String)> {
+    let series = req.series_id.clone();
+    let model = req.model.clone();
+    match ai_handler::handle_segment(state.clone(), model, series).await {
+        Ok(resp) => Ok(Json(resp)),
+        Err(e) => {
+            log::error!("start_segmentation failed: {e}");
+            broadcast_message(&state, WsMessage::Error {
+                message: format!("start_segmentation failed: {e}"),
+            });
+            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        }
+    }
+}
+
+pub async fn cancel_segmentation(
+    State(state): State<ServerState>,
+    Json(req): Json<CancelRequest>,
+) -> Result<Json<crate::server::ai_model::CancelResponse>, (StatusCode, String)> {
+    match ai_handler::handle_cancel(state.clone(), req).await {
+        Ok(resp) => Ok(Json(resp)),
+        Err(e) => {
+            log::error!("cancel_segmentation failed: {e}");
+            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        }
+    }
+}
+
+pub async fn segment_progress(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Result<Json<crate::server::ai_model::ProgressResponse>, (StatusCode, String)> {
+    match ai_handler::handle_progress(state.clone(), id).await {
+        Ok(resp) => Ok(Json(resp)),
+        Err(e) => {
+            log::error!("segment_progress failed: {e}");
+            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        }
+    }
+}
+
+pub async fn segment_result_meta(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Result<Json<crate::server::ai_model::SegmentResult>, (StatusCode, String)> {
+    let task = state
+        .tasks
+        .get(&id)
+        .await
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Task {id} not found")))?;
+    if !matches!(task.status, crate::server::ai_task::TaskStatus::Completed) {
+        return Err((
+            StatusCode::CONFLICT,
+            format!("Task {id} is not completed ({:?})", task.status),
+        ));
+    }
+    let volume = task
+        .volume_id
+        .clone()
+        .ok_or_else(|| (StatusCode::INTERNAL_SERVER_ERROR, "Task has no volume id".into()))?;
+    Ok(Json(crate::server::ai_model::SegmentResult {
+        task_id: id,
+        volume,
+        labels: task.labels.clone(),
+        dimensions: (0, 0, 0), // dimensions are not tracked in AiTask; clients should rely on the original CT volume.
+    }))
+}
+
+pub async fn segment_result_raw(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    match ai_handler::handle_download(state.clone(), id).await {
+        Ok(bytes) => Ok((
+            StatusCode::OK,
+            [("content-type", "application/octet-stream")],
+            bytes,
+        )),
+        Err(e) => {
+            log::error!("segment_result_raw failed: {e}");
+            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
+        }
+    }
+}
+
+/// Proxy the Python AI service's `GET /cached_mask/{series_id}` endpoint.
+///
+/// Used by the browser "Load Cached" button to re-upload the most
+/// recently produced `spine.nii.gz` for the current series without
+/// re-running TotalSegmentator. The response is a JSON envelope with
+/// the same fields as `/api/segment/result/{id}` plus a base64-encoded
+/// mask; see `app.py::get_cached_mask` for the exact contract.
+pub async fn cached_mask(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    match state.ai.cached_mask(&id).await {
+        Ok(value) => Ok(Json(value)),
+        Err(e) => {
+            log::error!("cached_mask proxy failed: {e}");
+            Err((StatusCode::BAD_GATEWAY, e.to_string()))
+        }
+    }
 }

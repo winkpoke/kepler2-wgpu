@@ -13,6 +13,7 @@ use log::{debug, info};
 use std::sync::Arc;
 
 use crate::core::WindowLevel;
+use crate::rendering::view::mesh::basic_mesh_context::MultiMeshContext;
 use crate::rendering::view::mesh::mesh::MeshRenderContext;
 use crate::rendering::view::mesh::mesh_view::MeshView;
 use crate::rendering::view::mip::{MipView, MipViewWgpuImpl};
@@ -328,7 +329,7 @@ impl ViewFactory for DefaultViewFactory {
         };
 
         // Shared render context for MPR views
-        let render_context = Arc::new(MprRenderContext::new(&self.device));
+        let render_context = Arc::new(MprRenderContext::new(&self.device, &self.queue));
 
         // Configure WindowLevel defaults; mirror State logic where appropriate
         let mut winlev = WindowLevel::new();
@@ -392,7 +393,7 @@ impl ViewFactory for DefaultViewFactory {
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
         // Shared render context for MPR views
-        let render_context = Arc::new(MprRenderContext::new(&self.device));
+        let render_context = Arc::new(MprRenderContext::new(&self.device, &self.queue));
 
         // Configure WindowLevel defaults; mirror State logic where appropriate
         let mut winlev = WindowLevel::new();
@@ -456,6 +457,9 @@ impl ViewFactory for DefaultViewFactory {
         mesh_view.attach_context(Arc::new(vol_ctx));
         mesh_view.move_to(pos);
         mesh_view.resize(size);
+
+        let spine_ctx = MultiMeshContext::new(&self.device, &self.queue);
+        mesh_view.attach_spine_context(spine_ctx);
 
         info!(
             "[DefaultViewFactory] Created Mesh view (with_content) at {:?} size {:?}",

@@ -1,6 +1,7 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-/// WebSocket message types sent from server to client
+/// WebSocket message types sent from server to client.
 #[derive(Serialize, Clone)]
 #[serde(tag = "type")]
 pub enum WsMessage {
@@ -28,5 +29,63 @@ pub enum WsMessage {
     #[serde(rename = "heartbeat")]
     Heartbeat {
         timestamp: String,
+    },
+    // ---------- AI segmentation (Section 8 of the design doc) ----------
+    /// Sent when a `POST /api/segment` request has been accepted and a new
+    /// task has been registered.
+    #[serde(rename = "segment_started")]
+    SegmentStarted {
+        task_id: String,
+        series_id: String,
+        model: String,
+    },
+    /// Periodic progress update for a running task. `value` is in `[0, 100]`.
+    #[serde(rename = "segment_progress")]
+    SegmentProgress {
+        task_id: String,
+        value: u8,
+    },
+    /// Task finished successfully and the mask is now available.
+    #[serde(rename = "segment_complete")]
+    SegmentComplete {
+        task_id: String,
+        /// Server-side volume id that the mask is registered under.
+        volume: String,
+        /// Label id -> anatomical name. Stringified keys for JSON friendliness.
+        labels: HashMap<String, String>,
+    },
+    /// Task failed; clients should surface the message to the user.
+    #[serde(rename = "segment_failed")]
+    SegmentFailed {
+        task_id: String,
+        message: String,
+    },
+    /// Task was cancelled (either by the user or by the AI service).
+    #[serde(rename = "segment_cancelled")]
+    SegmentCancelled {
+        task_id: String,
+    },
+}
+
+/// Client → server WebSocket commands. The discriminator lives in `type`.
+#[derive(Deserialize)]
+#[serde(tag = "type")]
+pub enum WsClientCommand {
+    /// Start a new segmentation task. Mirrors the body of `POST /api/segment`.
+    #[serde(rename = "segment")]
+    Segment {
+        model: String,
+        series: String,
+    },
+    /// Cancel an in-flight segmentation task.
+    #[serde(rename = "segment_cancel")]
+    SegmentCancel {
+        task_id: String,
+    },
+    /// Query the current progress of a task (the server replies with a
+    /// `SegmentProgress` message).
+    #[serde(rename = "segment_progress_query")]
+    SegmentProgressQuery {
+        task_id: String,
     },
 }

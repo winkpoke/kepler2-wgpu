@@ -1,7 +1,8 @@
 #![allow(dead_code)]
 
 use super::{
-    mesh::{MeshRenderContext, MeshUniforms, NeedleUniform, ObliquePlaneUniform},
+    basic_mesh_context::MultiMeshContext,
+    mesh::{Mesh, MeshRenderContext, MeshUniforms, NeedleUniform, ObliquePlaneUniform},
     performance::{PerformanceStats, QualityController, QualityLevel},
 };
 use crate::{
@@ -10,7 +11,7 @@ use crate::{
 };
 use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::FRAC_PI_2;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// Function-level comment: Error types specific to mesh rendering operations
 #[derive(Debug)]
@@ -76,6 +77,7 @@ impl Default for FallbackMode {
 pub struct MeshView {
     view_id: usize,
     volume_ctx: Option<Arc<MeshRenderContext>>,
+    spine_ctx: Option<Arc<Mutex<MultiMeshContext>>>,
     pos: (i32, i32),
     dim: (u32, u32),
     /// Performance and error tracking
@@ -118,6 +120,7 @@ impl MeshView {
         Self {
             view_id: 0,
             volume_ctx: None,
+            spine_ctx: None,
             pos: (0, 0),
             dim: (0, 0),
             stats: RenderStats::default(),
@@ -153,6 +156,42 @@ impl MeshView {
     pub fn attach_context(&mut self, ctx: std::sync::Arc<MeshRenderContext>) {
         self.volume_ctx = Some(ctx);
         log::debug!("MeshView::attach_context - Volume context attached successfully");
+    }
+
+    /// Function-level comment: Attaches a spine render context for GPU operations
+    pub fn attach_spine_context(&mut self, ctx: MultiMeshContext) {
+        self.spine_ctx = Some(Arc::new(Mutex::new(ctx)));
+        log::debug!("MeshView::attach_spine_context - Spine context attached successfully");
+    }
+
+    /// Function-level comment: Replace the set of vertebra meshes (one per label).
+    /// Triggers marching-cubes-free upload: each `Mesh`'s vertices/indices
+    /// are pushed into the GPU buffers for that label slot.
+    pub fn set_spine_meshes(
+        &self,
+        device: &wgpu::Device,
+        meshes: Vec<Mesh>,
+    ) {
+        if let Some(ctx) = &self.spine_ctx {
+            if let Ok(mut guard) = ctx.lock() {
+                guard.set_meshes(device, &meshes);
+                log::info!(
+                    "MeshView::set_spine_meshes - uploaded {} vertebra meshes",
+                    meshes.len()
+                );
+            }
+        } else {
+            log::warn!("MeshView::set_spine_meshes - no spine context attached");
+        }
+    }
+
+    /// Function-level comment: Toggle visibility of a single vertebra by label id.
+    pub fn set_spine_visibility(&self, label_id: u8, visible: bool) {
+        if let Some(ctx) = &self.spine_ctx {
+            if let Ok(mut guard) = ctx.lock() {
+                guard.set_visibility(label_id, visible);
+            }
+        }
     }
 
     /// Function-level comment: Get current rendering statistics for performance monitoring.
@@ -544,6 +583,18 @@ impl MeshView {
             // update
             vol_ctx.update_uniforms(queue, &vol_uniforms);
         }
+
+        // Spine mesh uniforms
+        if let Some(spine_ctx) = &self.spine_ctx {
+            let flip = Mat4::from_scale(Vec3::new(1.0, -1.0, -1.0));
+            let model_matrix = flip * Mat4::from_quat(self.rotation_quat.conjugate());
+            let view_matrix = Mat4::from_translation(Vec3::new(0.0, 0.0, 5.0));
+            let proj_matrix = Mat4::orthographic_rh(-1.0, 1.0, -1.0, 1.0, -10.0, 10.0);
+            let mvp_matrix = proj_matrix * view_matrix * model_matrix;
+            if let Ok(guard) = spine_ctx.lock() {
+                guard.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
+            }
+        }
     }
 
     /// Function-level comment: Start frame timing for performance monitoring.
@@ -673,6 +724,13 @@ impl MeshView {
             vol_ctx.render(render_pass);
         } else {
             log::warn!("BasicMeshView::try_render - Volume rendering requested but no volume context attached");
+        }
+
+        // Render spine meshes
+        if let Some(spine_ctx) = &self.spine_ctx {
+            if let Ok(guard) = spine_ctx.lock() {
+                guard.render(render_pass);
+            }
         }
 
         // Record successful render

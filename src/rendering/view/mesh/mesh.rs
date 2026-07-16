@@ -3,6 +3,8 @@
 use crate::data::volume_encoding::VolumeEncoding;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::core::pipeline::*;
+use crate::rendering::view::{LABEL_COLORS, LABEL_NAMES};
+use mcubes::{MarchingCubes, MeshSide};
 use std::sync::Arc;
 use glam::Mat4;
 use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, RenderPipeline};
@@ -286,77 +288,13 @@ unsafe impl bytemuck::Pod for MeshVertex {}
 
 #[derive(Default, Debug, Clone)]
 pub struct Mesh {
+    pub label_id: u8,
+    pub label_name: String,
     pub vertices: Vec<MeshVertex>,
     pub indices: Vec<u32>,
 }
 
 impl Mesh {
-    /// Function-level comment: Creates a colored cylinder mesh with high segment count for smooth appearance
-    pub fn cylinder() -> Self {
-        use std::f32::consts::TAU;
-
-        let mut vertices = Vec::new();
-        let mut indices = Vec::new();
-        let segments = 128;
-        let radius = 0.004;
-        let height = 20.0;
-        let color = [1.0, 0.85, 0.0];
-        let seg = segments.max(3);
-
-        for i in 0..seg {
-            let angle = (i as f32 / seg as f32) * TAU;
-            let nx = angle.cos();
-            let nz = angle.sin();
-
-            // Bottom ring vertex
-            vertices.push(MeshVertex {
-                position: [nx * radius, -height, nz * radius],
-                normal: [nx, 0.0, nz],
-                color: color,
-            });
-            // Top ring vertex (smaller, tapered tip for surgical needle)
-            vertices.push(MeshVertex {
-                position: [nx * radius, height, nz * radius],
-                normal: [nx, 0.0, nz],
-                color: color,
-            });
-        }
-
-        // Side wall indices — open tube (no caps)
-        for i in 0..seg {
-            let j = (i + 1) % seg;
-
-            let b0 = (i * 2) as u32;
-            let t0 = (i * 2 + 1) as u32;
-            let b1 = (j * 2) as u32;
-            let t1 = (j * 2 + 1) as u32;
-
-            indices.extend_from_slice(&[b0, t0, t1, b0, t1, b1]);
-        }
-
-        // Bottom cap (flat end of needle handle)
-        let bot_center = 2 * seg as u32;
-        vertices.push(MeshVertex {
-            position: [0.0, -height, 0.0],
-            normal: [0.0, -1.0, 0.0],
-            color: color,
-        });
-        for i in 0..seg {
-            let angle = (i as f32 / seg as f32) * TAU;
-            vertices.push(MeshVertex {
-                position: [angle.cos() * radius, -height, angle.sin() * radius],
-                normal: [0.0, -1.0, 0.0],
-                color: color,
-            });
-        }
-        for i in 0..seg {
-            let a = bot_center + 1 + ((i + 1) % seg);
-            let b = bot_center + 1 + i;
-            indices.extend_from_slice(&[bot_center, a, b]);
-        }
-        Self { vertices, indices }
-    }
-    
     /// Returns a cube with 24 vertices (4 per face) and 12 triangles for colorful 3D rendering
     pub fn unit_cube() -> Self {
         // Define distinct colors for each face
@@ -515,8 +453,85 @@ impl Mesh {
             20, 21, 22, 22, 23, 20,
         ];
 
-        Self { vertices, indices }
+        Self { label_id: 0, label_name: "Cube".to_string(), vertices, indices }
     }
+}
+
+pub fn spine(
+    segmentation: &[u8],
+    dims: (usize, usize, usize),  // (rows, cols, slices)
+    spacing: (f32, f32, f32),
+    label_ids:&[u8],
+    iso: f32,
+)-> Vec<Mesh> {
+    let (rows, cols, slices) = dims;
+    let mut results = Vec::new();
+    
+    for &label_id in label_ids {
+        let mut field = vec![0.0f32; segmentation.len()];
+        let mut has_voxel = false;
+        for (i, &v) in segmentation.iter().enumerate() {
+            if v == label_id {
+                field[i] = 1.0;
+                has_voxel = true;
+            }
+        }
+
+        // skip empty label
+        if !has_voxel {
+            continue;
+        }
+
+        // marching cubes
+        let mc = MarchingCubes::new(
+            dims,
+            (spacing.0, spacing.1, spacing.2),
+            (1.0, 1.0, 1.0),
+            lin_alg::f32::Vec3::new(0.0, 0.0, 0.0),
+            field,
+            iso,
+        ).expect("mcubes init: dims/values length mismatch");
+        let cube_mesh = mc.generate(MeshSide::InsideOnly);
+
+        let color = LABEL_COLORS.get(label_id as usize).copied().unwrap_or([1.0,1.0,1.0,1.0]);
+
+        let vertices: Vec<MeshVertex> = cube_mesh
+            .vertices
+            .iter()
+            .map(|v| MeshVertex {
+                position: [v.posit.x, v.posit.y, v.posit.z],
+                normal:   [v.normal.x, v.normal.y, v.normal.z],
+                color: [color[0], color[1], color[2]],
+            })
+            .collect();
+        let indices: Vec<u32> = cube_mesh.indices.iter().map(|&i| i as u32).collect();
+
+        results.push(Mesh {
+            label_id: label_id,
+            label_name: LABEL_NAMES[label_id as usize].to_string(),
+            vertices,
+            indices,
+        });
+    }
+
+    // Normalize every mesh's vertex positions to the canonical`[-1, 1]` cube, centered at origin.
+    let center_x = (cols as f32 * spacing.0) * 0.5;
+    let center_y = (rows as f32 * spacing.1) * 0.5;
+    let center_z = (slices as f32 * spacing.2) * 0.5;
+    let max_extent = (cols as f32 * spacing.0)
+        .max(rows as f32 * spacing.1)
+        .max(slices as f32 * spacing.2);
+    let scale = 2.0 / max_extent;
+
+    for mesh in &mut results {
+        for v in &mut mesh.vertices {
+            v.position[0] = (v.position[0] - center_x) * scale;
+            v.position[1] = (v.position[1] - center_y) * scale;
+            v.position[2] = (v.position[2] - center_z) * scale;
+        }
+    }
+
+    results
 }
 
 impl MeshVertex {

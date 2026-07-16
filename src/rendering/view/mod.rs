@@ -32,3 +32,26 @@ pub use mesh::*;
 pub use mip::*;
 pub use mpr::*;
 pub use render_content::*;
+
+const LABEL_NAMES: [&str; 8] = [
+    "",       // index 0 unused
+    "L1",
+    "L2",
+    "L3",
+    "L4",
+    "L5",
+    "S1",
+    "Sacrum",
+];
+
+// Colour palette for the segmentation overlay in the MPR / MIP / 3D views.
+const LABEL_COLORS: [[f32; 4]; 8] = [
+    [0.00, 0.00, 0.00, 0.0], // 0  Background
+    [0.95, 0.20, 0.20, 1.0], // 1  L1      (red)
+    [0.98, 0.55, 0.10, 1.0], // 2  L2      (orange)
+    [0.95, 0.90, 0.20, 1.0], // 3  L3      (yellow)
+    [0.20, 0.85, 0.30, 1.0], // 4  L4      (green)
+    [0.20, 0.70, 0.95, 1.0], // 5  L5      (cyan)
+    [0.30, 0.30, 0.95, 1.0], // 6  S1      (blue)
+    [0.85, 0.20, 0.80, 1.0], // 7  sacrum  (magenta)
+];

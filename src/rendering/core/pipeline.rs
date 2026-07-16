@@ -137,6 +137,53 @@ pub fn create_texture_bind_group_layout(device: &Device) -> BindGroupLayout {
     })
 }
 
+pub fn create_texture_bind_group_layout_addseg(device: &Device) -> BindGroupLayout {
+    device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+        label: Some("Texture Bind Group Layout with Segmentation Overlay"),
+        entries: &[
+            // Volume texture binding (R8 / R16F / RG8 — filterable)
+            BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::FRAGMENT,
+                ty: BindingType::Texture {
+                    multisampled: false,
+                    view_dimension: TextureViewDimension::D3,
+                    sample_type: TextureSampleType::Float { filterable: true },
+                },
+                count: None,
+            },
+
+            // Volume texture sampler (linear filtering)
+            BindGroupLayoutEntry {
+                binding: 1,
+                visibility: ShaderStages::FRAGMENT,
+                ty: BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+
+            // Segmentation texture binding (R8Uint, non-filterable). Uses a uint sample type because the label ids are 0..=255.
+            BindGroupLayoutEntry {
+                binding: 2,
+                visibility: ShaderStages::FRAGMENT,
+                ty: BindingType::Texture {
+                    multisampled: false,
+                    view_dimension: TextureViewDimension::D3,
+                    sample_type: TextureSampleType::Uint,
+                },
+                count: None,
+            },
+
+            // Segmentation texture sampler (nearest-only, required by R8Uint uint sample type).
+            BindGroupLayoutEntry {
+                binding: 3,
+                visibility: ShaderStages::FRAGMENT,
+                ty: BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
+                count: None,
+            },
+        ],
+    })
+}
+
 // Create bind group layout for uniforms (group 1)
 pub fn create_uniform_bind_group_layout(device: &Device, min_binding_size: Option<NonZero<u64>>) -> BindGroupLayout {
     device.create_bind_group_layout(&BindGroupLayoutDescriptor {
@@ -161,6 +208,7 @@ pub fn create_basic_mesh_pipeline_with_lighting(
     transform_bind_group_layout: &BindGroupLayout,
     lighting_bind_group_layout: &BindGroupLayout,
     use_depth: bool,
+    depth_compare: CompareFunction,
 ) -> RenderPipeline {
     // Use the basic mesh shader with lighting support
     let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/mesh_basic.wgsl"));
@@ -208,7 +256,7 @@ pub fn create_basic_mesh_pipeline_with_lighting(
             Some(DepthStencilState {
                 format: get_mesh_depth_format(),
                 depth_write_enabled: false,
-                depth_compare: CompareFunction::Less,
+                depth_compare,
                 stencil: StencilState::default(),
                 bias: DepthBiasState::default(),
             })
@@ -363,7 +411,14 @@ pub fn create_texture_quad_pipeline(
     target_format: TextureFormat,
 ) -> RenderPipeline {
     // Single shader module with both vertex and fragment entry points.
-    let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/mpr.wgsl"));
+    let shader_source = format!("{}\n{}",
+        include_str!("../shaders/common.wgsl"),
+        include_str!("../shaders/mpr.wgsl"),
+    );
+    let shader = device.create_shader_module(ShaderModuleDescriptor {
+        label: Some("MPR Shader"),
+        source: ShaderSource::Wgsl(shader_source.into()),
+    });
 
     // Pipeline layout defines bind group layout order; must match shader binding expectations.
     let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {

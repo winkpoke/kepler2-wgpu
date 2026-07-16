@@ -553,6 +553,110 @@
             display: flex;
             flex-direction: column;
         }
+
+        .seg-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 8px;
+            border-top: 1px solid #cfcfcf;
+            background: #fafafa;
+            font-size: 12px;
+        }
+
+        .seg-row .row-label {
+            font-weight: bold;
+            color: #444;
+            min-width: 24px;
+        }
+
+        .seg-row select,
+        .seg-row button {
+            font-size: 12px;
+        }
+
+        .seg-row button#seg-cancel[disabled] {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .seg-status {
+            font-size: 10px;
+            padding: 2px 7px;
+            border-radius: 8px;
+            background: #e0e0e0;
+            color: #444;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            transition: background 0.2s, color 0.2s;
+        }
+
+        .seg-status.running    { background: #fff3cd; color: #856404; }
+        .seg-status.completed  { background: #d4edda; color: #155724; }
+        .seg-status.failed     { background: #f8d7da; color: #721c24; }
+        .seg-status.cancelled  { background: #e2e3e5; color: #383d41; }
+
+        .seg-progress {
+            flex: 1 1 100px;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+            min-width: 80px;
+        }
+
+        .seg-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4a90d9, #22c55e);
+            width: 0%;
+            transition: width 0.4s ease;
+            border-radius: 4px;
+        }
+
+        .seg-meta {
+            font-size: 10px;
+            color: #666;
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            min-width: 0;
+        }
+
+        .seg-meta #seg-progress-text { font-weight: bold; color: #333; min-width: 28px; }
+        .seg-meta #seg-task-id      { font-family: monospace; color: #888; max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
+
+        .seg-labels {
+            padding: 4px 8px;
+            border-top: 1px solid #e0e0e0;
+            background: #fff;
+            max-height: 110px;
+            overflow-y: auto;
+            font-size: 11px;
+            display: none;
+        }
+
+        .seg-labels.active { display: block; }
+
+        .seg-labels .seg-label-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 2px 0;
+        }
+
+        .seg-labels .seg-label-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+            border: 1px solid #ccc;
+            flex-shrink: 0;
+        }
+
+        .seg-labels .seg-label-name { color: #333; }
+        .seg-labels .seg-label-id   { color: #888; font-family: monospace; }
     </style>
 </head>
 
@@ -583,9 +687,25 @@
                    <button id="convertBtn_dicom">DICOM export</button>
                    <button id="convertBtn_mhx">MHA export</button>
                 </div>
-                <div class="file-row">
-                    <button id="spineMask">Spine Mask</button>
+                <div class="seg-row">
+                    <span class="row-label">AI Model</span>
+                    <select id="seg-model" title="AI model">
+                        <option value="totalsegmentator">TotalSegmentator</option>
+                    </select>
+                    <span id="seg-series" style="color:#666;font-size:11px">no series</span>
+                    <button id="seg-run" class="btn btn-primary">Segment</button>
+                    <button id="seg-load-cached" class="btn" title="Reuse the last completed segmentation for this series">Load Cached</button>
+                    <button id="seg-cancel" class="btn" disabled>Cancel</button>
                 </div>
+                <div class="seg-row" style="padding-top:0">
+                    <span id="seg-status" class="seg-status">idle</span>
+                    <div class="seg-progress"><div id="seg-progress-fill" class="seg-progress-fill"></div></div>
+                    <div class="seg-meta">
+                        <span id="seg-task-id">—</span>
+                        <span id="seg-progress-text">0%</span>
+                    </div>
+                </div>
+                <div id="seg-labels" class="seg-labels"></div>
             </div>
             <div id="tab-needle" class="tab-content">
                 <div class="needle-card" style="border-top:none">
@@ -888,6 +1008,48 @@
             a.click();
         }
 
+        // MHX文件解析函数
+        async function parseMHXContent(mhxText) {
+        const lines = mhxText.split('\n');
+        const header = {
+            element_type: 'MET_FLOAT',
+            dim_x: 0,
+            dim_y: 0,
+            dim_z: 0,
+            spacing_x: 0,
+            spacing_y: 0,
+            spacing_z: 0
+        };
+
+        // 解析MHX文件内容
+        for (const line of lines) {
+            if (!line.trim() || line.startsWith('#')) continue;
+
+            const [key, value] = line.split('=').map(s => s.trim());
+            if (!key || !value) continue;
+
+            switch (key) {
+            case 'ElementType':
+                header.element_type = value;
+                break;
+            case 'DimSize':
+                state.dims = value.split(' ').map(Number);
+                [header.dim_x, header.dim_y, header.dim_z] = state.dims;
+                state.len = header.dim_x * header.dim_y * header.dim_z;
+                break;
+            case 'ElementSpacing':
+                state.spacing = value.split(' ').map(Number);
+                [header.spacing_x, header.spacing_y, header.spacing_z] = state.spacing;
+                break;
+            case 'ElementDataFile':
+                header.data_file = value;
+                break;
+            }
+        }
+
+        return header;
+        }
+
         // 状态管理
         const SERVER_URL = 'http://localhost:3000';
         var repo;
@@ -903,6 +1065,7 @@
             rotation: [0, 0, 0],
             indexValue: 0,
             volume: null,
+            mhx: null,
         };
         let gl_canvas = null;
         let series_id;
@@ -910,7 +1073,7 @@
         let flag = true;
         let scaleValue = 0.1;
         let serverConnected = false;
-        let serverVolumes = [];
+        let currentVolumeId = null;
         let ws = null;
         let wsReconnectTimer = null;
 
@@ -921,7 +1084,7 @@
 
             ws.onopen = () => {
                 console.log('WebSocket connected');
-                ws.send(JSON.stringify({ kind: 'ping' }));
+                ws.send(JSON.stringify({ type: 'ping' }));
             };
 
             ws.onmessage = (event) => {
@@ -941,6 +1104,21 @@
                             if (typeof log === 'function') log(`Server error: ${msg.message}`, 'error');
                             break;
                         case 'heartbeat':
+                            break;
+                        case 'segment_started':
+                            handleSegmentStarted(msg);
+                            break;
+                        case 'segment_progress':
+                            handleSegmentProgress(msg);
+                            break;
+                        case 'segment_complete':
+                            handleSegmentComplete(msg);
+                            break;
+                        case 'segment_failed':
+                            handleSegmentFailed(msg);
+                            break;
+                        case 'segment_cancelled':
+                            handleSegmentCancelled(msg);
                             break;
                     }
                 } catch (e) {
@@ -1025,8 +1203,8 @@
                 });
                 if (resp.ok) {
                     const id = await resp.json();
-                    serverVolumes.push(id);
-                    log(`Volume uploaded (${serverVolumes.length} on server)`, 'success');
+                    onVolumeChanged(id);
+                    log(`Volume uploaded: ${String(id)}…`, 'success');
                 } else {
                     const err = await resp.text();
                     log(`Upload failed: ${err}`, 'error');
@@ -1123,7 +1301,7 @@
                 formData.append('file', state.mhx);
                 await ensureWasm();
                 state.volume = await state.wasmModule.parse_common_files_wasm(state.files, infoUint8);
-                uploadToServer(uploadParams);
+                await uploadToServer(uploadParams);
                 closeModal();
                 log('Volume imported successfully', 'success');
             } catch (err) {
@@ -1134,33 +1312,364 @@
             }
         });
 
-        byId('rerender').addEventListener('click', async () => {
+        async function renderCurrentVolume() {
+            if (!state.volume) {
+                alert('No volume loaded. Import a DICOM or MHA first.');
+                return;
+            }
             if (state.render_app == null) {
                 state.render_app = await state.wasmModule.get_render_app();
                 gl_canvas = state.render_app.get_glcanvas();
                 gl_canvas.load_data_from_ct_volume(state.volume);
                 gl_canvas = state.render_app.get_glcanvas();
                 state.render_app.run();
+            } else {
+                gl_canvas.load_data_from_ct_volume(state.volume);
+                gl_canvas.apply_segmentation(new Uint8Array(0), 1, 1, 1);
             }
-            else {
-                console.log('render_app:', state.render_app);
-                gl_canvas.set_window_by_div_id('render_app', state.volume);
-            }
-        })
+        }
 
-        // ========= Spine Mask Button ===========
-        byId('spineMask').addEventListener('click', async () => {
+        byId('rerender').addEventListener('click', renderCurrentVolume);
+
+        // ========= AI Segmentation =========
+        const seg = {
+            taskId: null,        // task id currently running / last run
+            model: null,         // model name used in the active run
+            series: null,        // series id used in the active run
+            status: 'idle',      // 'idle' | 'running' | 'completed' | 'failed' | 'cancelled'
+            progress: 0,         // 0..100
+            labels: null,        // last completed label table: { "1": "liver", ... }
+            volume: null,        // server-side volume id of the mask
+            raw: null,           // Uint8Array of mask bytes (after segment_complete)
+            opacity: 0.3,
+        };
+
+        const segEls = {
+            run:        byId('seg-run'),
+            cancel:     byId('seg-cancel'),
+            loadCached: byId('seg-load-cached'),
+            model:      byId('seg-model'),
+            series:     byId('seg-series'),
+            status:     byId('seg-status'),
+            progressFill: byId('seg-progress-fill'),
+            progressText: byId('seg-progress-text'),
+            taskId:     byId('seg-task-id'),
+            labels:     byId('seg-labels'),
+        };
+
+        function setSegStatus(label, cssClass) {
+            segEls.status.textContent = label;
+            segEls.status.className = 'seg-status' + (cssClass ? (' ' + cssClass) : '');
+        }
+
+        function setSegProgress(value) {
+            const v = Math.max(0, Math.min(100, value | 0));
+            seg.progress = v;
+            segEls.progressFill.style.width = v + '%';
+            segEls.progressText.textContent = v + '%';
+        }
+
+        function setSegTaskId(id) {
+            seg.taskId = id;
+            segEls.taskId.textContent = id ? id.slice(0, 8) : '—';
+            segEls.taskId.title = id || '';
+        }
+
+        function setSegRunEnabled(enabled) {
+            segEls.run.disabled = !enabled;
+            segEls.loadCached.disabled = !enabled;
+            segEls.cancel.disabled = enabled;
+        }
+
+        // Load the most recent cached spine mask for the current series
+        // and push it to the GPU. Hits the Python service's
+        // GET /cached_mask/{series_id} endpoint instead of POSTing a new
+        // /segment job, so no AI inference runs.
+        async function loadCachedSegmentation() {
+            const seriesId = seg.series || (state.volume && state.volume.id);
+            if (!seriesId) {
+                log('No series loaded; cannot look up cached mask', 'error');
+                return;
+            }
+            if (!state.volume) {
+                log('No volume on client; cannot derive mask dimensions', 'error');
+                return;
+            }
+            segEls.loadCached.disabled = true;
+            setSegStatus('loading', 'running');
+            try {
+                const resp = await fetch(`${SERVER_URL}/api/cached_mask/${encodeURIComponent(seriesId)}`);
+                if (!resp.ok) {
+                    log(`Cached mask request failed: HTTP ${resp.status}`, 'error');
+                    setSegStatus('idle', '');
+                    return;
+                }
+                const data = await resp.json();
+                if (data.status === 'missing') {
+                    log(`No cached mask on disk: ${data.reason}`, 'warn');
+                    setSegStatus('idle', '');
+                    return;
+                }
+                if (data.status === 'error') {
+                    log(`Cached mask error: ${data.reason}`, 'error');
+                    setSegStatus('idle', '');
+                    return;
+                }
+                // Decode the base64 mask and update the seg state object,
+                // then reuse the existing GPU upload path.
+                const bin = atob(data.mask_base64);
+                const arr = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+                seg.raw = arr;
+                seg.dims = data.dimensions;
+                seg.labels = data.labels;
+                seg.volume = data.volume;
+                seg.status = 'completed';
+                seg.task_id = data.task_id;
+                setSegTaskId(data.task_id);
+                setSegProgress(100);
+                setSegStatus('cached', 'complete');
+                renderSegLabels(data.labels);
+                log(`Loaded cached mask (${data.dimensions.join('×')}, ${(seg.raw.length / (1024*1024)).toFixed(1)} MB)`, 'success');
+                await uploadSegmentationToGpu();
+            } catch (e) {
+                log(`Failed to load cached mask: ${e}`, 'error');
+                setSegStatus('idle', '');
+            } finally {
+                segEls.loadCached.disabled = false;
+            }
+        }
+
+        // Pick a deterministic but distinct colour for each label id.
+        // This palette must match `LABEL_COLORS` in
+        // `src/rendering/view/mod.rs` so the swatch in the UI matches
+        // the colour actually drawn on the MPR slice.
+        //   0 = background (unused in the list, but kept for symmetry)
+        //   1 L1, 2 L2, 3 L3, 4 L4, 5 L5, 6 S1, 7 sacrum
+        const SEG_LABEL_PALETTE = {
+            1: 'rgb(242, 51, 51)',   // L1      red
+            2: 'rgb(250, 140, 26)',  // L2      orange
+            3: 'rgb(242, 229, 51)',  // L3      yellow
+            4: 'rgb(51, 217, 77)',   // L4      green
+            5: 'rgb(51, 178, 242)',  // L5      cyan
+            6: 'rgb(77, 77, 242)',   // S1      blue
+            7: 'rgb(217, 51, 204)',  // sacrum  magenta
+        };
+        function segLabelColor(id) {
+            const numericId = Number(id);
+            if (SEG_LABEL_PALETTE[numericId]) {
+                return SEG_LABEL_PALETTE[numericId];
+            }
+            // Fallback for unknown ids (shouldn't happen with the
+            // 7-label subset, but keeps the UI safe if the Python
+            // service ever adds new labels).
+            let h = 0;
+            const s = String(id);
+            for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffff;
+            return `hsl(${h % 360}, 70%, 55%)`;
+        }
+
+        function renderSegLabels(labels) {
+            const ids = Object.keys(labels || {}).sort((a, b) => Number(a) - Number(b));
+            if (ids.length === 0) {
+                segEls.labels.classList.remove('active');
+                segEls.labels.innerHTML = '';
+                return;
+            }
+            const rows = ids.map((id) => {
+                const name = labels[id] || '(unnamed)';
+                return `<div class="seg-label-row">
+                    <span class="seg-label-color" style="background:${segLabelColor(id)}"></span>
+                    <span class="seg-label-id">${id}</span>
+                    <span class="seg-label-name">${name}</span>
+                </div>`;
+            }).join('');
+            segEls.labels.innerHTML = rows;
+            segEls.labels.classList.add('active');
+        }
+
+        // Return the id of the volume currently selected for segmentation.
+        // The design doc uses `series` for the volume id of the parent CT.
+        function currentSegSeries() {
+            return currentVolumeId;
+        }
+
+        // Called whenever a new volume is uploaded
+        function onVolumeChanged(id) {
+            currentVolumeId = id;
+
+            // Clear stale segmentation state from the previous volume.
+            seg.raw = null;
+            seg.labels = null;
+            seg.volume = null;
+            setSegStatus('idle', '');
+            setSegProgress(0);
+            renderSegLabels(null);
+
+            // Update the series label in the UI.
+            if (!id) {
+                segEls.series.textContent = 'no series';
+            } else {
+                const short = String(id).slice(0, 8);
+                segEls.series.textContent = `series: ${short}${String(id).length > 8 ? '…' : ''}`;
+                segEls.series.title = String(id);
+            }
+        }
+
+        // ----- WebSocket event handlers -----
+        function handleSegmentStarted(msg) {
+            setSegTaskId(msg.task_id);
+            setSegStatus('running', 'running');
+            setSegProgress(0);
+            seg.model = msg.model;
+            seg.series = msg.series_id;
+            seg.status = 'running';
+            setSegRunEnabled(false);
+            log(`Segmentation started (${msg.model}, series ${msg.series_id})`, 'info');
+        }
+
+        function handleSegmentProgress(msg) {
+            // Ignore stale progress events from previous runs.
+            if (msg.task_id !== seg.taskId) return;
+            setSegProgress(msg.value);
+        }
+
+        async function handleSegmentComplete(msg) {
+            if (msg.task_id !== seg.taskId) return;
+            setSegStatus('completed', 'completed');
+            setSegProgress(100);
+            seg.status = 'completed';
+            seg.volume = msg.volume;
+            seg.labels = msg.labels || {};
+            renderSegLabels(seg.labels);
+            setSegRunEnabled(true);
+            log(`Segmentation complete (${Object.keys(seg.labels).length} labels, volume ${msg.volume})`, 'success');
+            // Pull the raw mask and push it to the GPU so the red
+            // overlay shows up on every MPR view. Dimensions must
+            // match the loaded CT volume — the server does not
+            // track them on the task.
+            await downloadSegmentationMask(msg.task_id);
+            await uploadSegmentationToGpu();
+        }
+
+        // Push the just-downloaded seg.raw buffer to the GPU as an
+        // R8Uint 3D texture via GLCanvas::apply_segmentation. The
+        // dimensions come from the currently loaded CTVolume on the
+        // JS side because the server deliberately does not store them
+        // (see ai_handler.rs).
+        async function uploadSegmentationToGpu() {
+            if (!gl_canvas) {
+                log('GL canvas not ready; cannot overlay segmentation yet', 'warn');
+                return;
+            }
+            if (!seg.raw || seg.raw.length === 0) {
+                log('Segmentation mask is empty; nothing to upload', 'warn');
+                return;
+            }
+            if (!state.volume) {
+                log('No volume on client; cannot derive mask dimensions', 'error');
+                return;
+            }
+            try {
+                const mhxText = await state.mhx.text();
+                const header = await parseMHXContent(mhxText);
+                const height = Number(header.dim_x);
+                const width  = Number(header.dim_y);
+                const depth  = Number(header.dim_z);
+                const expected = width * height * depth;
+                if (seg.raw.length !== expected) {
+                    log(
+                        `Mask size mismatch: ${seg.raw.length} bytes vs ` +
+                        `${expected} (${width}×${height}×${depth}). ` +
+                        `Skipping GPU upload.`,
+                        'error',
+                    );
+                    return;
+                }
+                gl_canvas.apply_segmentation(seg.raw, width, height, depth);
+                log(`Segmentation uploaded to GPU (${width}×${height}×${depth})`, 'success');
+            } catch (e) {
+                log(`Failed to upload segmentation to GPU: ${e.message}`, 'error');
+            }
+        }
+
+        function handleSegmentFailed(msg) {
+            if (msg.task_id && msg.task_id !== seg.taskId) return;
+            setSegStatus('failed', 'failed');
+            seg.status = 'failed';
+            setSegRunEnabled(true);
+            log(`Segmentation failed: ${msg.message}`, 'error');
+        }
+
+        function handleSegmentCancelled(msg) {
+            if (msg.task_id && msg.task_id !== seg.taskId) return;
+            setSegStatus('cancelled', 'cancelled');
+            seg.status = 'cancelled';
+            setSegRunEnabled(true);
+            log('Segmentation cancelled', 'warn');
+        }
+
+        // Fetch the raw mask bytes for a completed task via HTTP.
+        // The bytes are stored in `seg.raw`; the actual GPU upload is the
+        // responsibility of the (future) shader-overlay step.
+        async function downloadSegmentationMask(taskId) {
+            try {
+                const resp = await fetch(`${SERVER_URL}/api/segment/result/${taskId}/raw`);
+                if (!resp.ok) {
+                    throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+                }
+                const buf = await resp.arrayBuffer();
+                seg.raw = new Uint8Array(buf);
+                log(`Mask ready (${seg.raw.length.toLocaleString()} bytes)`, 'success');
+            } catch (e) {
+                log(`Failed to download mask: ${e.message}`, 'error');
+            }
+        }
+
+        // ----- Button handlers -----
+        function sendWs(payload) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('WebSocket is not connected', 'error');
+                return false;
+            }
+            ws.send(JSON.stringify(payload));
+            return true;
+        }
+
+        byId('seg-run').addEventListener('click', async () => {
             if (!serverConnected) {
-                alert('Server connection required for spine mask operation');
+                log('Server connection required for segmentation', 'error');
                 return;
             }
-            const loaded_volumes = serverVolumes;
-            if (loaded_volumes.length === 0) {
-                alert('No volumes on server. Load a volume first (DICOM or MHA).');
+            const series = currentSegSeries();
+            if (!series) {
+                log('No volume on server. Load a DICOM/MHA volume first.', 'error');
                 return;
             }
-            const volumeId = loaded_volumes[0];
-        })
+            const model = segEls.model.value;
+            // Optimistic UI: flip to running before the server round-trips.
+            setSegStatus('starting…', 'running');
+            setSegRunEnabled(false);
+            const ok = sendWs({ type: 'segment', model, series });
+            if (!ok) {
+                setSegStatus('idle', '');
+                setSegRunEnabled(true);
+            }
+        });
+
+        byId('seg-load-cached').addEventListener('click', () => {
+            if (!state.volume) {
+                log('No volume loaded; cannot load cached mask', 'error');
+                return;
+            }
+            loadCachedSegmentation();
+        });
+
+        byId('seg-cancel').addEventListener('click', () => {
+            if (!seg.taskId) return;
+            if (!sendWs({ type: 'segment_cancel', task_id: seg.taskId })) return;
+            setSegStatus('cancelling…', 'cancelled');
+        });
 
         // ========= DICOM Export Button =========
         byId('convertBtn_dicom').addEventListener('click', async () => {
@@ -1169,15 +1678,12 @@
                 return;
             }
 
-            const loaded_volumes = serverVolumes;
-            if (loaded_volumes.length === 0) {
+            if (!currentVolumeId) {
                 alert('No volumes on server. Load a volume first (DICOM or MHA).');
                 return;
             }
 
-            // Use the first volume for export
-            const volumeId = loaded_volumes[0];
-            await exportDicom(volumeId);
+            await exportDicom(currentVolumeId);
         });
 
         // Export DICOM function

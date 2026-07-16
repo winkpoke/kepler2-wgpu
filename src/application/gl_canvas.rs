@@ -69,6 +69,7 @@ pub enum UserEvent {
     SetMeshNeedlePosition(usize, u32, f32, f32, f32),
     SetMeshNeedleRadius(usize, u32, f32),
     SetMeshNeedleAngle(usize, u32, f32),
+    SetSegmentationAll(Vec<u8>, u32, u32, u32),
 }
 
 #[macro_export]
@@ -145,6 +146,15 @@ impl GLCanvas {
             log::info!("Sent SetWindowByDivId event for div_id {}", div_id);
         }
     }
+
+    pub fn apply_segmentation(&self, raw: Vec<u8>, width: u32, height: u32, depth: u32) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetSegmentationAll(
+            raw.clone(), width, height, depth,
+        )) {
+            log::error!("Failed to send SetSegmentationAll event: {:?}", e);
+        }
+    }
+
     pub fn clear_layout(&self) {
         if let Err(e) = self.proxy.send_event(UserEvent::ClearLayout) {
             log::error!("Failed to send ClearLayout event: {:?}", e);

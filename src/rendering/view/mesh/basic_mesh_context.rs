@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 
-use super::mesh::BasicLightingUniforms;
+use super::mesh::{Mesh, BasicLightingUniforms};
 use crate::rendering::core::pipeline::{
-    create_basic_lighting_bind_group_layout, create_basic_mesh_pipeline_with_lighting,
+    create_basic_lighting_bind_group_layout, 
+    create_basic_mesh_pipeline_with_lighting,
 };
 use wgpu::util::DeviceExt;
 use wgpu::{Device, Queue};
@@ -124,6 +125,7 @@ impl BasicMeshContext {
             &bind_group_layout,
             &lighting_bind_group_layout,
             use_depth,
+            wgpu::CompareFunction::Less,
         ));
 
         // Create bind group for uniforms
@@ -204,5 +206,145 @@ impl BasicMeshContext {
         let vertex_size = self.vertex_buffer.size();
         let index_size = self.index_buffer.size();
         (vertex_size, index_size, 0.0, 0.0)
+    }
+}
+
+struct MeshSlot {
+    label_id: u8,
+    label_name: String,
+    vertex_buffer: wgpu::Buffer,
+    index_buffer: wgpu::Buffer,
+    num_indices: u32,
+    visible: bool,
+}
+
+pub struct MultiMeshContext {
+    pipeline: std::sync::Arc<wgpu::RenderPipeline>,
+    slots: Vec<MeshSlot>,
+    uniform_buffer: wgpu::Buffer,
+    bind_group: wgpu::BindGroup,
+    lighting_uniform_buffer: wgpu::Buffer,
+    lighting_bind_group: wgpu::BindGroup,
+}
+
+impl MultiMeshContext {
+    pub fn new(device: &Device, queue: &Queue) -> Self {
+        let lighting = BasicLightingUniforms::default();
+        let bind_group_layout = device.create_bind_group_layout(
+            &wgpu::BindGroupLayoutDescriptor {
+                label: Some("MultiMesh MVP Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            },
+        );
+        let lighting_layout = create_basic_lighting_bind_group_layout(device);
+
+        let pipeline = std::sync::Arc::new(create_basic_mesh_pipeline_with_lighting(
+            device, &bind_group_layout, &lighting_layout, /*use_depth=*/ true,
+            wgpu::CompareFunction::Always,
+        ));
+
+        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("MultiMesh MVP"),
+            size: std::mem::size_of::<BasicUniforms>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        queue.write_buffer(&uniform_buffer, 0, bytemuck::cast_slice(&[BasicUniforms::default()]));
+
+        let mvp_entry = wgpu::BindGroupEntry {
+            binding: 0,
+            resource: uniform_buffer.as_entire_binding(),
+        };
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("MultiMesh MVP BG"),
+            layout: &bind_group_layout,
+            entries: &[mvp_entry],
+        });
+
+        let lighting_uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("MultiMesh Lighting"),
+            size: std::mem::size_of::<BasicLightingUniforms>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        queue.write_buffer(&lighting_uniform_buffer, 0,
+            bytemuck::cast_slice(&[lighting]));
+
+        let lighting_entry = wgpu::BindGroupEntry {
+            binding: 0,
+            resource: lighting_uniform_buffer.as_entire_binding(),
+        };
+        let lighting_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("MultiMesh Lighting BG"),
+            layout: &lighting_layout,
+            entries: &[lighting_entry],
+        });
+
+        Self {
+            pipeline, slots: Vec::new(),
+            uniform_buffer, bind_group,
+            lighting_uniform_buffer, lighting_bind_group,
+        }
+    }
+
+    pub fn set_meshes(&mut self, device: &Device, meshes: &[Mesh]) {
+        self.slots.clear();
+        for m in meshes {
+            self.slots.push(MeshSlot {
+                label_id: m.label_id,
+                label_name: m.label_name.clone(),
+                vertex_buffer: device.create_buffer_init(
+                    &wgpu::util::BufferInitDescriptor {
+                        label: Some(&format!("vert label={}", m.label_id)),
+                        contents: bytemuck::cast_slice(&m.vertices),
+                        usage: wgpu::BufferUsages::VERTEX,
+                    }),
+                index_buffer: device.create_buffer_init(
+                    &wgpu::util::BufferInitDescriptor {
+                        label: Some(&format!("idx label={}", m.label_id)),
+                        contents: bytemuck::cast_slice(&m.indices),
+                        usage: wgpu::BufferUsages::INDEX,
+                    }),
+                num_indices: m.indices.len() as u32,
+                visible: true,
+            });
+        }
+    }
+
+    pub fn set_visibility(&mut self, label_id: u8, visible: bool) {
+        for s in &mut self.slots {
+            if s.label_id == label_id { s.visible = visible; }
+        }
+    }
+
+    pub fn update_uniforms(&self, queue: &Queue, mvp: &[[f32; 4]; 4]) {
+        queue.write_buffer(&self.uniform_buffer, 0,
+            bytemuck::cast_slice(&[BasicUniforms { model_view_proj: *mvp }]));
+    }
+
+    pub fn update_lighting(&self, queue: &Queue, l: BasicLightingUniforms) {
+        queue.write_buffer(&self.lighting_uniform_buffer, 0,
+            bytemuck::cast_slice(&[l]));
+    }
+
+    pub fn render(&self, render_pass: &mut wgpu::RenderPass) {
+        render_pass.set_pipeline(&self.pipeline);
+        render_pass.set_bind_group(0, &self.bind_group, &[]);
+        render_pass.set_bind_group(1, &self.lighting_bind_group, &[]);
+        for s in &self.slots {
+            if !s.visible || s.num_indices == 0 { continue; }
+            render_pass.set_vertex_buffer(0, s.vertex_buffer.slice(..));
+            render_pass.set_index_buffer(s.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            render_pass.draw_indexed(0..s.num_indices, 0, 0..1);
+        }
     }
 }

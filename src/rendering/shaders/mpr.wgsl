@@ -63,13 +63,14 @@ var t_diffuse: texture_3d<f32>;
 @group(0) @binding(1)
 var s_diffuse: sampler;
 
-struct NeedleUniform {
-    entry: vec3<f32>,
-    radius: f32,
-    tip: vec3<f32>,
-    id: u32,
-    color: vec4<f32>,
-};
+// Segmentation overlay: R8Uint 3D texture sharing the CT volume's UV space.
+// label == 0 means background, label > 0 means a foreground anatomical region.
+// The texture is bound to the same bind group (group 0) as the volume
+// texture; bindings 2/3 are dedicated to the segmentation.
+@group(0) @binding(2)
+var t_segmentation: texture_3d<u32>;
+@group(0) @binding(3)
+var s_segmentation: sampler;
 
 struct UniformsFrag {
     window: f32,
@@ -84,9 +85,10 @@ struct UniformsFrag {
     mat2: mat4x4<f32>,
     needle_count: u32,
     needle_enabled: f32,
+    seg_enabled: f32,
     _pad0: f32,
-    _pad1: f32,
     needles: array<NeedleUniform, 32>,
+    label_colors: array<vec4<f32>, 8>,
 }
 
 @group(2) @binding(0)
@@ -155,6 +157,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     v = clamp(v, 0.0, 1.0);
     
     let final_color = vec3<f32>(v);
+
+    // Segmentation overlay
+    if (u_uniform_frag.seg_enabled > 0.5) {
+        let seg_tex_size = vec3<f32>(textureDimensions(t_segmentation));
+        let seg_coord = vec3<i32>(clamp(tex_coords_3d, vec3<f32>(0.0), vec3<f32>(1.0)) * seg_tex_size);
+        let seg_label = textureLoad(t_segmentation, seg_coord, 0).r;
+        if (seg_label > 0u) {
+            let idx = min(seg_label, 8u);
+            let seg_overlay = u_uniform_frag.label_colors[idx].rgb;
+            return vec4<f32>(mix(final_color, seg_overlay, 0.3), 1.0);
+        }
+    }
 
     // 3D needle intersection on the slice
     if (u_uniform_frag.needle_enabled > 0.5 && u_uniform_frag.needle_count > 0u) {

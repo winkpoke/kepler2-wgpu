@@ -1,0 +1,16 @@
+# Web service
+fastapi>=0.110
+uvicorn[standard]>=0.27
+pydantic>=2.6
+
+# Nifti / mask IO
+nibabel>=5.3
+numpy>=1.26
+
+# TotalSegmentator
+# Install these last; they are heavy and pull CUDA-aware PyTorch.
+# pip will pick up the correct torch build for your platform (CUDA / CPU / MPS).
+TotalSegmentator>=2.0
+torch
+# nnunet is a transitive dep of TotalSegmentator but pinning avoids surprises.
+nnunetv2

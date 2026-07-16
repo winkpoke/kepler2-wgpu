@@ -268,6 +268,9 @@ impl RenderApp {
                     state.set_needle_angle(id, angle);
                     log::info!("Mesh needle {} angle set: {}°",id, angle);
                 }
+                Event::UserEvent(UserEvent::SetSegmentationAll(raw, width, height, depth)) => {
+                    state.set_ai_segmentation(raw, width, height, depth);
+                }
                 #[cfg(target_arch = "wasm32")]
                 Event::UserEvent(UserEvent::ViewClickGet(view_index, screen_x, screen_y, screen_z, sender)) => {
                     // Function-level comment: Compute view click result and send it back to JS via oneshot channel.
