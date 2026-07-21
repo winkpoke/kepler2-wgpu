@@ -308,7 +308,7 @@ impl ViewFactory for DefaultViewFactory {
             Ok(rc) => rc,
             Err(e) => return Err(e),
         };
-        let vol_ctx = MeshRenderContext::new(&self.device, self.surface_format, render_content);
+        let vol_ctx = MeshRenderContext::new(&self.device, &self.queue, self.surface_format, render_content);
         mesh_view.attach_context(Arc::new(vol_ctx));
         mesh_view.move_to(pos);
         mesh_view.resize(size);
@@ -453,7 +453,7 @@ impl ViewFactory for DefaultViewFactory {
         mesh_view.set_rotation_enabled(false);
         info!("[DefaultViewFactory] Mesh rotation disabled for consistent inspection");
 
-        let vol_ctx = MeshRenderContext::new(&self.device, self.surface_format, render_content);
+        let vol_ctx = MeshRenderContext::new(&self.device, &self.queue, self.surface_format, render_content);
         mesh_view.attach_context(Arc::new(vol_ctx));
         mesh_view.move_to(pos);
         mesh_view.resize(size);

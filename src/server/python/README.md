@@ -67,42 +67,19 @@ pip install -r requirements.txt
 ## Run
 
 ```bash
-# 1. Where the Rust server saves uploaded MHA files. Both services must
-#    agree on this directory.
-export KEPLER_SERIES_DIR=/path/to/kepler2-wgpu/series       # default: /tmp/kepler_series
+# 1. Where the Rust server saves uploaded MHA files. Both services must agree on this directory.
+# export KEPLER_SERIES_DIR= C:/user/kepler_series
 
 # 2. Where to write TotalSegmentator intermediate + final output.
-export KEPLER_OUTPUT_ROOT=/path/to/kepler2-wgpu/ai_output    # default: /tmp/kepler_ai_output
+# export KEPLER_OUTPUT_ROOT=C:/user/kepler_ai_output
 
-# 3. (optional) Run TotalSegmentator in fast mode (half resolution).
-#    Disable for production-quality masks.
+# 3. (optional) Run TotalSegmentator in fast mode (ONLY FOR CPU MODE).
 # export KEPLER_TS_FAST=0
 
 # 4. Start the service. Default port 8001 matches KEPLER_AI_URL in src/server/ai.rs.
+# uv run --python "..\totalsegmentator\.venv\Scripts\python.exe" uvicorn app:app --host 0.0.0.0 --port 8001
 uvicorn app:app --host 0.0.0.0 --port 8001
 ```
-
-You can also run it with `python app.py` for a quick local test
-(equivalent to the uvicorn command above).
-
-## Smoke test
-
-```bash
-# Health check
-curl -s http://localhost:8001/health | python -m json.tool
-
-# Submit a segmentation (the Rust server does this for you)
-curl -s -X POST http://localhost:8001/segment \
-     -H 'content-type: application/json' \
-     -d '{"series_id": "<id-from-rust-upload>"}' | python -m json.tool
-
-# Poll progress
-curl -s http://localhost:8001/task/<task_id> | python -m json.tool
-```
-
-When the task is `completed`, the response to `GET /task/{task_id}`
-already contains the base64 mask, so the Rust poller does not need a
-second endpoint to fetch it.
 
 ## File layout
 

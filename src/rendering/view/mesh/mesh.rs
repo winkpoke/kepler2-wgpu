@@ -6,6 +6,8 @@ use crate::rendering::core::pipeline::*;
 use crate::rendering::view::{LABEL_COLORS, LABEL_NAMES};
 use mcubes::{MarchingCubes, MeshSide};
 use std::sync::Arc;
+use tobj;
+use serde::{Serialize, Deserialize};
 use glam::Mat4;
 use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, RenderPipeline};
 
@@ -78,6 +80,11 @@ pub struct MeshUniforms {
     pub plane_rotation_angle: f32,
     pub oblique_planes: [ObliquePlaneUniform; 4],
     pub needles: [NeedleUniform; 32],
+    pub seg_enabled: f32,
+    pub _seg_pad0: f32,
+    pub _seg_pad1: f32,
+    pub _seg_pad2: f32,
+    pub label_colors: [[f32; 4]; 8],
 }
 
 impl Default for MeshUniforms {
@@ -106,6 +113,11 @@ impl Default for MeshUniforms {
             plane_rotation_angle: 180.0,
             oblique_planes: [ObliquePlaneUniform::default(); 4],
             needles: [NeedleUniform::default(); 32],
+            seg_enabled: 0.0,
+            _seg_pad0: 0.0,
+            _seg_pad1: 0.0,
+            _seg_pad2: 0.0,
+            label_colors: LABEL_COLORS,
         }
     }
 }
@@ -119,15 +131,34 @@ pub struct MeshRenderContext {
     pub uniform_bind_group: BindGroup,
     pub texture_bind_group: BindGroup,
     pub render_content: Arc<RenderContent>,
+    /// Default "empty" 1x1x1 R8Uint label texture used until a real
+    /// segmentation is supplied via `set_segmentation`. Mirrors the same
+    /// pattern used by `MprRenderContext::default_seg_content`.
+    pub default_seg_content: Arc<RenderContent>,
+    /// Active segmentation texture (initially the default 1x1x1 zero).
+    pub seg_content: Arc<RenderContent>,
+    /// View-side per-frame MeshUniforms (includes seg_enabled, label_colors).
+    pub uniforms: MeshUniforms,
 }
 
 impl MeshRenderContext {
     pub fn new(
         device: &Device,
+        queue: &wgpu::Queue,
         target_format: wgpu::TextureFormat,
         render_content: Arc<RenderContent>,
     ) -> Self {
-        let texture_bind_group_layout = create_texture_bind_group_layout(device);
+        // The volume shader expects a segmentation texture at bindings 2/3
+        // (R8Uint + nearest sampler). Use the addseg layout so the
+        // pipeline matches the shader. A 1x1x1 zero-label texture is
+        // bound by default; the segmentation can be swapped later via
+        // `set_segmentation`.
+        let texture_bind_group_layout = create_texture_bind_group_layout_addseg(device);
+        let default_seg_content = Arc::new(
+            RenderContent::from_labels_r8(device, queue, &[0u8], "Mesh Default Seg", 1, 1, 1)
+                .expect("failed to build default seg content"),
+        );
+        let seg_content = Arc::clone(&default_seg_content);
 
         // Uniform buffer
         let min_binding_size = std::num::NonZeroU64::new(std::mem::size_of::<MeshUniforms>() as u64);
@@ -158,7 +189,7 @@ impl MeshRenderContext {
             }],
         });
 
-        // Texture Bind Group
+        // Texture Bind Group: volume + segmentation overlay.
         let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Mesh Volume Texture Bind Group"),
             layout: &texture_bind_group_layout,
@@ -171,6 +202,14 @@ impl MeshRenderContext {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&render_content.sampler),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&default_seg_content.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&default_seg_content.sampler),
+                },
             ],
         });
 
@@ -182,6 +221,9 @@ impl MeshRenderContext {
             uniform_bind_group,
             texture_bind_group,
             render_content,
+            default_seg_content,
+            seg_content,
+            uniforms: MeshUniforms::default(),
         }
     }
 
@@ -194,6 +236,69 @@ impl MeshRenderContext {
 
     pub fn update_uniforms(&self, queue: &wgpu::Queue, uniforms: &MeshUniforms) {
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[*uniforms]));
+    }
+
+    /// Swap the active segmentation texture and rebuild the texture bind
+    /// group. Also toggles `seg_enabled` in the cached uniforms so the
+    /// shader actually samples the overlay. Pass `None` to revert to the
+    /// default 1x1x1 zero texture and disable the overlay.
+    pub fn set_segmentation(
+        &mut self,
+        device: &Device,
+        seg: Option<Arc<RenderContent>>,
+    ) {
+        let enable = seg.is_some();
+        self.seg_content = match seg {
+            Some(c) => c,
+            None => Arc::clone(&self.default_seg_content),
+        };
+        self.texture_bind_group = Self::create_texture_bind_group(
+            device,
+            &self.texture_bind_group_layout,
+            &self.render_content,
+            &self.seg_content,
+        );
+        self.uniforms.seg_enabled = if enable { 1.0 } else { 0.0 };
+        log::info!(
+            "MeshRenderContext: segmentation {} ({}x{}x{})",
+            if self.uniforms.seg_enabled > 0.5 { "enabled" } else { "disabled" },
+            self.seg_content.texture.size().width,
+            self.seg_content.texture.size().height,
+            self.seg_content.texture.size().depth_or_array_layers,
+        );
+    }
+
+    /// Build the (volume + segmentation) texture bind group. Mirrors the
+    /// MPR helper; kept on `MeshRenderContext` so `set_segmentation` can
+    /// rebuild it without exposing internal fields.
+    fn create_texture_bind_group(
+        device: &Device,
+        layout: &BindGroupLayout,
+        volume: &RenderContent,
+        seg: &RenderContent,
+    ) -> BindGroup {
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("mesh_volume_texture_bind_group"),
+            layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&volume.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&volume.sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(&seg.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::Sampler(&seg.sampler),
+                },
+            ],
+        })
     }
 
     pub fn get_memory_stats(&self) -> (u64, u64, f32, f32) {
@@ -275,7 +380,7 @@ impl Lighting {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct MeshVertex {
     pub position: [f32; 3],
     pub normal: [f32; 3],
@@ -286,7 +391,7 @@ pub struct MeshVertex {
 unsafe impl bytemuck::Zeroable for MeshVertex {}
 unsafe impl bytemuck::Pod for MeshVertex {}
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct Mesh {
     pub label_id: u8,
     pub label_name: String,
@@ -455,6 +560,172 @@ impl Mesh {
 
         Self { label_id: 0, label_name: "Cube".to_string(), vertices, indices }
     }
+
+    pub fn import_obj(path:&str)->Result<Vec<Mesh>, Box<dyn std::error::Error>>{
+        let (models, _materials) = tobj::load_obj(
+            path,
+            &tobj::LoadOptions{
+                triangulate:true,
+                single_index:true,
+                ..Default::default()
+            }
+        )?;
+
+        let mut result = Vec::new();
+        for m in models {
+            let mesh=&m.mesh;
+            let vertex_count = mesh.positions.len() / 3;
+            let normals: Vec<f32> = if mesh.normals.len() == mesh.positions.len() {
+                mesh.normals.clone()
+            } else {
+                compute_vertex_normals(&mesh.positions, &mesh.indices)
+            };
+            let mut vertices = Vec::<MeshVertex>::with_capacity(vertex_count);
+            for i in 0..vertex_count {
+                let pos=[mesh.positions[i*3], mesh.positions[i*3+1], mesh.positions[i*3+2]];
+                let normal=[normals[i*3], normals[i*3+1], normals[i*3+2]];
+                vertices.push(
+                    MeshVertex{
+                        position:pos,
+                        normal,
+                        color:[1.0,1.0,1.0],
+                    }
+                );
+            }
+
+            result.push(
+                Mesh{
+                    label_id:0,
+                    label_name:m.name,
+                    vertices,
+                    indices:mesh.indices.clone(),
+                }
+            );
+        }
+
+        // Compute actual bounding box from all vertices
+        let mut min = glam::Vec3::splat(f32::MAX);
+        let mut max = glam::Vec3::splat(f32::MIN);
+        for mesh in &result {
+            for v in &mesh.vertices {
+                let p = glam::Vec3::from(v.position);
+                min = min.min(p);
+                max = max.max(p);
+            }
+        }
+
+        log::info!("OBJ bbox: min={:?}, max={:?}", min, max);
+
+        let center = (min + max) * 0.5;
+        let extent = max - min;
+        let max_dim = extent.max_element();
+
+        if max_dim <= 0.0 {
+            return Err("OBJ mesh has zero or invalid extent".into());
+        }
+
+        // Normalize all meshes to [-1, 1] range centered at origin (matching MC normalization).
+        // After centering, extent is [-max_dim/2, max_dim/2]; multiply by 2/max_dim to get [-1, 1].
+        let norm_scale = 2.0 / max_dim;
+        for mesh in &mut result {
+            for v in &mut mesh.vertices {
+                let mut p = glam::Vec3::from(v.position);
+                p = (p - center) * norm_scale;
+                v.position = p.to_array();
+            }
+        }
+
+        log::info!("OBJ normalized: center={:?}, max_dim={}", center, max_dim);
+
+        Ok(result)
+    }
+
+    pub fn meshes_to_obj(meshes: &Vec<Self>) -> String {
+        let mut obj = String::new();
+        let mut offset = 0;
+        for mesh in meshes {
+            obj.push_str(&format!("o {}\n", mesh.label_name));
+            for v in &mesh.vertices {
+                obj.push_str(&format!(
+                    "v {} {} {}\n",
+                    v.position[0],
+                    v.position[1],
+                    v.position[2],
+                ));
+            }
+            for v in &mesh.vertices {
+                obj.push_str(&format!(
+                    "vn {} {} {}\n",
+                    v.normal[0],
+                    v.normal[1],
+                    v.normal[2],
+                ));
+            }
+            for tri in mesh.indices.chunks(3) {
+                obj.push_str(&format!(
+                    "f {}//{} {}//{} {}//{}\n",
+                    tri[0]+1+offset, tri[0]+1+offset,
+                    tri[1]+1+offset, tri[1]+1+offset,
+                    tri[2]+1+offset, tri[2]+1+offset,
+                ));
+            }
+            offset += mesh.vertices.len() as u32;
+        }
+        obj
+    }
+}
+
+fn compute_vertex_normals(positions:&Vec<f32>,indices:&Vec<u32>)->Vec<f32>{
+    let vertex_count = positions.len()/3;
+
+    // each vertex accumulate normal
+    let mut normals = vec![glam::Vec3::ZERO;vertex_count];
+
+    /*
+        triangle:
+             v2
+            / \
+           /   \
+          v0---v1
+        normal: (v1-v0)×(v2-v0)
+    */
+    for tri in indices.chunks(3) {
+        if tri.len()!=3 {
+            continue;
+        }
+        let i0 = tri[0] as usize;
+        let i1 = tri[1] as usize;
+        let i2 = tri[2] as usize;
+        let p0 = glam::Vec3::new(
+            positions[i0*3],
+            positions[i0*3+1],
+            positions[i0*3+2],
+        );
+        let p1 = glam::Vec3::new(
+            positions[i1*3],
+            positions[i1*3+1],
+            positions[i1*3+2],
+        );
+        let p2 = glam::Vec3::new(
+            positions[i2*3],
+            positions[i2*3+1],
+            positions[i2*3+2],
+        );
+        let face_normal = (p1-p0).cross(p2-p0).normalize_or_zero();
+        normals[i0]+=face_normal;
+        normals[i1]+=face_normal;
+        normals[i2]+=face_normal;
+    }
+
+    // normalize each vertex normal
+    let mut result = Vec::<f32>::with_capacity(vertex_count*3);
+    for n in normals {
+        let n = n.normalize_or_zero();
+        result.push(n.x);
+        result.push(n.y);
+        result.push(n.z);
+    }
+    result
 }
 
 pub fn spine(

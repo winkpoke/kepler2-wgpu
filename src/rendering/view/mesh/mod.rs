@@ -14,3 +14,4 @@ pub mod performance;
 pub use basic_mesh_context::BasicMeshContext;
 pub use mesh_view::{MeshRenderError, MeshView};
 pub use performance::QualityLevel;
+pub use mesh::Mesh;

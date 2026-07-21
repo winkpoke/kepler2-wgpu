@@ -276,7 +276,7 @@ impl MipView {
             config: MipConfig::default(),
             position: (0, 0),
             dimensions: (800, 600),
-            scale: 1.5, // Default zoom to 1.5 to crop out CT scanner ring
+            scale: 1.0,
             pan: [0.0, 0.0, 0.0],
             rotation_quat: Quat::IDENTITY,
             content_dimensions: (1.0, 1.0),

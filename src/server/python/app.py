@@ -47,8 +47,8 @@ from inference import (
 # Rust server or in a separate container without code changes).
 # ---------------------------------------------------------------------------
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
-SERIES_DIR = os.environ.get("KEPLER_SERIES_DIR", "/tmp/kepler_series")
-OUTPUT_ROOT = os.environ.get("KEPLER_OUTPUT_ROOT", "/tmp/kepler_ai_output")
+SERIES_DIR = "C:/user/kepler_series"
+OUTPUT_ROOT = "C:/user/kepler_ai_output"
 # Whether to run TotalSegmentator in `fast` mode (half resolution, ~2x speedup).
 # Safe default for prototyping; flip to "0" if you need full-resolution masks.
 TS_FAST = os.environ.get("KEPLER_TS_FAST", "1") not in ("0", "false", "False")

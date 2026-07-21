@@ -380,22 +380,10 @@
             margin-bottom: 0;
         }
 
-        .form-group label {
-            display: block;
-            font-size: 12px;
-            color: #444;
-            margin-bottom: 4px;
-            font-weight: 500;
-        }
-
         .form-row {
             display: flex;
             gap: 12px;
             margin-bottom: 12px;
-        }
-
-        .form-row > * {
-            flex: 1;
         }
 
         .form-group label {
@@ -680,12 +668,17 @@
                     DICOM: <input type="file" id="file" multiple>
                 </div>
                 <div class="file-row">
+                    OBJ: <input type="file" id="obj_file" accept=".obj">
+                </div>
+                <div class="file-row">
                     <button id="openMhxModalBtn" class="btn">Import MHA/MHD</button>
                     <button id="rerender">Render</button>
                 </div>
                 <div class="file-row">
-                   <button id="convertBtn_dicom">DICOM export</button>
-                   <button id="convertBtn_mhx">MHA export</button>
+                   <span class="row-label">Export</span>
+                   <button id="convertBtn_dicom">DICOM</button>
+                   <button id="convertBtn_mhx">MHA</button>
+                   <button id="convertBtn_obj">OBJ</button>
                 </div>
                 <div class="seg-row">
                     <span class="row-label">AI Model</span>
@@ -731,15 +724,15 @@
                     </div>
                     <div class="needle-row">
                         <span class="needle-label">Entry</span>
-                        <input type="number" id="needle-ex" step="0.1" value="-15.036041">
-                        <input type="number" id="needle-ey" step="0.1" value="5.2710266">
-                        <input type="number" id="needle-ez" step="0.1" value="-59.510986">
+                        <input type="number" id="needle-ex" step="0.1" value="-29.43">
+                        <input type="number" id="needle-ey" step="0.1" value="-29.83">
+                        <input type="number" id="needle-ez" step="0.1" value="77.37">
                     </div>
                     <div class="needle-row">
                         <span class="needle-label">Tip</span>
-                        <input type="number" id="needle-tx" step="0.1" value="9.541512">
-                        <input type="number" id="needle-ty" step="0.1" value="5.2710266">
-                        <input type="number" id="needle-tz" step="0.1" value="-56.513733">
+                        <input type="number" id="needle-tx" step="0.1" value="-1.44">
+                        <input type="number" id="needle-ty" step="0.1" value="-1.44">
+                        <input type="number" id="needle-tz" step="0.1" value="-8.02">
                     </div>
                     <div class="needle-row">
                         <span class="needle-label">Color</span>
@@ -1586,7 +1579,7 @@
                     );
                     return;
                 }
-                gl_canvas.apply_segmentation(seg.raw, width, height, depth);
+                await gl_canvas.apply_segmentation(seg.raw, width, height, depth);
                 log(`Segmentation uploaded to GPU (${width}×${height}×${depth})`, 'success');
             } catch (e) {
                 log(`Failed to upload segmentation to GPU: ${e.message}`, 'error');
@@ -1672,37 +1665,45 @@
         });
 
         // ========= DICOM Export Button =========
+        byId('convertBtn_obj').addEventListener('click', async () => {
+            if (!gl_canvas) {
+                log('GL canvas not ready; cannot overlay segmentation yet', 'warn');
+                return;
+            }
+            if (!state.volume) {
+                log('No volume on client; cannot derive mask dimensions', 'error');
+                return;
+            }
+            try {
+                const spine_obj = await gl_canvas.export_current_obj();
+                const blob = new Blob([spine_obj],{type:"text/plain"});
+                downloadBlob(blob, "segmentation.obj");
+                log("✅ OBJ 导出成功！");
+            }catch (e) {
+                console.error(e);
+                log("OBJ 导出失败：" + e, "error");
+            }
+        });
+
         byId('convertBtn_dicom').addEventListener('click', async () => {
             if (!serverConnected) {
                 alert('DICOM export requires server connection');
                 return;
             }
-
             if (!currentVolumeId) {
                 alert('No volumes on server. Load a volume first (DICOM or MHA).');
                 return;
             }
-
-            await exportDicom(currentVolumeId);
-        });
-
-        // Export DICOM function
-        async function exportDicom(volumeId) {
             try {
-                log(`Building DICOM for volume ${volumeId}...`, 'info');
-                const url = `${SERVER_URL}/api/dicom/build/${volumeId}`;
-                
+                log(`Building DICOM for volume ${currentVolumeId}...`, 'info');
+                const url = `${SERVER_URL}/api/dicom/build/${currentVolumeId}`;
                 const resp = await fetch(url, {
                     method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: {'Content-Type': 'application/json'},
                 });
-
                 if (!resp.ok) {
                     throw new Error(`HTTP error! status: ${resp.status}`);
                 }
-                
                 const result = await resp.json();
                 log(`DICOM built successfully: ${result.id}`, 'success');
                 alert(`DICOM files have been exported to server's temp directory.\nVolume ID: ${result.id}`);
@@ -1710,7 +1711,47 @@
                 log(`DICOM export error: ${e.message}`, 'error');
                 alert('DICOM export error: ' + e.message);
             }
-        }
+        });
+
+        document.querySelector('#obj_file').addEventListener('change', async () => {
+            if (!serverConnected) {
+                alert('Import OBJ requires server connection');
+                return;
+            }
+            const file = document.querySelector('#obj_file').files[0];
+            if (!file) {
+                alert('Please select a OBJ file first!');
+                return;
+            }
+            const formData = new FormData();
+            formData.append('file', file);
+            try {
+                const url = `${SERVER_URL}/api/upload_obj`;
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    body:formData
+                });
+                if (!resp.ok) {
+                    throw new Error(`HTTP error! status: ${resp.status}`);
+                }
+                const buffer = await resp.arrayBuffer();
+                const data = new Uint8Array(buffer);
+                log(`Import OBJ successfully`, 'success');
+                if (!gl_canvas) {
+                    log('GL canvas not ready; cannot overlay segmentation yet', 'warn');
+                    return;
+                }
+                if (!state.volume) {
+                    log('No volume on client; cannot derive mask dimensions', 'error');
+                    return;
+                }
+                gl_canvas.set_obj_mesh(data);
+                log(`OBJ uploaded to GPU`, 'success');
+            } catch (e) {
+                log(`Import OBJ error: ${e.message}`, 'error');
+                alert('Import OBJ error: ' + e.message);
+            }
+        });
         
         // 视图操作
         byId('apply-view').addEventListener('click', () => {

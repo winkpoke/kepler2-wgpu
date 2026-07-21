@@ -3,15 +3,19 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
     Json,
+    body::Body,
+    response::Response,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
+use bincode;
 
 use crate::server::ai_handler;
 use crate::server::ai_model::{CancelRequest, SegmentRequest, SegmentResponse};
 use crate::data::dicom::{build_ct_dicom, FsSink, generate_uid, Patient, StudySet};
 use crate::server::state::{ServerState, StoredVolume};
 use crate::server::ws::WsMessage;
+use crate::rendering::view::mesh::Mesh;
 
 /// Client WebSocket message
 #[derive(serde::Deserialize)]
@@ -265,32 +269,27 @@ pub async fn build_ct_dicom_axum(
     State(state): State<ServerState>,
     Path(id): Path<String>,
 ) -> Result<Json<StoredVolume>, (StatusCode, String)> {
-    log::info!("build_ct_dicom called with {:?}", id);
-
-    let stored = state.get_volume(&id).await
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Volume {} not found", id)))?;
+    let stored = state.get_volume(&id).await.ok_or_else(|| (StatusCode::NOT_FOUND, format!("Volume {} not found", id)))?;
     log::info!("Volume {} found: id={}, mhx_path_size={}, data_path_size={}", 
         id, 
         stored.id, 
         stored.mhx_path.as_ref().map(|p| p.len()).unwrap_or(0),
-        stored.data_path.as_ref().map(|p| p.len()).unwrap_or(0));
+        stored.data_path.as_ref().map(|p| p.len()).unwrap_or(0)
+    );
 
-    let mhx_path = stored.mhx_path.as_ref()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "MHX path is missing".to_string()))?;
-    let data_path = stored.data_path.as_ref()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Data path is missing".to_string()))?;
-
+    let mhx_path = stored.mhx_path.as_ref().ok_or_else(|| (StatusCode::BAD_REQUEST, "MHX path is missing".to_string()))?;
+    let data_path = stored.data_path.as_ref().filter(|d| !d.is_empty()).map(|v| v.as_slice());
     let out_dir = std::path::PathBuf::from("C:\\user\\dicoms");
     let temp_dir = out_dir.join(format!("CT_{}", stored.id));
+    
     std::fs::create_dir_all(&temp_dir).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to create temp dir: {}", e)))?;
-
     let mut sink = FsSink {
         out_dir: temp_dir.clone(),
     };
-    
+
     build_ct_dicom(
         mhx_path,
-        Some(data_path),
+        data_path,
         &stored.patient,
         &stored.study,
         stored.kv,
@@ -300,11 +299,31 @@ pub async fn build_ct_dicom_axum(
         stored.patient_position.clone(),
         stored.modality.clone(),
         &mut sink,
-    )
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to build DICOM: {}", e)))?;
-
+    ).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to build DICOM: {}", e)))?;
     log::info!("DICOM exported to {:?}", temp_dir);
     Ok(Json(stored))
+}
+
+pub async fn upload_obj(mut multipart:Multipart) -> Result<Response<Body>,StatusCode> {
+     while let Some(field)= multipart.next_field().await.map_err(|_|StatusCode::BAD_REQUEST)?{
+        if field.name()==Some("file") {
+            let bytes = field.bytes().await.map_err(|_|StatusCode::BAD_REQUEST)?;
+            let path= format!("/tmp/{}.obj",uuid::Uuid::new_v4());
+            tokio::fs::write(&path,&bytes).await.map_err(|_|StatusCode::INTERNAL_SERVER_ERROR)?;
+            let meshes= Mesh::import_obj(&path).map_err(|_|StatusCode::BAD_REQUEST)?;
+            let bin = bincode::serialize(&meshes).map_err(|_|StatusCode::INTERNAL_SERVER_ERROR)?;
+             return Ok(
+                Response::builder()
+                .header(
+                    "Content-Type",
+                    "application/octet-stream"
+                )
+                .body(Body::from(bin))
+                .unwrap()
+            );
+        }
+    }
+    Err(StatusCode::BAD_REQUEST)
 }
 
 pub async fn start_segmentation(

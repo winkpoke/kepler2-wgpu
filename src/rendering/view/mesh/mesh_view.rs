@@ -7,7 +7,7 @@ use super::{
 };
 use crate::{
     core::{timing::Instant, KeplerResult, WindowLevel},
-    rendering::view::{Renderable, View},
+    rendering::view::{Renderable, View, LABEL_COLORS},
 };
 use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::FRAC_PI_2;
@@ -167,21 +167,21 @@ impl MeshView {
     /// Function-level comment: Replace the set of vertebra meshes (one per label).
     /// Triggers marching-cubes-free upload: each `Mesh`'s vertices/indices
     /// are pushed into the GPU buffers for that label slot.
-    pub fn set_spine_meshes(
+    pub fn set_meshes(
         &self,
         device: &wgpu::Device,
-        meshes: Vec<Mesh>,
+        meshes: Arc<Vec<Mesh>>,
     ) {
         if let Some(ctx) = &self.spine_ctx {
             if let Ok(mut guard) = ctx.lock() {
                 guard.set_meshes(device, &meshes);
                 log::info!(
-                    "MeshView::set_spine_meshes - uploaded {} vertebra meshes",
+                    "MeshView::set_meshes - uploaded {} vertebra meshes",
                     meshes.len()
                 );
             }
         } else {
-            log::warn!("MeshView::set_spine_meshes - no spine context attached");
+            log::warn!("MeshView::set_meshes - no spine context attached");
         }
     }
 
@@ -578,6 +578,15 @@ impl MeshView {
                 plane_rotation_angle: self.plane_rotation_angle,
                 oblique_planes: self.oblique_planes,
                 needles: gpu_needles,
+                // Segmentation overlay state is owned by the volume context
+                // (set via `MeshRenderContext::set_segmentation`); just copy
+                // it through so the shader sees the same value the host
+                // toggled.
+                seg_enabled: vol_ctx.uniforms.seg_enabled,
+                _seg_pad0: 0.0,
+                _seg_pad1: 0.0,
+                _seg_pad2: 0.0,
+                label_colors: LABEL_COLORS,
             };
 
             // update
@@ -587,7 +596,10 @@ impl MeshView {
         // Spine mesh uniforms
         if let Some(spine_ctx) = &self.spine_ctx {
             let flip = Mat4::from_scale(Vec3::new(1.0, -1.0, -1.0));
-            let model_matrix = flip * Mat4::from_quat(self.rotation_quat.conjugate());
+            let scale = Mat4::from_scale(Vec3::new(1.0/ self.scale_factor,1.0/ self.scale_factor,1.0/ self.scale_factor));
+            let translation = Mat4::from_translation(Vec3::new(-self.pan[0], self.pan[1], 0.0));
+            let rotation = Mat4::from_quat(self.rotation_quat.conjugate());
+            let model_matrix = flip * translation * rotation * scale;
             let view_matrix = Mat4::from_translation(Vec3::new(0.0, 0.0, 5.0));
             let proj_matrix = Mat4::orthographic_rh(-1.0, 1.0, -1.0, 1.0, -10.0, 10.0);
             let mvp_matrix = proj_matrix * view_matrix * model_matrix;

@@ -61,22 +61,8 @@ impl ServerState {
     pub fn new() -> Self {
         let (ws_tx, _) = broadcast::channel(256);
 
-        // Resolve the on-disk series directory. Honour the same env var the
-        // Python service uses (`KEPLER_SERIES_DIR`) so the two sides agree
-        // on the file location. Default to `$TMPDIR/kepler_series`, which
-        // works on Linux, macOS and Windows (`std::env::temp_dir()`
-        // returns the platform-appropriate temp directory).
-        //
-        // The Python FastAPI service (`src/server/python/app.py`) reads
-        // from exactly this path; if we fall back to the temp directory
-        // while the Python side was started with a custom
-        // `KEPLER_SERIES_DIR`, segmentation requests will fail with
-        // "Series <id> not found on disk" because the two sides will be
-        // looking at different folders. Warn loudly when we hit the
-        // fallback so the user can align the two env vars.
-        let series_dir_from_env = std::env::var_os("KEPLER_SERIES_DIR")
-            .map(PathBuf::from)
-            .filter(|p| !p.as_os_str().is_empty());
+        // Resolve the on-disk series directory
+        let series_dir_from_env = Some(PathBuf::from("C:/user/kepler_series"));
 
         let (series_dir, using_fallback) = match series_dir_from_env {
             Some(p) => (p, false),

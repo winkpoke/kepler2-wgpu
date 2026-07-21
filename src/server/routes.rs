@@ -16,6 +16,7 @@ pub fn create_router(state: ServerState) -> Router {
         .nest_service("/pkg", ServeDir::new("pkg"))
         .route("/api/health", get(handlers::health_check))
         .route("/api/volumes/upload", post(handlers::upload_volume))
+        .route("/api/upload_obj", post(handlers::upload_obj))
         .route("/api/dicom/build/:id", get(handlers::build_ct_dicom_axum))
         .route("/api/segment", post(handlers::start_segmentation))
         .route("/api/segment/cancel", post(handlers::cancel_segmentation))

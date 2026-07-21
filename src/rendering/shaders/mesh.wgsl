@@ -23,7 +23,7 @@
 //   * Per-pixel blue-noise dithering to hide DVR banding
 //
 // Bindings:
-//   group(0): volume texture (3D) + sampler
+//   group(0): volume texture (3D) + sampler, segmentation texture (3D R8Uint) + sampler
 //   group(1): MeshUniforms uniform buffer
 // =============================================================================
 
@@ -55,13 +55,12 @@ var t_volume: texture_3d<f32>;
 @group(0) @binding(1)
 var s_volume: sampler;
 
-struct NeedleUniform {
-    entry : vec3<f32>,
-    radius : f32,
-    tip : vec3<f32>,
-    id : u32,
-    color : vec4<f32>,
-};
+// Segmentation overlay texture (R8Uint, non-filterable). Same layout as the
+// MPR view so a single bind group can serve both pipelines.
+@group(0) @binding(2)
+var t_segmentation: texture_3d<u32>;
+@group(0) @binding(3)
+var s_segmentation: sampler;
 
 struct ObliquePlane {
     center : vec3<f32>,
@@ -94,6 +93,14 @@ struct MeshUniforms {
     plane_rotation_angle: f32,
     oblique_planes: array<ObliquePlane, 4>,
     needles : array<NeedleUniform, 32>,
+    // Segmentation overlay control. seg_enabled > 0.5 turns the overlay on.
+    // label_colors mirrors the LABEL_COLORS table on the Rust side; entries
+    // are [L1..L5, S1, sacrum, background] so index 0 = background.
+    seg_enabled: f32,
+    _seg_pad0: f32,
+    _seg_pad1: f32,
+    _seg_pad2: f32,
+    label_colors: array<vec4<f32>, 8>,
 }
 @group(1) @binding(0)
 var<uniform> u_vol: MeshUniforms;
@@ -103,37 +110,6 @@ var<uniform> u_vol: MeshUniforms;
 // Geometry helpers
 // -----------------------------------------------------------------------------
 
-// Returns true if `p` lies inside a finite-thickness disc centred at `center`,
-// with face-normal `axis` and radius `radius`. Thickness is measured as
-// `thickness` along `axis` (i.e. the disc is a cylinder cap with `thickness` height).
-fn point_inside_disc(p: vec3<f32>, center: vec3<f32>, axis: vec3<f32>, radius: f32, thickness: f32) -> bool {
-    let v = p - center;
-    let h = dot(v, axis);
-    if (abs(h) > thickness * 0.5) {
-        return false;
-    }
-    let radial = v - h * axis;
-    return dot(radial, radial) <= radius * radius;
-}
-
-// Returns true if `p` lies inside a finite cylinder between `entry` and `tip`
-// with the given `radius`. Treats degenerate (entry≈tip) needles as empty.
-fn point_inside_needle(p: vec3<f32>, entry: vec3<f32>, tip: vec3<f32>, radius: f32) -> bool {
-    let axis = tip - entry;
-    let len = length(axis);
-    if (len < 0.00001) {
-        return false;
-    }
-    let dir = axis / len;
-    let v = p - entry;
-    let t = dot(v, dir);
-    if (t < 0.0 || t > len) {
-        return false;
-    }
-    let closest = entry + dir * t;
-    let dist = distance(p, closest);
-    return dist < radius;
-}
 
 // Ray-box intersection (Axis-Aligned Bounding Box [0,1]^3)
 // Computes entry and exit distances (tmin, tmax)
@@ -327,6 +303,57 @@ fn build_basis(n: vec3<f32>) -> mat3x3<f32> {
     return mat3x3<f32>(u, v, n);
 }
 
+// 9×9×9 box filter segmentation sampler for smooth edges.
+// Returns the alpha-blended foreground colour and its alpha in a vec4:
+//   .rgb = average label colour from foreground voxels
+//   .a   = foreground coverage (fg_count / total_count), giving smooth 0→1 transition.
+//
+// The R8Uint label texture can't be hardware-filtered, so we manually
+// sample a 9×9×9 neighbourhood with uniform weights (box filter).
+// Coverage = foreground_count / total_count gives a smooth 0→1
+// transition at mask boundaries.
+//
+// Box filter ensures coverage is stable regardless of sample point position.
+// Inside the mask: coverage ≈ 1.0 (fully opaque)
+// Outside the mask: coverage ≈ 0.0 (fully transparent)
+// At the edge: coverage transitions smoothly based on foreground ratio
+fn sample_seg_overlay(uv: vec3<f32>) -> vec4<f32> {
+    let seg_size_f = vec3<f32>(textureDimensions(t_segmentation));
+    let safe_uv = clamp(uv, vec3<f32>(0.0), vec3<f32>(1.0));
+    let voxel_pos = safe_uv * max(seg_size_f - vec3<f32>(1.0), vec3<f32>(1.0));
+    let center = floor(voxel_pos);
+
+    var acc_color = vec3<f32>(0.0);
+    var fg_count: f32 = 0.0;
+    let total_count: f32 = 729.0; // 9×9×9 = 729
+
+    for (var dx: i32 = -4; dx <= 4; dx = dx + 1) {
+        for (var dy: i32 = -4; dy <= 4; dy = dy + 1) {
+            for (var dz: i32 = -4; dz <= 4; dz = dz + 1) {
+                let coord = clamp(vec3<i32>(center) + vec3<i32>(dx, dy, dz),
+                                  vec3<i32>(0),
+                                  vec3<i32>(seg_size_f) - vec3<i32>(1));
+                let lbl = textureLoad(t_segmentation, coord, 0).r;
+                
+                if (lbl > 0u) {
+                    let idx = min(lbl, 8u);
+                    acc_color += u_vol.label_colors[idx].rgb;
+                    fg_count += 1.0;
+                }
+            }
+        }
+    }
+
+    if (fg_count > 0.0) {
+        // Average color from foreground voxels
+        let overlay = acc_color / fg_count;
+        // Coverage = foreground ratio → smooth 0→1 at edges
+        let coverage = fg_count / total_count;
+        return vec4<f32>(overlay, coverage);
+    }
+    return vec4<f32>(0.0);
+}
+
 // -----------------------------------------------------------------------------
 // Raymarching: ISO surface
 // -----------------------------------------------------------------------------
@@ -334,13 +361,20 @@ fn build_basis(n: vec3<f32>) -> mat3x3<f32> {
 // Walks the ray in voxel units (1.0 voxel step) and detects a sign change in
 // (sample - iso). When detected, performs a 4-iteration bisection to refine
 // the surface hit, then shades it with Phong lighting and returns an
-// alpha-blended color.
-fn iso_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32, iso: f32) -> vec4<f32> {
+// alpha-blended color along with the world-space hit position (used by the
+// segmentation overlay so the overlay samples the seg volume at the same
+// location as the surface that was actually rendered).
+struct IsoResult {
+    color: vec4<f32>,
+    hit_pos: vec3<f32>,
+    hit: f32,  // 1.0 if the ray hit the surface, 0.0 otherwise
+}
+fn iso_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32, iso: f32) -> IsoResult {
     let dims = u_vol.vol_dims;
     let ray_dir_vox = ray_dir * dims;
     let inv_len = 1.0 / max(length(ray_dir_vox), 1e-6);
-    
-    let step_vox = 1.0; 
+
+    let step_vox = 1.0;
     let dt = step_vox * inv_len;
     let max_steps = u32(max(u_vol.max_steps, 1.0));
 
@@ -386,13 +420,13 @@ fn iso_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32, is
             let mapped_opacity = pow(u_vol.opacity_multiplier, 6.0);
             let density = mapped_opacity * 3.0;
             let sample_alpha = 1.0 - exp(-density);
-            return vec4<f32>(col * sample_alpha, sample_alpha);
+            return IsoResult(vec4<f32>(col * sample_alpha, sample_alpha), hit_pos, 1.0);
         }
 
         v_prev = v_cur;
     }
 
-    return vec4<f32>(0.0, 0.0, 0.0, 0.0);
+    return IsoResult(vec4<f32>(0.0), vec3<f32>(0.0), 0.0);
 }
 
 
@@ -402,6 +436,11 @@ fn iso_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32, is
 struct DvrResult {
     color: vec4<f32>,
     first_hit_depth: f32,
+    // World-space position of the first visible (alpha>0.08) sample.
+    // Used by the segmentation overlay so the seg volume is sampled at
+    // the same world location as the foreground surface.
+    first_hit_pos: vec3<f32>,
+    hit: f32,  // 1.0 if anything visible was hit, 0.0 otherwise
 }
 fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) -> DvrResult {
     let step_vox = 0.5; 
@@ -414,6 +453,7 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
     var accum_rgb = vec3<f32>(0.0);
     var accum_a = 0.0;
     var first_hit_t = t1;
+    var first_hit_pos = vec3<f32>(0.0);
     var t = t0;
 
     let center = u_vol.level;
@@ -525,6 +565,7 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
 
         if (first_hit_t >= t1 && accum_a > 0.08) {
             first_hit_t = t;
+            first_hit_pos = pos;
         }
 
         t += dt;
@@ -587,12 +628,12 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
     }
 
     if (accum_a < 0.01) {
-        return DvrResult(vec4<f32>(accum_rgb, accum_a), 1.0);
+        return DvrResult(vec4<f32>(accum_rgb, accum_a), 1.0, vec3<f32>(0.0), 0.0);
     }
     let hit_pos = ray_origin + (first_hit_t + dt * 2.0) * ray_dir;
     let ndc_z = (u_vol.rotation * vec4<f32>(hit_pos, 1.0)).z;
     let norm_depth = clamp((ndc_z + 0.5) / 2.0, 0.0, 1.0);
-    return DvrResult(vec4<f32>(accum_rgb, accum_a), norm_depth);
+    return DvrResult(vec4<f32>(accum_rgb, accum_a), norm_depth, first_hit_pos, 1.0);
 }
 
 
@@ -643,14 +684,35 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     t_start = t_start + hash(in.tex_coords) * dt;
 
     // Dispatch to ISO or DVR
+    var base_color: vec4<f32>;
+    var hit_pos: vec3<f32>;
+    var hit: f32;
+    var depth: f32;
     if (u_vol.preset < 0.5) {
         let iso = get_iso_threshold();
-        return FragmentOutput(
-            iso_ray_march(ray_origin, ray_dir, t_start, t_end, iso),
-            0.5,
-        );
+        let iso_res = iso_ray_march(ray_origin, ray_dir, t_start, t_end, iso);
+        base_color = iso_res.color;
+        hit_pos = iso_res.hit_pos;
+        hit = iso_res.hit;
+        depth = 0.5;
     } else {
-        let result = dvr_ray_march(ray_origin, ray_dir, t_start, t_end);
-        return FragmentOutput(result.color, result.first_hit_depth);
+        let dvr_res = dvr_ray_march(ray_origin, ray_dir, t_start, t_end);
+        base_color = dvr_res.color;
+        hit_pos = dvr_res.first_hit_pos;
+        hit = dvr_res.hit;
+        depth = dvr_res.first_hit_depth;
     }
+
+    // Segmentation overlay: only when enabled and the ray actually hit
+    // something visible. Sample the 8-tap weighted helper at the same
+    // world-space hit position so the overlay tracks the surface the
+    // raymarcher rendered.
+    if (u_vol.seg_enabled > 0.5 && hit > 0.5) {
+        let seg = sample_seg_overlay(hit_pos);
+        if (seg.a > 0.0) {
+            base_color = vec4<f32>(mix(base_color.rgb, seg.rgb, seg.a), base_color.a);
+        }
+    }
+
+    return FragmentOutput(base_color, depth);
 }

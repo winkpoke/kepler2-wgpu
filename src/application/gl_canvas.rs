@@ -70,6 +70,9 @@ pub enum UserEvent {
     SetMeshNeedleRadius(usize, u32, f32),
     SetMeshNeedleAngle(usize, u32, f32),
     SetSegmentationAll(Vec<u8>, u32, u32, u32),
+    SetOBJMesh(Vec<u8>),
+    #[cfg(target_arch = "wasm32")]
+    ExportCurrentObj(oneshot::Sender<String>),
 }
 
 #[macro_export]
@@ -152,6 +155,16 @@ impl GLCanvas {
             raw.clone(), width, height, depth,
         )) {
             log::error!("Failed to send SetSegmentationAll event: {:?}", e);
+        } else {
+            log::info!("Sent SetSegmentationAll event");
+        }
+    }
+
+    pub fn set_obj_mesh(&self, raw: Vec<u8>) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetOBJMesh(raw.clone())) {
+            log::error!("Failed to send SetOBJMesh event: {:?}", e);
+        } else {
+            log::info!("Sent SetOBJMesh event");
         }
     }
 
@@ -212,6 +225,20 @@ impl GLCanvas {
                 mode,
                 orientation_index
             );
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn export_current_obj(&self) -> Result<String, String> {
+        let (tx, rx) = oneshot::channel();
+        if let Err(e) = self.proxy.send_event(UserEvent::ExportCurrentObj(tx)) {
+            log::error!("Failed to send ExportCurrentObj event: {:?}", e);
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+        log::info!("Sent ExportCurrentObj event");
+        match rx.await {
+            Ok(result) => Ok(result),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
         }
     }
 
@@ -492,11 +519,10 @@ impl GLCanvas {
         }
         let mut arr = [0.0; 4];
         arr.copy_from_slice(&quat);
-        if let Err(e) = self
-            .proxy
-            .send_event(UserEvent::SetRotationQuat(index, arr))
-        {
-            log::error!("Failed to send SetObliqueRotationQuat event: {:?}", e);
+        if let Err(e) = self.proxy.send_event(UserEvent::SetRotationQuat(index, arr)){
+            log::error!("Failed to send SetRotationQuat event: {:?}", e);
+        } else {
+            log::info!("Sent SetRotationQuat event for window {}", index);
         }
     }
 }

@@ -27,14 +27,6 @@ var t_volume: texture_3d<f32>;
 @group(0) @binding(1)
 var s_volume: sampler;
 
-struct NeedleUniform {
-    entry : vec3<f32>,
-    radius : f32,
-    tip : vec3<f32>,
-    id : u32,
-    color : vec4<f32>,
-};
-
 struct MipUniforms {
     ray_step_size: f32,
     max_steps: f32,
@@ -101,29 +93,13 @@ fn apply_window_level(value: f32) -> f32 {
     return clamp(v, 0.0, 1.0);
 }
 
-fn point_inside_needle(p: vec3<f32>, entry: vec3<f32>, tip: vec3<f32>, radius: f32) -> bool {
-    let axis = tip - entry;
-    let len = length(axis);
-    if (len < 0.00001) { 
-        return false; 
-    }
-    let dir = axis / len;
-    let v = p - entry;
-    let t = dot(v, dir);
-    if (t < 0.0 || t > len) { 
-        return false; 
-    }
-    let closest = entry + dir * t;
-    return distance(p, closest) < radius;
-}
-
 // Ray march with MIP / MinIP / AvgIP, with optional needle overlay
 fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end: f32) -> vec4<f32> {
     var max_intensity = -1e20;
     var min_intensity = 1e20;
     var sum_intensity = 0.0;
     var count: u32 = 0u;
-    var needle_color = vec3<f32>(0.0);  // (0,0,0) = no needle hit yet
+    var needle_color = vec3<f32>(0.0);
 
     let step_size = max(u_mip.ray_step_size, 1e-6);
     let max_steps = u32(max(u_mip.max_steps, 1.0));

@@ -31,15 +31,7 @@ log = logging.getLogger(__name__)
 # TotalSegmentator task name. `total` produces all 117 anatomical structures
 DEFAULT_TASK = "total"
 
-# Label table returned to the Rust client.
-# Only the L1-L5 + S1 + sacrum subset is kept: these are the vertebrae the
-# user needs to inspect in the MPR view, and TotalSegmentator's `total` task
-# happens to assign them contiguous ids 27..31 (L1..L5), 26 (S1), 25 (sacrum)
-# — but we renumber them to 1..7 so the GPU/WGSL/Rust side can use a small
-# fixed-size `label_colors[8]` table.
-#
-# Id ordering follows anatomical position (top to bottom):
-#   1 L1, 2 L2, 3 L3, 4 L4, 5 L5, 6 S1, 7 sacrum
+# Label table returned to the Rust client
 LABEL_TABLE = {
     1: "L1",
     2: "L2",
@@ -81,9 +73,7 @@ def run_totalsegmentator(
     Parameters
     ----------
     input_path : str
-        Path to a volume that TotalSegmentator can read. Typically an
-        ``.mha`` file saved by the Rust server under
-        ``KEPLER_SERIES_DIR/<series_id>.mha``.
+        Path to a volume that TotalSegmentator can read.
     output_dir : str
         Output directory. TotalSegmentator will write per-class
         ``.nii.gz`` files here; this function merges the seven we keep
@@ -116,7 +106,8 @@ def run_totalsegmentator(
 
     log.info("Running TotalSegmentator task=%s fast=%s on %s -> %s",
              task, fast, ts_input, out)
-    totalsegmentator(ts_input, str(out), task=task, fast=fast)
+    # help(totalsegmentator)
+    totalsegmentator(ts_input, str(out), task=task, fast=fast, higher_order_resampling=True)
 
     # Find an existing kept-vertebra file to recover the affine/header.
     # (TotalSegmentator only writes the files for structures it actually

@@ -93,7 +93,6 @@ impl RenderApp {
                 }
                 Event::UserEvent(UserEvent::SetScale(index, scale)) => {
                     state.set_scale(index, scale);
-                    log::info!("Scale set to: {}", scale);
                 }
                 Event::UserEvent(UserEvent::SetTranslateInScreenCoord(index, dx, dy, dz)) => {
                     let translate = [dx, dy, dz];
@@ -114,15 +113,12 @@ impl RenderApp {
                 }
                 Event::UserEvent(UserEvent::SetPan(index, dx, dy)) => {
                     state.set_pan(index, dx, dy);
-                    log::info!("Pan set to: dx={dx}, dy={dy}");
                 }
                 Event::UserEvent(UserEvent::SetPanMM(index, dx_mm, dy_mm)) => {
                     state.set_pan_mm(index, dx_mm, dy_mm);
-                    log::info!("PanMM set to: dx_mm={dx_mm}, dy_mm={dy_mm}");
                 }
                 Event::UserEvent(UserEvent::SetAliasing(index, aliasing)) => {
                     state.set_aliasing(index, aliasing);
-                    log::info!("Antialiasing set to: {}", aliasing);
                 }
                 Event::UserEvent(UserEvent::Quit) => {
                     log::info!("Quit event received. Exiting event loop.");
@@ -270,6 +266,16 @@ impl RenderApp {
                 }
                 Event::UserEvent(UserEvent::SetSegmentationAll(raw, width, height, depth)) => {
                     state.set_ai_segmentation(raw, width, height, depth);
+                }
+                Event::UserEvent(UserEvent::SetOBJMesh(raw)) => {
+                    state.set_obj_mesh(raw);
+                }
+                #[cfg(target_arch = "wasm32")]
+                Event::UserEvent(UserEvent::ExportCurrentObj(sender)) => {
+                    let result = state.export_current_obj();
+                    if let Err(_) = sender.send(result) {
+                        log::error!("Failed to send ExportCurrentObj result");
+                    }
                 }
                 #[cfg(target_arch = "wasm32")]
                 Event::UserEvent(UserEvent::ViewClickGet(view_index, screen_x, screen_y, screen_z, sender)) => {

@@ -161,7 +161,7 @@ pub fn create_texture_bind_group_layout_addseg(device: &Device) -> BindGroupLayo
                 count: None,
             },
 
-            // Segmentation texture binding (R8Uint, non-filterable). Uses a uint sample type because the label ids are 0..=255.
+            // Segmentation label texture binding (R8Uint, non-filterable).
             BindGroupLayoutEntry {
                 binding: 2,
                 visibility: ShaderStages::FRAGMENT,
@@ -173,7 +173,7 @@ pub fn create_texture_bind_group_layout_addseg(device: &Device) -> BindGroupLayo
                 count: None,
             },
 
-            // Segmentation texture sampler (nearest-only, required by R8Uint uint sample type).
+            // Segmentation label sampler (nearest-only, required by R8Uint).
             BindGroupLayoutEntry {
                 binding: 3,
                 visibility: ShaderStages::FRAGMENT,
@@ -280,12 +280,14 @@ pub fn create_volume_pipeline(
     texture_bind_group_layout: &BindGroupLayout,
     uniform_bind_group_layout: &BindGroupLayout,
 ) -> RenderPipeline {
-    // Use the volume shader
+    // Single shader module with both vertex and fragment entry points.
+    let shader_source = format!("{}\n{}",
+        include_str!("../shaders/common.wgsl"),
+        include_str!("../shaders/mesh.wgsl"),
+    );
     let shader = device.create_shader_module(ShaderModuleDescriptor {
         label: Some("Volume Shader"),
-        source: ShaderSource::Wgsl(
-            include_str!("../shaders/mesh.wgsl").into(),
-        ),
+        source: ShaderSource::Wgsl(shader_source.into()),
     });
 
     // Create pipeline layout with two bind groups
@@ -347,12 +349,14 @@ pub fn create_mip_pipeline(
     texture_bind_group_layout: &BindGroupLayout,
     uniform_bind_group_layout: &BindGroupLayout,
 ) -> RenderPipeline {
-    // Use the volume shader
+    // Single shader module with both vertex and fragment entry points.
+    let shader_source = format!("{}\n{}",
+        include_str!("../shaders/common.wgsl"),
+        include_str!("../shaders/mip.wgsl"),
+    );
     let shader = device.create_shader_module(ShaderModuleDescriptor {
         label: Some("MIP Shader"),
-        source: ShaderSource::Wgsl(
-            include_str!("../shaders/mip.wgsl").into(),
-        ),
+        source: ShaderSource::Wgsl(shader_source.into()),
     });
 
     // Create pipeline layout with two bind groups

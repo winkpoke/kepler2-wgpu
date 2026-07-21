@@ -29,6 +29,7 @@ pub struct App {
     pub(crate) app_view: AppView,
     pub(crate) app_model: AppModel,
     pub(crate) saved_states: [usize; 4],
+    pub(crate) current_meshes: Arc<Vec<Mesh>>,
 }
 
 impl App {
@@ -81,6 +82,7 @@ impl App {
             app_view: AppView::new(layout, factory),
             app_model: AppModel::new(default_float),
             saved_states: [0; 4],
+            current_meshes: Arc::new(Vec::new()),
         })
     }
 
@@ -522,6 +524,23 @@ impl App {
         }
     }
 
+    pub fn set_mip_mode(&mut self, index: usize, mip_mode: u32) {
+        if let Err(e) = self.app_view.set_mip_mode(index, mip_mode) {
+            log::warn!("set_mip_mode failed on view {}: {}", index, e);
+        }
+    }
+
+    pub fn set_obj_mesh(&mut self, raw: Vec<u8>){
+        let device = &self.graphics_context.graphics.device;
+        let meshes:Vec<Mesh> = bincode::deserialize(&raw).unwrap();
+        self.current_meshes = Arc::new(meshes);
+        for view in self.app_view.layout.views().iter() {
+            if let Some(mesh_view) = view.as_any().downcast_ref::<MeshView>() {
+                mesh_view.set_meshes(device, self.current_meshes.clone());
+            }
+        }
+    }
+
     fn mm_to_uv(&mut self, mm: [f32; 3]) -> [f32; 3]{
         if let Ok(vol) = self.app_model.volume() {
             let inv = vol.base.matrix.inverse();
@@ -552,8 +571,6 @@ impl App {
                 index,
                 e
             );
-        } else {
-            log::info!("View {} set_window_level: {}", index, window_level);
         }
     }
 
@@ -581,55 +598,35 @@ impl App {
     pub fn set_scale(&mut self, index: usize, scale: f32) {
         if let Err(e) = self.app_view.set_scale(index, scale) {
             log::warn!("set_scale failed on view {}: {}", index, e);
-        } else {
-            log::info!("View {} set_scale: {}", index, scale);
         }
     }
 
     pub fn set_translate_in_screen_coord(&mut self, index: usize, translate: [f32; 3]) {
-        if let Err(e) = self
-            .app_view
-            .set_translate_in_screen_coord(index, translate)
-        {
+        if let Err(e) = self.app_view.set_translate_in_screen_coord(index, translate){
             log::warn!(
                 "set_translate_in_screen_coord failed on view {}: {}",
                 index,
                 e
             );
-        } else {
-            log::info!("View {} move to: {:#?}", index, translate);
         }
     }
 
     pub fn set_pan(&mut self, index: usize, x: f32, y: f32) {
         if let Err(e) = self.app_view.set_pan(index, x, y) {
             log::warn!("set_pan failed on view {}: {}", index, e);
-        } else {
-            log::info!("View {} pan to: {:#?}", index, (x, y));
         }
     }
 
     pub fn set_pan_mm(&mut self, index: usize, x_mm: f32, y_mm: f32) {
         if let Err(e) = self.app_view.set_pan_mm(index, x_mm, y_mm) {
             log::warn!("set_pan_mm failed on view {}: {}", index, e);
-        } else {
-            log::info!("View {} move to mm: {:#?}", index, (x_mm, y_mm));
-        }
+        } 
     }
 
     pub fn set_center_at_point_in_mm(&mut self, index: usize, x_mm: f32, y_mm: f32, z_mm: f32) {
-        if let Err(e) = self
-            .app_view
-            .set_center_at_point_in_mm(index, [x_mm, y_mm, z_mm])
-        {
+        if let Err(e) = self.app_view.set_center_at_point_in_mm(index, [x_mm, y_mm, z_mm]){
             log::warn!("set_center_at_point_in_mm failed on view {}: {}", index, e);
-        } else {
-            log::info!(
-                "View {} set_center_at_point_in_mm: {:#?}",
-                index,
-                (x_mm, y_mm, z_mm)
-            );
-        }
+        } 
     }
 
     pub fn set_slab_thickness(&mut self, index: usize, thickness: f32) {
@@ -638,19 +635,9 @@ impl App {
         }
     }
 
-    pub fn set_mip_mode(&mut self, index: usize, mip_mode: u32) {
-        if let Err(e) = self.app_view.set_mip_mode(index, mip_mode) {
-            log::warn!("set_mip_mode failed on view {}: {}", index, e);
-        } else {
-            log::info!("View {} set_mip_mode: {}", index, mip_mode);
-        }
-    }
-
     pub fn set_rotation_angle_degrees(&mut self, index: usize, roll_deg: f32, yaw_deg: f32, pitch_deg: f32) {
         if let Err(e) = self.app_view.set_rotation_angle_degrees(index, roll_deg, yaw_deg, pitch_deg){
             log::warn!("set_rotation_angle_degrees failed on view {}: {}",index,e);
-        } else {
-            log::info!("View {} set_rotation_angle_degrees: roll_deg={}, yaw_deg={}, pitch_deg={}",index,roll_deg,yaw_deg,pitch_deg);
         }
     }
 
@@ -689,7 +676,7 @@ impl App {
                     }
                 if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>()
                 {
-                    mesh_view.set_spine_meshes(device, Vec::new());
+                    mesh_view.set_meshes(device, Arc::new(Vec::new()));
                 }
             }
         } else {
@@ -698,15 +685,12 @@ impl App {
             match RenderContent::from_labels_r8(device, queue, &raw, "ai_segmentation", width, height, depth) {
                 Ok(seg_content) => {
                     let seg_arc = std::sync::Arc::new(seg_content);
-                    let mut applied = 0usize;
                     for view in self.app_view.layout.views_mut().iter_mut() {
                         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>()
                         {
                             mpr_view.set_segmentation(device, Some(seg_arc.clone()));
-                            applied += 1;
                         }
                     }
-                    log::info!("SetSegmentationAll: applied to {} MPR view(s)", applied);
 
                     let (dims, spacing) = match self.app_model.volume() {
                         Ok(vol) => (vol.dimensions(), vol.voxel_spacing()),
@@ -717,14 +701,10 @@ impl App {
                     };
                     let label_ids: [u8; 7] = [1, 2, 3, 4, 5, 6, 7];
                     let spine_meshes = spine(&raw, dims, spacing, &label_ids, 0.3);
-                    log::info!(
-                        "SetSegmentationAll: extracted {} vertebra mesh(es) from dims={:?} spacing={:?}",
-                        spine_meshes.len(), dims, spacing
-                    );
-
+                    self.current_meshes = Arc::new(spine_meshes);
                     for view in self.app_view.layout.views().iter() {
                         if let Some(mesh_view) = view.as_any().downcast_ref::<MeshView>() {
-                            mesh_view.set_spine_meshes(device, spine_meshes.clone());
+                            mesh_view.set_meshes(device, self.current_meshes.clone());
                         }
                     }
                 }
@@ -733,6 +713,10 @@ impl App {
                 }
             }
         }
+    }
+
+    pub fn export_current_obj(&self) -> String{
+        Mesh::meshes_to_obj(&self.current_meshes.clone())
     }
 
     pub fn get_base_screen(&self, index: usize) -> [f32; 16] {
