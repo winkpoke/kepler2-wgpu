@@ -413,23 +413,3 @@ pub async fn segment_result_raw(
         }
     }
 }
-
-/// Proxy the Python AI service's `GET /cached_mask/{series_id}` endpoint.
-///
-/// Used by the browser "Load Cached" button to re-upload the most
-/// recently produced `spine.nii.gz` for the current series without
-/// re-running TotalSegmentator. The response is a JSON envelope with
-/// the same fields as `/api/segment/result/{id}` plus a base64-encoded
-/// mask; see `app.py::get_cached_mask` for the exact contract.
-pub async fn cached_mask(
-    State(state): State<ServerState>,
-    Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    match state.ai.cached_mask(&id).await {
-        Ok(value) => Ok(Json(value)),
-        Err(e) => {
-            log::error!("cached_mask proxy failed: {e}");
-            Err((StatusCode::BAD_GATEWAY, e.to_string()))
-        }
-    }
-}

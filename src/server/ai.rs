@@ -77,24 +77,6 @@ impl AiService {
         let bytes = base64::engine::general_purpose::STANDARD.decode(b64)?;
         Ok(bytes)
     }
-
-    /// Fetch the most recent cached spine mask for a given series_id.
-    ///
-    /// Hits the Python service's `GET /cached_mask/{series_id}` endpoint,
-    /// which scans OUTPUT_ROOT for any task directory containing a
-    /// `spine.nii.gz` file and returns the most recent one. Returns the
-    /// raw JSON response so the caller can inspect `status` (ok / missing
-    /// / error) and the base64-encoded `mask_base64`.
-    pub async fn cached_mask(&self, series_id: &str) -> Result<serde_json::Value> {
-        let resp = self
-            .client
-            .get(format!("{}/cached_mask/{}", self.base_url, series_id))
-            .send()
-            .await?
-            .json::<serde_json::Value>()
-            .await?;
-        Ok(resp)
-    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]

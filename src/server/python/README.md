@@ -24,7 +24,6 @@ kepler2-wgpu
   │  GET  /api/segment/progress/:id   │  ← Rust polls this every second
   │  GET  /api/segment/result/:id     │  ← base64 mask, dimensions, labels
   │  GET  /api/segment/result/:id/raw │  ← raw mask, dimensions, labels, raw
-  │  GET  /api/cached_mask/:id        │
   │  GET  /ws                         │
   └────────────┬──────────────────────┘
                │

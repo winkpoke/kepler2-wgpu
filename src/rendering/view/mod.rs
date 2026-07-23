@@ -55,3 +55,47 @@ const LABEL_COLORS: [[f32; 4]; 8] = [
     [0.30, 0.30, 0.95, 1.0], // 6  S1      (blue)
     [0.85, 0.20, 0.80, 1.0], // 7  sacrum  (magenta)
 ];
+
+// Needle module
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct NeedleUniform {
+    pub entry: [f32; 3],
+    pub radius: f32,
+    pub tip: [f32; 3],
+    pub id: u32,
+    pub color: [f32; 4],
+}
+
+impl Default for NeedleUniform {
+    fn default() -> Self {
+        Self {
+            entry: [0.0; 3],
+            radius: 0.0,
+            tip: [0.0; 3],
+            id: 0,
+            color: [0.0; 4],
+        }
+    }
+}
+
+// Oblique plane module
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ObliquePlaneUniform {
+    pub center: [f32; 3],
+    pub visible: f32,
+    pub normal: [f32; 3],
+    pub plane_alpha: f32,
+}
+
+impl Default for ObliquePlaneUniform {
+    fn default() -> Self {
+        Self {
+            center: [0.5; 3],
+            visible: 0.0,
+            normal: [0.0, 0.0, 1.0],
+            plane_alpha: 0.0,
+        }
+    }
+}

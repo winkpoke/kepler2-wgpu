@@ -12,13 +12,11 @@ struct Uniforms {
 
 struct BasicLightingUniforms {
     light_direction: vec3<f32>,
-    _padding1: f32,
+    opacity: f32,
     light_color: vec3<f32>,
     light_intensity: f32,
     ambient_color: vec3<f32>,
     ambient_intensity: f32,
-    padding2: vec3<f32>,
-    opacity: f32,
 };
 
 struct VertexInput {
@@ -51,21 +49,3 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let c = in.v_color * factor;
     return vec4<f32>(c, lighting.opacity);
 }
-
-// @fragment
-// fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // let normal = normalize(in.v_normal);
-    // let light_dir = normalize(-lighting.light_direction);
-    
-    // // Lambert diffuse lighting calculation
-    // let diffuse_factor = max(dot(normal, light_dir), 0.0);
-    // let diffuse = lighting.light_color * lighting.light_intensity * diffuse_factor;
-    
-    // // Ambient lighting
-    // let ambient = lighting.ambient_color * lighting.ambient_intensity;
-    
-    // // Combine lighting with vertex color
-    // let final_color = in.v_color * (ambient + diffuse);
-    
-    // return vec4<f32>(final_color, 1.0);
-// }

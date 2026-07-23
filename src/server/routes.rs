@@ -23,7 +23,6 @@ pub fn create_router(state: ServerState) -> Router {
         .route("/api/segment/progress/:id", get(handlers::segment_progress))
         .route("/api/segment/result/:id", get(handlers::segment_result_meta))
         .route("/api/segment/result/:id/raw", get(handlers::segment_result_raw))
-        .route("/api/cached_mask/:id", get(handlers::cached_mask))
         .route("/ws", get(handlers::ws_handler))
         .fallback_service(ServeDir::new("static"))
         .with_state(state)

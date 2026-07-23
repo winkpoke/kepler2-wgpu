@@ -249,53 +249,6 @@ def health():
         "default_task": DEFAULT_TASK,
     }
 
-
-@app.get("/cached_mask/{series_id}")
-def get_cached_mask(series_id: str):
-    """Return the latest cached segmentation mask for ``series_id``.
-
-    Scans OUTPUT_ROOT for any task directory containing ``spine.nii.gz``
-    and returns the most recent one as base64-encoded bytes plus
-    dimensions, so the browser can re-upload the mask to the GPU
-    without re-running TotalSegmentator.
-
-    This is a fast path: it does not invoke the AI model. It only reads
-    the on-disk ``spine.nii.gz`` written by the last completed task.
-    """
-    from pathlib import Path as _P
-
-    if not os.path.isdir(OUTPUT_ROOT):
-        return {"status": "missing", "reason": "no output directory"}
-
-    candidates = []
-    for task_dir in os.listdir(OUTPUT_ROOT):
-        spine = _P(OUTPUT_ROOT) / task_dir / "spine.nii.gz"
-        if spine.exists():
-            candidates.append(spine)
-
-    if not candidates:
-        return {"status": "missing", "reason": "no cached spine.nii.gz"}
-
-    # Most recently written wins.
-    spine_path = max(candidates, key=lambda p: p.stat().st_mtime)
-
-    try:
-        mask_bytes = extract_mask_bytes(str(spine_path.parent))
-        dims = mask_dimensions(str(spine_path.parent))
-    except Exception as e:
-        return {"status": "error", "reason": str(e)}
-
-    return {
-        "status": "ok",
-        "task_id": spine_path.parent.name,
-        "series_id": series_id,
-        "volume": f"seg-{spine_path.parent.name}",
-        "labels": LABELS_FOR_API,
-        "dimensions": list(dims),
-        "mask_base64": base64.b64encode(mask_bytes).decode("ascii"),
-    }
-
-
 if __name__ == "__main__":
     # Allow `python app.py` for quick local runs. The usual entry point
     # is `uvicorn app:app --host 0.0.0.0 --port 8001`.

@@ -6,7 +6,7 @@ use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::{Renderable, View};
 use crate::core::{WindowLevel,KeplerResult};
 use crate::rendering::pipeline::*;
-use crate::rendering::view::mesh::mesh::NeedleUniform;
+use crate::rendering::view::NeedleUniform;
 use glam::{Mat4, Vec3, Quat};
 use std::{any::Any, sync::Arc};
 use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, Queue, RenderPipeline};

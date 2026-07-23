@@ -6,9 +6,7 @@ use crate::{
         GeometryBuilder, WindowLevel,
     },
     data::CTVolume,
-    rendering::{
-        view::mesh::mesh::NeedleUniform, Orientation, RenderContent, StatefulView, ViewState,
-    },
+    rendering::view::{NeedleUniform, Orientation, RenderContent, StatefulView, ViewState},
     Renderable, View,
 };
 use super::{MprRenderContext, MprViewWgpuImpl};

@@ -3,55 +3,13 @@
 use crate::data::volume_encoding::VolumeEncoding;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::core::pipeline::*;
-use crate::rendering::view::{LABEL_COLORS, LABEL_NAMES};
+use crate::rendering::view::{LABEL_COLORS, LABEL_NAMES, NeedleUniform, ObliquePlaneUniform};
 use mcubes::{MarchingCubes, MeshSide};
 use std::sync::Arc;
 use tobj;
 use serde::{Serialize, Deserialize};
 use glam::Mat4;
 use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, RenderPipeline};
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct NeedleUniform {
-    pub entry: [f32; 3],
-    pub radius: f32,
-    pub tip: [f32; 3],
-    pub id: u32,
-    pub color: [f32; 4],
-}
-
-impl Default for NeedleUniform {
-    fn default() -> Self {
-        Self {
-            entry: [0.0; 3],
-            radius: 0.0,
-            tip: [0.0; 3],
-            id: 0,
-            color: [0.0; 4],
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct ObliquePlaneUniform {
-    pub center: [f32; 3],
-    pub visible: f32,
-    pub normal: [f32; 3],
-    pub plane_alpha: f32,
-}
-
-impl Default for ObliquePlaneUniform {
-    fn default() -> Self {
-        Self {
-            center: [0.5; 3],
-            visible: 0.0,
-            normal: [0.0, 0.0, 1.0],
-            plane_alpha: 0.0,
-        }
-    }
-}
 
 /// Volume rendering parameters (sent to fragment shader)
 #[repr(C)]
@@ -80,11 +38,6 @@ pub struct MeshUniforms {
     pub plane_rotation_angle: f32,
     pub oblique_planes: [ObliquePlaneUniform; 4],
     pub needles: [NeedleUniform; 32],
-    pub seg_enabled: f32,
-    pub _seg_pad0: f32,
-    pub _seg_pad1: f32,
-    pub _seg_pad2: f32,
-    pub label_colors: [[f32; 4]; 8],
 }
 
 impl Default for MeshUniforms {
@@ -113,11 +66,6 @@ impl Default for MeshUniforms {
             plane_rotation_angle: 180.0,
             oblique_planes: [ObliquePlaneUniform::default(); 4],
             needles: [NeedleUniform::default(); 32],
-            seg_enabled: 0.0,
-            _seg_pad0: 0.0,
-            _seg_pad1: 0.0,
-            _seg_pad2: 0.0,
-            label_colors: LABEL_COLORS,
         }
     }
 }
@@ -131,34 +79,15 @@ pub struct MeshRenderContext {
     pub uniform_bind_group: BindGroup,
     pub texture_bind_group: BindGroup,
     pub render_content: Arc<RenderContent>,
-    /// Default "empty" 1x1x1 R8Uint label texture used until a real
-    /// segmentation is supplied via `set_segmentation`. Mirrors the same
-    /// pattern used by `MprRenderContext::default_seg_content`.
-    pub default_seg_content: Arc<RenderContent>,
-    /// Active segmentation texture (initially the default 1x1x1 zero).
-    pub seg_content: Arc<RenderContent>,
-    /// View-side per-frame MeshUniforms (includes seg_enabled, label_colors).
-    pub uniforms: MeshUniforms,
 }
 
 impl MeshRenderContext {
     pub fn new(
         device: &Device,
-        queue: &wgpu::Queue,
         target_format: wgpu::TextureFormat,
         render_content: Arc<RenderContent>,
     ) -> Self {
-        // The volume shader expects a segmentation texture at bindings 2/3
-        // (R8Uint + nearest sampler). Use the addseg layout so the
-        // pipeline matches the shader. A 1x1x1 zero-label texture is
-        // bound by default; the segmentation can be swapped later via
-        // `set_segmentation`.
-        let texture_bind_group_layout = create_texture_bind_group_layout_addseg(device);
-        let default_seg_content = Arc::new(
-            RenderContent::from_labels_r8(device, queue, &[0u8], "Mesh Default Seg", 1, 1, 1)
-                .expect("failed to build default seg content"),
-        );
-        let seg_content = Arc::clone(&default_seg_content);
+        let texture_bind_group_layout = create_texture_bind_group_layout(device);
 
         // Uniform buffer
         let min_binding_size = std::num::NonZeroU64::new(std::mem::size_of::<MeshUniforms>() as u64);
@@ -202,14 +131,6 @@ impl MeshRenderContext {
                     binding: 1,
                     resource: wgpu::BindingResource::Sampler(&render_content.sampler),
                 },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&default_seg_content.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::Sampler(&default_seg_content.sampler),
-                },
             ],
         });
 
@@ -221,9 +142,6 @@ impl MeshRenderContext {
             uniform_bind_group,
             texture_bind_group,
             render_content,
-            default_seg_content,
-            seg_content,
-            uniforms: MeshUniforms::default(),
         }
     }
 
@@ -238,69 +156,6 @@ impl MeshRenderContext {
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[*uniforms]));
     }
 
-    /// Swap the active segmentation texture and rebuild the texture bind
-    /// group. Also toggles `seg_enabled` in the cached uniforms so the
-    /// shader actually samples the overlay. Pass `None` to revert to the
-    /// default 1x1x1 zero texture and disable the overlay.
-    pub fn set_segmentation(
-        &mut self,
-        device: &Device,
-        seg: Option<Arc<RenderContent>>,
-    ) {
-        let enable = seg.is_some();
-        self.seg_content = match seg {
-            Some(c) => c,
-            None => Arc::clone(&self.default_seg_content),
-        };
-        self.texture_bind_group = Self::create_texture_bind_group(
-            device,
-            &self.texture_bind_group_layout,
-            &self.render_content,
-            &self.seg_content,
-        );
-        self.uniforms.seg_enabled = if enable { 1.0 } else { 0.0 };
-        log::info!(
-            "MeshRenderContext: segmentation {} ({}x{}x{})",
-            if self.uniforms.seg_enabled > 0.5 { "enabled" } else { "disabled" },
-            self.seg_content.texture.size().width,
-            self.seg_content.texture.size().height,
-            self.seg_content.texture.size().depth_or_array_layers,
-        );
-    }
-
-    /// Build the (volume + segmentation) texture bind group. Mirrors the
-    /// MPR helper; kept on `MeshRenderContext` so `set_segmentation` can
-    /// rebuild it without exposing internal fields.
-    fn create_texture_bind_group(
-        device: &Device,
-        layout: &BindGroupLayout,
-        volume: &RenderContent,
-        seg: &RenderContent,
-    ) -> BindGroup {
-        device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("mesh_volume_texture_bind_group"),
-            layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&volume.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&volume.sampler),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&seg.view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 3,
-                    resource: wgpu::BindingResource::Sampler(&seg.sampler),
-                },
-            ],
-        })
-    }
-
     pub fn get_memory_stats(&self) -> (u64, u64, f32, f32) {
         self.render_content.get_memory_stats()
     }
@@ -313,13 +168,11 @@ impl MeshRenderContext {
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct BasicLightingUniforms {
     pub light_direction: [f32; 3],
-    pub _padding1: f32,
+    pub opacity: f32,
     pub light_color: [f32; 3],
     pub light_intensity: f32,
     pub ambient_color: [f32; 3],
     pub ambient_intensity: f32,
-    pub padding2: [f32; 3],
-    pub opacity: f32,
 }
 
 impl Default for BasicLightingUniforms {
@@ -328,13 +181,11 @@ impl Default for BasicLightingUniforms {
     fn default() -> Self {
         Self {
             light_direction: [0.6, -0.7, 0.3], // Top-left-front direction
-            _padding1: 0.0,
+            opacity: 1.0,
             light_color: [1.0, 1.0, 1.0], // White light
             light_intensity: 1.0,
             ambient_color: [0.4, 0.4, 0.4],
             ambient_intensity: 0.5,
-            padding2: [0.0, 0.0, 0.0],
-            opacity: 1.0,
         }
     }
 }
@@ -368,13 +219,11 @@ impl Lighting {
     pub fn to_basic_uniforms(&self) -> BasicLightingUniforms {
         BasicLightingUniforms {
             light_direction: self.direction,
-            _padding1: 0.0,
+            opacity: 1.0,
             light_color: self.light_color,
             light_intensity: self.light_intensity,
             ambient_color: self.ambient_color,
             ambient_intensity: self.ambient_intensity,
-            padding2: [0.0, 0.0, 0.0],
-            opacity: 1.0,
         }
     }
 }

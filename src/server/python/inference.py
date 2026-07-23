@@ -195,7 +195,13 @@ def extract_mask_bytes(output_dir: str) -> bytes:
     data = img.get_fdata().astype(np.uint8)
     # Nibabel shape is (X, Y, Z). Transpose to (Z, Y, X) for the GPU.
     data = np.transpose(data, (2, 1, 0))
-    return np.ascontiguousarray(data).tobytes()
+    data = np.ascontiguousarray(data)
+
+    raw_path = Path(output_dir) / "spine.raw"
+    data.tofile(raw_path)
+    log.info("Saved raw mask to %s (size: %d bytes)", raw_path, data.nbytes)
+
+    return data.tobytes()
 
 
 def mask_dimensions(output_dir: str) -> Tuple[int, int, int]:

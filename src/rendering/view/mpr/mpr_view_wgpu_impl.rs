@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use super::mpr_render_context::MprRenderContext;
-use crate::rendering::view::mesh::mesh::NeedleUniform;
+use crate::rendering::view::NeedleUniform;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::LABEL_COLORS;
 use std::sync::Arc;

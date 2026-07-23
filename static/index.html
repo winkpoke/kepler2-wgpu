@@ -671,6 +671,9 @@
                     OBJ: <input type="file" id="obj_file" accept=".obj">
                 </div>
                 <div class="file-row">
+                    Result Segmentation: <input type="file" id="raw-input" accept=".raw">
+                </div>
+                <div class="file-row">
                     <button id="openMhxModalBtn" class="btn">Import MHA/MHD</button>
                     <button id="rerender">Render</button>
                 </div>
@@ -687,7 +690,6 @@
                     </select>
                     <span id="seg-series" style="color:#666;font-size:11px">no series</span>
                     <button id="seg-run" class="btn btn-primary">Segment</button>
-                    <button id="seg-load-cached" class="btn" title="Reuse the last completed segmentation for this series">Load Cached</button>
                     <button id="seg-cancel" class="btn" disabled>Cancel</button>
                 </div>
                 <div class="seg-row" style="padding-top:0">
@@ -1340,7 +1342,6 @@
         const segEls = {
             run:        byId('seg-run'),
             cancel:     byId('seg-cancel'),
-            loadCached: byId('seg-load-cached'),
             model:      byId('seg-model'),
             series:     byId('seg-series'),
             status:     byId('seg-status'),
@@ -1370,68 +1371,32 @@
 
         function setSegRunEnabled(enabled) {
             segEls.run.disabled = !enabled;
-            segEls.loadCached.disabled = !enabled;
             segEls.cancel.disabled = enabled;
         }
 
-        // Load the most recent cached spine mask for the current series
-        // and push it to the GPU. Hits the Python service's
-        // GET /cached_mask/{series_id} endpoint instead of POSTing a new
-        // /segment job, so no AI inference runs.
-        async function loadCachedSegmentation() {
-            const seriesId = seg.series || (state.volume && state.volume.id);
-            if (!seriesId) {
-                log('No series loaded; cannot look up cached mask', 'error');
+
+        document.querySelector('#raw-input').addEventListener('change', async () => {
+            const file = document.querySelector('#raw-input').files[0];
+            if (!file) {
+                alert('Please select a raw file first!');
                 return;
             }
             if (!state.volume) {
-                log('No volume on client; cannot derive mask dimensions', 'error');
+                log('No volume loaded; cannot import mask', 'error');
                 return;
             }
-            segEls.loadCached.disabled = true;
-            setSegStatus('loading', 'running');
-            try {
-                const resp = await fetch(`${SERVER_URL}/api/cached_mask/${encodeURIComponent(seriesId)}`);
-                if (!resp.ok) {
-                    log(`Cached mask request failed: HTTP ${resp.status}`, 'error');
-                    setSegStatus('idle', '');
-                    return;
-                }
-                const data = await resp.json();
-                if (data.status === 'missing') {
-                    log(`No cached mask on disk: ${data.reason}`, 'warn');
-                    setSegStatus('idle', '');
-                    return;
-                }
-                if (data.status === 'error') {
-                    log(`Cached mask error: ${data.reason}`, 'error');
-                    setSegStatus('idle', '');
-                    return;
-                }
-                // Decode the base64 mask and update the seg state object,
-                // then reuse the existing GPU upload path.
-                const bin = atob(data.mask_base64);
-                const arr = new Uint8Array(bin.length);
-                for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-                seg.raw = arr;
-                seg.dims = data.dimensions;
-                seg.labels = data.labels;
-                seg.volume = data.volume;
-                seg.status = 'completed';
-                seg.task_id = data.task_id;
-                setSegTaskId(data.task_id);
-                setSegProgress(100);
-                setSegStatus('cached', 'complete');
-                renderSegLabels(data.labels);
-                log(`Loaded cached mask (${data.dimensions.join('×')}, ${(seg.raw.length / (1024*1024)).toFixed(1)} MB)`, 'success');
+             try {
+                log(`Loading raw mask: ${file.name}`);
+                const buffer = await file.arrayBuffer();
+                const rawData = new Uint8Array(buffer);
+                seg.raw = rawData;
+                console.log("RAW size:", rawData.length,"bytes");
                 await uploadSegmentationToGpu();
             } catch (e) {
-                log(`Failed to load cached mask: ${e}`, 'error');
-                setSegStatus('idle', '');
-            } finally {
-                segEls.loadCached.disabled = false;
+                console.error(e);
+                log(`Import RAW mask failed: ${e}`, 'error');
             }
-        }
+        });
 
         // Pick a deterministic but distinct colour for each label id.
         // This palette must match `LABEL_COLORS` in
@@ -1537,10 +1502,6 @@
             renderSegLabels(seg.labels);
             setSegRunEnabled(true);
             log(`Segmentation complete (${Object.keys(seg.labels).length} labels, volume ${msg.volume})`, 'success');
-            // Pull the raw mask and push it to the GPU so the red
-            // overlay shows up on every MPR view. Dimensions must
-            // match the loaded CT volume — the server does not
-            // track them on the task.
             await downloadSegmentationMask(msg.task_id);
             await uploadSegmentationToGpu();
         }
@@ -1648,14 +1609,6 @@
                 setSegStatus('idle', '');
                 setSegRunEnabled(true);
             }
-        });
-
-        byId('seg-load-cached').addEventListener('click', () => {
-            if (!state.volume) {
-                log('No volume loaded; cannot load cached mask', 'error');
-                return;
-            }
-            loadCachedSegmentation();
         });
 
         byId('seg-cancel').addEventListener('click', () => {

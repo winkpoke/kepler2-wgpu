@@ -2,12 +2,12 @@
 
 use super::{
     basic_mesh_context::MultiMeshContext,
-    mesh::{Mesh, MeshRenderContext, MeshUniforms, NeedleUniform, ObliquePlaneUniform},
+    mesh::{BasicLightingUniforms, Mesh, MeshRenderContext, MeshUniforms},
     performance::{PerformanceStats, QualityController, QualityLevel},
 };
 use crate::{
     core::{timing::Instant, KeplerResult, WindowLevel},
-    rendering::view::{Renderable, View, LABEL_COLORS},
+    rendering::view::{Renderable, View, NeedleUniform, ObliquePlaneUniform},
 };
 use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::FRAC_PI_2;
@@ -103,6 +103,8 @@ pub struct MeshView {
     /// Pan translation in world units (X, Y, Z)
     pan: [f32; 3],
     opacity: f32,
+    /// Spine mesh lighting uniforms (controls direction, color, opacity)
+    spine_lighting: BasicLightingUniforms,
     roi_min: [f32; 3],
     roi_max: [f32; 3],
     window_level: WindowLevel,
@@ -135,6 +137,7 @@ impl MeshView {
             scale_factor: 1.0,
             pan: [0.0, 0.0, 0.0],
             opacity: 1.0,
+            spine_lighting: BasicLightingUniforms { opacity: 0.4, ..Default::default() },
             roi_min: [0.0, 0.0, 0.0],
             roi_max: [1.0, 1.0, 1.0],
             window_level: WindowLevel::new(),
@@ -578,22 +581,13 @@ impl MeshView {
                 plane_rotation_angle: self.plane_rotation_angle,
                 oblique_planes: self.oblique_planes,
                 needles: gpu_needles,
-                // Segmentation overlay state is owned by the volume context
-                // (set via `MeshRenderContext::set_segmentation`); just copy
-                // it through so the shader sees the same value the host
-                // toggled.
-                seg_enabled: vol_ctx.uniforms.seg_enabled,
-                _seg_pad0: 0.0,
-                _seg_pad1: 0.0,
-                _seg_pad2: 0.0,
-                label_colors: LABEL_COLORS,
             };
 
             // update
             vol_ctx.update_uniforms(queue, &vol_uniforms);
         }
 
-        // Spine mesh uniforms
+        // Spine mesh uniforms and lighting
         if let Some(spine_ctx) = &self.spine_ctx {
             let flip = Mat4::from_scale(Vec3::new(1.0, -1.0, -1.0));
             let scale = Mat4::from_scale(Vec3::new(1.0/ self.scale_factor,1.0/ self.scale_factor,1.0/ self.scale_factor));
@@ -605,6 +599,7 @@ impl MeshView {
             let mvp_matrix = proj_matrix * view_matrix * model_matrix;
             if let Ok(guard) = spine_ctx.lock() {
                 guard.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
+                guard.update_lighting(queue, self.spine_lighting);
             }
         }
     }
@@ -740,6 +735,26 @@ impl MeshView {
 
         // Render spine meshes
         if let Some(spine_ctx) = &self.spine_ctx {
+            // let cube_size = 120.0;
+            // let padding = 10.0;
+            
+            // // Calculate bottom-left position within the view
+            // // Assuming (x, y) is top-left of the view
+            // let view_x = self.pos.0 as f32;
+            // let view_y = self.pos.1 as f32;
+            // let view_h = self.dim.1 as f32;
+            
+            // // Bottom-left relative to view
+            // let cube_x = view_x + padding;
+            // let cube_y = view_y + view_h - cube_size - padding;
+            
+            // // Ensure we don't draw outside the view if view is too small
+            // if self.dim.0 > (cube_size as u32 + 20) && self.dim.1 > (cube_size as u32 + 20) {
+            //     render_pass.set_viewport(cube_x, cube_y, cube_size, cube_size, 0.0, 1.0);
+            //     if let Ok(guard) = spine_ctx.lock() {
+            //         guard.render(render_pass);
+            //     }
+            // }
             if let Ok(guard) = spine_ctx.lock() {
                 guard.render(render_pass);
             }

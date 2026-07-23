@@ -65,9 +65,13 @@ impl ServerState {
         let series_dir_from_env = Some(PathBuf::from("C:/user/kepler_series"));
 
         let (series_dir, using_fallback) = match series_dir_from_env {
-            Some(p) => (p, false),
+            Some(p) => {
+                (p, false)
+            },
             None => (std::env::temp_dir().join("kepler_series"), true),
         };
+
+        log::info!("Persisting uploaded MHAs under {:?}", series_dir);
 
         if using_fallback {
             eprintln!(
@@ -92,19 +96,6 @@ impl ServerState {
         }
 
         let persist_mha_to_disk = !using_fallback;
-
-        if persist_mha_to_disk {
-            // Best-effort directory creation.
-            if let Err(e) = std::fs::create_dir_all(&series_dir) {
-                log::warn!(
-                    "Failed to create KEPLER_SERIES_DIR at {:?}: {}",
-                    series_dir,
-                    e
-                );
-            } else {
-                log::info!("Persisting uploaded MHAs under {:?}", series_dir);
-            }
-        }
 
         Self {
             ai: Arc::new(AiService::new()),

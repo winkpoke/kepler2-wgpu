@@ -10,7 +10,7 @@ use crate::rendering::view::{
     DefaultViewFactory, DynamicLayout, MipView, MprView, Orientation, View, ViewState,
     ALL_ORIENTATIONS, LargeLeft3RightLayout,GridLayout, LayoutContainer, OneCellLayout,
 };
-use crate::rendering::view::mesh::mesh::ObliquePlaneUniform;
+use crate::rendering::view::ObliquePlaneUniform;
 use crate::rendering::StatefulView;
 use crate::CTVolume;
 use std::sync::Arc;
