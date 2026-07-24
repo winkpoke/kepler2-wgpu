@@ -1,178 +1,144 @@
 #![allow(dead_code)]
+use glam::{Mat4, Quat, Vec3};
 
-use glam::{Mat4, Vec3};
-
-/// Function-level comment: Projection type enumeration for camera configuration
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ProjectionType {
-    /// Perspective projection with field of view - objects appear smaller with distance
-    Perspective,
-    /// Orthogonal projection - maintains object size regardless of distance (ideal for medical imaging)
-    Orthogonal,
-}
-
-impl Default for ProjectionType {
-    fn default() -> Self {
-        // Default to orthogonal for medical visualization accuracy
-        ProjectionType::Orthogonal
-    }
-}
-
+/// Unified camera for mesh + volume rendering.
+#[repr(C)]
 #[derive(Default, Debug, Clone)]
 pub struct Camera {
-    pub eye: [f32; 3],
-    pub center: [f32; 3],
-    pub up: [f32; 3],
-    pub fov_y_radians: f32,
-    pub near: f32,
-    pub far: f32,
-    /// Projection type - orthogonal is preferred for medical imaging
-    pub projection_type: ProjectionType,
-    /// Orthogonal projection bounds - defines the visible volume for orthogonal projection
-    pub ortho_left: f32,
-    pub ortho_right: f32,
-    pub ortho_bottom: f32,
-    pub ortho_top: f32,
+    /// VTK Position
+    pub position: Vec3,
+    /// VTK FocalPoint
+    pub focal_point: Vec3,
+    /// VTK ViewUp
+    pub view_up: Vec3,
+    /// Perspective / Orthographic
+    pub parallel_scale: f32,
+    /// Perspective
+    pub distance: f32,
+    /// FOV
+    pub fov_y: f32,
 }
+
+/// Baseline eye-to-target distance before zoom is applied.
+const BASE_ORBIT_DISTANCE: f32 = 5.0;
+/// Shared perspective field-of-view used to keep orthographic and perspective
+/// sizing stable when switching modes.
+const PERSPECTIVE_FOV_Y_RADIANS: f32 = 45.0_f32.to_radians();
+/// Extra depth range added around the camera-target distance so the whole unit
+/// cube stays visible under large zoom factors.
+const DEPTH_MARGIN: f32 = 4.0;
 
 impl Camera {
-    /// Function-level comment: Create a new camera with default values suitable for medical mesh viewing
-    /// Uses orthogonal projection by default for accurate dimensional representation
+    /// Function-level comment: Create a default shared camera.
     pub fn new() -> Self {
         Self {
-            eye: [0.0, 0.0, 3.0], // Position camera closer to the cube
-            center: [0.0, 0.0, 0.0],
-            up: [0.0, 1.0, 0.0],
-            fov_y_radians: std::f32::consts::PI / 4.0, // 45 degrees (used for perspective mode)
-            near: 0.1,  // Adjusted near plane to be positive for perspective
-            far: 100.0, // Adjusted far plane
-            projection_type: ProjectionType::Orthogonal, // Default to orthogonal for medical accuracy
-            // Orthogonal bounds - defines viewing volume to make cube prominent
-            // Unit cube spans from -1 to +1, smaller bounds = larger cube on screen
-            ortho_left: -2.5,
-            ortho_right: 2.5,
-            ortho_bottom: -2.5,
-            ortho_top: 2.5,
+            position: Vec3::INFINITY,
+            focal_point: Vec3::INFINITY,
+            view_up: Vec3::INFINITY,
+            parallel_scale: 1.0,
+            distance: 0.0,
+            fov_y: 0.0,
         }
     }
 
-    /// Function-level comment: Create a camera with perspective projection for traditional 3D viewing
-    pub fn new_perspective() -> Self {
-        let mut camera = Self::new();
-        camera.projection_type = ProjectionType::Perspective;
-        camera
+    /// Function-level comment: Get the current orbit target in the shared world cube.
+    pub fn target(&self) -> Vec3 {
+        Self::scene_center() + self.pan_offset()
     }
 
-    /// Function-level comment: Set orthogonal projection bounds based on aspect ratio and zoom level
-    /// This ensures the orthogonal view maintains proper proportions
-    pub fn set_orthogonal_bounds(&mut self, width: f32, height: f32, zoom: f32) {
-        let half_width = (width * zoom) / 2.0;
-        let half_height = (height * zoom) / 2.0;
-
-        self.ortho_left = -half_width;
-        self.ortho_right = half_width;
-        self.ortho_bottom = -half_height;
-        self.ortho_top = half_height;
+    /// Function-level comment: Compute the world-space eye position for the current
+    /// orbit + pan. The eye orbits the shared scene center and translates together
+    /// with the target so panning remains projection-independent.
+    pub fn eye(&self) -> Vec3 {
+        let offset = self.rotation * Vec3::new(0.0, 0.0, self.distance_to_target());
+        self.target() + offset
     }
 
-    /// Function-level comment: Generate view matrix using look-at transformation
-    pub fn view_matrix(&self) -> Mat4 {
-        let eye = Vec3::from(self.eye);
-        let center = Vec3::from(self.center);
-        let up = Vec3::from(self.up);
-
-        Mat4::look_at_rh(eye, center, up)
+    /// Function-level comment: View matrix for the orbit camera. Built via
+    /// look_at_rh so the world remains a fixed `[0, 1]^3` cube regardless of
+    /// rotation/pan/zoom.
+    pub fn view_matrix(&self)->Mat4{
+        Mat4::look_at_rh(
+            self.position,
+            self.focal_point,
+            self.view_up,
+        )
     }
 
-    /// Function-level comment: Generate projection matrix based on camera projection type
-    /// For medical visualization, orthogonal projection maintains accurate dimensional representation
+    pub fn azimuth(&mut self, angle: f32){
+        let axis = self.view_up.normalize();
+        let q = Quat::from_axis_angle(axis, angle);
+        let offset = self.position - self.focal_point;
+        self.position = self.focal_point + q * offset;
+    }
+
+    pub fn elevation(&mut self, angle:f32){
+        let forward = (self.focal_point-self.position).normalize();
+        let right = forward.cross(self.view_up).normalize();
+        let q = Quat::from_axis_angle(right, angle);
+        let offset = self.position-self.focal_point;
+        self.position = self.focal_point+q * offset;
+        self.view_up = (q*self.view_up).normalize();
+    }
+
+    pub fn dolly(&mut self, factor:f32){
+        let dir = (self.position-self.focal_point).normalize();
+        self.distance /= factor;
+        self.position= self.focal_point+dir*self.distance;
+    }
+
+    pub fn pan(&mut self,dx:f32,dy:f32){
+        let forward= (self.focal_point-self.position).normalize();
+        let right= forward.cross(self.view_up).normalize();
+        let up= self.view_up.normalize();
+        let delta= right*dx+ up*dy;
+        self.position += delta;
+        self.focal_point += delta;
+
+    }
+
+    /// Function-level comment: Projection matrix for the shared camera.
+    ///
+    /// Orthographic mode derives its frustum width/height from the same
+    /// camera-target distance used by perspective mode, so toggling projection
+    /// type preserves the target-plane scale as closely as possible.
+    /// `aspect_ratio` is the viewport width / height.
     pub fn projection_matrix(&self, aspect_ratio: f32) -> Mat4 {
-        match self.projection_type {
-            ProjectionType::Perspective => self.perspective_projection_matrix(aspect_ratio),
-            ProjectionType::Orthogonal => self.orthogonal_projection_matrix(aspect_ratio),
-        }
+        let safe_aspect_ratio = aspect_ratio.max(1e-6);
+        let distance = self.distance_to_target();
+        let near_plane = (distance - DEPTH_MARGIN).max(0.01);
+        let far_plane = distance + DEPTH_MARGIN;
+        let half_h = distance * (PERSPECTIVE_FOV_Y_RADIANS * 0.5).tan();
+        let half_w = half_h * safe_aspect_ratio;
+        Mat4::orthographic_rh(-half_w, half_w, -half_h, half_h, near_plane, far_plane)
     }
+    
 
-    /// Function-level comment: Generate perspective projection matrix for traditional 3D viewing
-    fn perspective_projection_matrix(&self, aspect_ratio: f32) -> Mat4 {
-        Mat4::perspective_rh_gl(self.fov_y_radians, aspect_ratio, self.near, self.far)
-    }
-
-    /// Function-level comment: Generate orthogonal projection matrix for medical visualization
-    /// Maintains object size regardless of distance, ensuring accurate dimensional representation
-    fn orthogonal_projection_matrix(&self, aspect_ratio: f32) -> Mat4 {
-        // Adjust orthogonal bounds to maintain aspect ratio
-        let width = self.ortho_right - self.ortho_left;
-        let height = self.ortho_top - self.ortho_bottom;
-
-        let (left, right, bottom, top) = if width / height > aspect_ratio {
-            // Width is constraining factor - adjust height
-            let adjusted_height = width / aspect_ratio;
-            let center_y = (self.ortho_top + self.ortho_bottom) / 2.0;
-            let half_height = adjusted_height / 2.0;
-            (
-                self.ortho_left,
-                self.ortho_right,
-                center_y - half_height,
-                center_y + half_height,
-            )
-        } else {
-            // Height is constraining factor - adjust width
-            let adjusted_width = height * aspect_ratio;
-            let center_x = (self.ortho_left + self.ortho_right) / 2.0;
-            let half_width = adjusted_width / 2.0;
-            (
-                center_x - half_width,
-                center_x + half_width,
-                self.ortho_bottom,
-                self.ortho_top,
-            )
-        };
-
-        Mat4::orthographic_rh_gl(left, right, bottom, top, self.near, self.far)
-    }
-
-    /// Function-level comment: Generate combined view-projection matrix for efficiency
+    /// Function-level comment: Combined view-projection matrix.
     pub fn view_projection_matrix(&self, aspect_ratio: f32) -> Mat4 {
-        let view = self.view_matrix();
-        let projection = self.projection_matrix(aspect_ratio);
-        projection * view
+        self.projection_matrix(aspect_ratio) * self.view_matrix()
     }
 
-    /// Function-level comment: Set camera to orbit around a target point
-    pub fn set_orbit(&mut self, target: [f32; 3], distance: f32, azimuth: f32, elevation: f32) {
-        self.center = target;
-
-        // Convert spherical coordinates to Cartesian
-        let x = distance * elevation.cos() * azimuth.sin();
-        let y = distance * elevation.sin();
-        let z = distance * elevation.cos() * azimuth.cos();
-
-        self.eye = [target[0] + x, target[1] + y, target[2] + z];
+    /// Function-level comment: Inverse of the combined view-projection matrix.
+    /// Use this in the volume shader to unproject NDC points back into world space.
+    pub fn inverse_view_projection_matrix(&self, aspect_ratio: f32) -> Mat4 {
+        self.view_projection_matrix(aspect_ratio).inverse()
     }
-}
 
-/// Function-level comment: Create a default camera compatible with orthogonal projection
-/// Ensures the entire unit cube is visible without clipping when using orthographic mode.
-pub fn create_default_camera() -> Camera {
-    // Start with orthogonal projection camera
-    let mut camera = Camera::new(); // uses Orthogonal by default
+    /// Function-level comment: Compute the current pan offset in world space.
+    fn pan_offset(&self) -> Vec3 {
+        let right = self.rotation * Vec3::X;
+        let up = self.rotation * Vec3::Y;
+        right * self.pan[0] + up * self.pan[1]
+    }
 
-    // Set standard viewing parameters
-    camera.eye = [0.0, 0.0, 3.0]; // Camera in front of the scene
-    camera.center = [0.0, 0.0, 0.0]; // Look at origin
-    camera.up = [0.0, 1.0, 0.0]; // Y-up coordinate system
+    /// Function-level comment: Return the shared scene center used by mesh and volume.
+    fn scene_center() -> Vec3 {
+        Vec3::new(0.5, 0.5, 0.5)
+    }
 
-    // Fix clipping issues: near and far planes must include the scene
-    // For orthographic projection, near MUST be < far; negative near is allowed.
-    camera.near = -5.0; // Allow objects between camera and center
-    camera.far = 5.0; // Small range improves depth precision
-
-    // Setup orthogonal bounds to ensure a unit cube (-1..1) fits inside view
-    camera.ortho_left = -2.0;
-    camera.ortho_right = 2.0;
-    camera.ortho_bottom = -2.0;
-    camera.ortho_top = 2.0;
-
-    camera
+    /// Function-level comment: Convert the zoom factor into a camera-target distance.
+    fn distance_to_target(&self) -> f32 {
+        BASE_ORBIT_DISTANCE / self.scale.max(0.05)
+    }
 }

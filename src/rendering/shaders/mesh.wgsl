@@ -80,7 +80,8 @@ struct MeshUniforms {
     opacity_multiplier: f32,
     light_dir: vec3<f32>,
     aspect_ratio: f32,
-    rotation: mat4x4<f32>,
+    inv_view_proj: mat4x4<f32>,
+    view_proj: mat4x4<f32>,
     vol_dims: vec3<f32>,
     preset: f32,
     needle_count : u32,
@@ -485,8 +486,9 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
         return DvrResult(vec4<f32>(accum_rgb, accum_a), 1.0, vec3<f32>(0.0), 0.0);
     }
     let hit_pos = ray_origin + (first_hit_t + dt * 2.0) * ray_dir;
-    let ndc_z = (u_vol.rotation * vec4<f32>(hit_pos, 1.0)).z;
-    let norm_depth = clamp((ndc_z + 0.5) / 2.0, 0.0, 1.0);
+    let clip_pos = u_vol.view_proj * vec4<f32>(hit_pos, 1.0);
+    let ndc_z = clip_pos.z / clip_pos.w;
+    let norm_depth = clamp(ndc_z * 0.5 + 0.5, 0.0, 1.0);
     return DvrResult(vec4<f32>(accum_rgb, accum_a), norm_depth, first_hit_pos, 1.0);
 }
 
@@ -501,24 +503,12 @@ struct FragmentOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> FragmentOutput {
-    // Screen-space UV with aspect ratio, scale, and pan
-    let scale = max(u_vol.scale * 1.5, 0.0001);
-    var uv_centered = in.tex_coords - vec2<f32>(0.5, 0.5);
-
-    if (u_vol.aspect_ratio > 1.0) {
-        uv_centered.x = uv_centered.x * u_vol.aspect_ratio;
-    } else if (u_vol.aspect_ratio < 1.0 && u_vol.aspect_ratio > 0.0) {
-        uv_centered.y = uv_centered.y / u_vol.aspect_ratio;
-    }
-
-    let uv = (uv_centered * scale) + vec2<f32>(0.5, 0.5) + vec2<f32>(u_vol.pan_x, u_vol.pan_y);
-
-    // Build the ray in volume space
-    let center = vec3<f32>(0.5, 0.5, 0.5);
-    let base_ray_origin = vec3<f32>(uv.x, 1.0 - uv.y, -0.5);
-
-    let ray_origin = (u_vol.rotation * vec4<f32>(base_ray_origin - center, 1.0)).xyz + center;
-    let ray_dir = normalize((u_vol.rotation * vec4<f32>(0.0, 0.0, 1.0, 0.0)).xyz);
+    // Screen -> NDC -> World via the shared camera transform.
+    let ndc = vec2<f32>(in.tex_coords.x * 2.0 - 1.0, (1.0 - in.tex_coords.y) * 2.0 - 1.0);
+    let near_h = u_vol.inv_view_proj * vec4<f32>(ndc.x, ndc.y, 0.0, 1.0);
+    let far_h = u_vol.inv_view_proj * vec4<f32>(ndc.x, ndc.y, 1.0, 1.0);
+    let ray_origin = near_h.xyz / near_h.w;
+    let ray_dir = normalize(far_h.xyz / far_h.w - ray_origin);
 
     // Clip ray to the [0,1]^3 AABB
     let inter_vol = intersect_box(ray_origin, ray_dir, vec3<f32>(0.0), vec3<f32>(1.0));

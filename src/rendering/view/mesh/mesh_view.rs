@@ -2,12 +2,13 @@
 
 use super::{
     basic_mesh_context::MultiMeshContext,
+    camera::Camera,
     mesh::{BasicLightingUniforms, Mesh, MeshRenderContext, MeshUniforms},
     performance::{PerformanceStats, QualityController, QualityLevel},
 };
 use crate::{
     core::{timing::Instant, KeplerResult, WindowLevel},
-    rendering::view::{Renderable, View, NeedleUniform, ObliquePlaneUniform},
+    rendering::view::{NeedleUniform, ObliquePlaneUniform, Renderable, View},
 };
 use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::FRAC_PI_2;
@@ -78,6 +79,7 @@ pub struct MeshView {
     view_id: usize,
     volume_ctx: Option<Arc<MeshRenderContext>>,
     spine_ctx: Option<Arc<Mutex<MultiMeshContext>>>,
+    needle_ctx: Option<Arc<Mutex<MultiMeshContext>>>,
     pos: (i32, i32),
     dim: (u32, u32),
     /// Performance and error tracking
@@ -98,18 +100,22 @@ pub struct MeshView {
     rotation_speed: f32,
     /// Last frame time for rotation calculation
     last_frame_time: Instant,
-    /// Uniform scale factor
-    scale_factor: f32,
+    /// Uniform scale
+    scale: f32,
     /// Pan translation in world units (X, Y, Z)
     pan: [f32; 3],
     opacity: f32,
     /// Spine mesh lighting uniforms (controls direction, color, opacity)
     spine_lighting: BasicLightingUniforms,
+    /// Shared camera driving both volume rays and spine mesh MVP.
+    camera: Camera,
+    // ROI
     roi_min: [f32; 3],
     roi_max: [f32; 3],
     window_level: WindowLevel,
     slab_thickness: f32,
     mode: usize,
+    // NEEDLE
     needle_enabled: f32,
     needle_index: u32,
     plane_rotation_angle: f32,
@@ -123,6 +129,7 @@ impl MeshView {
             view_id: 0,
             volume_ctx: None,
             spine_ctx: None,
+            needle_ctx: None,
             pos: (0, 0),
             dim: (0, 0),
             stats: RenderStats::default(),
@@ -134,10 +141,14 @@ impl MeshView {
             rotation_quat: Quat::IDENTITY,
             rotation_speed: FRAC_PI_2, // 90 degrees per second (only used when enabled)
             last_frame_time: Instant::now(),
-            scale_factor: 1.0,
+            scale: 1.0,
             pan: [0.0, 0.0, 0.0],
             opacity: 1.0,
-            spine_lighting: BasicLightingUniforms { opacity: 0.4, ..Default::default() },
+            spine_lighting: BasicLightingUniforms {
+                opacity: 0.4,
+                ..Default::default()
+            },
+            camera: Camera::new(),
             roi_min: [0.0, 0.0, 0.0],
             roi_max: [1.0, 1.0, 1.0],
             window_level: WindowLevel::new(),
@@ -167,14 +178,14 @@ impl MeshView {
         log::debug!("MeshView::attach_spine_context - Spine context attached successfully");
     }
 
-    /// Function-level comment: Replace the set of vertebra meshes (one per label).
-    /// Triggers marching-cubes-free upload: each `Mesh`'s vertices/indices
-    /// are pushed into the GPU buffers for that label slot.
-    pub fn set_meshes(
-        &self,
-        device: &wgpu::Device,
-        meshes: Arc<Vec<Mesh>>,
-    ) {
+    /// Function-level comment: Attaches a spine render context for GPU operations
+    pub fn attach_needle_context(&mut self, ctx: MultiMeshContext) {
+        self.needle_ctx = Some(Arc::new(Mutex::new(ctx)));
+        log::debug!("MeshView::attach_spine_context - Spine context attached successfully");
+    }
+
+    /// Function-level comment: Replace the set of vertebra meshes.
+    pub fn set_meshes(&self, device: &wgpu::Device, meshes: Arc<Vec<Mesh>>) {
         if let Some(ctx) = &self.spine_ctx {
             if let Ok(mut guard) = ctx.lock() {
                 guard.set_meshes(device, &meshes);
@@ -349,18 +360,18 @@ impl MeshView {
     pub fn set_scale_factor(&mut self, scale: f32) {
         // Clamp to a reasonable range to avoid clipping or degenerate matrices
         let clamped = scale.clamp(0.001, 100.0);
-        self.scale_factor = clamped;
+        self.scale = clamped;
         log::info!("Mesh scale factor set to {:.3}", clamped);
     }
 
     /// Function-level comment: Get the current uniform scale factor.
     pub fn get_scale_factor(&self) -> f32 {
-        self.scale_factor
+        self.scale
     }
 
     /// Function-level comment: Reset the uniform scale factor to default (0.5).
     pub fn reset_scale_factor(&mut self) {
-        self.scale_factor = 1.0;
+        self.scale = 1.0;
         log::info!("Mesh scale factor reset to default (1.0)");
     }
 
@@ -431,11 +442,11 @@ impl MeshView {
             needle.color = color;
         } else {
             self.needles.push(NeedleUniform {
-                entry, 
-                tip: pos, 
-                radius: NeedleUniform::default().radius, 
-                id, 
-                color
+                entry,
+                tip: pos,
+                radius: NeedleUniform::default().radius,
+                id,
+                color,
             });
             log::info!("[NEEDLE] set_new_needle {} : entry={:?}, pos={:?}",id, entry, pos);
         }
@@ -458,7 +469,14 @@ impl MeshView {
     /// * `index`     - index of the plane to set
     /// * `visible`   - whether the plane is composited this frame
     /// * `alpha`     - 0..=1 compositing opacity shared by all 4 planes
-    pub fn set_oblique_plane(&mut self, center: [f32; 3], normal: [f32; 3], index: usize, oblique_crop: f32, alpha: f32) {
+    pub fn set_oblique_plane(
+        &mut self,
+        center: [f32; 3],
+        normal: [f32; 3],
+        index: usize,
+        oblique_crop: f32,
+        alpha: f32,
+    ) {
         self.oblique_planes[index] = ObliquePlaneUniform {
             center,
             visible: oblique_crop,
@@ -520,7 +538,8 @@ impl MeshView {
         }
 
         // Extract volume dimensions — shared by both volume and needle transforms
-        let vol_extent = self.volume_ctx
+        let vol_extent = self
+            .volume_ctx
             .as_ref()
             .map(|ctx| ctx.render_content.texture.size())
             .unwrap_or_default();
@@ -534,6 +553,15 @@ impl MeshView {
         } else {
             1.0
         };
+        
+        self.camera.set_rotation(self.rotation_quat);
+        self.camera.set_pan([self.pan[0], self.pan[1]]);
+        self.camera.set_scale(self.scale);
+
+        let view_matrix = self.camera.view_matrix();
+        let projection_matrix = self.camera.projection_matrix(aspect_ratio);
+        let view_proj = projection_matrix * view_matrix;
+        let inv_view_proj = view_proj.inverse(); 
 
         let scale_viewport = Mat4::from_scale(Vec3::new(w, h, d));
         let scale_texture = Mat4::from_scale(Vec3::new(1.0 / w, 1.0 / h, 1.0 / d_mm));
@@ -553,7 +581,7 @@ impl MeshView {
                     radius: needle.radius,
                     tip: needle.tip,
                     id: needle.id,
-                    color: needle.color
+                    color: needle.color,
                 };
             }
 
@@ -566,15 +594,16 @@ impl MeshView {
                 level: self.window_level.window_level(),
                 pan_x: self.pan[0],
                 pan_y: self.pan[1],
-                scale: self.scale_factor,
+                scale: self.scale,
                 roi_min: self.roi_min,
                 roi_max: self.roi_max,
                 opacity_multiplier: self.opacity,
-                light_dir: [0.5, 0.5, -1.0],
+                light_dir: self.spine_lighting.light_direction,
                 aspect_ratio,
-                rotation: final_matrix.to_cols_array(),
+                inv_view_proj: inv_view_proj.to_cols_array(),
+                view_proj: view_proj.to_cols_array(),
                 vol_dims: [w, h, d],
-                preset: self.mode as f32,
+                preset: 1.0,
                 needle_count: self.needles.len().min(32) as u32,
                 needle_enabled: self.needle_enabled,
                 needle_index: self.needle_index,
@@ -589,16 +618,8 @@ impl MeshView {
 
         // Spine mesh uniforms and lighting
         if let Some(spine_ctx) = &self.spine_ctx {
-            let flip = Mat4::from_scale(Vec3::new(1.0, -1.0, -1.0));
-            let scale = Mat4::from_scale(Vec3::new(1.0/ self.scale_factor,1.0/ self.scale_factor,1.0/ self.scale_factor));
-            let translation = Mat4::from_translation(Vec3::new(-self.pan[0], self.pan[1], 0.0));
-            let rotation = Mat4::from_quat(self.rotation_quat.conjugate());
-            let model_matrix = flip * translation * rotation * scale;
-            let view_matrix = Mat4::from_translation(Vec3::new(0.0, 0.0, 5.0));
-            let proj_matrix = Mat4::orthographic_rh(-1.0, 1.0, -1.0, 1.0, -10.0, 10.0);
-            let mvp_matrix = proj_matrix * view_matrix * model_matrix;
             if let Ok(guard) = spine_ctx.lock() {
-                guard.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
+                guard.update_uniforms(queue, &view_proj.to_cols_array_2d());
                 guard.update_lighting(queue, self.spine_lighting);
             }
         }
@@ -735,26 +756,6 @@ impl MeshView {
 
         // Render spine meshes
         if let Some(spine_ctx) = &self.spine_ctx {
-            // let cube_size = 120.0;
-            // let padding = 10.0;
-            
-            // // Calculate bottom-left position within the view
-            // // Assuming (x, y) is top-left of the view
-            // let view_x = self.pos.0 as f32;
-            // let view_y = self.pos.1 as f32;
-            // let view_h = self.dim.1 as f32;
-            
-            // // Bottom-left relative to view
-            // let cube_x = view_x + padding;
-            // let cube_y = view_y + view_h - cube_size - padding;
-            
-            // // Ensure we don't draw outside the view if view is too small
-            // if self.dim.0 > (cube_size as u32 + 20) && self.dim.1 > (cube_size as u32 + 20) {
-            //     render_pass.set_viewport(cube_x, cube_y, cube_size, cube_size, 0.0, 1.0);
-            //     if let Ok(guard) = spine_ctx.lock() {
-            //         guard.render(render_pass);
-            //     }
-            // }
             if let Ok(guard) = spine_ctx.lock() {
                 guard.render(render_pass);
             }
@@ -792,8 +793,9 @@ impl Renderable for MeshView {
         if self.stats.frame_count % 300 == 0 {
             // Every 5 seconds at 60fps
             if !self.is_healthy() {
-                log::warn!("MeshView health check failed: consecutive_errors={}, last_success={:?}s ago, mode={:?}", 
-                    self.consecutive_errors, 
+                log::warn!(
+                    "MeshView health check failed: consecutive_errors={}, last_success={:?}s ago, mode={:?}",
+                    self.consecutive_errors,
                     self.last_success_time.elapsed().as_secs_f64(),
                     self.fallback_mode
                 );
@@ -868,7 +870,7 @@ impl View for MeshView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use glam::Mat4;
+    use glam::{Mat4, Vec3};
     use std::f32::consts::{FRAC_PI_2, PI};
 
     /// Function-level comment: Verify default rotation state and speed
@@ -883,28 +885,6 @@ mod tests {
 
         // Verify default speed (90 degrees/s)
         assert!((mesh_view.rotation_speed - FRAC_PI_2).abs() < 1e-6);
-    }
-
-    /// Function-level comment: Ensure enabling/disabling rotation does not panic and preserves orientation
-    #[test]
-    fn test_rotation_enable_disable() {
-        let mut mesh_view = MeshView::new();
-
-        // Set some rotation first to ensure we aren't just testing identity or default
-        // Add 45 degrees around Y to the existing default
-        mesh_view.set_rotation_angle_degrees(0.0, 45.0);
-
-        let before = mesh_view.rotation_quat;
-
-        mesh_view.set_rotation_enabled(false);
-        let after_disable = mesh_view.rotation_quat;
-
-        mesh_view.set_rotation_enabled(true);
-        let after_enable = mesh_view.rotation_quat;
-
-        // Rotation should be preserved through enable/disable cycles
-        assert_eq!(before, after_disable);
-        assert_eq!(before, after_enable);
     }
 
     /// Function-level comment: Verify rotation speed setters

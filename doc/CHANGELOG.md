@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-07-24T14-25-02
+- **Unified Camera-Driven 3D Transform System**
+  - Reworked the 3D mesh view so mesh MVP uploads and volume ray generation both consume the same right-handed shared `Camera` transform state.
+  - Added a locked `SceneTransformState` snapshot in `MeshView` to keep `view_proj` / `inv_view_proj` updates synchronized across mesh and volume uploads within the same frame.
+  - Extended the shared mesh camera with `ProjectionMode::{Orthographic, Perspective}` while preserving a stable target-plane scale when switching projection types.
+  - Updated the 3D volume shader to reconstruct rays from `inv_view_proj` and to write fragment depth from `view_proj`, eliminating the old rotation-only volume camera path.
+  - Normalized segmentation-derived spine meshes and imported OBJ meshes into the shared `[0,1]^3` world cube so they align with the volume texture under one camera contract.
+  - Added transform regression tests covering shared matrix consistency, projection-mode stability, and reset-to-baseline behavior.
+  - Files:
+    - `src/rendering/view/mesh/camera.rs`
+    - `src/rendering/view/mesh/mesh.rs`
+    - `src/rendering/view/mesh/mesh_view.rs`
+    - `src/rendering/shaders/mesh.wgsl`
+    - `src/application/app.rs`
+    - `src/application/appview.rs`
+    - `doc/rendering/2026-07-24T14-25-02-unified-3d-camera-transform-system.md`
+
 ## 2026-06-16T16-00-00
 - **Add Oblique Cutting Plane to 3D Mesh View (REQ-025/026/027)**
   - Added a second plane-quad overlay to `dvr_ray_march` in `mesh.wgsl`. The new plane is driven by `u_vol.oblique_center`, `u_vol.oblique_normal`, `u_vol.oblique_visible`, and `u_vol.oblique_alpha`.

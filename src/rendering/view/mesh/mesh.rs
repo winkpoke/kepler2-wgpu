@@ -29,7 +29,12 @@ pub struct MeshUniforms {
     pub opacity_multiplier: f32,
     pub light_dir: [f32; 3],
     pub aspect_ratio: f32,
-    pub rotation: [f32; 16],
+    /// Function-level comment: Inverse view-projection matrix shared by mesh and
+    /// volume so volume rays are generated in the same world space as the mesh MVP.
+    pub inv_view_proj: [f32; 16],
+    /// Function-level comment: Forward view-projection matrix used for correct
+    /// volume depth writes in the shared camera coordinate system.
+    pub view_proj: [f32; 16],
     pub vol_dims: [f32; 3],
     pub preset: f32,
     pub needle_count: u32,
@@ -57,7 +62,8 @@ impl Default for MeshUniforms {
             opacity_multiplier: 1.0,
             light_dir: [0.5, 0.5, -1.0],
             aspect_ratio: 1.0,
-            rotation: Mat4::IDENTITY.to_cols_array(),
+            inv_view_proj: Mat4::IDENTITY.to_cols_array(),
+            view_proj: Mat4::IDENTITY.to_cols_array(),
             vol_dims: [512.0, 512.0, 300.0],
             preset: 1.0,
             needle_count: 0,
@@ -422,7 +428,7 @@ impl Mesh {
 
         let mut result = Vec::new();
         for m in models {
-            let mesh=&m.mesh;
+            let mesh = &m.mesh;
             let vertex_count = mesh.positions.len() / 3;
             let normals: Vec<f32> = if mesh.normals.len() == mesh.positions.len() {
                 mesh.normals.clone()
@@ -431,25 +437,25 @@ impl Mesh {
             };
             let mut vertices = Vec::<MeshVertex>::with_capacity(vertex_count);
             for i in 0..vertex_count {
-                let pos=[mesh.positions[i*3], mesh.positions[i*3+1], mesh.positions[i*3+2]];
-                let normal=[normals[i*3], normals[i*3+1], normals[i*3+2]];
-                vertices.push(
-                    MeshVertex{
-                        position:pos,
-                        normal,
-                        color:[1.0,1.0,1.0],
-                    }
-                );
+                let pos = [
+                    mesh.positions[i * 3],
+                    mesh.positions[i * 3 + 1],
+                    mesh.positions[i * 3 + 2],
+                ];
+                let normal = [normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]];
+                vertices.push(MeshVertex {
+                    position: pos,
+                    normal,
+                    color: [1.0, 1.0, 1.0],
+                });
             }
 
-            result.push(
-                Mesh{
-                    label_id:0,
-                    label_name:m.name,
-                    vertices,
-                    indices:mesh.indices.clone(),
-                }
-            );
+            result.push(Mesh {
+                label_id: 0,
+                label_name: m.name,
+                vertices,
+                indices: mesh.indices.clone(),
+            });
         }
 
         // Compute actual bounding box from all vertices
@@ -473,13 +479,14 @@ impl Mesh {
             return Err("OBJ mesh has zero or invalid extent".into());
         }
 
-        // Normalize all meshes to [-1, 1] range centered at origin (matching MC normalization).
-        // After centering, extent is [-max_dim/2, max_dim/2]; multiply by 2/max_dim to get [-1, 1].
-        let norm_scale = 2.0 / max_dim;
+        // Function-level comment: Normalize OBJ meshes into the shared `[0, 1]^3`
+        // world cube so imported meshes and ray-marched volumes consume the same
+        // camera transform without per-object correction terms.
+        let norm_scale = 1.0 / max_dim;
         for mesh in &mut result {
             for v in &mut mesh.vertices {
                 let mut p = glam::Vec3::from(v.position);
-                p = (p - center) * norm_scale;
+                p = (p - center) * norm_scale + glam::Vec3::splat(0.5);
                 v.position = p.to_array();
             }
         }
@@ -497,25 +504,24 @@ impl Mesh {
             for v in &mesh.vertices {
                 obj.push_str(&format!(
                     "v {} {} {}\n",
-                    v.position[0],
-                    v.position[1],
-                    v.position[2],
+                    v.position[0], v.position[1], v.position[2],
                 ));
             }
             for v in &mesh.vertices {
                 obj.push_str(&format!(
                     "vn {} {} {}\n",
-                    v.normal[0],
-                    v.normal[1],
-                    v.normal[2],
+                    v.normal[0], v.normal[1], v.normal[2],
                 ));
             }
             for tri in mesh.indices.chunks(3) {
                 obj.push_str(&format!(
                     "f {}//{} {}//{} {}//{}\n",
-                    tri[0]+1+offset, tri[0]+1+offset,
-                    tri[1]+1+offset, tri[1]+1+offset,
-                    tri[2]+1+offset, tri[2]+1+offset,
+                    tri[0] + 1 + offset,
+                    tri[0] + 1 + offset,
+                    tri[1] + 1 + offset,
+                    tri[1] + 1 + offset,
+                    tri[2] + 1 + offset,
+                    tri[2] + 1 + offset,
                 ));
             }
             offset += mesh.vertices.len() as u32;
@@ -524,11 +530,11 @@ impl Mesh {
     }
 }
 
-fn compute_vertex_normals(positions:&Vec<f32>,indices:&Vec<u32>)->Vec<f32>{
-    let vertex_count = positions.len()/3;
+fn compute_vertex_normals(positions: &Vec<f32>, indices: &Vec<u32>) -> Vec<f32> {
+    let vertex_count = positions.len() / 3;
 
     // each vertex accumulate normal
-    let mut normals = vec![glam::Vec3::ZERO;vertex_count];
+    let mut normals = vec![glam::Vec3::ZERO; vertex_count];
 
     /*
         triangle:
@@ -539,35 +545,35 @@ fn compute_vertex_normals(positions:&Vec<f32>,indices:&Vec<u32>)->Vec<f32>{
         normal: (v1-v0)×(v2-v0)
     */
     for tri in indices.chunks(3) {
-        if tri.len()!=3 {
+        if tri.len() != 3 {
             continue;
         }
         let i0 = tri[0] as usize;
         let i1 = tri[1] as usize;
         let i2 = tri[2] as usize;
         let p0 = glam::Vec3::new(
-            positions[i0*3],
-            positions[i0*3+1],
-            positions[i0*3+2],
+            positions[i0 * 3],
+            positions[i0 * 3 + 1],
+            positions[i0 * 3 + 2],
         );
         let p1 = glam::Vec3::new(
-            positions[i1*3],
-            positions[i1*3+1],
-            positions[i1*3+2],
+            positions[i1 * 3],
+            positions[i1 * 3 + 1],
+            positions[i1 * 3 + 2],
         );
         let p2 = glam::Vec3::new(
-            positions[i2*3],
-            positions[i2*3+1],
-            positions[i2*3+2],
+            positions[i2 * 3],
+            positions[i2 * 3 + 1],
+            positions[i2 * 3 + 2],
         );
-        let face_normal = (p1-p0).cross(p2-p0).normalize_or_zero();
-        normals[i0]+=face_normal;
-        normals[i1]+=face_normal;
-        normals[i2]+=face_normal;
+        let face_normal = (p1 - p0).cross(p2 - p0).normalize_or_zero();
+        normals[i0] += face_normal;
+        normals[i1] += face_normal;
+        normals[i2] += face_normal;
     }
 
     // normalize each vertex normal
-    let mut result = Vec::<f32>::with_capacity(vertex_count*3);
+    let mut result = Vec::<f32>::with_capacity(vertex_count * 3);
     for n in normals {
         let n = n.normalize_or_zero();
         result.push(n.x);
@@ -579,14 +585,14 @@ fn compute_vertex_normals(positions:&Vec<f32>,indices:&Vec<u32>)->Vec<f32>{
 
 pub fn spine(
     segmentation: &[u8],
-    dims: (usize, usize, usize),  // (rows, cols, slices)
+    dims: (usize, usize, usize), // (rows, cols, slices)
     spacing: (f32, f32, f32),
-    label_ids:&[u8],
+    label_ids: &[u8],
     iso: f32,
-)-> Vec<Mesh> {
+) -> Vec<Mesh> {
     let (rows, cols, slices) = dims;
     let mut results = Vec::new();
-    
+
     for &label_id in label_ids {
         let mut field = vec![0.0f32; segmentation.len()];
         let mut has_voxel = false;
@@ -610,17 +616,21 @@ pub fn spine(
             lin_alg::f32::Vec3::new(0.0, 0.0, 0.0),
             field,
             iso,
-        ).expect("mcubes init: dims/values length mismatch");
+        )
+        .expect("mcubes init: dims/values length mismatch");
         let cube_mesh = mc.generate(MeshSide::InsideOnly);
 
-        let color = LABEL_COLORS.get(label_id as usize).copied().unwrap_or([1.0,1.0,1.0,1.0]);
+        let color = LABEL_COLORS
+            .get(label_id as usize)
+            .copied()
+            .unwrap_or([1.0, 1.0, 1.0, 1.0]);
 
         let vertices: Vec<MeshVertex> = cube_mesh
             .vertices
             .iter()
             .map(|v| MeshVertex {
                 position: [v.posit.x, v.posit.y, v.posit.z],
-                normal:   [v.normal.x, v.normal.y, v.normal.z],
+                normal: [v.normal.x, v.normal.y, v.normal.z],
                 color: [color[0], color[1], color[2]],
             })
             .collect();
@@ -634,20 +644,17 @@ pub fn spine(
         });
     }
 
-    // Normalize every mesh's vertex positions to the canonical`[-1, 1]` cube, centered at origin.
-    let center_x = (cols as f32 * spacing.0) * 0.5;
-    let center_y = (rows as f32 * spacing.1) * 0.5;
-    let center_z = (slices as f32 * spacing.2) * 0.5;
-    let max_extent = (cols as f32 * spacing.0)
-        .max(rows as f32 * spacing.1)
-        .max(slices as f32 * spacing.2);
-    let scale = 2.0 / max_extent;
+    // Function-level comment: Map segmentation-derived meshes into the same
+    // normalized world cube as the volume texture so one camera controls both.
+    let extent_x = cols as f32 * spacing.0;
+    let extent_y = rows as f32 * spacing.1;
+    let extent_z = slices as f32 * spacing.2;
 
     for mesh in &mut results {
         for v in &mut mesh.vertices {
-            v.position[0] = (v.position[0] - center_x) * scale;
-            v.position[1] = (v.position[1] - center_y) * scale;
-            v.position[2] = (v.position[2] - center_z) * scale;
+            v.position[0] /= extent_x.max(1e-6);
+            v.position[1] /= extent_y.max(1e-6);
+            v.position[2] /= extent_z.max(1e-6);
         }
     }
 
