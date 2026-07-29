@@ -25,13 +25,13 @@ pub struct UniformsFrag {
     pub slice2: f32,
     pub aliasing: u32,  // Change from bool to u32
     pub mat: [f32; 16],
-    pub mat2: [f32; 16],
     pub needle_count: u32,
     pub needle_enabled: f32,
     pub seg_enabled: f32,
     pub _pad0: f32,
     pub needles: [NeedleUniform; 32],
     pub label_colors: [[f32; 4]; 8],
+    pub label_visibility: [[f32; 4]; 8],
 }
 
 impl Default for UniformsFrag {
@@ -46,13 +46,13 @@ impl Default for UniformsFrag {
             slice2: 0.0,
             aliasing: 0,
             mat: [0.0; 16],
-            mat2: [0.0; 16],
             needle_count: 0,
             needle_enabled: 0.0,
             seg_enabled: 0.0,
             _pad0: 0.0,
             needles: [NeedleUniform::default(); 32],
             label_colors: LABEL_COLORS,
+            label_visibility: [[0.0; 4]; 8],
         }
     }
 }
@@ -129,13 +129,13 @@ impl MprViewWgpuImpl {
             slice2: 0.0,
             aliasing: 0,
             mat: transform_matrix.to_cols_array(),
-            mat2: glam::Mat4::IDENTITY.to_cols_array(),
             needle_count: 0,
             needle_enabled: 0.0,
             seg_enabled: 0.0,
             _pad0: 0.0,
             needles: [NeedleUniform::default(); 32],
             label_colors: LABEL_COLORS,
+            label_visibility: [[0.0; 4]; 8],
         };
 
         log::info!(
@@ -257,6 +257,19 @@ impl MprViewWgpuImpl {
         );
     }
 
+    pub fn set_segmentation_visibility(
+        &mut self, 
+        queue: &wgpu::Queue, 
+        mask: [f32; 8]
+    ){
+        for (i, &v) in mask.iter().enumerate() {
+            if let Some(slot) = self.uniforms.frag.label_visibility.get_mut(i) {
+                slot[0] = if v > 0.5 { 1.0 } else { 0.0 };
+            }
+        }
+        self.update_uniforms_buffers(queue);
+    }
+
     /// Set the uniform values for this view
     ///
     /// # Arguments
@@ -275,11 +288,6 @@ impl MprViewWgpuImpl {
     /// * `matrix` - New transformation matrix
     pub fn set_matrix(&mut self, matrix: [f32; 16]) {
         self.uniforms.frag.mat = matrix;
-    }
-
-    /// Set second transformation matrix (for dual mode)
-    pub fn set_matrix2(&mut self, matrix: [f32; 16]) {
-        self.uniforms.frag.mat2 = matrix;
     }
 
     /// Set slice position
@@ -459,13 +467,14 @@ mod tests {
         // Layout:
         //   32 bytes header (7 f32 + 1 u32)
         // + 64 bytes mat
-        // + 64 bytes mat2
         // + 16 bytes needle header + _pad0 (1 u32 + 3 f32)
         // + 32 * 48 bytes NeedleUniform = 1536 bytes
         // + 8 * 16 bytes label_colors (vec4, 4th component is padding
         //   so the byte layout matches the WGSL `array<vec4<f32>, 8>`)
-        // = 1840 bytes
-        assert_eq!(size, 1840);
+        // + 8 * 16 bytes label_visibility (vec4, only .x is read by the
+        //   shader; vec4 stride matches WGSL `array<vec4<f32>, 8>`)
+        // = 1904 bytes
+        assert_eq!(size, 1904);
         let vert_size = std::mem::size_of::<UniformsVert>();
         assert_eq!(vert_size, 16);
         let uniforms_size = std::mem::size_of::<Uniforms>();

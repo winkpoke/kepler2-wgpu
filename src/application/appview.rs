@@ -5,16 +5,16 @@
 use crate::rendering::view::mesh::mesh_view::MeshView;
 use crate::rendering::view::mip::MipConfig;
 use crate::rendering::view::render_content::RenderContent;
+use crate::rendering::view::ObliquePlaneUniform;
 use crate::rendering::view::ViewFactory;
 use crate::rendering::view::{
-    DefaultViewFactory, DynamicLayout, MipView, MprView, Orientation, View, ViewState,
-    ALL_ORIENTATIONS, LargeLeft3RightLayout,GridLayout, LayoutContainer, OneCellLayout,
+    DefaultViewFactory, DynamicLayout, GridLayout, LargeLeft3RightLayout, LayoutContainer, MipView,
+    MprView, OneCellLayout, Orientation, View, ViewState, ALL_ORIENTATIONS,
 };
-use crate::rendering::view::ObliquePlaneUniform;
 use crate::rendering::StatefulView;
 use crate::CTVolume;
-use std::sync::Arc;
 use glam::Quat;
+use std::sync::Arc;
 
 /// Encapsulated state for a view, including its orientation and rendering parameters.
 #[derive(Debug, Clone)]
@@ -71,42 +71,42 @@ impl AppView {
     pub fn save_view_states(&mut self) {
         // Collect current view states first to avoid borrowing conflicts
         let current_states: Vec<CapturedViewState> = self
-                .layout
-                .views()
-                .iter()
-                .enumerate()
-                .filter_map(|(i, v)| {
-                    if let Some(mpr_view) = v.as_any().downcast_ref::<MprView>() {
-                        let orientation = mpr_view.get_orientation();
-                        mpr_view.save_state().map(|state| CapturedViewState::Mpr {
-                            view_id: mpr_view.view_id(),
-                            view_index: i,
-                            orientation: *orientation,
-                            state,
-                        })
-                    } else if let Some(mip_view) = v.as_any().downcast_ref::<MipView>() {
-                        Some(CapturedViewState::Mip {
-                            view_id: mip_view.view_id(),
-                            config: mip_view.config().clone(),
-                            scale: mip_view.get_scale(),
-                            pan: mip_view.get_pan(),
-                            window: mip_view.get_window_level(),
-                            rotation_quat: mip_view.get_rotation_quat(),
-                        })
-                    } else if let Some(mesh_view) = v.as_any().downcast_ref::<MeshView>() {
-                        Some(CapturedViewState::Mesh {
-                            view_id: mesh_view.view_id(),
-                            rotation: mesh_view.get_rotation_quat().to_array(),
-                            scale: mesh_view.get_scale_factor(),
-                            pan: mesh_view.get_pan(),
-                            opacity: mesh_view.get_opacity(),
-                            oblique_planes: mesh_view.get_oblique_planes(),
-                        })
-                    } else {
-                        None
-                    }
-                })
-                .collect();
+            .layout
+            .views()
+            .iter()
+            .enumerate()
+            .filter_map(|(i, v)| {
+                if let Some(mpr_view) = v.as_any().downcast_ref::<MprView>() {
+                    let orientation = mpr_view.get_orientation();
+                    mpr_view.save_state().map(|state| CapturedViewState::Mpr {
+                        view_id: mpr_view.view_id(),
+                        view_index: i,
+                        orientation: *orientation,
+                        state,
+                    })
+                } else if let Some(mip_view) = v.as_any().downcast_ref::<MipView>() {
+                    Some(CapturedViewState::Mip {
+                        view_id: mip_view.view_id(),
+                        config: mip_view.config().clone(),
+                        scale: mip_view.get_scale(),
+                        pan: mip_view.get_pan(),
+                        window: mip_view.get_window_level(),
+                        rotation_quat: mip_view.get_rotation_quat(),
+                    })
+                } else if let Some(mesh_view) = v.as_any().downcast_ref::<MeshView>() {
+                    Some(CapturedViewState::Mesh {
+                        view_id: mesh_view.view_id(),
+                        rotation: mesh_view.get_rotation_quat().to_array(),
+                        scale: mesh_view.get_scale_factor(),
+                        pan: mesh_view.get_pan(),
+                        opacity: mesh_view.get_opacity(),
+                        oblique_planes: mesh_view.get_oblique_planes(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         // Merge current states into saved_states
         for new_state in current_states {
@@ -161,8 +161,7 @@ impl AppView {
         for (i, view) in self.layout.views_mut().iter_mut().enumerate() {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
                 // Match by BOTH view index and orientation
-                if let Some(CapturedViewState::Mpr { state,..}) = 
-                    states.iter().find(|s| {
+                if let Some(CapturedViewState::Mpr { state, .. }) = states.iter().find(|s| {
                     matches!(s, CapturedViewState::Mpr { view_id, view_index: idx, orientation: o, .. }
                         if *idx == i && *view_id == mpr_view.view_id() && *o == *mpr_view.get_orientation())
                 }) {
@@ -203,14 +202,20 @@ impl AppView {
                 }) = states.iter().find(|s| {
                     matches!(s, CapturedViewState::Mesh { view_id, .. }
                         if *view_id == mesh_view.view_id())
-                }){
+                }) {
                     let _ = mesh_view.set_rotation_quat(*rotation);
                     mesh_view.set_scale_factor(*scale);
                     mesh_view.set_pan(pan[0], pan[1]);
                     mesh_view.set_opacity(*opacity);
                     let planes = *oblique_planes;
                     for (i, plane) in planes.iter().enumerate() {
-                        mesh_view.set_oblique_plane(plane.center, plane.normal, i, plane.visible, plane.plane_alpha);
+                        mesh_view.set_oblique_plane(
+                            plane.center,
+                            plane.normal,
+                            i,
+                            plane.visible,
+                            plane.plane_alpha,
+                        );
                     }
                 }
             }
@@ -450,20 +455,16 @@ impl AppView {
         }
 
         if mip.is_some() {
-            let mip_view = self.view_factory.create_mip_view_with_content(
-                texture.clone(), 
-                (0, 0), 
-                (0, 0)
-            )?;
+            let mip_view =
+                self.view_factory
+                    .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))?;
             LayoutContainer::replace_view_at(&mut self.layout, mip.unwrap(), mip_view);
         }
 
         if mesh_index.is_some() {
-            let mesh_view = self.view_factory.create_mesh_view_with_content(
-                texture.clone(),
-                (0, 0),
-                (0, 0),
-            )?;
+            let mesh_view =
+                self.view_factory
+                    .create_mesh_view_with_content(texture.clone(), (0, 0), (0, 0))?;
             LayoutContainer::replace_view_at(&mut self.layout, mesh_index.unwrap(), mesh_view);
         }
 
@@ -530,7 +531,6 @@ impl AppView {
         Ok(())
     }
 
-
     pub fn set_layout_three(
         &mut self,
         texture: Arc<RenderContent>,
@@ -540,7 +540,7 @@ impl AppView {
         mesh_index: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // check layout mode
-        self.set_three_layout(1, 3, 0); 
+        self.set_three_layout(1, 3, 0);
         self.remove_all();
 
         // layout main view (MPR)
@@ -569,20 +569,16 @@ impl AppView {
 
         // optional extra view replacement (MIP or Mesh)
         if mip_index.is_some() {
-            let mip_view =  self.view_factory.create_mip_view_with_content(
-                texture.clone(),
-                (0, 0),
-                (0, 0),
-            )?;
+            let mip_view =
+                self.view_factory
+                    .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))?;
             LayoutContainer::replace_view_at(&mut self.layout, mip_index.unwrap(), mip_view);
         }
 
         if mesh_index.is_some() {
-            let mesh_view = self.view_factory.create_mesh_view_with_content(
-                texture.clone(),
-                (0, 0),
-                (0, 0),
-            )?;
+            let mesh_view =
+                self.view_factory
+                    .create_mesh_view_with_content(texture.clone(), (0, 0), (0, 0))?;
             LayoutContainer::replace_view_at(&mut self.layout, mesh_index.unwrap(), mesh_view);
         }
 
@@ -813,24 +809,34 @@ impl AppView {
         }
     }
 
-    pub fn set_rotation_degrees(&mut self, index: usize, dx: f32, dy: f32)-> Result<(), String> {
+    pub fn set_rotation_degrees(&mut self, index: usize, dx: f32, dy: f32) -> Result<(), String> {
         if let Some(view) = self.layout.views_mut().get_mut(index) {
             if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
                 mip_view.set_rotation_angle_degrees(dx, dy);
                 Ok(())
             } else if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
-                mesh_view.set_rotation_angle_degrees(dx,dy);
+                mesh_view.set_rotation_angle_degrees(dx, dy);
                 Ok(())
-            } else if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>()
+            } else if let Some(mpr_view) = view
+                .as_any_mut()
+                .downcast_mut::<MprView>()
                 .filter(|m| matches!(m.get_orientation(), Orientation::Oblique))
             {
                 mpr_view.set_oblique_rotation_angle_degrees(dx, dy);
-                if let Some(mesh_view) = self.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
-                    mesh_view.set_rotation_angle_degrees(dx,dy);
+                if let Some(mesh_view) = self
+                    .layout
+                    .views_mut()
+                    .iter_mut()
+                    .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>())
+                {
+                    mesh_view.set_rotation_angle_degrees(dx, dy);
                 };
                 Ok(())
             } else {
-                Err(format!("View {} is not a MIP, Mesh, or Oblique MPR view", index))
+                Err(format!(
+                    "View {} is not a MIP, Mesh, or Oblique MPR view",
+                    index
+                ))
             }
         } else {
             Err(format!("View index {} out of bounds", index))

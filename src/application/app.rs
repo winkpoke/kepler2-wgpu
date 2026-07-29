@@ -142,7 +142,8 @@ impl App {
         if (safe_width != new_size.width) || (safe_height != new_size.height) {
             log::warn!(
                 "please resize the window to ({}, {}) or smaller",
-                safe_width, safe_height
+                safe_width,
+                safe_height
             );
         }
         log::info!("Resizing to: {}, {}", safe_width, safe_height);
@@ -530,18 +531,77 @@ impl App {
         }
     }
 
-    pub fn set_obj_mesh(&mut self, raw: Vec<u8>){
-        let device = &self.graphics_context.graphics.device;
-        let meshes:Vec<Mesh> = bincode::deserialize(&raw).unwrap();
-        self.current_meshes = Arc::new(meshes);
-        for view in self.app_view.layout.views().iter() {
-            if let Some(mesh_view) = view.as_any().downcast_ref::<MeshView>() {
-                mesh_view.set_meshes(device, self.current_meshes.clone());
+    pub fn export_current_obj(&self) -> String {
+        Mesh::meshes_to_obj(&self.current_meshes.clone())
+    }
+
+    pub fn set_ai_segmentation(&mut self, raw: Vec<u8>) {
+        if raw.is_empty() {
+            let device = &self.graphics_context.graphics.device;
+            for view in self.app_view.layout.views_mut().iter_mut() {
+                if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                    mpr_view.set_segmentation(device, None);
+                }
+                if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                    mesh_view.set_meshes(device, Arc::new(Vec::new()));
+                }
+            }
+        } else {
+            let device = &self.graphics_context.graphics.device;
+            let queue = &self.graphics_context.graphics.queue;
+            let (dims, spacing) = match self.app_model.volume() {
+                Ok(vol) => (vol.dimensions(), vol.voxel_spacing()),
+                Err(_) => {
+                    log::warn!("SetSegmentationAll: no CT volume loaded, skipping 3D mesh extraction");
+                    return;
+                }
+            };
+            let height = dims.0 as u32;
+            let width  = dims.1 as u32;
+            let depth  = dims.2 as u32;
+            match RenderContent::from_labels_r8(device, queue, &raw, "ai_segmentation",width, height, depth) {
+                Ok(seg_content) => {
+                    let seg_arc = std::sync::Arc::new(seg_content);
+                    for view in self.app_view.layout.views_mut().iter_mut() {
+                        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                            mpr_view.set_segmentation(device, Some(seg_arc.clone()));
+                        }
+                    }
+                    let label_ids: [u8; 7] = [1, 2, 3, 4, 5, 6, 7];
+                    let spine_meshes = spine(&raw, dims, spacing, &label_ids, 0.3);
+                    self.current_meshes = Arc::new(spine_meshes);
+                    for view in self.app_view.layout.views().iter() {
+                        if let Some(mesh_view) = view.as_any().downcast_ref::<MeshView>() {
+                            mesh_view.set_meshes(device, self.current_meshes.clone());
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("SetSegmentationAll: failed to build RenderContent: {}", e);
+                }
             }
         }
     }
 
-    fn mm_to_uv(&mut self, mm: [f32; 3]) -> [f32; 3]{
+    /// Push the 8-slot label visibility mask to every MPR view. This only updates
+    /// the fragment-shader visibility uniform — it does not re-upload the
+    /// segmentation texture (use `set_ai_segmentation` for that).
+    pub fn set_ai_segmentation_visibility(&mut self, mask: [f32; 8]) {
+        let queue = &self.graphics_context.graphics.queue;
+        for view in self.app_view.layout.views_mut().iter_mut() {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_segmentation_visibility(queue, mask);
+            }
+            if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>(){
+                for label_id in 1..8 {
+                    let visible = if mask[label_id] > 0.5 { true } else { false };
+                    mesh_view.set_spine_visibility(label_id as u8, visible);
+                }
+            }
+        }
+    }
+
+    fn mm_to_uv(&mut self, mm: [f32; 3]) -> [f32; 3] {
         if let Ok(vol) = self.app_model.volume() {
             let inv = vol.base.matrix.inverse();
             let (nx, ny, nz) = vol.dimensions;
@@ -666,59 +726,6 @@ impl App {
         }
     }
 
-    pub fn set_ai_segmentation(&mut self, raw: Vec<u8>, width: u32, height: u32, depth: u32) {
-        if raw.is_empty(){
-            let device = &self.graphics_context.graphics.device;
-            for view in self.app_view.layout.views_mut().iter_mut() {
-                if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>()
-                    {
-                        mpr_view.set_segmentation(device, None);
-                    }
-                if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>()
-                {
-                    mesh_view.set_meshes(device, Arc::new(Vec::new()));
-                }
-            }
-        } else {
-            let device = &self.graphics_context.graphics.device;
-            let queue = &self.graphics_context.graphics.queue;
-            match RenderContent::from_labels_r8(device, queue, &raw, "ai_segmentation", width, height, depth) {
-                Ok(seg_content) => {
-                    let seg_arc = std::sync::Arc::new(seg_content);
-                    for view in self.app_view.layout.views_mut().iter_mut() {
-                        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>()
-                        {
-                            mpr_view.set_segmentation(device, Some(seg_arc.clone()));
-                        }
-                    }
-
-                    let (dims, spacing) = match self.app_model.volume() {
-                        Ok(vol) => (vol.dimensions(), vol.voxel_spacing()),
-                        Err(_) => {
-                            log::warn!("SetSegmentationAll: no CT volume loaded, skipping 3D mesh extraction");
-                            return;
-                        }
-                    };
-                    let label_ids: [u8; 7] = [1, 2, 3, 4, 5, 6, 7];
-                    let spine_meshes = spine(&raw, dims, spacing, &label_ids, 0.3);
-                    self.current_meshes = Arc::new(spine_meshes);
-                    for view in self.app_view.layout.views().iter() {
-                        if let Some(mesh_view) = view.as_any().downcast_ref::<MeshView>() {
-                            mesh_view.set_meshes(device, self.current_meshes.clone());
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::error!("SetSegmentationAll: failed to build RenderContent: {}", e);
-                }
-            }
-        }
-    }
-
-    pub fn export_current_obj(&self) -> String{
-        Mesh::meshes_to_obj(&self.current_meshes.clone())
-    }
-
     pub fn get_base_screen(&self, index: usize) -> [f32; 16] {
         let view = self.app_view.layout.views().get(index).unwrap();
         if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
@@ -782,8 +789,16 @@ impl App {
     ) {
         if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                if let Err(e) = mpr_view.set_oblique_rotation_radians(horizontal_radians, vertical_radians,in_plane_radians) {
-                    log::warn!("set_oblique_rotation_radians failed on view {}: {}",index,e);
+                if let Err(e) = mpr_view.set_oblique_rotation_radians(
+                    horizontal_radians,
+                    vertical_radians,
+                    in_plane_radians,
+                ) {
+                    log::warn!(
+                        "set_oblique_rotation_radians failed on view {}: {}",
+                        index,
+                        e
+                    );
                 }
             }
         }
@@ -954,7 +969,13 @@ impl App {
 
     /// Set rotation speed (radians/sec) for the first MeshView.
     pub fn set_mesh_rotation_speed(&mut self, speed_rad_per_sec: f32) {
-        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+        if let Some(mesh_view) = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>())
+        {
             mesh_view.set_rotation_speed(speed_rad_per_sec);
         };
     }
@@ -968,7 +989,13 @@ impl App {
 
     /// Reset the mesh for returning the mesh to its initial orientation
     pub fn reset_mesh(&mut self) {
-        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+        if let Some(mesh_view) = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>())
+        {
             mesh_view.reset_rotation();
             mesh_view.reset_scale_factor();
             mesh_view.reset_pan();
@@ -1013,26 +1040,57 @@ impl App {
         if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
             mip_view.set_needle_enabled(enabled);
         }
-        // Mirror to every MPR view so the orthogonal projection tracks the
-        // 3D needle visibility toggle in real time.
+        // Mirror to every MPR view so the orthogonal projection tracks the 3D needle visibility toggle in real time.
         for view in self.app_view.layout.views_mut().iter_mut() {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
                 mpr_view.set_needle_enabled(enabled > 0.0);
             }
         }
         log::info!(
-            "Needle {}", if enabled == 0.0 { "disabled" } else if enabled == 1.0 { "enabled" } else { "crop" }
+            "Needle {}",
+            if enabled == 0.0 {
+                "disabled"
+            } else if enabled == 1.0 {
+                "enabled"
+            } else if enabled == 2.0 {
+                "crop"
+            } else {
+                "plane"
+            }
         );
     }
 
     pub fn set_needle_angle(&mut self, id: u32, angle: f32) {
         if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
             mesh_view.set_needle_angle(id, angle);
-            log::info!("Mesh needle {} angle set: {}",id, angle);
+            log::info!("Mesh needle {} angle set: {}", id, angle);
         };
     }
 
-    pub fn set_new_needle_mm(&mut self, id: u32, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32, r: f32, g: f32, b: f32) {
+    pub fn set_obj_mesh(&mut self, raw: Vec<u8>) {
+        let device = &self.graphics_context.graphics.device;
+        let meshes: Vec<Mesh> = bincode::deserialize(&raw).unwrap();
+        self.current_meshes = Arc::new(meshes);
+        for view in self.app_view.layout.views().iter() {
+            if let Some(mesh_view) = view.as_any().downcast_ref::<MeshView>() {
+                mesh_view.set_meshes(device, self.current_meshes.clone());
+            }
+        }
+    }
+
+    pub fn set_new_needle_mm(
+        &mut self,
+        id: u32,
+        sx: f32,
+        sy: f32,
+        sz: f32,
+        lx: f32,
+        ly: f32,
+        lz: f32,
+        r: f32,
+        g: f32,
+        b: f32,
+    ) {
         let entry_mm = [sx, sy, sz];
         let pos_mm = [lx, ly, lz];
         let entry_vol = self.mm_to_uv(entry_mm);

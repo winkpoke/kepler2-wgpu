@@ -21,6 +21,9 @@ pub mod mip;
 // Mesh module is now always available
 pub mod mesh;
 
+// Shared camera (single source of truth for rotation/pan/zoom across views)
+pub mod camera;
+
 // MPR module for Multi-Planar Reconstruction
 pub mod mpr;
 
@@ -33,7 +36,7 @@ pub use mip::*;
 pub use mpr::*;
 pub use render_content::*;
 
-const LABEL_NAMES: [&str; 8] = [
+pub const LABEL_NAMES: [&str; 8] = [
     "",       // index 0 unused
     "L1",
     "L2",
@@ -45,7 +48,7 @@ const LABEL_NAMES: [&str; 8] = [
 ];
 
 // Colour palette for the segmentation overlay in the MPR / MIP / 3D views.
-const LABEL_COLORS: [[f32; 4]; 8] = [
+pub const LABEL_COLORS: [[f32; 4]; 8] = [
     [0.00, 0.00, 0.00, 0.0], // 0  Background
     [0.95, 0.20, 0.20, 1.0], // 1  L1      (red)
     [0.98, 0.55, 0.10, 1.0], // 2  L2      (orange)

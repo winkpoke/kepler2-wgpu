@@ -255,7 +255,7 @@ pub fn create_basic_mesh_pipeline_with_lighting(
         depth_stencil: if use_depth {
             Some(DepthStencilState {
                 format: get_mesh_depth_format(),
-                depth_write_enabled: false,
+                depth_write_enabled: true,
                 depth_compare,
                 stencil: StencilState::default(),
                 bias: DepthBiasState::default(),
@@ -329,7 +329,7 @@ pub fn create_volume_pipeline(
         depth_stencil: Some(DepthStencilState {
             format: get_mesh_depth_format(),
             depth_write_enabled: true,
-            depth_compare: CompareFunction::Always,
+            depth_compare: CompareFunction::LessEqual,
             stencil: StencilState::default(),
             bias: DepthBiasState::default(),
         }),

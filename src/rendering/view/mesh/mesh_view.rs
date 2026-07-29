@@ -5,6 +5,7 @@ use super::{
     mesh::{BasicLightingUniforms, Mesh, MeshRenderContext, MeshUniforms},
     performance::{PerformanceStats, QualityController, QualityLevel},
 };
+use crate::rendering::view::camera::Camera;
 use crate::{
     core::{timing::Instant, KeplerResult, WindowLevel},
     rendering::view::{Renderable, View, NeedleUniform, ObliquePlaneUniform},
@@ -32,9 +33,7 @@ impl std::fmt::Display for MeshRenderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MeshRenderError::ContextNotAttached => write!(f, "Mesh render context not attached"),
-            MeshRenderError::BufferValidationFailed(msg) => {
-                write!(f, "Buffer validation failed: {}", msg)
-            }
+            MeshRenderError::BufferValidationFailed(msg) => write!(f, "Buffer validation failed: {}", msg),
             MeshRenderError::PipelineError(msg) => write!(f, "Pipeline error: {}", msg),
             MeshRenderError::ViewportError(msg) => write!(f, "Viewport error: {}", msg),
             MeshRenderError::ResourceError(msg) => write!(f, "Resource error: {}", msg),
@@ -78,6 +77,7 @@ pub struct MeshView {
     view_id: usize,
     volume_ctx: Option<Arc<MeshRenderContext>>,
     spine_ctx: Option<Arc<Mutex<MultiMeshContext>>>,
+    needle_ctx: Option<Arc<Mutex<MultiMeshContext>>>,
     pos: (i32, i32),
     dim: (u32, u32),
     /// Performance and error tracking
@@ -92,16 +92,10 @@ pub struct MeshView {
     quality_controller: QualityController,
     /// rotation state
     rotation_enabled: bool,
-    /// Current rotation state as a quaternion
-    rotation_quat: Quat,
     /// Rotation speed in radians per second (default: π/2 = 90 degrees/second)
     rotation_speed: f32,
     /// Last frame time for rotation calculation
     last_frame_time: Instant,
-    /// Uniform scale factor
-    scale_factor: f32,
-    /// Pan translation in world units (X, Y, Z)
-    pan: [f32; 3],
     opacity: f32,
     /// Spine mesh lighting uniforms (controls direction, color, opacity)
     spine_lighting: BasicLightingUniforms,
@@ -115,6 +109,7 @@ pub struct MeshView {
     plane_rotation_angle: f32,
     needles: Vec<NeedleUniform>,
     oblique_planes: [ObliquePlaneUniform; 4],
+    camera: Camera,
 }
 
 impl MeshView {
@@ -123,6 +118,7 @@ impl MeshView {
             view_id: 0,
             volume_ctx: None,
             spine_ctx: None,
+            needle_ctx: None,
             pos: (0, 0),
             dim: (0, 0),
             stats: RenderStats::default(),
@@ -131,11 +127,8 @@ impl MeshView {
             last_success_time: Instant::now(),
             quality_controller: QualityController::default(),
             rotation_enabled: false,
-            rotation_quat: Quat::IDENTITY,
             rotation_speed: FRAC_PI_2, // 90 degrees per second (only used when enabled)
             last_frame_time: Instant::now(),
-            scale_factor: 1.0,
-            pan: [0.0, 0.0, 0.0],
             opacity: 1.0,
             spine_lighting: BasicLightingUniforms { opacity: 0.4, ..Default::default() },
             roi_min: [0.0, 0.0, 0.0],
@@ -148,6 +141,7 @@ impl MeshView {
             plane_rotation_angle: 180.0,
             needles: Vec::new(),
             oblique_planes: [ObliquePlaneUniform::default(); 4],
+            camera: Camera::new(),
         }
     }
 
@@ -167,14 +161,12 @@ impl MeshView {
         log::debug!("MeshView::attach_spine_context - Spine context attached successfully");
     }
 
-    /// Function-level comment: Replace the set of vertebra meshes (one per label).
-    /// Triggers marching-cubes-free upload: each `Mesh`'s vertices/indices
-    /// are pushed into the GPU buffers for that label slot.
-    pub fn set_meshes(
-        &self,
-        device: &wgpu::Device,
-        meshes: Arc<Vec<Mesh>>,
-    ) {
+    pub fn attach_needle_context(&mut self, ctx: MultiMeshContext) {
+        self.needle_ctx= Some(Arc::new(Mutex::new(ctx)));
+        log::debug!("MeshView::attach_spine_context - Spine context attached successfully");
+    }
+
+    pub fn set_meshes(&self, device: &wgpu::Device, meshes: Arc<Vec<Mesh>>) {
         if let Some(ctx) = &self.spine_ctx {
             if let Ok(mut guard) = ctx.lock() {
                 guard.set_meshes(device, &meshes);
@@ -291,22 +283,14 @@ impl MeshView {
     /// Function-level comment: Reset the rotation angle to zero.
     /// Useful for returning to a known orientation or synchronizing multiple objects.
     pub fn reset_rotation(&mut self) {
-        self.rotation_quat = Quat::IDENTITY;
+        self.camera.set_model_rotation_quat(Quat::IDENTITY);
         self.last_frame_time = Instant::now();
         log::debug!("Mesh rotation reset to identity");
     }
 
-    /// Function-level comment: Set the current rotation angle using degrees for convenience.
-    /// This directly sets the orientation without affecting rotation speed.
+    /// Apply an incremental orbit in degrees
     pub fn set_rotation_angle_degrees(&mut self, degrees_x: f32, degrees_y: f32) {
-        let right = self.rotation_quat * Vec3::Y;
-        let up = self.rotation_quat * Vec3::X;
-        let dx = degrees_x.to_radians();
-        let dy = degrees_y.to_radians();
-        let qx = Quat::from_axis_angle(up.normalize(), dx);
-        let qy = Quat::from_axis_angle(right.normalize(), dy);
-        let delta = qy * qx;
-        self.rotation_quat = (delta * self.rotation_quat).normalize();
+        self.camera.orbit_angles(degrees_y.to_radians(), degrees_x.to_radians());
         self.last_frame_time = Instant::now();
         log::info!(
             "Mesh rotation set to (deg_x: {}, deg_y: {})",
@@ -323,19 +307,28 @@ impl MeshView {
             pitch_deg.to_radians(),
         );
         let rot = Mat4::from_rotation_x(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(pitch);
-        self.rotation_quat = Quat::from_mat4(&rot);
+        self.camera.set_model_rotation_quat(Quat::from_mat4(&rot));
         self.last_frame_time = Instant::now();
     }
 
     pub fn set_rotation_quat(&mut self, rotation: [f32; 4]) -> KeplerResult<()> {
-        self.rotation_quat = Quat::from_array(rotation);
+        self.camera.set_model_rotation_quat(Quat::from_array(rotation));
         self.last_frame_time = Instant::now();
-        log::info!("Mesh rotation set to {:?}", self.rotation_quat);
+        log::info!("Mesh rotation set to {:?}", rotation);
         Ok(())
     }
 
     pub fn get_rotation_quat(&self) -> Quat {
-        self.rotation_quat
+        self.camera.model_rotation_quat()
+    }
+
+    /// Shared camera accessors for external orchestration.
+    pub fn camera(&self) -> &Camera {
+        &self.camera
+    }
+
+    pub fn camera_mut(&mut self) -> &mut Camera {
+        &mut self.camera
     }
 
     /// Function-level comment: Set rotation speed using degrees per second for convenience.
@@ -344,23 +337,21 @@ impl MeshView {
         self.set_rotation_speed(degrees_per_sec.to_radians());
     }
 
-    /// Function-level comment: Set uniform scale factor applied to the mesh model.
-    /// Typical values: 0.25 (very small) .. 2.0 (double size). Default is 1.0.
+    /// Function-level comment: Set uniform zoom applied through the shared camera.
+    /// Typical values: 0.25 (zoomed out) .. 2.0 (2x magnification). Default is 1.0.
     pub fn set_scale_factor(&mut self, scale: f32) {
-        // Clamp to a reasonable range to avoid clipping or degenerate matrices
-        let clamped = scale.clamp(0.001, 100.0);
-        self.scale_factor = clamped;
-        log::info!("Mesh scale factor set to {:.3}", clamped);
+        self.camera.set_zoom(scale);
+        log::info!("Mesh scale factor set to {:.3}", self.camera.get_zoom());
     }
 
     /// Function-level comment: Get the current uniform scale factor.
     pub fn get_scale_factor(&self) -> f32 {
-        self.scale_factor
+        self.camera.get_zoom()
     }
 
-    /// Function-level comment: Reset the uniform scale factor to default (0.5).
+    /// Function-level comment: Reset the uniform scale factor to default (1.0).
     pub fn reset_scale_factor(&mut self) {
-        self.scale_factor = 1.0;
+        self.camera.set_zoom(1.0);
         log::info!("Mesh scale factor reset to default (1.0)");
     }
 
@@ -369,22 +360,22 @@ impl MeshView {
         log::info!("Mesh slab thickness set to {:.3} mm", thickness);
     }
 
-    /// Function-level comment: Set mesh pan translation (world units) for X and Y axes.
-    /// Pan values are uploaded to the vertex shader as a uniform offset.
+    /// Function-level comment: Set view-plane pan (world units) through the shared camera.
+    /// Positive x moves the image right, positive y moves it up.
     pub fn set_pan(&mut self, dx: f32, dy: f32) {
-        self.pan[0] = dx;
-        self.pan[1] = dy;
+        self.camera.set_pan(dx, dy);
         log::info!("Mesh pan offset set to ({}, {})", dx, dy);
     }
 
     /// Function-level comment: Get the current pan translation offset.
     pub fn get_pan(&self) -> [f32; 3] {
-        self.pan
+        let pan = self.camera.get_pan();
+        [pan.x, pan.y, 0.0]
     }
 
     /// Function-level comment: Reset mesh pan translation to the origin.
     pub fn reset_pan(&mut self) {
-        self.pan = [0.0, 0.0, 0.0];
+        self.camera.set_pan(0.0, 0.0);
         log::info!("Mesh pan reset to (0, 0, 0)");
     }
 
@@ -502,6 +493,12 @@ impl MeshView {
         Ok(())
     }
 
+    pub(crate) fn mesh_model_matrix(volume_scale: Vec3) -> Mat4 {
+        let scale = Mat4::from_scale(volume_scale);
+        let translate = Mat4::from_translation(Vec3::splat(0.5) - volume_scale * 0.5);
+        translate * scale
+    }
+
     /// Function-level comment: Update GPU uniforms for basic mesh rendering with combined MVP matrix
     /// Includes rotation if enabled, using frame-rate independent timing
     pub fn update_uniforms(&mut self, queue: &wgpu::Queue) {
@@ -512,10 +509,9 @@ impl MeshView {
                 .duration_since(self.last_frame_time)
                 .as_secs_f32();
 
-            // Auto-rotate around Global Y
+            // Auto-rotate the model around the view-up axis via the shared camera
             let angle_delta = self.rotation_speed * delta_time;
-            let rot_delta = Quat::from_rotation_y(angle_delta);
-            self.rotation_quat = (rot_delta * self.rotation_quat).normalize();
+            self.camera.azimuth(-angle_delta);
             self.last_frame_time = current_time;
         }
 
@@ -527,7 +523,9 @@ impl MeshView {
         let w = vol_extent.width.max(1) as f32;
         let h = vol_extent.height.max(1) as f32;
         let d = vol_extent.depth_or_array_layers.max(1) as f32;
-        let d_mm = d * self.slab_thickness;
+        let phys = Vec3::new(w, h, d * self.slab_thickness);
+        let max_extent = phys.max_element().max(1e-6);
+        let volume_scale = phys / max_extent;
 
         let aspect_ratio = if self.dim.1 > 0 && self.dim.0 > 0 {
             self.dim.0 as f32 / self.dim.1 as f32
@@ -535,10 +533,9 @@ impl MeshView {
             1.0
         };
 
-        let scale_viewport = Mat4::from_scale(Vec3::new(w, h, d));
-        let scale_texture = Mat4::from_scale(Vec3::new(1.0 / w, 1.0 / h, 1.0 / d_mm));
-        let rotation_mat = Mat4::from_quat(self.rotation_quat);
-        let final_matrix = scale_texture * rotation_mat * scale_viewport;
+        let view_projection = self.camera.view_projection_matrix(aspect_ratio);
+        let inv_view_projection = self.camera.inverse_view_projection_matrix(aspect_ratio);
+        let camera_position = self.camera.effective_position();
 
         // Volume uniforms
         if let Some(vol_ctx) = &self.volume_ctx {
@@ -564,23 +561,23 @@ impl MeshView {
                 bias: decode_params.bias,
                 window: self.window_level.window_width(),
                 level: self.window_level.window_level(),
-                pan_x: self.pan[0],
-                pan_y: self.pan[1],
-                scale: self.scale_factor,
                 roi_min: self.roi_min,
                 roi_max: self.roi_max,
-                opacity_multiplier: self.opacity,
+                opacity: self.opacity,
                 light_dir: [0.5, 0.5, -1.0],
                 aspect_ratio,
-                rotation: final_matrix.to_cols_array(),
                 vol_dims: [w, h, d],
-                preset: self.mode as f32,
+                view_proj: view_projection.to_cols_array(),
+                inv_view_proj: inv_view_projection.to_cols_array(),
+                camera_position: camera_position.to_array(),
+                volume_scale: volume_scale.to_array(),
                 needle_count: self.needles.len().min(32) as u32,
                 needle_enabled: self.needle_enabled,
                 needle_index: self.needle_index,
                 plane_rotation_angle: self.plane_rotation_angle,
                 oblique_planes: self.oblique_planes,
                 needles: gpu_needles,
+                ..Default::default()
             };
 
             // update
@@ -589,16 +586,10 @@ impl MeshView {
 
         // Spine mesh uniforms and lighting
         if let Some(spine_ctx) = &self.spine_ctx {
-            let flip = Mat4::from_scale(Vec3::new(1.0, -1.0, -1.0));
-            let scale = Mat4::from_scale(Vec3::new(1.0/ self.scale_factor,1.0/ self.scale_factor,1.0/ self.scale_factor));
-            let translation = Mat4::from_translation(Vec3::new(-self.pan[0], self.pan[1], 0.0));
-            let rotation = Mat4::from_quat(self.rotation_quat.conjugate());
-            let model_matrix = flip * translation * rotation * scale;
-            let view_matrix = Mat4::from_translation(Vec3::new(0.0, 0.0, 5.0));
-            let proj_matrix = Mat4::orthographic_rh(-1.0, 1.0, -1.0, 1.0, -10.0, 10.0);
-            let mvp_matrix = proj_matrix * view_matrix * model_matrix;
             if let Ok(guard) = spine_ctx.lock() {
-                guard.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
+                let model = Self::mesh_model_matrix(volume_scale);
+                let mvp = view_projection * model;
+                guard.update_uniforms(queue, &mvp.to_cols_array_2d());
                 guard.update_lighting(queue, self.spine_lighting);
             }
         }
@@ -726,35 +717,15 @@ impl MeshView {
             height
         );
 
-        // Ensure context is available
+        // Render the translucent DVR volume
         if let Some(vol_ctx) = &self.volume_ctx {
             vol_ctx.render(render_pass);
         } else {
             log::warn!("BasicMeshView::try_render - Volume rendering requested but no volume context attached");
         }
 
-        // Render spine meshes
+        // Render the polygonal spine mesh SECOND, as a translucent overlay.
         if let Some(spine_ctx) = &self.spine_ctx {
-            // let cube_size = 120.0;
-            // let padding = 10.0;
-            
-            // // Calculate bottom-left position within the view
-            // // Assuming (x, y) is top-left of the view
-            // let view_x = self.pos.0 as f32;
-            // let view_y = self.pos.1 as f32;
-            // let view_h = self.dim.1 as f32;
-            
-            // // Bottom-left relative to view
-            // let cube_x = view_x + padding;
-            // let cube_y = view_y + view_h - cube_size - padding;
-            
-            // // Ensure we don't draw outside the view if view is too small
-            // if self.dim.0 > (cube_size as u32 + 20) && self.dim.1 > (cube_size as u32 + 20) {
-            //     render_pass.set_viewport(cube_x, cube_y, cube_size, cube_size, 0.0, 1.0);
-            //     if let Ok(guard) = spine_ctx.lock() {
-            //         guard.render(render_pass);
-            //     }
-            // }
             if let Ok(guard) = spine_ctx.lock() {
                 guard.render(render_pass);
             }
@@ -875,10 +846,10 @@ mod tests {
     #[test]
     fn test_rotation_default_identity() {
         let mesh_view = MeshView::new();
-        assert!(mesh_view.rotation_quat.abs_diff_eq(Quat::IDENTITY, 1e-6));
+        assert!(mesh_view.camera().model_rotation_quat().abs_diff_eq(Quat::IDENTITY, 1e-6));
 
         // Check Matrix columns
-        let mat = Mat4::from_quat(mesh_view.rotation_quat);
+        let mat = Mat4::from_quat(mesh_view.camera().model_rotation_quat());
         assert!(mat.abs_diff_eq(Mat4::IDENTITY, 1e-6));
 
         // Verify default speed (90 degrees/s)
@@ -894,13 +865,13 @@ mod tests {
         // Add 45 degrees around Y to the existing default
         mesh_view.set_rotation_angle_degrees(0.0, 45.0);
 
-        let before = mesh_view.rotation_quat;
+        let before = mesh_view.camera().model_rotation_quat();
 
         mesh_view.set_rotation_enabled(false);
-        let after_disable = mesh_view.rotation_quat;
+        let after_disable = mesh_view.camera().model_rotation_quat();
 
         mesh_view.set_rotation_enabled(true);
-        let after_enable = mesh_view.rotation_quat;
+        let after_enable = mesh_view.camera().model_rotation_quat();
 
         // Rotation should be preserved through enable/disable cycles
         assert_eq!(before, after_disable);
@@ -927,8 +898,10 @@ mod tests {
         mesh_view.set_rotation_degrees(90.0, 0.0, 0.0);
 
         let expected = Quat::from_rotation_x(90.0_f32.to_radians());
-
-        assert!(mesh_view.rotation_quat.abs_diff_eq(expected, 1e-5));
+        let q = mesh_view.camera().model_rotation_quat();
+        // A rotation quaternion is double-covered: q and -q are the same
+        // orientation, and the shared camera may return either sign.
+        assert!(q.dot(expected).abs() > 0.9999, "expected {:?}, got {:?}", expected, q);
     }
 
     #[test]
@@ -937,18 +910,18 @@ mod tests {
 
         mesh_view.set_rotation_angle_degrees(0.0, 90.0);
 
-        let q1 = mesh_view.rotation_quat;
+        let q1 = mesh_view.camera().model_rotation_quat();
 
         mesh_view.set_rotation_angle_degrees(0.0, 90.0);
 
-        let q2 = mesh_view.rotation_quat;
+        let q2 = mesh_view.camera().model_rotation_quat();
 
-        // 两次旋转后不应相同
-        assert!(q1 != q2);
+        // Two distinct rotations must not represent the same orientation.
+        assert!(q1.dot(q2).abs() < 0.9999);
 
-        // 应接近 180°
+        // Should approach 180° about Y (sign-agnostic).
         let expected = Quat::from_rotation_y(180.0_f32.to_radians());
-        assert!(q2.abs_diff_eq(expected, 1e-4));
+        assert!(q2.dot(expected).abs() > 0.9999, "expected {:?}, got {:?}", expected, q2);
     }
 
     /// Function-level comment: Reset rotation and verify default orientation (Identity)
@@ -961,6 +934,72 @@ mod tests {
 
         // Reset
         mesh_view.reset_rotation();
-        assert!(mesh_view.rotation_quat.abs_diff_eq(Quat::IDENTITY, 1e-6));
+        assert!(mesh_view.camera().model_rotation_quat().abs_diff_eq(Quat::IDENTITY, 1e-6));
+    }
+
+    /// Regression guard: the polygonal mesh `model_view_proj` must place the
+    /// `[0, 1]^3` texture box into the same world AABB the DVR uses
+    /// (`0.5 + (tex - 0.5) * volume_scale`, slab-aware), so the two passes
+    /// overlap exactly. If this drifts, the mesh and DVR will display with
+    /// different centers / sizes.
+    #[test]
+    fn test_spine_model_matches_dvr_aabb() {
+        // A representative slab-aware scale: square in-plane (vs.x = vs.y = 1),
+        // thinner Z (vs.z = 0.4). Looser relative magnitudes catch unrelated breakage.
+        let vs = Vec3::new(1.0, 0.8, 0.4);
+        let model = MeshView::mesh_model_matrix(vs);
+
+        // Texture origin (0,0,0) → world minimum corner.
+        let origin = (model * Vec3::ZERO.extend(1.0)).truncate();
+        let origin_expected = Vec3::splat(0.5) - vs * 0.5;
+        assert!(
+            origin.abs_diff_eq(origin_expected, 1e-6),
+            "origin should map to {:?}; got {:?}",
+            origin_expected,
+            origin,
+        );
+
+        // Texture corner (1,1,1) → world maximum corner.
+        let corner = (model * Vec3::ONE.extend(1.0)).truncate();
+        let corner_expected = Vec3::splat(0.5) + vs * 0.5;
+        assert!(
+            corner.abs_diff_eq(corner_expected, 1e-6),
+            "corner expected {:?}, got {:?}",
+            corner_expected,
+            corner,
+        );
+
+        // Texture center (0.5,0.5,0.5) → world volume center.
+        let center = (model * Vec3::splat(0.5).extend(1.0)).truncate();
+        assert!(
+            center.abs_diff_eq(Vec3::splat(0.5), 1e-6),
+            "center should map to (0.5, 0.5, 0.5); got {:?}",
+            center,
+        );
+
+        // Confirm the mesh's AABB matches the DVR's AABB formula for any
+        // (tx, ty, tz) ∈ [0, 1]^3: world = 0.5 + (tex - 0.5) * vs.
+        //
+        // The spine mesh's local axes already align with the texture axes
+        // (u = rows/anatomical Y, v = cols/anatomical X, w = slices/anatomical Z),
+        // so the mesh-local coordinates are the texture coordinates directly.
+        let samples = [
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+            (0.5, 0.5, 0.5),
+            (1.0, 1.0, 1.0),
+        ];
+        for (tx, ty, tz) in samples {
+            let v = Vec3::new(tx, ty, tz);
+            let world_from_mesh = (model * v.extend(1.0)).truncate();
+            let world_from_tex = Vec3::splat(0.5)
+                + (Vec3::new(tx, ty, tz) - Vec3::splat(0.5)) * vs;
+            assert!(
+                world_from_mesh.abs_diff_eq(world_from_tex, 1e-5),
+                "tex=({tx},{ty},{tz}): mesh->{world_from_mesh:?} vs tex->{world_from_tex:?}",
+            );
+        }
     }
 }

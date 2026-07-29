@@ -8,7 +8,7 @@ use mcubes::{MarchingCubes, MeshSide};
 use std::sync::Arc;
 use tobj;
 use serde::{Serialize, Deserialize};
-use glam::Mat4;
+use glam::{Mat4, Vec4};
 use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, RenderPipeline};
 
 /// Volume rendering parameters (sent to fragment shader)
@@ -19,19 +19,20 @@ pub struct MeshUniforms {
     pub max_steps: f32,
     pub is_packed_rg8: f32,
     pub bias: f32,
-    pub window: f32,
-    pub level: f32,
-    pub pan_x: f32,
-    pub pan_y: f32,
     pub roi_min: [f32; 3],
-    pub scale: f32,
+    pub window: f32,
     pub roi_max: [f32; 3],
-    pub opacity_multiplier: f32,
+    pub level: f32,
+    pub vol_dims: [f32; 3],
+    pub opacity: f32,
+    pub view_proj: [f32; 16],
+    pub inv_view_proj: [f32; 16],
+    pub camera_position: [f32; 3],
+    pub _pad: f32,
+    pub volume_scale: [f32; 3],
+    pub _volume_scale_pad: f32,
     pub light_dir: [f32; 3],
     pub aspect_ratio: f32,
-    pub rotation: [f32; 16],
-    pub vol_dims: [f32; 3],
-    pub preset: f32,
     pub needle_count: u32,
     pub needle_enabled:f32,
     pub needle_index: u32,
@@ -47,19 +48,20 @@ impl Default for MeshUniforms {
             max_steps: 1500.0,
             is_packed_rg8: 1.0,
             bias: VolumeEncoding::DEFAULT_HU_OFFSET,
-            window: 1500.0,
-            level: 400.0,
-            pan_x: 0.0,
-            pan_y: 0.0,
             roi_min: [0.0, 0.0, 0.0],
-            scale: 1.0,
+            window: 1500.0,
             roi_max: [1.0, 1.0, 1.0],
-            opacity_multiplier: 1.0,
+            level: 400.0,
+            vol_dims: [512.0, 512.0, 300.0],
+            opacity: 1.0,
             light_dir: [0.5, 0.5, -1.0],
             aspect_ratio: 1.0,
-            rotation: Mat4::IDENTITY.to_cols_array(),
-            vol_dims: [512.0, 512.0, 300.0],
-            preset: 1.0,
+            view_proj: Mat4::IDENTITY.to_cols_array(),
+            inv_view_proj: Mat4::IDENTITY.to_cols_array(),
+            camera_position: [0.0, 0.0, 0.0],
+            _pad: 0.0,
+            volume_scale: [1.0, 1.0, 1.0],
+            _volume_scale_pad: 0.0,
             needle_count: 0,
             needle_enabled: 0.0,
             needle_index: 0,
@@ -480,7 +482,7 @@ impl Mesh {
             for v in &mut mesh.vertices {
                 let mut p = glam::Vec3::from(v.position);
                 p = (p - center) * norm_scale;
-                v.position = p.to_array();
+                v.position = ((p + 1.0) * 0.5).to_array();
             }
         }
 
@@ -579,7 +581,7 @@ fn compute_vertex_normals(positions:&Vec<f32>,indices:&Vec<u32>)->Vec<f32>{
 
 pub fn spine(
     segmentation: &[u8],
-    dims: (usize, usize, usize),  // (rows, cols, slices)
+    dims: (usize, usize, usize),
     spacing: (f32, f32, f32),
     label_ids:&[u8],
     iso: f32,
@@ -602,9 +604,9 @@ pub fn spine(
             continue;
         }
 
-        // marching cubes
+        let mc_dims = (cols, rows, slices);
         let mc = MarchingCubes::new(
-            dims,
+            mc_dims,
             (spacing.0, spacing.1, spacing.2),
             (1.0, 1.0, 1.0),
             lin_alg::f32::Vec3::new(0.0, 0.0, 0.0),
@@ -634,20 +636,26 @@ pub fn spine(
         });
     }
 
-    // Normalize every mesh's vertex positions to the canonical`[-1, 1]` cube, centered at origin.
-    let center_x = (cols as f32 * spacing.0) * 0.5;
-    let center_y = (rows as f32 * spacing.1) * 0.5;
-    let center_z = (slices as f32 * spacing.2) * 0.5;
-    let max_extent = (cols as f32 * spacing.0)
-        .max(rows as f32 * spacing.1)
-        .max(slices as f32 * spacing.2);
-    let scale = 2.0 / max_extent;
+    let phys_x = cols as f32 * spacing.0;   // mcubes X extent = texture/volume Y
+    let phys_y = rows as f32 * spacing.1;   // mcubes Y extent = texture/volume X
+    let phys_z = slices as f32 * spacing.2; // mcubes Z extent = texture/volume Z
+    let inv_x = 1.0 / phys_x.max(1e-6);
+    let inv_y = 1.0 / phys_y.max(1e-6);
+    let inv_z = 1.0 / phys_z.max(1e-6);
+    let calibrate = Mat4::from_cols(
+        Vec4::new( 1.0,  0.0,  0.0, 0.0),   // mcubes Y → output X (= texture U)
+        Vec4::new( 0.0,  -1.0,  0.0, 0.0),   // mcubes X → output Y (= texture V)
+        Vec4::new( 0.0,  0.0,  1.0, 0.0),   // mcubes Z → output Z (= texture W)
+        Vec4::new( 0.0,  1.0,  0.0, 1.0),   // identity translation, no flip
+    );
 
     for mesh in &mut results {
         for v in &mut mesh.vertices {
-            v.position[0] = (v.position[0] - center_x) * scale;
-            v.position[1] = (v.position[1] - center_y) * scale;
-            v.position[2] = (v.position[2] - center_z) * scale;
+            let px = v.position[0] * inv_x;
+            let py = v.position[1] * inv_y;
+            let pz = v.position[2] * inv_z;
+            let p = calibrate * Vec4::new(px, py, pz, 1.0);
+            v.position = [p.x, p.y, p.z];
         }
     }
 

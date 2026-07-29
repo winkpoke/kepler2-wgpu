@@ -82,13 +82,13 @@ struct UniformsFrag {
     slice2: f32,
     aliasing: u32, 
     mat: mat4x4<f32>,
-    mat2: mat4x4<f32>,
     needle_count: u32,
     needle_enabled: f32,
     seg_enabled: f32,
     _pad0: f32,
     needles: array<NeedleUniform, 32>,
     label_colors: array<vec4<f32>, 8>,
+    label_visibility: array<vec4<f32>, 8>,
 }
 
 @group(2) @binding(0)
@@ -165,8 +165,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let seg_label = textureLoad(t_segmentation, seg_coord, 0).r;
         if (seg_label > 0u) {
             let idx = min(seg_label, 8u);
-            let seg_overlay = u_uniform_frag.label_colors[idx].rgb;
-            return vec4<f32>(mix(final_color, seg_overlay, 0.3), 1.0);
+            if (u_uniform_frag.label_visibility[idx].x > 0.5) {
+                let seg_overlay = u_uniform_frag.label_colors[idx].rgb;
+                return vec4<f32>(mix(final_color, seg_overlay, 0.3), 1.0);
+            }
         }
     }
 

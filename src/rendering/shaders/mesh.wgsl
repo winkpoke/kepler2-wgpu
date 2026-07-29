@@ -70,19 +70,20 @@ struct MeshUniforms {
     max_steps: f32,
     is_packed_rg8: f32,
     bias: f32,
-    window: f32,
-    level: f32,
-    pan_x: f32,
-    pan_y: f32,
     roi_min: vec3<f32>,
-    scale: f32,
+    window: f32,
     roi_max: vec3<f32>,
-    opacity_multiplier: f32,
+    level: f32,
+    vol_dims: vec3<f32>,
+    opacity: f32,
+    view_proj:mat4x4<f32>,
+    inv_view_proj:mat4x4<f32>,
+    camera_position:vec3<f32>,
+    _pad: f32,
+    volume_scale: vec3<f32>,
+    _volume_scale_pad: f32,
     light_dir: vec3<f32>,
     aspect_ratio: f32,
-    rotation: mat4x4<f32>,
-    vol_dims: vec3<f32>,
-    preset: f32,
     needle_count : u32,
     needle_enabled: f32,
     needle_index: u32,
@@ -302,7 +303,7 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
     let step_len = step_vox; 
     let max_steps = u32(max(u_vol.max_steps, 1.0));
 
-    let mapped_opacity = pow(u_vol.opacity_multiplier, 6.0);
+    let mapped_opacity = pow(u_vol.opacity, 6.0);
 
     var accum_rgb = vec3<f32>(0.0);
     var accum_a = 0.0;
@@ -485,9 +486,12 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
         return DvrResult(vec4<f32>(accum_rgb, accum_a), 1.0, vec3<f32>(0.0), 0.0);
     }
     let hit_pos = ray_origin + (first_hit_t + dt * 2.0) * ray_dir;
-    let ndc_z = (u_vol.rotation * vec4<f32>(hit_pos, 1.0)).z;
-    let norm_depth = clamp((ndc_z + 0.5) / 2.0, 0.0, 1.0);
-    return DvrResult(vec4<f32>(accum_rgb, accum_a), norm_depth, first_hit_pos, 1.0);
+    let hit_pos_world = vec3<f32>(0.5) + (hit_pos - vec3<f32>(0.5)) * u_vol.volume_scale;
+    let clip = u_vol.view_proj * vec4<f32>(hit_pos_world, 1.0);
+    let ndc_z = clip.z / clip.w;
+    let depth = ndc_z * 0.5 + 0.5;
+    let first_hit_world = vec3<f32>(0.5) + (first_hit_pos - vec3<f32>(0.5)) * u_vol.volume_scale;
+    return DvrResult(vec4<f32>(accum_rgb, accum_a), depth, first_hit_world, 1.0);
 }
 
 
@@ -501,27 +505,28 @@ struct FragmentOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> FragmentOutput {
-    // Screen-space UV with aspect ratio, scale, and pan
-    let scale = max(u_vol.scale * 1.5, 0.0001);
-    var uv_centered = in.tex_coords - vec2<f32>(0.5, 0.5);
+    let uv = in.tex_coords;
 
-    if (u_vol.aspect_ratio > 1.0) {
-        uv_centered.x = uv_centered.x * u_vol.aspect_ratio;
-    } else if (u_vol.aspect_ratio < 1.0 && u_vol.aspect_ratio > 0.0) {
-        uv_centered.y = uv_centered.y / u_vol.aspect_ratio;
-    }
+    // Build the ray in WORLD space from the shared camera
+    let ndc_near = vec4(uv.x * 2.0 - 1.0, (1.0 - uv.y) * 2.0 - 1.0, 0.0, 1.0);
+    let ndc_far  = vec4(uv.x * 2.0 - 1.0, (1.0 - uv.y) * 2.0 - 1.0, 1.0, 1.0);
+    let near_world = u_vol.inv_view_proj * ndc_near;
+    let far_world  = u_vol.inv_view_proj * ndc_far;
+    let world_origin = near_world.xyz / near_world.w;
+    let world_far = far_world.xyz / far_world.w;
+    let world_dir = normalize(world_far - world_origin);
 
-    let uv = (uv_centered * scale) + vec2<f32>(0.5, 0.5) + vec2<f32>(u_vol.pan_x, u_vol.pan_y);
+    // Convert the world-space ray into VOLUME (texture) space
+    let inv_scale = vec3<f32>(
+        1.0 / max(u_vol.volume_scale.x, 1e-6),
+        1.0 / max(u_vol.volume_scale.y, 1e-6),
+        1.0 / max(u_vol.volume_scale.z, 1e-6),
+    );
+    let tex_origin = (world_origin - vec3<f32>(0.5)) * inv_scale + vec3<f32>(0.5);
+    let tex_dir = world_dir * inv_scale;
 
-    // Build the ray in volume space
-    let center = vec3<f32>(0.5, 0.5, 0.5);
-    let base_ray_origin = vec3<f32>(uv.x, 1.0 - uv.y, -0.5);
-
-    let ray_origin = (u_vol.rotation * vec4<f32>(base_ray_origin - center, 1.0)).xyz + center;
-    let ray_dir = normalize((u_vol.rotation * vec4<f32>(0.0, 0.0, 1.0, 0.0)).xyz);
-
-    // Clip ray to the [0,1]^3 AABB
-    let inter_vol = intersect_box(ray_origin, ray_dir, vec3<f32>(0.0), vec3<f32>(1.0));
+    // Clip ray to the [0,1]^3 volume AABB (texture space)
+    let inter_vol = intersect_box(tex_origin, tex_dir, vec3<f32>(0.0), vec3<f32>(1.0));
     var t_start = inter_vol.x;
     var t_end = inter_vol.y;
     if (t_start >= t_end) {
@@ -529,16 +534,14 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     }
 
     let dims = u_vol.vol_dims;
-    let ray_dir_vox = ray_dir * dims;
+    let ray_dir_vox = tex_dir * dims;
     let inv_len = 1.0 / max(length(ray_dir_vox), 1e-6);
     let dt = 0.5 * inv_len;
     t_start = t_start + hash(in.tex_coords) * dt;
 
-    // Dispatch to DVR
-    let dvr_res = dvr_ray_march(ray_origin, ray_dir, t_start, t_end);
+    // Dispatch to DVR (ray/pos are in texture space)
+    let dvr_res = dvr_ray_march(tex_origin, tex_dir, t_start, t_end);
     let base_color = dvr_res.color;
-    let hit_pos = dvr_res.first_hit_pos;
-    let hit = dvr_res.hit;
     let depth = dvr_res.first_hit_depth;
 
     return FragmentOutput(base_color, depth);

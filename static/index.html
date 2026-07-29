@@ -564,11 +564,6 @@
             font-size: 12px;
         }
 
-        .seg-row button#seg-cancel[disabled] {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-
         .seg-status {
             font-size: 10px;
             padding: 2px 7px;
@@ -584,7 +579,6 @@
         .seg-status.running    { background: #fff3cd; color: #856404; }
         .seg-status.completed  { background: #d4edda; color: #155724; }
         .seg-status.failed     { background: #f8d7da; color: #721c24; }
-        .seg-status.cancelled  { background: #e2e3e5; color: #383d41; }
 
         .seg-progress {
             flex: 1 1 100px;
@@ -645,6 +639,17 @@
 
         .seg-labels .seg-label-name { color: #333; }
         .seg-labels .seg-label-id   { color: #888; font-family: monospace; }
+
+        /* ----- Segmentation label list component (needle/oblique style) ----- */
+        .seg-item { display:flex; align-items:center; gap:8px; padding:4px 6px;
+                    border-radius:4px; cursor:pointer; font-size:12px; }
+        .seg-item:hover { background:#f5f7fa; }
+        .seg-item.hidden .seg-name, .seg-item.hidden .seg-id { opacity:.4; }
+        .seg-item.hidden .seg-swatch { filter:grayscale(1); }
+        .seg-vis { border:none; background:none; cursor:pointer; font-size:13px; padding:0; line-height:1; }
+        .seg-swatch { width:14px; height:14px; border-radius:3px; border:1px solid #ccc; flex-shrink:0; }
+        .seg-id   { color:#888; font-family:monospace; min-width:14px; }
+        .seg-name { color:#333; }
     </style>
 </head>
 
@@ -657,6 +662,7 @@
                 <button class="tab-btn active" data-tab="data">Data</button>
                 <button class="tab-btn" data-tab="needle">Needle</button>
                 <button class="tab-btn" data-tab="oblique">Oblique</button>
+                <button class="tab-btn" data-tab="segmentation">Segmentation</button>
             </div>
             <div id="tab-data" class="tab-content active">
                 <div id="server-status" class="server-status">
@@ -668,12 +674,6 @@
                     DICOM: <input type="file" id="file" multiple>
                 </div>
                 <div class="file-row">
-                    OBJ: <input type="file" id="obj_file" accept=".obj">
-                </div>
-                <div class="file-row">
-                    Result Segmentation: <input type="file" id="raw-input" accept=".raw">
-                </div>
-                <div class="file-row">
                     <button id="openMhxModalBtn" class="btn">Import MHA/MHD</button>
                     <button id="rerender">Render</button>
                 </div>
@@ -683,24 +683,6 @@
                    <button id="convertBtn_mhx">MHA</button>
                    <button id="convertBtn_obj">OBJ</button>
                 </div>
-                <div class="seg-row">
-                    <span class="row-label">AI Model</span>
-                    <select id="seg-model" title="AI model">
-                        <option value="totalsegmentator">TotalSegmentator</option>
-                    </select>
-                    <span id="seg-series" style="color:#666;font-size:11px">no series</span>
-                    <button id="seg-run" class="btn btn-primary">Segment</button>
-                    <button id="seg-cancel" class="btn" disabled>Cancel</button>
-                </div>
-                <div class="seg-row" style="padding-top:0">
-                    <span id="seg-status" class="seg-status">idle</span>
-                    <div class="seg-progress"><div id="seg-progress-fill" class="seg-progress-fill"></div></div>
-                    <div class="seg-meta">
-                        <span id="seg-task-id">—</span>
-                        <span id="seg-progress-text">0%</span>
-                    </div>
-                </div>
-                <div id="seg-labels" class="seg-labels"></div>
             </div>
             <div id="tab-needle" class="tab-content">
                 <div class="needle-card" style="border-top:none">
@@ -743,6 +725,10 @@
                         <input type="number" id="needle-cz" step="0.1" value="0.2" min="0" max="1" title="Blue">
                         <input type="color" id="needle-swatch" value="#33e633" title="Pick needle color (RGB)">
                         <button id="needle-apply" title="Apply geometry/colors to active needle ID">Apply</button>
+                    </div>
+                    <div class="needle-row">
+                        <span class="needle-label">Shape</span>
+                        <input type="file" id="obj_file" accept=".obj" title="Replace the procedural needle with an imported OBJ (cross-section shape)">
                     </div>
                     <div class="needle-row">
                         <span class="needle-label">Depth</span>
@@ -795,6 +781,40 @@
                         <span class="needle-label" style="margin-left:8px">w:</span><input type="number" id="quat-w" step="0.01" value="0">
                         <button id="submit-quat">submit</button>
                     </div>
+                </div>
+            </div>
+            <div id="tab-segmentation" class="tab-content">
+                <div class="file-row">
+                    Result Segmentation: <input type="file" id="raw-input" accept=".raw">
+                </div>
+                <!-- 运行区：AI Model / series / Segment / Cancel -->
+                <div class="needle-card" style="border-top:none">
+                    <div class="needle-row">
+                        <span class="needle-label" style="margin-left:8px">AI Model</span>
+                        <select id="seg-model" title="AI model">
+                            <option value="totalsegmentator">TotalSegmentator</option>
+                        </select>
+                        <span id="seg-series" style="color:#666;font-size:11px">no series</span>
+                        <button id="seg-run" class="btn btn-primary">Segment</button>
+                    </div>
+                </div>
+                <!-- 状态区：status + 进度条 -->
+                <div class="needle-card">
+                    <div class="needle-row">
+                        <span id="seg-status" class="seg-status">idle</span>
+                        <div class="seg-progress"><div id="seg-progress-fill" class="seg-progress-fill"></div></div>
+                        <div class="seg-meta">
+                            <span id="seg-task-id">—</span>
+                            <span id="seg-progress-text">0%</span>
+                        </div>
+                    </div>
+                </div>
+                <!-- 标签列表区：可点击的 label 列表组件 -->
+                <div class="needle-card">
+                    <div class="needle-row">
+                        <span class="needle-label" style="margin-left:8px">Labels</span>
+                    </div>
+                    <div id="seg-labels" class="seg-labels"></div>
                 </div>
             </div>
         </aside>
@@ -1003,48 +1023,6 @@
             a.click();
         }
 
-        // MHX文件解析函数
-        async function parseMHXContent(mhxText) {
-        const lines = mhxText.split('\n');
-        const header = {
-            element_type: 'MET_FLOAT',
-            dim_x: 0,
-            dim_y: 0,
-            dim_z: 0,
-            spacing_x: 0,
-            spacing_y: 0,
-            spacing_z: 0
-        };
-
-        // 解析MHX文件内容
-        for (const line of lines) {
-            if (!line.trim() || line.startsWith('#')) continue;
-
-            const [key, value] = line.split('=').map(s => s.trim());
-            if (!key || !value) continue;
-
-            switch (key) {
-            case 'ElementType':
-                header.element_type = value;
-                break;
-            case 'DimSize':
-                state.dims = value.split(' ').map(Number);
-                [header.dim_x, header.dim_y, header.dim_z] = state.dims;
-                state.len = header.dim_x * header.dim_y * header.dim_z;
-                break;
-            case 'ElementSpacing':
-                state.spacing = value.split(' ').map(Number);
-                [header.spacing_x, header.spacing_y, header.spacing_z] = state.spacing;
-                break;
-            case 'ElementDataFile':
-                header.data_file = value;
-                break;
-            }
-        }
-
-        return header;
-        }
-
         // 状态管理
         const SERVER_URL = 'http://localhost:3000';
         var repo;
@@ -1111,9 +1089,6 @@
                             break;
                         case 'segment_failed':
                             handleSegmentFailed(msg);
-                            break;
-                        case 'segment_cancelled':
-                            handleSegmentCancelled(msg);
                             break;
                     }
                 } catch (e) {
@@ -1320,7 +1295,7 @@
                 state.render_app.run();
             } else {
                 gl_canvas.load_data_from_ct_volume(state.volume);
-                gl_canvas.apply_segmentation(new Uint8Array(0), 1, 1, 1);
+                gl_canvas.apply_segmentation(new Uint8Array(0));
             }
         }
 
@@ -1336,12 +1311,11 @@
             labels: null,        // last completed label table: { "1": "liver", ... }
             volume: null,        // server-side volume id of the mask
             raw: null,           // Uint8Array of mask bytes (after segment_complete)
-            opacity: 0.3,
+            items: [],           // [{ id: Number, name: String, color: String, visible: Boolean }]
         };
 
         const segEls = {
             run:        byId('seg-run'),
-            cancel:     byId('seg-cancel'),
             model:      byId('seg-model'),
             series:     byId('seg-series'),
             status:     byId('seg-status'),
@@ -1371,7 +1345,6 @@
 
         function setSegRunEnabled(enabled) {
             segEls.run.disabled = !enabled;
-            segEls.cancel.disabled = enabled;
         }
 
 
@@ -1391,19 +1364,15 @@
                 const rawData = new Uint8Array(buffer);
                 seg.raw = rawData;
                 console.log("RAW size:", rawData.length,"bytes");
+                setSegLabels(null);
                 await uploadSegmentationToGpu();
+                await pushSegVisibility();
             } catch (e) {
                 console.error(e);
                 log(`Import RAW mask failed: ${e}`, 'error');
             }
         });
 
-        // Pick a deterministic but distinct colour for each label id.
-        // This palette must match `LABEL_COLORS` in
-        // `src/rendering/view/mod.rs` so the swatch in the UI matches
-        // the colour actually drawn on the MPR slice.
-        //   0 = background (unused in the list, but kept for symmetry)
-        //   1 L1, 2 L2, 3 L3, 4 L4, 5 L5, 6 S1, 7 sacrum
         const SEG_LABEL_PALETTE = {
             1: 'rgb(242, 51, 51)',   // L1      red
             2: 'rgb(250, 140, 26)',  // L2      orange
@@ -1413,43 +1382,101 @@
             6: 'rgb(77, 77, 242)',   // S1      blue
             7: 'rgb(217, 51, 204)',  // sacrum  magenta
         };
+        
+        const SEG_DEFAULT_LABELS = {
+            1: 'L1', 2: 'L2', 3: 'L3', 4: 'L4', 5: 'L5', 6: 'S1', 7: 'sacrum',
+        };
+
         function segLabelColor(id) {
             const numericId = Number(id);
             if (SEG_LABEL_PALETTE[numericId]) {
                 return SEG_LABEL_PALETTE[numericId];
             }
-            // Fallback for unknown ids (shouldn't happen with the
-            // 7-label subset, but keeps the UI safe if the Python
-            // service ever adds new labels).
             let h = 0;
             const s = String(id);
             for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) & 0xffff;
             return `hsl(${h % 360}, 70%, 55%)`;
         }
 
-        function renderSegLabels(labels) {
-            const ids = Object.keys(labels || {}).sort((a, b) => Number(a) - Number(b));
-            if (ids.length === 0) {
-                segEls.labels.classList.remove('active');
-                segEls.labels.innerHTML = '';
-                return;
-            }
-            const rows = ids.map((id) => {
-                const name = labels[id] || '(unnamed)';
-                return `<div class="seg-label-row">
-                    <span class="seg-label-color" style="background:${segLabelColor(id)}"></span>
-                    <span class="seg-label-id">${id}</span>
-                    <span class="seg-label-name">${name}</span>
-                </div>`;
-            }).join('');
-            segEls.labels.innerHTML = rows;
-            segEls.labels.classList.add('active');
+        // === Segmentation label list (multi-select visibility) ==============
+        // Item: { id, name, color, visible }.
+        // state.label_ids[i] = label id i when visible, else 0. Both backend
+        // readers consume this same shape:
+        //   - app.rs mesh:    label_ids[i] > 0              (index mask)
+        //   - MprView shader: label_visibility[idx].x > 0.5 (0 = background)
+        const SEG_LABEL_SLOTS = 8;
+
+        // Sync seg.items with a label table. Preserves `visible` for labels
+        // the user already toggled. Pass `null` to fall back to the built-in
+        // default table (offline / RAW-import scenario).
+        function setSegLabels(labels) {
+            const prev = new Map(seg.items.map(it => [it.id, it.visible]));
+            seg.items = Object.entries(labels || SEG_DEFAULT_LABELS)
+                .map(([key, name]) => {
+                    const id = Number(key);
+                    return Number.isFinite(id) && {
+                        id,
+                        name: name || '(unnamed)',
+                        color: segLabelColor(id),
+                        visible: prev.get(id) ?? true,
+                    };
+                })
+                .filter(Boolean)
+                .sort((a, b) => a.id - b.id);
+            renderSegList();
         }
 
-        // Return the id of the volume currently selected for segmentation.
-        // The design doc uses `series` for the volume id of the parent CT.
-        function currentSegSeries() {
-            return currentVolumeId;
+        function renderSegList() {
+            const root = segEls.labels;
+            if (!seg.items.length) {
+                root.classList.remove('active');
+                root.innerHTML = '';
+                return;
+            }
+            root.innerHTML = seg.items.map((it) => {
+                const hidden = it.visible ? '' : ' hidden';
+                const visIcon = it.visible ? '👁' : '🚫';
+                return `<div class="seg-item${hidden}" data-seg-id="${it.id}">
+                    <span class="seg-vis" title="Toggle visibility">${visIcon}</span>
+                    <span class="seg-swatch" style="background:${it.color}" title="Double-click: show only this label"></span>
+                    <span class="seg-id">${it.id}</span>
+                    <span class="seg-name">${it.name}</span>
+                </div>`;
+            }).join('');
+            root.classList.add('active');
+        }
+
+        // One delegated pair for the whole list (attached once, survives
+        // innerHTML repaints). Click toggles one row; dblclick on the
+        // swatch solos one label.
+        segEls.labels.addEventListener('click', (e) => {
+            const id = Number(e.target.closest('.seg-item')?.dataset.segId);
+            if (!Number.isFinite(id)) return;
+            const item = seg.items.find(it => it.id === id);
+            if (!item) return;
+            item.visible = !item.visible;
+            renderSegList();
+            pushSegVisibility();
+        });
+        segEls.labels.addEventListener('dblclick', (e) => {
+            if (!e.target.classList.contains('seg-swatch')) return;
+            e.stopPropagation();
+            const id = Number(e.target.closest('.seg-item').dataset.segId);
+            if (!Number.isFinite(id)) return;
+            seg.items.forEach((it) => { it.visible = (it.id === id); });
+            renderSegList();
+            pushSegVisibility();
+        });
+
+        // Send the 8-slot visibility mask to the GPU. Cheap: only updates
+        // the fragment-shader uniform — does NOT re-upload the raw mask.
+        async function pushSegVisibility() {
+            const mask = new Array(SEG_LABEL_SLOTS).fill(0);
+            for (const it of seg.items) {
+                if (it.visible && it.id > 0 && it.id < mask.length) mask[it.id] = it.id;
+            }
+            state.label_ids = mask;
+            if (gl_canvas) await gl_canvas.set_segmentation_visibility(mask);
         }
 
         // Called whenever a new volume is uploaded
@@ -1460,9 +1487,10 @@
             seg.raw = null;
             seg.labels = null;
             seg.volume = null;
+            seg.items = [];
             setSegStatus('idle', '');
             setSegProgress(0);
-            renderSegLabels(null);
+            setSegLabels(null);
 
             // Update the series label in the UI.
             if (!id) {
@@ -1499,18 +1527,14 @@
             seg.status = 'completed';
             seg.volume = msg.volume;
             seg.labels = msg.labels || {};
-            renderSegLabels(seg.labels);
+            setSegLabels(seg.labels);
             setSegRunEnabled(true);
             log(`Segmentation complete (${Object.keys(seg.labels).length} labels, volume ${msg.volume})`, 'success');
             await downloadSegmentationMask(msg.task_id);
             await uploadSegmentationToGpu();
+            await pushSegVisibility();
         }
 
-        // Push the just-downloaded seg.raw buffer to the GPU as an
-        // R8Uint 3D texture via GLCanvas::apply_segmentation. The
-        // dimensions come from the currently loaded CTVolume on the
-        // JS side because the server deliberately does not store them
-        // (see ai_handler.rs).
         async function uploadSegmentationToGpu() {
             if (!gl_canvas) {
                 log('GL canvas not ready; cannot overlay segmentation yet', 'warn');
@@ -1525,23 +1549,8 @@
                 return;
             }
             try {
-                const mhxText = await state.mhx.text();
-                const header = await parseMHXContent(mhxText);
-                const height = Number(header.dim_x);
-                const width  = Number(header.dim_y);
-                const depth  = Number(header.dim_z);
-                const expected = width * height * depth;
-                if (seg.raw.length !== expected) {
-                    log(
-                        `Mask size mismatch: ${seg.raw.length} bytes vs ` +
-                        `${expected} (${width}×${height}×${depth}). ` +
-                        `Skipping GPU upload.`,
-                        'error',
-                    );
-                    return;
-                }
-                await gl_canvas.apply_segmentation(seg.raw, width, height, depth);
-                log(`Segmentation uploaded to GPU (${width}×${height}×${depth})`, 'success');
+                await gl_canvas.apply_segmentation(seg.raw);
+                log(`Segmentation uploaded to GPU `, 'success');
             } catch (e) {
                 log(`Failed to upload segmentation to GPU: ${e.message}`, 'error');
             }
@@ -1553,14 +1562,6 @@
             seg.status = 'failed';
             setSegRunEnabled(true);
             log(`Segmentation failed: ${msg.message}`, 'error');
-        }
-
-        function handleSegmentCancelled(msg) {
-            if (msg.task_id && msg.task_id !== seg.taskId) return;
-            setSegStatus('cancelled', 'cancelled');
-            seg.status = 'cancelled';
-            setSegRunEnabled(true);
-            log('Segmentation cancelled', 'warn');
         }
 
         // Fetch the raw mask bytes for a completed task via HTTP.
@@ -1595,7 +1596,7 @@
                 log('Server connection required for segmentation', 'error');
                 return;
             }
-            const series = currentSegSeries();
+            const series = currentVolumeId;
             if (!series) {
                 log('No volume on server. Load a DICOM/MHA volume first.', 'error');
                 return;
@@ -1609,12 +1610,6 @@
                 setSegStatus('idle', '');
                 setSegRunEnabled(true);
             }
-        });
-
-        byId('seg-cancel').addEventListener('click', () => {
-            if (!seg.taskId) return;
-            if (!sendWs({ type: 'segment_cancel', task_id: seg.taskId })) return;
-            setSegStatus('cancelling…', 'cancelled');
         });
 
         // ========= DICOM Export Button =========

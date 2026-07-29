@@ -69,7 +69,8 @@ pub enum UserEvent {
     SetMeshNeedlePosition(usize, u32, f32, f32, f32),
     SetMeshNeedleRadius(usize, u32, f32),
     SetMeshNeedleAngle(usize, u32, f32),
-    SetSegmentationAll(Vec<u8>, u32, u32, u32),
+    SetSegmentationAll(Vec<u8>),
+    SetSegmentationVisibility([f32; 8]),
     SetOBJMesh(Vec<u8>),
     #[cfg(target_arch = "wasm32")]
     ExportCurrentObj(oneshot::Sender<String>),
@@ -150,13 +151,28 @@ impl GLCanvas {
         }
     }
 
-    pub fn apply_segmentation(&self, raw: Vec<u8>, width: u32, height: u32, depth: u32) {
+    pub fn apply_segmentation(&self, raw: Vec<u8>) {
         if let Err(e) = self.proxy.send_event(UserEvent::SetSegmentationAll(
-            raw.clone(), width, height, depth,
+            raw.clone(),
         )) {
             log::error!("Failed to send SetSegmentationAll event: {:?}", e);
         } else {
             log::info!("Sent SetSegmentationAll event");
+        }
+    }
+
+    /// Send a label-visibility mask update to the render loop. `mask` is an
+    /// 8-element array (index = label id, value > 0.5 means visible). Only the
+    /// first 8 entries are used; a shorter slice leaves the rest hidden.
+    pub fn set_segmentation_visibility(&self, mask: Vec<f32>) {
+        let mut arr = [0.0f32; 8];
+        for (i, &v) in mask.iter().enumerate().take(8) {
+            arr[i] = v;
+        }
+        if let Err(e) = self.proxy.send_event(UserEvent::SetSegmentationVisibility(arr)) {
+            log::error!("Failed to send SetSegmentationVisibility event: {:?}", e);
+        } else {
+            log::info!("Sent SetSegmentationVisibility event");
         }
     }
 
