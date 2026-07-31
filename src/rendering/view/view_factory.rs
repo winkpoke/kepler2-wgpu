@@ -461,6 +461,9 @@ impl ViewFactory for DefaultViewFactory {
         let spine_ctx = MultiMeshContext::new(&self.device, &self.queue);
         mesh_view.attach_spine_context(spine_ctx);
 
+        let needle_ctx = MultiMeshContext::new(&self.device, &self.queue);
+        mesh_view.attach_needle_context(needle_ctx);
+
         info!(
             "[DefaultViewFactory] Created Mesh view (with_content) at {:?} size {:?}",
             pos, size

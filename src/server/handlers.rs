@@ -171,6 +171,127 @@ pub struct UploadParams {
 fn default_slope() -> f32 { 1.0 }
 fn default_intercept() -> f32 { 0.0 }
 
+/// JSON body 输入：position / orientation 嵌套结构
+#[derive(Deserialize)]
+pub struct NeedlePosition {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    #[serde(default)]
+    pub unit: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct NeedleOrientation {
+    pub a: f32,
+    pub b: f32,
+    pub c: f32,
+    #[serde(default)]
+    pub unit: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct UploadNeedleJson {
+    #[serde(default)]
+    pub frame_sequence: Option<u32>,
+    pub position: NeedlePosition,
+    pub orientation: NeedleOrientation,
+    #[serde(default)]
+    pub coordinate_frame: Option<String>,
+}
+
+/// 回给调用方的确认信息
+#[derive(Serialize)]
+pub struct NeedleEcho {
+    pub status: String,
+    pub id: u32,
+    pub pos: (f32, f32, f32),
+    pub dir: (f32, f32, f32),
+    pub len_mm: f32,
+    pub tip: (f32, f32, f32),
+}
+
+pub async fn upload_needle_params(
+    State(state): State<ServerState>,
+    body: Option<Json<UploadNeedleJson>>,
+) -> Result<Json<NeedleEcho>, StatusCode> {
+    let (pos, dir, id) = if let Some(Json(b)) = body {
+        log::info!(
+            "Needle JSON: frame_sequence: {:?}, coordinate_frame: {:?}, pos_unit: {:?}, dir_unit: {:?}",
+            b.frame_sequence, b.coordinate_frame, b.position.unit, b.orientation.unit
+        );
+        (
+            (b.position.x, b.position.y, b.position.z),
+            (b.orientation.a, b.orientation.b, b.orientation.c),
+            b.frame_sequence.unwrap_or(0),
+        )
+    } else {
+        return Err(StatusCode::BAD_REQUEST);
+    };
+
+    let len = 120.0;
+    let rx = dir.0.to_radians();
+    let ry = dir.1.to_radians();
+    let rz = dir.2.to_radians();
+
+    let rot = glam::Mat3::from_euler(
+        glam::EulerRot::XYZ,
+        rx,
+        ry,
+        rz,
+    );
+
+    let dir_vec = (rot * glam::Vec3::Z).normalize();
+
+    let center = glam::Vec3::new(
+        pos.0,
+        pos.1,
+        pos.2,
+    );
+
+    let half_len = len * 0.5;
+
+    let entry = center - dir_vec * half_len;
+    let tip = center + dir_vec * half_len;
+
+    debug_assert!(
+        (tip - entry).length() - len < 0.001,
+    );
+
+    let entry = (entry.x - 30.0, entry.y +100.0, - entry.z);
+    let tip = (tip.x - 30.0, tip.y + 100.0, - tip.z);
+
+    log::info!(
+        "Needle params: entry: {:?}, dir: {:?}, len: {:.1}mm, tip: {:?}",
+        entry, dir, len, tip
+    );
+
+    // Broadcast to every connected browser so the wasm renderer can draw the needle.
+    let _ = state.ws_tx.send(WsMessage::NeedleSet {
+        id,
+        x: entry.0,
+        y: entry.1,
+        z: entry.2,
+        lx: tip.0,
+        ly: tip.1,
+        lz: tip.2,
+        r: 0.2,
+        g: 0.9,
+        b: 0.2,
+        dir,
+        len_mm: len,
+    });
+
+    Ok(Json(NeedleEcho {
+        status: "ok".to_string(),
+        id,
+        pos: entry,
+        dir,
+        len_mm: len,
+        tip,
+    }))
+}
+
 /// Upload a volume to the server (MHA binary data in POST body)
 pub async fn upload_volume(
     State(state): State<ServerState>,
@@ -200,12 +321,7 @@ pub async fn upload_volume(
     let id = generate_uid();
     let now = chrono::Local::now();
 
-    // Optionally persist the MHA to disk so the Python AI service can
-    // read it for segmentation. This only happens when the user has
-    // explicitly set KEPLER_SERIES_DIR (indicated by
-    // `persist_mha_to_disk`). The default is to keep the volume in
-    // memory only — the browser wasm path already renders it.
-    let mha_disk_path = if state.persist_mha_to_disk {
+    let mha_disk_path = {
         let path = state.series_path(&id);
         if let Err(e) = tokio::fs::write(&path, &mha_bytes).await {
             log::error!(
@@ -220,10 +336,7 @@ pub async fn upload_volume(
             ));
         }
         log::info!("Persisted MHA for volume {} ({} bytes)", id, mha_bytes.len());
-        Some(path)
-    } else {
-        log::debug!("Skipped MHA disk persist (KEPLER_SERIES_DIR not set)");
-        None
+        path
     };
 
     let stored = StoredVolume {
@@ -304,22 +417,37 @@ pub async fn build_ct_dicom_axum(
     Ok(Json(stored))
 }
 
-pub async fn upload_obj(mut multipart:Multipart) -> Result<Response<Body>,StatusCode> {
-     while let Some(field)= multipart.next_field().await.map_err(|_|StatusCode::BAD_REQUEST)?{
-        if field.name()==Some("file") {
-            let bytes = field.bytes().await.map_err(|_|StatusCode::BAD_REQUEST)?;
-            let path= format!("/tmp/{}.obj",uuid::Uuid::new_v4());
-            tokio::fs::write(&path,&bytes).await.map_err(|_|StatusCode::INTERNAL_SERVER_ERROR)?;
-            let meshes= Mesh::import_obj(&path).map_err(|_|StatusCode::BAD_REQUEST)?;
-            let bin = bincode::serialize(&meshes).map_err(|_|StatusCode::INTERNAL_SERVER_ERROR)?;
-             return Ok(
+pub async fn upload_obj(mut multipart: Multipart) -> Result<Response<Body>, StatusCode> {
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        eprintln!("multipart error: {:?}", e);
+        StatusCode::BAD_REQUEST
+    })?{
+        if field.name() == Some("file") {
+            let bytes = field.bytes().await.map_err(|e| {
+                eprintln!("read upload error: {:?}", e);
+                StatusCode::BAD_REQUEST
+            })?;
+            let path = std::env::temp_dir().join(format!("{}.obj", uuid::Uuid::new_v4()));
+            tokio::fs::write(&path, &bytes).await.map_err(|e| {
+                eprintln!("write failed: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+            let meshes = Mesh::import_obj(path.to_str().unwrap()).map_err(|e| {
+                eprintln!("OBJ import failed: {:?}", e);
+                StatusCode::BAD_REQUEST
+            })?;
+            let bin = bincode::serialize(&meshes).map_err(|e| {
+                eprintln!("serialize failed: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+            return Ok(
                 Response::builder()
-                .header(
-                    "Content-Type",
-                    "application/octet-stream"
-                )
-                .body(Body::from(bin))
-                .unwrap()
+                    .header(
+                        "Content-Type",
+                        "application/octet-stream"
+                    )
+                    .body(Body::from(bin))
+                    .unwrap()
             );
         }
     }
@@ -339,19 +467,6 @@ pub async fn start_segmentation(
             broadcast_message(&state, WsMessage::Error {
                 message: format!("start_segmentation failed: {e}"),
             });
-            Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
-        }
-    }
-}
-
-pub async fn cancel_segmentation(
-    State(state): State<ServerState>,
-    Json(req): Json<CancelRequest>,
-) -> Result<Json<crate::server::ai_model::CancelResponse>, (StatusCode, String)> {
-    match ai_handler::handle_cancel(state.clone(), req).await {
-        Ok(resp) => Ok(Json(resp)),
-        Err(e) => {
-            log::error!("cancel_segmentation failed: {e}");
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     }

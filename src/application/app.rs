@@ -1070,10 +1070,14 @@ impl App {
     pub fn set_obj_mesh(&mut self, raw: Vec<u8>) {
         let device = &self.graphics_context.graphics.device;
         let meshes: Vec<Mesh> = bincode::deserialize(&raw).unwrap();
-        self.current_meshes = Arc::new(meshes);
-        for view in self.app_view.layout.views().iter() {
-            if let Some(mesh_view) = view.as_any().downcast_ref::<MeshView>() {
-                mesh_view.set_meshes(device, self.current_meshes.clone());
+        let unit = match meshes.into_iter().next() {
+            Some(u) => u,
+            None => { log::warn!("set_obj_mesh: OBJ 里没有任何 mesh"); return; }
+        };
+        for view in self.app_view.layout.views_mut().iter_mut() {
+            if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view.set_needle_unit_mesh(unit.clone());
+                mesh_view.rebuild_needle_meshes(&device);
             }
         }
     }
@@ -1095,9 +1099,11 @@ impl App {
         let pos_mm = [lx, ly, lz];
         let entry_vol = self.mm_to_uv(entry_mm);
         let pos_vol = self.mm_to_uv(pos_mm);
+        let device_arc = self.graphics().device.clone();
 
         if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
             mesh_view.set_new_needle(id, entry_vol, pos_vol, [r, g, b, 1.0]);
+            mesh_view.rebuild_needle_meshes(&device_arc);
         };
         if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
             mip_view.set_new_needle(id, entry_vol, pos_vol,[r, g, b, 0.5]);
@@ -1128,8 +1134,11 @@ impl App {
         } else {
             radius_mm.clamp(0.0001, 0.1)
         };
+        let device_arc = self.graphics().device.clone();
+
         if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
             mesh_view.set_needle_radius(id, radius_uv);
+            mesh_view.rebuild_needle_meshes(&device_arc);
         };
         if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
             mip_view.set_needle_radius(id, radius_uv);
@@ -1145,9 +1154,11 @@ impl App {
     pub fn set_needle_position_mm(&mut self, id: u32, sx: f32, sy: f32, sz: f32) {
         let pos_mm = [sx, sy, sz];
         let pos_vol = self.mm_to_uv(pos_mm);
+        let device_arc = self.graphics().device.clone();
 
         if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
             mesh_view.set_needle_position(id, pos_vol);
+            mesh_view.rebuild_needle_meshes(&device_arc);
         };
         if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
             mip_view.set_needle_position(id, pos_vol);

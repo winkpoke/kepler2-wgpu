@@ -60,6 +60,25 @@ pub enum WsMessage {
         task_id: String,
         message: String,
     },
+    /// A remote client set needle parameters via `POST /api/upload_needle_params`.
+    /// Entry point = (x, y, z), tip = (lx, ly, lz), RGB color = (r, g, b).
+    #[serde(rename = "needle_set")]
+    NeedleSet {
+        id: u32,
+        x: f32,
+        y: f32,
+        z: f32,
+        lx: f32,
+        ly: f32,
+        lz: f32,
+        r: f32,
+        g: f32,
+        b: f32,
+        /// 方向向量（未归一化的原始值），用于前端展示
+        dir: (f32, f32, f32),
+        /// 针长度 mm
+        len_mm: f32,
+    },
     /// Task was cancelled (either by the user or by the AI service).
     #[serde(rename = "segment_cancelled")]
     SegmentCancelled {

@@ -508,7 +508,7 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let uv = in.tex_coords;
 
     // Build the ray in WORLD space from the shared camera
-    let ndc_near = vec4(uv.x * 2.0 - 1.0, (1.0 - uv.y) * 2.0 - 1.0, 0.0, 1.0);
+    let ndc_near = vec4(uv.x * 2.0 - 1.0, uv.y * 2.0 - 1.0, 0.0, 1.0);
     let ndc_far  = vec4(uv.x * 2.0 - 1.0, (1.0 - uv.y) * 2.0 - 1.0, 1.0, 1.0);
     let near_world = u_vol.inv_view_proj * ndc_near;
     let far_world  = u_vol.inv_view_proj * ndc_far;

@@ -8,7 +8,7 @@ use mcubes::{MarchingCubes, MeshSide};
 use std::sync::Arc;
 use tobj;
 use serde::{Serialize, Deserialize};
-use glam::{Mat4, Vec4};
+use glam::{Mat4,Vec3};
 use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, RenderPipeline};
 
 /// Volume rendering parameters (sent to fragment shader)
@@ -482,13 +482,75 @@ impl Mesh {
             for v in &mut mesh.vertices {
                 let mut p = glam::Vec3::from(v.position);
                 p = (p - center) * norm_scale;
-                v.position = ((p + 1.0) * 0.5).to_array();
+                v.position = p.to_array();
             }
         }
 
         log::info!("OBJ normalized: center={:?}, max_dim={}", center, max_dim);
 
         Ok(result)
+    }
+
+    /// Transform a unit needle mesh into a concrete instance along the (entry, tip) segment
+    pub fn instance_for_needle(
+        unit: &Mesh, entry: Vec3, tip: Vec3,
+        radius: f32, color: [f32; 4]
+    ) -> Mesh {
+        let segment = tip - entry;
+        let len = segment.length();
+
+        if len < 1e-6 || radius <= 0.0 {
+            return Mesh {
+                label_id: 0,
+                label_name: "needle-empty".into(),
+                vertices: Vec::new(),
+                indices: Vec::new(),
+            };
+        }
+        let axis = segment / len;
+        let rot = glam::Quat::from_rotation_arc(Vec3::Y, axis);
+
+        // Pre-compute the maximum radial magnitude from the unit mesh so the
+        // `radius` parameter controls the actual rendered cross-section radius
+        // independently of the model's length-to-thickness ratio.
+        let max_radial = {
+            let mut m = 0.0f32;
+            for v in &unit.vertices {
+                let p = Vec3::from(v.position);
+                let along = p.dot(Vec3::Y);
+                m = m.max((p - along * Vec3::Y).length());
+            }
+            m.max(1e-6) // guard: empty or degenerate mesh
+        };
+
+        let mut m = unit.clone();
+        m.label_name = "needle".into();
+        for v in &mut m.vertices {
+            // [-1, 1]³ → [-0.5, 0.5]³ (cross-section centered at origin)
+            let p = Vec3::from(v.position) * 0.5;
+            let along = p.dot(Vec3::Y);
+            let radial = p - along * Vec3::Y;
+            // Cross-section: normalise so `radius` is the actual rendered radius.
+            //   p-space max |radial| = max_radial * 0.5
+            //   normalise → [-0.5, 0.5]:  radial / (max_radial * 0.5) * 0.5 = radial / max_radial
+            //   then × 2·radius → radial * (2 · radius / max_radial)
+            // Length: along p ∈ [-0.5, 0.5] → [0, len]
+            let scaled = radial * (2.0 * radius / max_radial) + Vec3::Y * (along + 0.5) * len;
+            let world = entry + rot * scaled;
+            v.position = world.to_array();
+
+            // Normal correction (inverse-transpose of non-uniform scale):
+            //   position scale : radial · 2·radius/max_radial,  along · len
+            //   normal  scale : radial · max_radial/(2·radius), along · 1/len
+            let n = Vec3::from(v.normal);
+            let n_along = n.dot(Vec3::Y);
+            let n_radial = n - n_along * Vec3::Y;
+            let n_corrected =
+                (n_radial * (max_radial / (2.0 * radius)) + Vec3::Y * n_along / len).normalize();
+            v.normal = (rot * n_corrected).to_array();
+            v.color = [color[0], color[1], color[2]];
+        }
+        m
     }
 
     pub fn meshes_to_obj(meshes: &Vec<Self>) -> String {
@@ -642,20 +704,13 @@ pub fn spine(
     let inv_x = 1.0 / phys_x.max(1e-6);
     let inv_y = 1.0 / phys_y.max(1e-6);
     let inv_z = 1.0 / phys_z.max(1e-6);
-    let calibrate = Mat4::from_cols(
-        Vec4::new( 1.0,  0.0,  0.0, 0.0),   // mcubes Y → output X (= texture U)
-        Vec4::new( 0.0,  -1.0,  0.0, 0.0),   // mcubes X → output Y (= texture V)
-        Vec4::new( 0.0,  0.0,  1.0, 0.0),   // mcubes Z → output Z (= texture W)
-        Vec4::new( 0.0,  1.0,  0.0, 1.0),   // identity translation, no flip
-    );
 
     for mesh in &mut results {
         for v in &mut mesh.vertices {
             let px = v.position[0] * inv_x;
             let py = v.position[1] * inv_y;
             let pz = v.position[2] * inv_z;
-            let p = calibrate * Vec4::new(px, py, pz, 1.0);
-            v.position = [p.x, p.y, p.z];
+            v.position = [px, py, pz];
         }
     }
 

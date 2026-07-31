@@ -5,10 +5,10 @@ use super::{
     mesh::{BasicLightingUniforms, Mesh, MeshRenderContext, MeshUniforms},
     performance::{PerformanceStats, QualityController, QualityLevel},
 };
-use crate::rendering::view::camera::Camera;
 use crate::{
     core::{timing::Instant, KeplerResult, WindowLevel},
     rendering::view::{Renderable, View, NeedleUniform, ObliquePlaneUniform},
+    rendering::view::camera::Camera
 };
 use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::FRAC_PI_2;
@@ -108,6 +108,7 @@ pub struct MeshView {
     needle_index: u32,
     plane_rotation_angle: f32,
     needles: Vec<NeedleUniform>,
+    needle_unit: Option<Mesh>,
     oblique_planes: [ObliquePlaneUniform; 4],
     camera: Camera,
 }
@@ -140,6 +141,7 @@ impl MeshView {
             needle_index: 0,
             plane_rotation_angle: 180.0,
             needles: Vec::new(),
+            needle_unit: None,
             oblique_planes: [ObliquePlaneUniform::default(); 4],
             camera: Camera::new(),
         }
@@ -164,6 +166,41 @@ impl MeshView {
     pub fn attach_needle_context(&mut self, ctx: MultiMeshContext) {
         self.needle_ctx= Some(Arc::new(Mutex::new(ctx)));
         log::debug!("MeshView::attach_spine_context - Spine context attached successfully");
+    }
+
+    /// Cache the unit-needle mesh
+    pub fn set_needle_unit_mesh(&mut self, unit: Mesh) {
+        log::info!(
+            "MeshView::set_needle_unit_mesh - {} verts / {} idx",
+            unit.vertices.len(),
+            unit.indices.len()
+        );
+        self.needle_unit = Some(unit);
+    }
+
+    /// Re-bake every needle's transform into vertex data and upload to the needle contex
+    pub fn rebuild_needle_meshes(&self, device: &wgpu::Device) {
+        let (Some(ctx), Some(unit)) = (&self.needle_ctx, &self.needle_unit) else {
+            return;
+        };
+        let meshes: Vec<Mesh> = self.needles.iter().map(|n| {
+            log::info!("Needle: {:?}", n);
+            Mesh::instance_for_needle(
+                unit,
+                glam::Vec3::from(n.entry),
+                glam::Vec3::from(n.tip),
+                n.radius,
+                // n.color,
+                [0.9, 0.2, 0.2, 1.0]
+            )
+        }).collect();
+        if let Ok(mut guard) = ctx.lock() {
+            guard.set_meshes(device, &meshes);
+            log::info!(
+                "MeshView::rebuild_needle_meshes - uploaded {} needle instances",
+                meshes.len()
+            );
+        }
     }
 
     pub fn set_meshes(&self, device: &wgpu::Device, meshes: Arc<Vec<Mesh>>) {
@@ -593,6 +630,20 @@ impl MeshView {
                 guard.update_lighting(queue, self.spine_lighting);
             }
         }
+
+        // Needle mesh uniforms and lighting
+        if let Some(needle_ctx) = &self.needle_ctx {
+            if let Ok(guard) = needle_ctx.lock() {
+                let model = Self::mesh_model_matrix(volume_scale);
+                let mvp = view_projection * model;
+                guard.update_uniforms(queue, &mvp.to_cols_array_2d());
+                let needle_lighting = BasicLightingUniforms {
+                    opacity: 1.0,
+                    ..self.spine_lighting
+                };
+                guard.update_lighting(queue, needle_lighting);
+            }
+        }
     }
 
     /// Function-level comment: Start frame timing for performance monitoring.
@@ -728,6 +779,15 @@ impl MeshView {
         if let Some(spine_ctx) = &self.spine_ctx {
             if let Ok(guard) = spine_ctx.lock() {
                 guard.render(render_pass);
+            }
+        }
+
+        // Render OBJ-needle meshes THIRD, only when needles are enabled
+        if self.needle_enabled > 0.5 {
+            if let Some(needle_ctx) = &self.needle_ctx {
+                if let Ok(guard) = needle_ctx.lock() {
+                    guard.render(render_pass);
+                }
             }
         }
 

@@ -708,15 +708,15 @@
                     </div>
                     <div class="needle-row">
                         <span class="needle-label">Entry</span>
-                        <input type="number" id="needle-ex" step="0.1" value="-29.43">
-                        <input type="number" id="needle-ey" step="0.1" value="-29.83">
-                        <input type="number" id="needle-ez" step="0.1" value="77.37">
+                        <input type="number" id="needle-ex" step="0.1" value="-13.91">
+                        <input type="number" id="needle-ey" step="0.1" value="202.76">
+                        <input type="number" id="needle-ez" step="0.1" value="34.00">
                     </div>
                     <div class="needle-row">
                         <span class="needle-label">Tip</span>
-                        <input type="number" id="needle-tx" step="0.1" value="-1.44">
-                        <input type="number" id="needle-ty" step="0.1" value="-1.44">
-                        <input type="number" id="needle-tz" step="0.1" value="-8.02">
+                        <input type="number" id="needle-tx" step="0.1" value="-15.39">
+                        <input type="number" id="needle-ty" step="0.1" value="188.80">
+                        <input type="number" id="needle-tz" step="0.1" value="-50.95">
                     </div>
                     <div class="needle-row">
                         <span class="needle-label">Color</span>
@@ -747,6 +747,10 @@
                             <span class="dashed-swatch-bar"></span>planned
                             <input type="color" id="needle-planned-swatch" value="#f59e0b" class="swatch">
                         </label>
+                    </div>
+                    <div class="needle-row" id="needle-api-info" style="display:none;border-top:1px dashed #555;padding-top:6px;margin-top:6px">
+                        <span class="needle-label">Last API</span>
+                        <span id="needle-api-text" style="font-family:monospace;font-size:11px;white-space:pre-wrap"></span>
                     </div>
                 </div>
             </div>
@@ -1023,8 +1027,10 @@
             a.click();
         }
 
+        // 动态读取当前访问地址，使局域网/公网任何客户端都能正确连回本服务器
+        const SERVER_URL = window.location.origin;
+        
         // 状态管理
-        const SERVER_URL = 'http://localhost:3000';
         var repo;
         let state = {
             wasmModule: null,
@@ -1089,6 +1095,32 @@
                             break;
                         case 'segment_failed':
                             handleSegmentFailed(msg);
+                            break;
+                        case 'needle_set':
+                            if (gl_canvas) {
+                                gl_canvas.set_new_needle(
+                                    state.indexValue, 0,
+                                    msg.x, msg.y, msg.z,
+                                    msg.lx, msg.ly, msg.lz,
+                                    msg.r, msg.g, msg.b
+                                );
+                            }
+                            // 把后端日志的 pos/dir/len/tip 显示到页面
+                            {
+                                const infoEl = document.getElementById('needle-api-info');
+                                const textEl = document.getElementById('needle-api-text');
+                                if (textEl) {
+                                    const fmt = (v) => (v === undefined ? '?' : Number(v).toFixed(2));
+                                    const dirArr = Array.isArray(msg.dir) ? msg.dir : [0, 0, 0];
+                                    textEl.textContent =
+                                        `id=${msg.id}\n` +
+                                        `entry=(${fmt(msg.x)}, ${fmt(msg.y)}, ${fmt(msg.z)}) mm\n` +
+                                        `dir=(${fmt(dirArr[0])}, ${fmt(dirArr[1])}, ${fmt(dirArr[2])})\n` +
+                                        `len=${fmt(msg.len_mm)}mm\n` +
+                                        `tip=(${fmt(msg.lx)}, ${fmt(msg.ly)}, ${fmt(msg.lz)}) mm`;
+                                }
+                                if (infoEl) infoEl.style.display = '';
+                            }
                             break;
                     }
                 } catch (e) {

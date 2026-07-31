@@ -19,13 +19,9 @@ pub struct StoredVolume {
     #[serde(skip_serializing)]
     pub mhx_path: Option<Vec<u8>>,
     pub data_path: Option<Vec<u8>>,
-    /// Absolute path on disk where the MHA file for this volume is persisted.
-    /// The Python AI service (`src/server/python/app.py`) reads from this
-    /// path; we populate it in `upload_volume` so that the same id is
-    /// usable as a `series_id` for `/api/segment` without any extra
-    /// round-trip.
+    /// Absolute path on disk where the MHA file for this volume is persisted
     #[serde(skip_serializing)]
-    pub mha_disk_path: Option<PathBuf>,
+    pub mha_disk_path: PathBuf,
     /// Timestamp when volume was loaded (ISO 8601)
     pub loaded_at: String,
     pub patient: Patient,
@@ -53,8 +49,6 @@ pub struct ServerState {
     pub ws_tx: broadcast::Sender<WsMessage>,
     /// Directory where uploaded MHA files 
     pub series_dir: PathBuf,
-    /// Whether to actually write MHA files to `series_dir`. 
-    pub persist_mha_to_disk: bool,
 }
 
 impl ServerState {
@@ -62,40 +56,7 @@ impl ServerState {
         let (ws_tx, _) = broadcast::channel(256);
 
         // Resolve the on-disk series directory
-        let series_dir_from_env = Some(PathBuf::from("C:/user/kepler_series"));
-
-        let (series_dir, using_fallback) = match series_dir_from_env {
-            Some(p) => {
-                (p, false)
-            },
-            None => (std::env::temp_dir().join("kepler_series"), true),
-        };
-
-        log::info!("Persisting uploaded MHAs under {:?}", series_dir);
-
-        if using_fallback {
-            eprintln!(
-                "\n\
-                 ============================================================\n\
-                 [kepler-wgpu] KEPLER_SERIES_DIR is not set.\n\
-                 [kepler-wgpu]   Uploaded volumes will be kept in memory only\n\
-                 [kepler-wgpu]   and NOT persisted to disk.\n\
-                 [kepler-wgpu]   The Python AI service (src/server/python/app.py)\n\
-                 [kepler-wgpu]   will not be able to read MHA files for\n\
-                 [kepler-wgpu]   segmentation.\n\
-                 [kepler-wgpu]\n\
-                 [kepler-wgpu]   If you need AI segmentation, set\n\
-                 [kepler-wgpu]     $env:KEPLER_SERIES_DIR = \"path\\\\to\\\\share\"\n\
-                 [kepler-wgpu]   on BOTH the Rust and Python terminals.\n\
-                 ============================================================\n"
-            );
-            log::warn!(
-                "KEPLER_SERIES_DIR not set; uploaded volumes stay in memory only. \
-                 Set KEPLER_SERIES_DIR on both Rust and Python sides if you need AI segmentation."
-            );
-        }
-
-        let persist_mha_to_disk = !using_fallback;
+        let series_dir = PathBuf::from("C:/user/kepler_series");
 
         Self {
             ai: Arc::new(AiService::new()),
@@ -104,7 +65,6 @@ impl ServerState {
             start_time: chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
             ws_tx,
             series_dir,
-            persist_mha_to_disk,
         }
     }
 
