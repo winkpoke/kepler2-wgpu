@@ -82,14 +82,6 @@ pub struct MipUniforms {
     pub rotation: [f32; 16],
 }
 
-const INIT_NEEDLE: NeedleUniform = NeedleUniform {
-    entry: [0.2, 0.3, 0.5],
-    radius: 0.004,
-    tip: [0.2, 0.5, 0.5],
-    id: 0,
-    color: [0.2, 0.9, 0.2, 1.0],
-};
-
 impl Default for MipUniforms {
     fn default() -> Self {
         Self {
@@ -109,7 +101,7 @@ impl Default for MipUniforms {
             needle_count: 0,
             _pad: 0.0,
             _pad2: 0.0,
-            needles: [INIT_NEEDLE; 32],
+            needles: [NeedleUniform::default(); 32],
             rotation: Mat4::IDENTITY.to_cols_array(),
         }
     }
@@ -425,7 +417,7 @@ impl MipView {
             self.needles.push(NeedleUniform { 
                 entry, 
                 tip: pos, 
-                radius: INIT_NEEDLE.radius, 
+                radius: NeedleUniform::default().radius, 
                 id, 
                 color});
         }
@@ -480,7 +472,7 @@ impl Renderable for MipView {
         let scale_texture = Mat4::from_scale(Vec3::new(1.0 / w_mm, 1.0 / h_mm, 1.0 / d_mm));
         let final_matrix = scale_texture * rotation * scale_viewport;
 
-        let mut gpu_needles = [INIT_NEEDLE; 32];
+        let mut gpu_needles = [NeedleUniform::default(); 32];
         for (i, needle) in self.needles.iter().take(32).enumerate() {
             gpu_needles[i] = NeedleUniform {
                 entry: needle.entry,
