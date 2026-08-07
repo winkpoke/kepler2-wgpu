@@ -131,10 +131,14 @@ impl MeshView {
             rotation_speed: FRAC_PI_2, // 90 degrees per second (only used when enabled)
             last_frame_time: Instant::now(),
             opacity: 1.0,
-            spine_lighting: BasicLightingUniforms { opacity: 0.4, ..Default::default() },
+            spine_lighting: BasicLightingUniforms::default(),
             roi_min: [0.0, 0.0, 0.0],
             roi_max: [1.0, 1.0, 1.0],
-            window_level: WindowLevel::new(),
+            window_level: WindowLevel {
+                window_level: 300.0,
+                window_width: 300.0,
+                ..Default::default()
+            },
             slab_thickness: 1.25,
             mode: 1,
             needle_enabled: 0.0,
@@ -165,7 +169,7 @@ impl MeshView {
 
     pub fn attach_needle_context(&mut self, ctx: MultiMeshContext) {
         self.needle_ctx= Some(Arc::new(Mutex::new(ctx)));
-        log::debug!("MeshView::attach_spine_context - Spine context attached successfully");
+        log::debug!("MeshView::attach_needle_context - Needle context attached successfully");
     }
 
     /// Cache the unit-needle mesh
@@ -190,8 +194,7 @@ impl MeshView {
                 glam::Vec3::from(n.entry),
                 glam::Vec3::from(n.tip),
                 n.radius,
-                // n.color,
-                [0.9, 0.2, 0.2, 1.0]
+                [1.0, 1.0, 1.0, 1.0]
             )
         }).collect();
         if let Ok(mut guard) = ctx.lock() {
@@ -503,6 +506,22 @@ impl MeshView {
         self.oblique_planes
     }
 
+    /// Set the slice-clip plane (UV-space `normal · x + d = 0`) used to clip
+    /// the spine mesh to a thin slab intersecting the current MPR plane.
+    pub fn set_slice_clip(
+        &self,
+        queue: &wgpu::Queue,
+        plane_normal: [f32; 3],
+        plane_d: f32,
+        enabled: bool,
+    ) {
+        if let Some(needle_ctx) = &self.needle_ctx {
+            if let Ok(mut guard) = needle_ctx.lock() {
+                guard.set_slice_plane(queue, plane_normal, plane_d, self.slab_thickness, enabled);
+            }
+        }
+    }
+
     pub fn set_needle_radius(&mut self, id: u32, radius: f32) {
         let needle = self.needles.iter_mut().find(|n| n.id == id);
         if let Some(needle) = needle {
@@ -511,11 +530,13 @@ impl MeshView {
         log::debug!("[NEEDLE]Mesh needle radius set to {:.6}", radius);
     }
 
-    pub fn set_needle_angle(&mut self, id: u32, angle: f32) {
+    pub fn set_needle_angle(&mut self, id: u32, angle: f32) -> (Vec3, f32) {
         if self.needle_enabled > 1.5 {
             self.needle_index = id;
             self.plane_rotation_angle = angle;
+            return self.needles[id as usize].plane_from_needle(angle);
         }
+        (Vec3::splat(0.0), 0.0)
     }
 
     pub fn set_window_level(&mut self, window: f32) -> KeplerResult<()> {
@@ -528,12 +549,6 @@ impl MeshView {
         let _ = self.window_level.set_window_width(window_width);
         log::info!("MIP window width set to {:.3}", window_width);
         Ok(())
-    }
-
-    pub(crate) fn mesh_model_matrix(volume_scale: Vec3) -> Mat4 {
-        let scale = Mat4::from_scale(volume_scale);
-        let translate = Mat4::from_translation(Vec3::splat(0.5) - volume_scale * 0.5);
-        translate * scale
     }
 
     /// Function-level comment: Update GPU uniforms for basic mesh rendering with combined MVP matrix
@@ -623,25 +638,19 @@ impl MeshView {
 
         // Spine mesh uniforms and lighting
         if let Some(spine_ctx) = &self.spine_ctx {
-            if let Ok(guard) = spine_ctx.lock() {
-                let model = Self::mesh_model_matrix(volume_scale);
-                let mvp = view_projection * model;
-                guard.update_uniforms(queue, &mvp.to_cols_array_2d());
+            if let Ok(mut guard) = spine_ctx.lock() {
+                guard.update_uniforms(queue, &view_projection.to_cols_array_2d());
+                self.spine_lighting.opacity = 1.0;
                 guard.update_lighting(queue, self.spine_lighting);
             }
         }
 
         // Needle mesh uniforms and lighting
         if let Some(needle_ctx) = &self.needle_ctx {
-            if let Ok(guard) = needle_ctx.lock() {
-                let model = Self::mesh_model_matrix(volume_scale);
-                let mvp = view_projection * model;
-                guard.update_uniforms(queue, &mvp.to_cols_array_2d());
-                let needle_lighting = BasicLightingUniforms {
-                    opacity: 1.0,
-                    ..self.spine_lighting
-                };
-                guard.update_lighting(queue, needle_lighting);
+            if let Ok(mut guard) = needle_ctx.lock() {
+                guard.update_uniforms(queue, &view_projection.to_cols_array_2d());
+                self.spine_lighting.opacity = 1.0;
+                guard.update_lighting(queue, self.spine_lighting);
             }
         }
     }
@@ -998,34 +1007,30 @@ mod tests {
     }
 
     /// Regression guard: the polygonal mesh `model_view_proj` must place the
-    /// `[0, 1]^3` texture box into the same world AABB the DVR uses
-    /// (`0.5 + (tex - 0.5) * volume_scale`, slab-aware), so the two passes
-    /// overlap exactly. If this drifts, the mesh and DVR will display with
-    /// different centers / sizes.
+    /// `[0, 1]^3` texture box into the same world AABB the DVR uses (the
+    /// identity, since both live in the same UV/world space). If this
+    /// drifts, the mesh and DVR will display with different centers/sizes
+    /// and the shared depth buffer can no longer be used for occlusion.
     #[test]
     fn test_spine_model_matches_dvr_aabb() {
-        // A representative slab-aware scale: square in-plane (vs.x = vs.y = 1),
-        // thinner Z (vs.z = 0.4). Looser relative magnitudes catch unrelated breakage.
-        let vs = Vec3::new(1.0, 0.8, 0.4);
-        let model = MeshView::mesh_model_matrix(vs);
+        // The model matrix is the identity in the shared `[0, 1]^3` UV
+        // space — both meshes and the DVR volume live in this space, so
+        // the model transform contributes nothing.
+        let model = Mat4::IDENTITY;
 
-        // Texture origin (0,0,0) → world minimum corner.
+        // Texture origin (0,0,0) → world minimum corner (still (0,0,0)).
         let origin = (model * Vec3::ZERO.extend(1.0)).truncate();
-        let origin_expected = Vec3::splat(0.5) - vs * 0.5;
         assert!(
-            origin.abs_diff_eq(origin_expected, 1e-6),
-            "origin should map to {:?}; got {:?}",
-            origin_expected,
+            origin.abs_diff_eq(Vec3::ZERO, 1e-6),
+            "origin should map to (0,0,0); got {:?}",
             origin,
         );
 
         // Texture corner (1,1,1) → world maximum corner.
         let corner = (model * Vec3::ONE.extend(1.0)).truncate();
-        let corner_expected = Vec3::splat(0.5) + vs * 0.5;
         assert!(
-            corner.abs_diff_eq(corner_expected, 1e-6),
-            "corner expected {:?}, got {:?}",
-            corner_expected,
+            corner.abs_diff_eq(Vec3::ONE, 1e-6),
+            "corner expected (1,1,1), got {:?}",
             corner,
         );
 
@@ -1037,12 +1042,9 @@ mod tests {
             center,
         );
 
-        // Confirm the mesh's AABB matches the DVR's AABB formula for any
-        // (tx, ty, tz) ∈ [0, 1]^3: world = 0.5 + (tex - 0.5) * vs.
-        //
-        // The spine mesh's local axes already align with the texture axes
-        // (u = rows/anatomical Y, v = cols/anatomical X, w = slices/anatomical Z),
-        // so the mesh-local coordinates are the texture coordinates directly.
+        // The mesh's local coordinates are the texture coordinates directly
+        // (the model matrix is the identity), so any (tx, ty, tz) in
+        // [0, 1]^3 should round-trip through the model matrix unchanged.
         let samples = [
             (0.0, 0.0, 0.0),
             (1.0, 0.0, 0.0),
@@ -1054,11 +1056,9 @@ mod tests {
         for (tx, ty, tz) in samples {
             let v = Vec3::new(tx, ty, tz);
             let world_from_mesh = (model * v.extend(1.0)).truncate();
-            let world_from_tex = Vec3::splat(0.5)
-                + (Vec3::new(tx, ty, tz) - Vec3::splat(0.5)) * vs;
             assert!(
-                world_from_mesh.abs_diff_eq(world_from_tex, 1e-5),
-                "tex=({tx},{ty},{tz}): mesh->{world_from_mesh:?} vs tex->{world_from_tex:?}",
+                world_from_mesh.abs_diff_eq(v, 1e-5),
+                "tex=({tx},{ty},{tz}): mesh->{world_from_mesh:?} expected {v:?}",
             );
         }
     }

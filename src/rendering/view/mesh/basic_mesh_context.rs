@@ -9,11 +9,23 @@ use wgpu::util::DeviceExt;
 use wgpu::{Device, Queue};
 
 /// Function-level comment: Simplified uniform data structure for basic mesh rendering
-/// Contains only a single combined model-view-projection matrix for efficient transformation
+/// Contains the combined model-view-projection matrix and an optional slice plane
+/// used to clip the mesh against the current MPR plane (volume-UV space).
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct BasicUniforms {
     pub model_view_proj: [[f32; 4]; 4],
+    /// Slice plane normal in `[0, 1]^3` volume-UV space.
+    pub plane_normal: [f32; 3],
+    /// `d` of the plane equation `normal · x + d = 0`.
+    pub plane_d: f32,
+    /// Half-thickness of the accepted slice in volume-UV units. The shader
+    /// keeps fragments with `|normal · x + d| <= slice_thickness * 0.5`.
+    pub slice_thickness: f32,
+    /// `1.0` enables slice clipping, `0.0` disables it (mesh rendered as-is).
+    pub slice_enabled: f32,
+    /// Pad the struct to a 16-byte boundary so the WGSL layout matches.
+    pub _pad: [f32; 2],
 }
 
 impl Default for BasicUniforms {
@@ -25,6 +37,11 @@ impl Default for BasicUniforms {
                 [0.0, 0.0, 1.0, 0.0],
                 [0.0, 0.0, 0.0, 1.0],
             ],
+            plane_normal: [0.0, 0.0, 1.0],
+            plane_d: 0.0,
+            slice_thickness: 0.0,
+            slice_enabled: 0.0,
+            _pad: [0.0; 2],
         }
     }
 }
@@ -43,6 +60,9 @@ pub struct BasicMeshContext {
     /// Function-level comment: Uniform buffer for lighting parameters
     pub lighting_uniform_buffer: wgpu::Buffer,
     pub lighting_bind_group: wgpu::BindGroup,
+    /// Cached CPU-side copy of the latest uniforms so that updating only the
+    /// MVP matrix preserves the slice plane configuration.
+    cached_uniforms: BasicUniforms,
 }
 
 impl BasicMeshContext {
@@ -160,17 +180,45 @@ impl BasicMeshContext {
             bind_group,
             lighting_uniform_buffer,
             lighting_bind_group,
+            cached_uniforms: default_uniforms,
         }
     }
 
     /// Function-level comment: Update uniforms with combined model-view-projection matrix
-    pub fn update_uniforms(&self, queue: &Queue, model_view_proj_matrix: &[[f32; 4]; 4]) {
-        let uniforms = BasicUniforms {
-            model_view_proj: *model_view_proj_matrix,
-        };
-
-        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
+    pub fn update_uniforms(&mut self, queue: &Queue, model_view_proj_matrix: &[[f32; 4]; 4]) {
+        // Preserve the most recent slice plane configuration; only the MVP matrix is refreshed.
+        self.cached_uniforms.model_view_proj = *model_view_proj_matrix;
+        queue.write_buffer(
+            &self.uniform_buffer,
+            0,
+            bytemuck::cast_slice(&[self.cached_uniforms]),
+        );
         log::trace!("Updated basic mesh uniforms with MVP matrix");
+    }
+
+    /// Configure the slice plane used by the fragment shader to clip the mesh
+    /// to a thin slab around the current MPR plane (in `[0, 1]^3` UV space).
+    ///
+    /// `plane_normal` must be unit length. `thickness` is the total slab
+    /// thickness in UV units (0.003 ≈ 0.77 mm for a 256 mm volume). When
+    /// `enabled` is `false` the mesh is rendered in full.
+    pub fn set_slice_plane(
+        &mut self,
+        queue: &Queue,
+        plane_normal: [f32; 3],
+        plane_d: f32,
+        thickness: f32,
+        enabled: bool,
+    ) {
+        self.cached_uniforms.plane_normal = plane_normal;
+        self.cached_uniforms.plane_d = plane_d;
+        self.cached_uniforms.slice_thickness = thickness.max(0.0);
+        self.cached_uniforms.slice_enabled = if enabled { 1.0 } else { 0.0 };
+        queue.write_buffer(
+            &self.uniform_buffer,
+            0,
+            bytemuck::cast_slice(&[self.cached_uniforms]),
+        );
     }
 
     pub fn update_lighting(&self, queue: &Queue, uniforms: BasicLightingUniforms) {
@@ -220,11 +268,17 @@ struct MeshSlot {
 
 pub struct MultiMeshContext {
     pipeline: std::sync::Arc<wgpu::RenderPipeline>,
+    /// Pipeline variant without depth-stencil attachment, for use in render
+    /// passes that don't have a depth buffer (e.g. MPR slice overlay).
+    pipeline_no_depth: std::sync::Arc<wgpu::RenderPipeline>,
     slots: Vec<MeshSlot>,
     uniform_buffer: wgpu::Buffer,
     bind_group: wgpu::BindGroup,
     lighting_uniform_buffer: wgpu::Buffer,
     lighting_bind_group: wgpu::BindGroup,
+    /// Cached CPU-side copy of the latest uniforms so that updating only the
+    /// MVP matrix preserves the slice plane configuration.
+    cached_uniforms: BasicUniforms,
 }
 
 impl MultiMeshContext {
@@ -235,7 +289,12 @@ impl MultiMeshContext {
                 label: Some("MultiMesh MVP Layout"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    // The MVP/plane uniforms are read by both the vertex
+                    // stage (clip-space transform) and the fragment stage
+                    // (slice-plane discard), so the binding must be visible
+                    // to both stages.
+                    visibility: wgpu::ShaderStages::VERTEX
+                        | wgpu::ShaderStages::FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -249,6 +308,13 @@ impl MultiMeshContext {
 
         let pipeline = std::sync::Arc::new(create_basic_mesh_pipeline_with_lighting(
             device, &bind_group_layout, &lighting_layout, /*use_depth=*/ true,
+            wgpu::CompareFunction::LessEqual,
+        ));
+
+        // Second pipeline variant without depth-stencil attachment, for use
+        // in render passes that don't have a depth buffer (e.g. MPR overlay).
+        let pipeline_no_depth = std::sync::Arc::new(create_basic_mesh_pipeline_with_lighting(
+            device, &bind_group_layout, &lighting_layout, /*use_depth=*/ false,
             wgpu::CompareFunction::Always,
         ));
 
@@ -290,9 +356,10 @@ impl MultiMeshContext {
         });
 
         Self {
-            pipeline, slots: Vec::new(),
+            pipeline, pipeline_no_depth, slots: Vec::new(),
             uniform_buffer, bind_group,
             lighting_uniform_buffer, lighting_bind_group,
+            cached_uniforms: BasicUniforms::default(),
         }
     }
 
@@ -326,9 +393,37 @@ impl MultiMeshContext {
         }
     }
 
-    pub fn update_uniforms(&self, queue: &Queue, mvp: &[[f32; 4]; 4]) {
-        queue.write_buffer(&self.uniform_buffer, 0,
-            bytemuck::cast_slice(&[BasicUniforms { model_view_proj: *mvp }]));
+    pub fn update_uniforms(&mut self, queue: &Queue, mvp: &[[f32; 4]; 4]) {
+        // Preserve the most recent slice plane configuration; only the MVP
+        // matrix is updated.
+        self.cached_uniforms.model_view_proj = *mvp;
+        queue.write_buffer(
+            &self.uniform_buffer,
+            0,
+            bytemuck::cast_slice(&[self.cached_uniforms]),
+        );
+    }
+
+    /// Configure the slice plane used by the fragment shader to clip every
+    /// mesh in this context to a thin slab around the current MPR plane
+    /// (in `[0, 1]^3` UV space).
+    pub fn set_slice_plane(
+        &mut self,
+        queue: &Queue,
+        plane_normal: [f32; 3],
+        plane_d: f32,
+        thickness: f32,
+        enabled: bool,
+    ) {
+        self.cached_uniforms.plane_normal = plane_normal;
+        self.cached_uniforms.plane_d = plane_d;
+        self.cached_uniforms.slice_thickness = thickness.max(0.0);
+        self.cached_uniforms.slice_enabled = if enabled { 1.0 } else { 0.0 };
+        queue.write_buffer(
+            &self.uniform_buffer,
+            0,
+            bytemuck::cast_slice(&[self.cached_uniforms]),
+        );
     }
 
     pub fn update_lighting(&self, queue: &Queue, l: BasicLightingUniforms) {
@@ -338,6 +433,20 @@ impl MultiMeshContext {
 
     pub fn render(&self, render_pass: &mut wgpu::RenderPass) {
         render_pass.set_pipeline(&self.pipeline);
+        render_pass.set_bind_group(0, &self.bind_group, &[]);
+        render_pass.set_bind_group(1, &self.lighting_bind_group, &[]);
+        for s in &self.slots {
+            if !s.visible || s.num_indices == 0 { continue; }
+            render_pass.set_vertex_buffer(0, s.vertex_buffer.slice(..));
+            render_pass.set_index_buffer(s.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            render_pass.draw_indexed(0..s.num_indices, 0, 0..1);
+        }
+    }
+
+    /// Render using the pipeline variant without depth-stencil attachment.
+    /// For use in render passes that don't have a depth buffer (e.g. MPR overlay).
+    pub fn render_no_depth(&self, render_pass: &mut wgpu::RenderPass) {
+        render_pass.set_pipeline(&self.pipeline_no_depth);
         render_pass.set_bind_group(0, &self.bind_group, &[]);
         render_pass.set_bind_group(1, &self.lighting_bind_group, &[]);
         for s in &self.slots {

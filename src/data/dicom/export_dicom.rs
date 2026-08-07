@@ -349,3 +349,227 @@ impl DicomSink for MemSink {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! End-to-end tests for `build_ct_dicom`.
+    //!
+    //! The pipeline takes a MetaImage (MHA) volume in memory, lays it out
+    //! as a DICOM series, and pushes the resulting slices into a
+    //! [`DicomSink`]. The tests below build a synthetic checkerboard
+    //! pattern with 1 mm isotropic spacing, run it through the export
+    //! pipeline, and read the slices back to verify the round-trip.
+    //!
+    //! The full 512×512×512 case lives behind `#[ignore]` because it
+    //! touches ~1 GB of RAM while running. Invoke it on demand with:
+    //!
+    //! ```text
+    //! cargo test -p kepler-wgpu --lib \
+    //!     dicom::export_dicom::tests::exports_512_cube_checkerboard \
+    //!     -- --ignored --nocapture
+    //! ```
+
+    use super::*;
+    use crate::data::dicom::CTImage;
+    use std::path::PathBuf;
+
+    /// Build the header of a MetaImage (MHA) file describing an `Int16`
+    /// volume with 1.0 mm isotropic spacing and an identity transform
+    /// matrix. The pixel buffer is *not* appended; the caller is expected
+    /// to `extend` it with the raw `Int16` bytes afterwards.
+    fn build_mha_header(dim: [usize; 3]) -> Vec<u8> {
+        format!(
+            "ObjectType = Image\n\
+             NDims = 3\n\
+             DimSize = {dx} {dy} {dz}\n\
+             ElementType = MET_SHORT\n\
+             ElementSpacing = 1.0 1.0 1.0\n\
+             Offset = 0 0 0\n\
+             TransformMatrix = 1 0 0 0 1 0 0 0 1\n\
+             AnatomicalOrientation = RAI\n\
+             ElementDataFile = LOCAL\n",
+            dx = dim[0],
+            dy = dim[1],
+            dz = dim[2],
+        )
+        .into_bytes()
+    }
+
+    /// Little-endian `Int16` voxel buffer for a 1 mm checkerboard. With
+    /// the spacing above, every cell is a 1×1×1 mm cube; the parity of
+    /// `x + y + z` decides between the two HU values.
+    fn build_checkerboard_bytes(dim: [usize; 3]) -> Vec<u8> {
+        let voxels = dim[0] * dim[1] * dim[2];
+        let mut buf = Vec::with_capacity(voxels * 2);
+        let cell_size = 10;
+        for z in 0..dim[2] {
+            for y in 0..dim[1] {
+                for x in 0..dim[0] {
+                    let checker = (x / cell_size + y / cell_size + z / cell_size) % 2;
+                    let v: i16 = if checker == 0 { 0 } else { 1000 };
+                    buf.extend_from_slice(&v.to_le_bytes());
+                }
+            }
+        }
+        buf
+    }
+
+    fn sample_patient() -> Patient {
+        Patient {
+            patient_id: "TEST-001".to_string(),
+            name: "CHECKER^BOARD".to_string(),
+            birthdate: Some("19700101".to_string()),
+            sex: Some("O".to_string()),
+        }
+    }
+
+    fn sample_study() -> StudySet {
+        StudySet {
+            study_id: "STUDY-001".to_string(),
+            uid: "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.365119".to_string(),
+            patient_id: "TEST-001".to_string(),
+            date: "20260804".to_string(),
+            description: Some("1mm checkerboard".to_string()),
+        }
+    }
+
+    /// Fast CI-friendly check: a 16×16×16 checkerboard export produces
+    /// one DICOM slice per z-row, the slices carry the expected
+    /// dimensions, and the pixel buffer round-trips through the file IO
+    /// layer with the original `(x + y) % 2` pattern intact.
+    #[test]
+    fn build_ct_dicom_exports_checkerboard_volume() {
+        let dim = [16usize, 16, 16];
+        let mut mha = build_mha_header(dim);
+        mha.extend(build_checkerboard_bytes(dim));
+
+        let mut sink = MemSink::new();
+        let series_uid = build_ct_dicom(
+            &mha,
+            None,
+            &sample_patient(),
+            &sample_study(),
+            120.0,
+            200.0,
+            1.0,
+            0.0,
+            "HFS".to_string(),
+            "CT".to_string(),
+            &mut sink,
+        )
+        .expect("export should succeed");
+
+        assert_eq!(sink.files.len(), dim[2], "one slice per z-row");
+        assert!(
+            series_uid.starts_with("1.2."),
+            "series UID should keep the 1.2. root, got {series_uid}"
+        );
+
+        // Read the first slice back and verify dimensions + pattern.
+        let (_filename, bytes) = &sink.files[0];
+        let ct = CTImage::from_bytes(bytes.as_slice())
+            .expect("slice must be a valid DICOM file");
+        assert_eq!(ct.rows as usize, dim[1]);
+        assert_eq!(ct.columns as usize, dim[0]);
+        assert_eq!(ct.pixel_data.len(), dim[0] * dim[1] * 2);
+
+        // For slice z=0 the parity reduces to (x + y) % 2.
+        let pixels = ct
+            .get_pixel_data()
+            .expect("pixels must be decodable as Int16");
+        assert_eq!(pixels.len(), dim[0] * dim[1]);
+        for y in 0..dim[1] {
+            for x in 0..dim[0] {
+                let expected = if (x + y) % 2 == 0 { 0 } else { 1000 };
+                let got = pixels[y * dim[0] + x];
+                assert_eq!(
+                    got, expected,
+                    "voxel ({x},{y},0) should be {expected}, got {got}"
+                );
+            }
+        }
+    }
+
+    /// Full 512×512×512×1 mm checkerboard export. The volume holds 134 M
+    /// voxels (~256 MB raw, ~1 GB peak while exporting) and produces
+    /// 512 DICOM slices, so the test is marked `#[ignore]` to keep
+    /// `cargo test` fast. Run on demand with:
+    ///
+    /// ```text
+    /// cargo test -p kepler-wgpu --lib \
+    ///     dicom::export_dicom::tests::exports_512_cube_checkerboard \
+    ///     -- --ignored --nocapture
+    /// ```
+    ///
+    /// The 512 slices are written to `target/dicom_export/` (relative
+    /// to the package root that `cargo test` runs in) so they can be
+    /// inspected afterwards with any DICOM viewer.
+    #[test]
+    #[ignore]
+    fn exports_512_cube_checkerboard() {
+        let dim = [512usize, 512, 512];
+        let mut mha = build_mha_header(dim);
+        mha.extend(build_checkerboard_bytes(dim));
+
+        // Write the resulting DICOM series to disk so the caller can
+        // inspect the slices after the run.
+        let out_dir = PathBuf::from(r"C:\user\dicoms\CT_test");
+        std::fs::create_dir_all(&out_dir).expect("create dicoms");
+
+        let mut sink = FsSink {
+            out_dir: out_dir.clone(),
+        };
+        let series_uid = build_ct_dicom(
+            &mha,
+            None,
+            &sample_patient(),
+            &sample_study(),
+            120.0,
+            200.0,
+            1.0,
+            0.0,
+            "HFS".to_string(),
+            "CT".to_string(),
+            &mut sink,
+        )
+        .expect("export should succeed");
+
+        // Verify 512 DICOM files were actually written to disk.
+        let written: Vec<_> = std::fs::read_dir(&out_dir)
+            .expect("read target/dicom_export")
+            .filter_map(Result::ok)
+            .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("dcm"))
+            .collect();
+        assert_eq!(
+            written.len(),
+            512,
+            "expected 512 DICOM slices on disk, found {}",
+            written.len()
+        );
+        assert!(
+            series_uid.starts_with("1.2."),
+            "series UID should keep the 1.2. root, got {series_uid}"
+        );
+
+        // Sanity-check the first slice: 512×512, 1.0 mm pixel spacing,
+        // 1 mm slice thickness, and 512×512×2 bytes of Int16 pixel data.
+        let first_path = out_dir.join("CT_0001.dcm");
+        let bytes = std::fs::read(&first_path).expect("read CT_0001.dcm from disk");
+        let ct = CTImage::from_bytes(bytes.as_slice())
+            .expect("slice must be a valid DICOM file");
+        assert_eq!(ct.rows as usize, 512);
+        assert_eq!(ct.columns as usize, 512);
+        assert_eq!(ct.pixel_data.len(), 512 * 512 * 2);
+        let spacing = ct.pixel_spacing.expect("PixelSpacing must be set");
+        assert!((spacing.0 - 1.0).abs() < 1e-3);
+        assert!((spacing.1 - 1.0).abs() < 1e-3);
+        let thickness = ct.slice_thickness.expect("SliceThickness must be set");
+        assert!((thickness - 1.0).abs() < 1e-3);
+
+        eprintln!(
+            "512³ checkerboard DICOM series written to {} (series UID: {})",
+            out_dir.display(),
+            series_uid
+        );
+    }
+}

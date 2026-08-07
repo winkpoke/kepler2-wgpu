@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-08-06T16-05-00
+- **Unify Mesh/Volume in `[0, 1]^3` UV-Space**
+  - Removed the `volume_scale` AABB remap from `MeshView::update_uniforms` and the
+    `MeshUniforms` struct. The model matrix is now the identity in `[0, 1]^3`
+    UV/world space, so the volume and the spine/needle meshes all share the
+    same `model_view_proj` (the camera's view-projection matrix).
+  - `volume.wgsl` builds ray origins/directions via the inverse of that
+    shared matrix and projects the first hit through the same matrix to
+    write `frag_depth`; `mesh_basic.wgsl` reads its clip-space position
+    through the same matrix, so the two passes produce directly comparable
+    depth values in the shared depth attachment.
+  - `instance_for_needle` and `set_needle_radius` continue to operate in
+    UV space (entry/tip/radius converted from mm on the CPU side by
+    `App::set_new_needle_mm` and `App::set_needle_radius`).
+  - `test_spine_model_matches_dvr_aabb` rewritten to assert the identity
+    model matrix and that the mesh round-trips any `[0, 1]^3` coordinate
+    unchanged, locking in the unified-space contract.
+  - Files:
+    - `src/rendering/view/mesh/mesh_view.rs`
+    - `src/rendering/view/mesh/mesh.rs`
+    - `src/rendering/view/mesh/basic_mesh_context.rs`
+    - `src/rendering/shaders/volume.wgsl`
+    - `src/rendering/shaders/mesh_basic.wgsl`
+
 ## 2026-06-16T16-00-00
 - **Add Oblique Cutting Plane to 3D Mesh View (REQ-025/026/027)**
   - Added a second plane-quad overlay to `dvr_ray_march` in `mesh.wgsl`. The new plane is driven by `u_vol.oblique_center`, `u_vol.oblique_normal`, `u_vol.oblique_visible`, and `u_vol.oblique_alpha`.

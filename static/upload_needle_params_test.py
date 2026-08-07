@@ -17,7 +17,8 @@ cargo run -- server
 python scripts/upload_needle_params_test.py
 """
 
-import argparse
+import random
+import time
 import json
 import math
 import os
@@ -137,12 +138,105 @@ def post_json(name: str, payload=None, data=None, headers=None, expect: int = 20
           f"实际 {resp.status_code}")
     return resp, body
 
+def scenario1_stream(rate_hz: float = 40.0):
+    """
+    持续模拟设备发送针参数
+
+    频率:
+        40Hz
+
+    position:
+        x,y,z ∈ [-400,400] mm
+
+    orientation:
+        a,b,c ∈ [-10,10] deg
+    """
+
+    interval = 1.0 / rate_hz
+    frame_seq = 0
+
+    print(f"开始模拟针数据发送: {rate_hz} Hz")
+    print("Ctrl+C 停止\n")
+
+    try:
+        while True:
+
+            frame_seq += 1
+
+            # 随机位置 mm
+            pos = (
+                random.uniform(-400.0, 400.0),
+                random.uniform(-400.0, 400.0),
+                random.uniform(-400.0, 400.0),
+            )
+
+            # 随机欧拉角 deg
+            ori = (
+                random.uniform(-10.0, 10.0),
+                random.uniform(-10.0, 10.0),
+                random.uniform(-10.0, 10.0),
+            )
+
+
+            payload = {
+                "frame_sequence": frame_seq,
+
+                "position": {
+                    "x": pos[0],
+                    "y": pos[1],
+                    "z": pos[2],
+                    "unit": "mm",
+                },
+
+                "orientation": {
+                    "a": ori[0],
+                    "b": ori[1],
+                    "c": ori[2],
+                    "unit": "deg",
+                },
+
+                "coordinate_frame": "patient",
+            }
+
+
+            t0 = time.perf_counter()
+
+            resp, body = post_json(
+                f"frame {frame_seq}",
+                payload=payload
+            )
+
+
+            if body is not None:
+                check(
+                    "status == ok",
+                    body.get("status") == "ok",
+                    str(body.get("status"))
+                )
+
+
+            # 保证40Hz
+            elapsed = time.perf_counter() - t0
+            delay = interval - elapsed
+
+            if delay > 0:
+                time.sleep(delay)
+
+
+    except KeyboardInterrupt:
+        print("\n停止发送")
 
 def scenario1_full() -> None:
     """完整参数：全部字段 → 200，且 len_mm==120、id 回显、坐标与本地复算一致。"""
     frame_seq = 3
-    pos = (10.0, 100.0, 20.0)
-    ori = (0.0, 0.0, 60.0)
+    pos = (-45.0, 25.0, 0.0)
+    ori = (0.0, 45.0, 0.0)
+    # pos = (0.0, 0.0, -60.0)
+    # pos = (0.0, 0.0, -124.0)
+    # pos = (0.0, 0.0, -97.0)
+    # ori = (45.0, 0.0, 0.0)
+    # pos = (0.0, 0.0, -124.0)
+    # ori = (90.0, 0.0, 0.0)
     payload = {
         "frame_sequence": frame_seq,
         "position": {"x": pos[0], "y": pos[1], "z": pos[2], "unit": "mm"},
@@ -167,7 +261,7 @@ def scenario1_full() -> None:
     check_coord(body.get("tip"), exp_tip, "tip")
 
 if __name__ == "__main__":
-    scenario1_full()
+    scenario1_stream(40.0)
     print("\n" + "=" * 64)
     print(f"汇总: PASS={_PASS}  FAIL={_FAIL}")
     print("=" * 64)

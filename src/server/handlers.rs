@@ -229,7 +229,7 @@ pub async fn upload_needle_params(
         return Err(StatusCode::BAD_REQUEST);
     };
 
-    let len = 120.0;
+    let len = 400.0;
     let rx = dir.0.to_radians();
     let ry = dir.1.to_radians();
     let rz = dir.2.to_radians();
@@ -243,23 +243,15 @@ pub async fn upload_needle_params(
 
     let dir_vec = (rot * glam::Vec3::Z).normalize();
 
-    let center = glam::Vec3::new(
-        pos.0,
-        pos.1,
-        pos.2,
-    );
-
-    let half_len = len * 0.5;
-
-    let entry = center - dir_vec * half_len;
-    let tip = center + dir_vec * half_len;
+    let tip = glam::Vec3::new(pos.0, pos.1, pos.2);
+    let entry = tip - dir_vec * len;
 
     debug_assert!(
         (tip - entry).length() - len < 0.001,
     );
 
-    let entry = (entry.x - 30.0, entry.y +100.0, - entry.z);
-    let tip = (tip.x - 30.0, tip.y + 100.0, - tip.z);
+    let entry = (entry.x + 256.0, -entry.z + 306.0, - entry.y + 256.0);
+    let tip = (tip.x + 256.0, -tip.z + 306.0, - tip.y + 256.0);
 
     log::info!(
         "Needle params: entry: {:?}, dir: {:?}, len: {:.1}mm, tip: {:?}",

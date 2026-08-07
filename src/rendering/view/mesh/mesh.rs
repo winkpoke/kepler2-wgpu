@@ -475,14 +475,12 @@ impl Mesh {
             return Err("OBJ mesh has zero or invalid extent".into());
         }
 
-        // Normalize all meshes to [-1, 1] range centered at origin (matching MC normalization).
-        // After centering, extent is [-max_dim/2, max_dim/2]; multiply by 2/max_dim to get [-1, 1].
-        let norm_scale = 2.0 / max_dim;
+        let volume_size_mm = Vec3::new(512.0, 512.0, 512.0);
         for mesh in &mut result {
             for v in &mut mesh.vertices {
-                let mut p = glam::Vec3::from(v.position);
-                p = (p - center) * norm_scale;
-                v.position = p.to_array();
+                let p = Vec3::from(v.position);
+                let uv = (p + volume_size_mm * 0.5) / volume_size_mm;
+                v.position = uv.to_array();
             }
         }
 

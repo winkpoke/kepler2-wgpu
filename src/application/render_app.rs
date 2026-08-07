@@ -260,9 +260,9 @@ impl RenderApp {
                     state.set_needle_radius(id, radius);
                     log::info!("Mesh needle radius set to {:.3}", radius);
                 }
-                Event::UserEvent(UserEvent::SetMeshNeedleAngle(_index, id, angle)) => {
-                    state.set_needle_angle(id, angle);
-                    log::info!("Mesh needle {} angle set: {}°",id, angle);
+                Event::UserEvent(UserEvent::SetMeshNeedleAngle(index, id, angle)) => {
+                    state.set_needle_angle(index, id, angle);
+                    log::info!("Mesh view {} set needle {} angle: {}°", index, id, angle);
                 }
                 Event::UserEvent(UserEvent::SetSegmentationAll(raw)) => {
                     state.set_ai_segmentation(raw);

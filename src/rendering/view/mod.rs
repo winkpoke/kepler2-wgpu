@@ -84,6 +84,16 @@ impl Default for NeedleUniform {
     }
 }
 
+impl NeedleUniform{
+    pub fn plane_from_needle(&self, angle_rad: f32) -> (glam::Vec3, f32) {
+        let axis = (glam::Vec3::from(self.tip) - glam::Vec3::from(self.entry)).normalize();
+        let ref_vec = glam::Quat::from_axis_angle(axis, angle_rad) * glam::Vec3::new(1.0, 0.0, 0.0);
+        let normal = axis.cross(ref_vec).normalize();
+        let d = -normal.dot(glam::Vec3::from(self.tip));
+        (normal, d)
+    }
+}
+
 // Oblique plane module
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]

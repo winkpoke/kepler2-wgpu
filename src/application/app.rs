@@ -1060,24 +1060,46 @@ impl App {
         );
     }
 
-    pub fn set_needle_angle(&mut self, id: u32, angle: f32) {
+    pub fn set_needle_angle(&mut self, index: usize, id: u32, angle: f32){
+        let mut normal = glam::Vec3::splat(0.0);
+
         if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
-            mesh_view.set_needle_angle(id, angle);
-            log::info!("Mesh needle {} angle set: {}", id, angle);
+            (normal, _) = mesh_view.set_needle_angle(id, angle);
         };
+        if let Some(view) = self.app_view.layout.views_mut().get_mut(index){
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_oblique_normal(normal);
+            }
+        }
     }
 
     pub fn set_obj_mesh(&mut self, raw: Vec<u8>) {
         let device = &self.graphics_context.graphics.device;
+        let queue = self.graphics_context.graphics.queue.clone();
         let meshes: Vec<Mesh> = bincode::deserialize(&raw).unwrap();
-        let unit = match meshes.into_iter().next() {
-            Some(u) => u,
-            None => { log::warn!("set_obj_mesh: OBJ 里没有任何 mesh"); return; }
-        };
+        self.current_meshes = Arc::new(meshes);
+        // let unit = match meshes.into_iter().next() {
+        //     Some(u) => u,
+        //     None => { log::warn!("set_obj_mesh: OBJ 里没有任何 mesh"); return; }
+        // };
         for view in self.app_view.layout.views_mut().iter_mut() {
             if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
-                mesh_view.set_needle_unit_mesh(unit.clone());
-                mesh_view.rebuild_needle_meshes(&device);
+                // mesh_view.set_needle_unit_mesh(unit.clone());
+                // mesh_view.rebuild_needle_meshes(&device);
+                mesh_view.set_meshes(device, self.current_meshes.clone());
+            }
+        }
+
+        for view in self.app_view.layout.views_mut().iter_mut() {
+            let (normal, d) = if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_mesh(device, &queue, self.current_meshes.clone());
+                mpr_view.set_mesh_overlay(true, 1.0);
+                mpr_view.get_slice_plane_uv()
+            } else {
+                continue;
+            };
+            if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view.set_slice_clip(&queue, normal.to_array(), d, true);
             }
         }
     }
