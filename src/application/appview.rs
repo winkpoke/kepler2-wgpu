@@ -495,21 +495,21 @@ impl AppView {
             LayoutContainer::add_view(&mut self.layout, view);
         }
 
-        let view_col = self.view_factory.create_mpr_view(
-            vol_3,
-            Orientation::Coronal,
-            (0, 0),
-            (0, 0),
-        )?;
-        LayoutContainer::add_view(&mut self.layout, view_col);
+        // let view_col = self.view_factory.create_mpr_view(
+        //     vol_3,
+        //     Orientation::Coronal,
+        //     (0, 0),
+        //     (0, 0),
+        // )?;
+        // LayoutContainer::add_view(&mut self.layout, view_col);
         
-        let view_sag = self.view_factory.create_mpr_view(
-            vol_3,
-            Orientation::Sagittal,
-            (0, 0),
-            (0, 0),
-        )?;
-        LayoutContainer::add_view(&mut self.layout, view_sag);
+        // let view_sag = self.view_factory.create_mpr_view(
+        //     vol_3,
+        //     Orientation::Sagittal,
+        //     (0, 0),
+        //     (0, 0),
+        // )?;
+        // LayoutContainer::add_view(&mut self.layout, view_sag);
 
 
         let _ = self.set_window_level(1, 13310.0);

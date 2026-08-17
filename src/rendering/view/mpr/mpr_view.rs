@@ -438,25 +438,44 @@ impl MprView {
             return;
         };
 
-        // Reconstruct the same transform matrix the slice uses.
-        let y_flip = Mat4::from_translation(Vec3::new(0.0, 0.0, 1.0)) * Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0));
-        let t_pan = Mat4::from_translation(-self.pan);
-        let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
-        let s_scale = Mat4::from_scale(Vec3::splat(self.scale).with_z(1.0));
-        let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
-        let screen_to_uv = self.base_uv.inverse()
-            * self.base_screen
-            * t_pan
-            * t_center
-            * s_scale
-            * t_uncenter;
-        let mvp = y_flip * screen_to_uv.inverse() * Mat4::from_translation(Vec3::new(-1.0, -1.0, 0.0)) * Mat4::from_scale(Vec3::splat(2.0));
+        let mvp = Self::compute_mesh_overlay_mvp(
+            self.base_uv,
+            self.base_screen,
+            self.scale,
+            self.pan,
+        );
 
         let (normal, d) = self.get_slice_plane_uv();
         if let Ok(mut guard) = ctx_arc.lock() {
             guard.update_uniforms(queue, &mvp.to_cols_array_2d());
             guard.set_slice_plane(queue, normal.to_array(), d, self.mesh_overlay_thickness, true);
         }
+    }
+
+    /// Pure (no-GPU) implementation of the mesh overlay MVP
+    pub(crate) fn compute_mesh_overlay_mvp(
+        base_uv: Mat4,
+        base_screen: Mat4,
+        scale: f32,
+        pan: Vec3,
+    ) -> Mat4 {
+        let y_flip = Mat4::from_translation(Vec3::new(0.0, 1.0, 0.0))
+            * Mat4::from_scale(Vec3::new(1.0, -1.0, 0.0));
+        let t_pan = Mat4::from_translation(-pan);
+        let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
+        let s_scale = Mat4::from_scale(Vec3::splat(scale).with_z(1.0));
+        let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
+        let screen_to_uv = base_uv.inverse() * base_screen * t_pan * t_center * s_scale * t_uncenter;
+
+        // A * T(pan) * A^-1 == translation by A's linear part applied to pan.
+        // Composed left of M^-1 this doubles the pan reaching the mesh:
+        // M^-1 * T(A*pan) = Z^-1 * T(pan) * A^-1 * T(A*pan) = Z^-1 * T(2*pan) * A^-1.
+        let base = base_uv.inverse() * base_screen;
+        let pan_uv = Mat4::from_translation(base.transform_vector3(pan));
+
+        y_flip * screen_to_uv.inverse() * pan_uv
+            * Mat4::from_translation(Vec3::new(-1.0, -0.5, 0.0))
+            * Mat4::from_scale(Vec3::splat(2.0))
     }
 
     pub fn set_aliasing(&mut self, aliasing: bool) {
@@ -1402,5 +1421,60 @@ mod tests {
             "expected ~0.25 distance for z=0.75, got {}",
             far_dist
         );
+    }
+
+    /// Regression guard: the mesh overlay must pan at the same rate as the
+    /// slice image. The slice quad samples `uv = M * t`, so pan `p` moves
+    /// the volume image by `2 * p / scale` NDC units (texcoord span [0,1]
+    /// covers 2 NDC units). Feeding `M⁻¹` straight into the raster MVP
+    /// moves the mesh only `p / scale` — half the rate (the bug this
+    /// guards). Signs must match too: quad texcoord y is top-down, so a
+    /// positive pan.y moves both images toward −NDC.y.
+    #[test]
+    fn test_mesh_overlay_pan_rate_matches_slice() {
+        let base_uv = fake_base_uv();
+        let base_screen = fake_base_screen();
+        let vertex = Vec3::new(0.3, 0.6, 0.5);
+
+        for scale in [1.0_f32, 2.0, 0.5] {
+            let mvp0 = MprView::compute_mesh_overlay_mvp(base_uv, base_screen, scale, Vec3::ZERO);
+            let mvp = MprView::compute_mesh_overlay_mvp(
+                base_uv,
+                base_screen,
+                scale,
+                Vec3::new(0.25, 0.25, 0.0),
+            );
+            let c0 = mvp0.transform_point3(vertex);
+            let c1 = mvp.transform_point3(vertex);
+
+            let expected = 2.0 * 0.25 / scale;
+            assert!(
+                (c1.x - c0.x - expected).abs() < 1e-5,
+                "scale {scale}: mesh pan.x moved {} expected {expected}",
+                c1.x - c0.x,
+            );
+            assert!(
+                (c1.y - c0.y + expected).abs() < 1e-5,
+                "scale {scale}: mesh pan.y moved {} expected {}",
+                c1.y - c0.y,
+                -expected,
+            );
+        }
+
+        // Static layout invariance: at pan == 0 the correction term must be
+        // the identity, i.e. the same MVP the previous construction built.
+        let pan0 = MprView::compute_mesh_overlay_mvp(base_uv, base_screen, 1.0, Vec3::ZERO);
+        let y_flip = Mat4::from_translation(Vec3::new(0.0, 1.0, 0.0))
+            * Mat4::from_scale(Vec3::new(1.0, -1.0, 0.0));
+        let zoom = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0))
+            * Mat4::from_scale(Vec3::splat(1.0_f32).with_z(1.0))
+            * Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
+        let legacy = y_flip
+            * (base_uv.inverse() * base_screen * zoom).inverse()
+            * Mat4::from_translation(Vec3::new(-1.0, -0.5, 0.0))
+            * Mat4::from_scale(Vec3::splat(2.0));
+        for (a, b) in pan0.to_cols_array().iter().zip(legacy.to_cols_array().iter()) {
+            assert!((a - b).abs() < 1e-6, "pan=0 MVP changed: {a} vs {b}");
+        }
     }
 }

@@ -551,6 +551,11 @@ impl MeshView {
         Ok(())
     }
 
+    /// Mesh-only view projection that matches the DVR volume's screen mapping.
+    fn mesh_view_projection(&self, aspect_ratio: f32) -> Mat4 {
+        Mat4::from_scale(Vec3::new(1.0, -1.0, 1.0)) * self.camera.view_projection_matrix(aspect_ratio)
+    }
+
     /// Function-level comment: Update GPU uniforms for basic mesh rendering with combined MVP matrix
     /// Includes rotation if enabled, using frame-rate independent timing
     pub fn update_uniforms(&mut self, queue: &wgpu::Queue) {
@@ -636,19 +641,21 @@ impl MeshView {
             vol_ctx.update_uniforms(queue, &vol_uniforms);
         }
 
-        // Spine mesh uniforms and lighting
+        // Spine mesh uniforms and lighting. The mesh MVP carries the clip-space
+        // Y flip so meshes track the DVR volume's mirrored screen mapping.
+        let mesh_vp = self.mesh_view_projection(aspect_ratio);
         if let Some(spine_ctx) = &self.spine_ctx {
             if let Ok(mut guard) = spine_ctx.lock() {
-                guard.update_uniforms(queue, &view_projection.to_cols_array_2d());
+                guard.update_uniforms(queue, &mesh_vp.to_cols_array_2d());
                 self.spine_lighting.opacity = 1.0;
                 guard.update_lighting(queue, self.spine_lighting);
             }
         }
 
-        // Needle mesh uniforms and lighting
+        // Needle mesh uniforms and lighting (same flipped MVP as the spine)
         if let Some(needle_ctx) = &self.needle_ctx {
             if let Ok(mut guard) = needle_ctx.lock() {
-                guard.update_uniforms(queue, &view_projection.to_cols_array_2d());
+                guard.update_uniforms(queue, &mesh_vp.to_cols_array_2d());
                 self.spine_lighting.opacity = 1.0;
                 guard.update_lighting(queue, self.spine_lighting);
             }
@@ -1060,6 +1067,58 @@ mod tests {
                 world_from_mesh.abs_diff_eq(v, 1e-5),
                 "tex=({tx},{ty},{tz}): mesh->{world_from_mesh:?} expected {v:?}",
             );
+        }
+    }
+
+    /// Regression guard: the mesh MVP must share the DVR volume's screen
+    /// mapping. `volume.wgsl` samples each pixel through the vertically
+    /// mirrored NDC position (`ndc_y = 1 - 2 * uv.y`), so a world point is
+    /// displayed by the volume at `-ndc.y`. The mesh MVP therefore has to
+    /// produce exactly that NDC for the same point — otherwise mesh and
+    /// volume pan along Y in opposite directions (the bug this guards).
+    #[test]
+    fn test_mesh_mvp_matches_volume_screen_mapping() {
+        let mut mesh_view = MeshView::new();
+        let aspect = 1.0;
+        let q = Vec3::new(0.5, 0.75, 0.5); // a feature inside the volume box
+
+        let pans = [(0.0, 0.0), (0.0, 0.1), (0.0, -0.2), (0.3, 0.15)];
+        let mut prev_mesh_y = None;
+        let mut prev_vol_y = None;
+        for (dx, dy) in pans {
+            mesh_view.set_pan(dx, dy);
+
+            let vp = mesh_view.camera().view_projection_matrix(aspect);
+            let flipped = Mat4::from_scale(Vec3::new(1.0, -1.0, 1.0)) * vp;
+
+            let vol = vp * q.extend(1.0);
+            let mesh = flipped * q.extend(1.0);
+
+            // Same pixel: mesh NDC == volume's mirrored NDC.
+            assert!(
+                (mesh.y / mesh.w - -(vol.y / vol.w)).abs() < 1e-6,
+                "pan=({dx},{dy}): mesh ndc.y {} != volume ndc.y {}",
+                mesh.y / mesh.w,
+                -(vol.y / vol.w),
+            );
+            assert!((mesh.x / mesh.w - vol.x / vol.w).abs() < 1e-6);
+
+            // Depth channel untouched: occlusion against the DVR first-hit
+            // depth stays valid.
+            assert!((mesh.z / mesh.w - vol.z / vol.w).abs() < 1e-6);
+
+            // Pan response moves mesh and volume the same way (Y increases
+            // together as dy decreases from +0.1 to -0.2).
+            if let (Some(pv_m), Some(pv_v)) = (prev_mesh_y, prev_vol_y) {
+                let d_mesh = mesh.y / mesh.w - pv_m;
+                let d_vol = -(vol.y / vol.w) - pv_v;
+                assert!(
+                    d_mesh * d_vol > 0.0,
+                    "pan dy {dy}: mesh moved {d_mesh}, volume moved {d_vol} — opposite directions",
+                );
+            }
+            prev_mesh_y = Some(mesh.y / mesh.w);
+            prev_vol_y = Some(-(vol.y / vol.w));
         }
     }
 }
