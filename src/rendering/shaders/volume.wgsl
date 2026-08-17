@@ -20,7 +20,7 @@
 //
 // Bindings:
 //   group(0): volume texture (3D) + sampler, segmentation texture (3D R8Uint) + sampler
-//   group(1): MeshUniforms uniform buffer
+//   group(1): Volume uniform buffer
 // =============================================================================
 
 
@@ -65,7 +65,7 @@ struct ObliquePlane {
     plane_alpha: f32,
 };
 
-struct MeshUniforms {
+struct VolumeUniforms {
     ray_step_size: f32,
     max_steps: f32,
     is_packed_rg8: f32,
@@ -76,10 +76,12 @@ struct MeshUniforms {
     level: f32,
     vol_dims: vec3<f32>,
     opacity: f32,
-    model_view_proj: mat4x4<f32>,
-    inv_model_view_proj: mat4x4<f32>,
-    camera_position: vec3<f32>,
+    view_proj:mat4x4<f32>,
+    inv_view_proj:mat4x4<f32>,
+    camera_position:vec3<f32>,
     _pad: f32,
+    volume_scale: vec3<f32>,
+    _volume_scale_pad: f32,
     light_dir: vec3<f32>,
     aspect_ratio: f32,
     needle_count : u32,
@@ -90,7 +92,7 @@ struct MeshUniforms {
     needles : array<NeedleUniform, 32>,
 }
 @group(1) @binding(0)
-var<uniform> u_vol: MeshUniforms;
+var<uniform> u_vol: VolumeUniforms;
 
 
 // -----------------------------------------------------------------------------
@@ -483,10 +485,12 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
     if (accum_a < 0.01) {
         return DvrResult(vec4<f32>(accum_rgb, accum_a), 1.0, vec3<f32>(0.0), 0.0);
     }
-    let clip = u_vol.model_view_proj * vec4<f32>(first_hit_pos, 1.0);
+    let hit_pos = ray_origin + (first_hit_t + dt * 2.0) * ray_dir;
+    let hit_pos_world = vec3<f32>(0.5) + (hit_pos - vec3<f32>(0.5)) * u_vol.volume_scale;
+    let clip = u_vol.view_proj * vec4<f32>(hit_pos_world, 1.0);
     let ndc_z = clip.z / clip.w;
     let depth = ndc_z * 0.5 + 0.5;
-    let first_hit_world = first_hit_pos;
+    let first_hit_world = vec3<f32>(0.5) + (first_hit_pos - vec3<f32>(0.5)) * u_vol.volume_scale;
     return DvrResult(vec4<f32>(accum_rgb, accum_a), depth, first_hit_world, 1.0);
 }
 
@@ -504,17 +508,24 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let uv = in.tex_coords;
 
     // Build the ray in WORLD space from the shared camera
-    let ndc_near = vec4(uv.x * 2.0 - 1.0, uv.y * 2.0 - 1.0, 0.0, 1.0);
-    let ndc_far  = vec4(uv.x * 2.0 - 1.0, (1.0 - uv.y) * 2.0 - 1.0, 1.0, 1.0);
-    let near_world = u_vol.inv_model_view_proj * ndc_near;
-    let far_world  = u_vol.inv_model_view_proj * ndc_far;
+    let ndc_x = uv.x * 2.0 - 1.0;
+    let ndc_y = 1.0 - uv.y * 2.0;
+    let ndc_near = vec4(ndc_x, ndc_y, 0.0, 1.0);
+    let ndc_far  = vec4(ndc_x, ndc_y, 1.0, 1.0);
+    let near_world = u_vol.inv_view_proj * ndc_near;
+    let far_world  = u_vol.inv_view_proj * ndc_far;
     let world_origin = near_world.xyz / near_world.w;
     let world_far = far_world.xyz / far_world.w;
     let world_dir = normalize(world_far - world_origin);
 
-    // Ray is already in UV space; intersect against the `[0, 1]^3` AABB directly (no `volume_scale` rescale).
-    let tex_origin = world_origin;
-    let tex_dir = world_dir;
+    // Convert the world-space ray into VOLUME (texture) space
+    let inv_scale = vec3<f32>(
+        1.0 / max(u_vol.volume_scale.x, 1e-6),
+        1.0 / max(u_vol.volume_scale.y, 1e-6),
+        1.0 / max(u_vol.volume_scale.z, 1e-6),
+    );
+    let tex_origin = (world_origin - vec3<f32>(0.5)) * inv_scale + vec3<f32>(0.5);
+    let tex_dir = world_dir * inv_scale;
 
     // Clip ray to the [0,1]^3 volume AABB (texture space)
     let inter_vol = intersect_box(tex_origin, tex_dir, vec3<f32>(0.0), vec3<f32>(1.0));

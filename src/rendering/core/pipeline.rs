@@ -283,7 +283,7 @@ pub fn create_volume_pipeline(
     // Single shader module with both vertex and fragment entry points.
     let shader_source = format!("{}\n{}",
         include_str!("../shaders/common.wgsl"),
-        include_str!("../shaders/mesh.wgsl"),
+        include_str!("../shaders/volume.wgsl"),
     );
     let shader = device.create_shader_module(ShaderModuleDescriptor {
         label: Some("Volume Shader"),

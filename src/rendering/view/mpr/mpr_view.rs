@@ -411,19 +411,14 @@ impl MprView {
     /// into it. Re-uploading later replaces the mesh slots. The context's
     /// pipeline uses `CompareFunction::Always` so the mesh is always drawn
     /// on top of the slice, regardless of depth-buffer state.
-    pub fn set_mesh(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        meshes: Arc<Vec<Mesh>>,
-    ) {
+    pub fn set_mesh(&mut self, id: u32, kind: u32, device: &wgpu::Device, queue: &wgpu::Queue, meshes: Arc<Vec<Mesh>>) {
         if self.mesh_ctx.is_none() {
             let ctx = MultiMeshContext::new(device, queue);
             self.mesh_ctx = Some(Arc::new(Mutex::new(ctx)));
         }
         if let Some(ctx_arc) = &self.mesh_ctx {
             if let Ok(mut guard) = ctx_arc.lock() {
-                guard.set_meshes(device, &meshes);
+                guard.set_meshes(id, kind, device, &meshes);
             }
         }
     }
@@ -434,12 +429,7 @@ impl MprView {
         self.mesh_overlay_thickness = thickness.max(0.0);
     }
 
-    /// Push the current view's MVP and slice plane into the mesh context.
-    ///
-    /// MVP is the inverse of the slice's screen-to-UV transform composed with
-    /// the screen-UV-to-NDC mapping, so a mesh vertex at volume UV `(u, v, w)`
-    /// projects to the same NDC as the slice's texel at screen UV `(u, v)`
-    /// with depth `w`.
+    /// Push the current view's MVP and slice plane into the mesh context
     fn update_mesh_overlay(&mut self, queue: &wgpu::Queue) {
         if !self.mesh_overlay_enabled {
             return;
@@ -449,6 +439,7 @@ impl MprView {
         };
 
         // Reconstruct the same transform matrix the slice uses.
+        let y_flip = Mat4::from_translation(Vec3::new(0.0, 0.0, 1.0)) * Mat4::from_scale(Vec3::new(1.0, 1.0, -1.0));
         let t_pan = Mat4::from_translation(-self.pan);
         let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
         let s_scale = Mat4::from_scale(Vec3::splat(self.scale).with_z(1.0));
@@ -459,14 +450,7 @@ impl MprView {
             * t_center
             * s_scale
             * t_uncenter;
-
-        // Map volume UV [0, 1]^3 -> NDC. X/Y come from screen-UV-to-NDC,
-        // Z is left as the mesh's own depth (already in NDC range after the
-        // inverse). The pipeline's `CompareFunction::Always` makes the depth
-        // value irrelevant for visibility.
-        let uv_to_screen = screen_to_uv.inverse();
-        let screen_to_ndc = Mat4::from_translation(Vec3::splat(-1.0)) * Mat4::from_scale(Vec3::splat(2.0));
-        let mvp = screen_to_ndc * uv_to_screen;
+        let mvp = y_flip * screen_to_uv.inverse() * Mat4::from_translation(Vec3::new(-1.0, -1.0, 0.0)) * Mat4::from_scale(Vec3::splat(2.0));
 
         let (normal, d) = self.get_slice_plane_uv();
         if let Ok(mut guard) = ctx_arc.lock() {

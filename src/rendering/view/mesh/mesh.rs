@@ -14,7 +14,7 @@ use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, RenderPipel
 /// Volume rendering parameters (sent to fragment shader)
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct MeshUniforms {
+pub struct VolumeUniforms {
     pub ray_step_size: f32,
     pub max_steps: f32,
     pub is_packed_rg8: f32,
@@ -41,7 +41,7 @@ pub struct MeshUniforms {
     pub needles: [NeedleUniform; 32],
 }
 
-impl Default for MeshUniforms {
+impl Default for VolumeUniforms {
     fn default() -> Self {
         Self {
             ray_step_size: 0.0004,
@@ -92,7 +92,7 @@ impl MeshRenderContext {
         let texture_bind_group_layout = create_texture_bind_group_layout(device);
 
         // Uniform buffer
-        let min_binding_size = std::num::NonZeroU64::new(std::mem::size_of::<MeshUniforms>() as u64);
+        let min_binding_size = std::num::NonZeroU64::new(std::mem::size_of::<VolumeUniforms>() as u64);
         let uniform_bind_group_layout = create_uniform_bind_group_layout(device, min_binding_size);
 
         // Create render pipeline
@@ -106,7 +106,7 @@ impl MeshRenderContext {
         // GPU Buffer
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Mesh Volume Uniform Buffer"),
-            size: std::mem::size_of::<MeshUniforms>() as u64,
+            size: std::mem::size_of::<VolumeUniforms>() as u64,
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -154,7 +154,7 @@ impl MeshRenderContext {
         render_pass.draw(0..4, 0..1); // fullscreen quad
     }
 
-    pub fn update_uniforms(&self, queue: &wgpu::Queue, uniforms: &MeshUniforms) {
+    pub fn update_uniforms(&self, queue: &wgpu::Queue, uniforms: &VolumeUniforms) {
         queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[*uniforms]));
     }
 
@@ -412,7 +412,7 @@ impl Mesh {
         Self { label_id: 0, label_name: "Cube".to_string(), vertices, indices }
     }
 
-    pub fn import_obj(path:&str)->Result<Vec<Mesh>, Box<dyn std::error::Error>>{
+    pub fn import_obj(path:&str, volume_size_mm: Vec3)->Result<Vec<Mesh>, Box<dyn std::error::Error>>{
         let (models, _materials) = tobj::load_obj(
             path,
             &tobj::LoadOptions{
@@ -475,7 +475,7 @@ impl Mesh {
             return Err("OBJ mesh has zero or invalid extent".into());
         }
 
-        let volume_size_mm = Vec3::new(512.0, 512.0, 512.0);
+        // let volume_size_mm = Vec3::new(512.0, 512.0, 512.0);
         for mesh in &mut result {
             for v in &mut mesh.vertices {
                 let p = Vec3::from(v.position);

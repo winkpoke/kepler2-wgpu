@@ -2,7 +2,7 @@
 
 use super::{
     basic_mesh_context::MultiMeshContext,
-    mesh::{BasicLightingUniforms, Mesh, MeshRenderContext, MeshUniforms},
+    mesh::{BasicLightingUniforms, Mesh, MeshRenderContext, VolumeUniforms},
     performance::{PerformanceStats, QualityController, QualityLevel},
 };
 use crate::{
@@ -172,44 +172,44 @@ impl MeshView {
         log::debug!("MeshView::attach_needle_context - Needle context attached successfully");
     }
 
-    /// Cache the unit-needle mesh
-    pub fn set_needle_unit_mesh(&mut self, unit: Mesh) {
-        log::info!(
-            "MeshView::set_needle_unit_mesh - {} verts / {} idx",
-            unit.vertices.len(),
-            unit.indices.len()
-        );
-        self.needle_unit = Some(unit);
-    }
+    // /// Cache the unit-needle mesh
+    // pub fn set_needle_unit_mesh(&mut self, unit: Mesh) {
+    //     log::info!(
+    //         "MeshView::set_needle_unit_mesh - {} verts / {} idx",
+    //         unit.vertices.len(),
+    //         unit.indices.len()
+    //     );
+    //     self.needle_unit = Some(unit);
+    // }
 
-    /// Re-bake every needle's transform into vertex data and upload to the needle contex
-    pub fn rebuild_needle_meshes(&self, device: &wgpu::Device) {
-        let (Some(ctx), Some(unit)) = (&self.needle_ctx, &self.needle_unit) else {
-            return;
-        };
-        let meshes: Vec<Mesh> = self.needles.iter().map(|n| {
-            log::info!("Needle: {:?}", n);
-            Mesh::instance_for_needle(
-                unit,
-                glam::Vec3::from(n.entry),
-                glam::Vec3::from(n.tip),
-                n.radius,
-                [1.0, 1.0, 1.0, 1.0]
-            )
-        }).collect();
-        if let Ok(mut guard) = ctx.lock() {
-            guard.set_meshes(device, &meshes);
-            log::info!(
-                "MeshView::rebuild_needle_meshes - uploaded {} needle instances",
-                meshes.len()
-            );
-        }
-    }
+    // /// Re-bake every needle's transform into vertex data and upload to the needle contex
+    // pub fn rebuild_needle_meshes(&self, device: &wgpu::Device) {
+    //     let (Some(ctx), Some(unit)) = (&self.needle_ctx, &self.needle_unit) else {
+    //         return;
+    //     };
+    //     let meshes: Vec<Mesh> = self.needles.iter().map(|n| {
+    //         log::info!("Needle: {:?}", n);
+    //         Mesh::instance_for_needle(
+    //             unit,
+    //             glam::Vec3::from(n.entry),
+    //             glam::Vec3::from(n.tip),
+    //             n.radius,
+    //             [1.0, 1.0, 1.0, 1.0]
+    //         )
+    //     }).collect();
+    //     if let Ok(mut guard) = ctx.lock() {
+    //         guard.set_meshes(device, &meshes);
+    //         log::info!(
+    //             "MeshView::rebuild_needle_meshes - uploaded {} needle instances",
+    //             meshes.len()
+    //         );
+    //     }
+    // }
 
-    pub fn set_meshes(&self, device: &wgpu::Device, meshes: Arc<Vec<Mesh>>) {
+    pub fn set_meshes(&self, id: u32, kind: u32, device: &wgpu::Device, meshes: Arc<Vec<Mesh>>) {
         if let Some(ctx) = &self.spine_ctx {
             if let Ok(mut guard) = ctx.lock() {
-                guard.set_meshes(device, &meshes);
+                guard.set_meshes(id, kind, device, &meshes);
                 log::info!(
                     "MeshView::set_meshes - uploaded {} vertebra meshes",
                     meshes.len()
@@ -224,7 +224,7 @@ impl MeshView {
     pub fn set_spine_visibility(&self, label_id: u8, visible: bool) {
         if let Some(ctx) = &self.spine_ctx {
             if let Ok(mut guard) = ctx.lock() {
-                guard.set_visibility(label_id, visible);
+                guard.set_label_visibility(label_id, visible);
             }
         }
     }
@@ -606,7 +606,7 @@ impl MeshView {
                 };
             }
 
-            let vol_uniforms = MeshUniforms {
+            let vol_uniforms = VolumeUniforms {
                 ray_step_size: 0.004,
                 max_steps: 1500.0,
                 is_packed_rg8: is_packed_rg8,

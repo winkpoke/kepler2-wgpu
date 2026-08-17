@@ -10,7 +10,6 @@ pub mod mesh_texture_pool;
 pub mod performance;
 
 // Re-export commonly used types for easier access
-pub use basic_mesh_context::BasicMeshContext;
 pub use basic_mesh_context::MultiMeshContext;
 pub use mesh_view::{MeshRenderError, MeshView};
 pub use performance::QualityLevel;
