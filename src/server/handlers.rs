@@ -16,6 +16,7 @@ use crate::data::dicom::{build_ct_dicom, FsSink, generate_uid, Patient, StudySet
 use crate::server::state::{ServerState, StoredVolume};
 use crate::server::ws::WsMessage;
 use crate::rendering::view::mesh::Mesh;
+use glam::{Vec3, Vec4, Mat4, Mat3};
 
 /// Client WebSocket message
 #[derive(serde::Deserialize)]
@@ -200,7 +201,6 @@ pub struct UploadNeedleJson {
     pub coordinate_frame: Option<String>,
 }
 
-/// 回给调用方的确认信息
 #[derive(Serialize)]
 pub struct NeedleEcho {
     pub status: String,
@@ -211,15 +211,26 @@ pub struct NeedleEcho {
     pub tip: (f32, f32, f32),
 }
 
+#[derive(Deserialize)]
+pub struct OffsetParams {
+    x: f32,
+    y: f32,
+    z: f32,
+}
+
+pub async fn needle_point_offset(
+    State(mut state): State<ServerState>,
+    Json(params): Json<OffsetParams>,
+) -> Result<Json<[f32; 3]>, StatusCode> {
+    state.set_offset([params.x, params.y, params.z]);
+    Ok(Json(state.get_offset()))
+}
+
 pub async fn upload_needle_params(
     State(state): State<ServerState>,
     body: Option<Json<UploadNeedleJson>>,
 ) -> Result<Json<NeedleEcho>, StatusCode> {
     let (pos, dir, id) = if let Some(Json(b)) = body {
-        log::info!(
-            "Needle JSON: frame_sequence: {:?}, coordinate_frame: {:?}, pos_unit: {:?}, dir_unit: {:?}",
-            b.frame_sequence, b.coordinate_frame, b.position.unit, b.orientation.unit
-        );
         (
             (b.position.x, b.position.y, b.position.z),
             (b.orientation.a, b.orientation.b, b.orientation.c),
@@ -228,59 +239,69 @@ pub async fn upload_needle_params(
     } else {
         return Err(StatusCode::BAD_REQUEST);
     };
+    log::info!("Needle JSON: pos: {:?}, dir: {:?}", pos, dir);
 
     let len = 400.0;
     let rx = dir.0.to_radians();
     let ry = dir.1.to_radians();
-    let rz = dir.2.to_radians();
+    let rot_y = Mat3::from_rotation_y(ry);
+    let rot_x = Mat3::from_rotation_x(rx);
 
-    let rot = glam::Mat3::from_euler(
-        glam::EulerRot::XYZ,
-        rx,
-        ry,
-        rz,
+    let dir_m = rot_y * rot_x * Vec3::new(0.0, 0.0, -1.0);
+    let tip_m = Vec3::new(pos.0, pos.1, pos.2);
+    let end_m = tip_m + dir_m * len;
+    debug_assert!(((tip_m - end_m).length() - len).abs() < 0.001);
+
+    let ptm = Mat4::from_cols(
+        Vec4::new(0.999950882, -0.007056614, -0.006959693, 0.0),
+        Vec4::new(0.007074652, 0.999971670, 0.002570663, 0.0),
+        Vec4::new(0.006941356, -0.002619774, 0.999972477, 0.0),
+        Vec4::new(-5.427908, 87.284000, -582.195858, 1.0),
     );
 
-    let dir_vec = (rot * glam::Vec3::Z).normalize();
-
-    let tip = glam::Vec3::new(pos.0, pos.1, pos.2);
-    let entry = tip - dir_vec * len;
-
-    debug_assert!(
-        (tip - entry).length() - len < 0.001,
+    let axis_transform  = Mat4::from_cols(
+        Vec4::new(1.0, 0.0, 0.0, 0.0),
+        Vec4::new(0.0, 0.0, 1.0, 0.0),
+        Vec4::new(0.0, 1.0, 0.0, 0.0),
+        Vec4::new(0.0, 0.0, 0.0, 1.0),
     );
 
-    let entry = (entry.x + 256.0, -entry.z + 306.0, - entry.y + 256.0);
-    let tip = (tip.x + 256.0, -tip.z + 306.0, - tip.y + 256.0);
+    let end_t = axis_transform.transform_point3(end_m);
+    let tip_t = axis_transform.transform_point3(tip_m);
+
+    let offset = state.get_offset();
+    let offset = Mat4::from_translation(Vec3::new(offset[0], offset[1], offset[2]));
+    let entry_p = offset.transform_point3(ptm.transform_point3(end_t));
+    let tip_p   = offset.transform_point3(ptm.transform_point3(tip_t));
 
     log::info!(
         "Needle params: entry: {:?}, dir: {:?}, len: {:.1}mm, tip: {:?}",
-        entry, dir, len, tip
+        entry_p, dir_m, len, tip_p
     );
 
     // Broadcast to every connected browser so the wasm renderer can draw the needle.
     let _ = state.ws_tx.send(WsMessage::NeedleSet {
         id,
-        x: entry.0,
-        y: entry.1,
-        z: entry.2,
-        lx: tip.0,
-        ly: tip.1,
-        lz: tip.2,
+        x: entry_p.x,
+        y: entry_p.y,
+        z: entry_p.z,
+        lx: tip_p.x,
+        ly: tip_p.y,
+        lz: tip_p.z,
         r: 0.2,
         g: 0.9,
         b: 0.2,
-        dir,
+        dir: (dir_m.x, dir_m.y, dir_m.z),
         len_mm: len,
     });
 
     Ok(Json(NeedleEcho {
         status: "ok".to_string(),
         id,
-        pos: entry,
-        dir,
+        pos: (entry_p.x, entry_p.y, entry_p.z),
+        dir: (dir_m.x, dir_m.y, dir_m.z),
         len_mm: len,
-        tip,
+        tip: (tip_p.x, tip_p.y, tip_p.z),
     }))
 }
 
@@ -410,40 +431,78 @@ pub async fn build_ct_dicom_axum(
 }
 
 pub async fn upload_obj(mut multipart: Multipart) -> Result<Response<Body>, StatusCode> {
+    let mut file_bytes = None;
+    let mut x = None;
+    let mut y = None;
+    let mut z = None;
+
     while let Some(field) = multipart.next_field().await.map_err(|e| {
         eprintln!("multipart error: {:?}", e);
         StatusCode::BAD_REQUEST
     })?{
-        if field.name() == Some("file") {
-            let bytes = field.bytes().await.map_err(|e| {
-                eprintln!("read upload error: {:?}", e);
-                StatusCode::BAD_REQUEST
-            })?;
-            let path = std::env::temp_dir().join(format!("{}.obj", uuid::Uuid::new_v4()));
-            tokio::fs::write(&path, &bytes).await.map_err(|e| {
-                eprintln!("write failed: {:?}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-            let meshes = Mesh::import_obj(path.to_str().unwrap()).map_err(|e| {
-                eprintln!("OBJ import failed: {:?}", e);
-                StatusCode::BAD_REQUEST
-            })?;
-            let bin = bincode::serialize(&meshes).map_err(|e| {
-                eprintln!("serialize failed: {:?}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-            return Ok(
-                Response::builder()
-                    .header(
-                        "Content-Type",
-                        "application/octet-stream"
-                    )
-                    .body(Body::from(bin))
-                    .unwrap()
-            );
+        let name = field.name().unwrap_or("");
+        match name {
+            "file" => {
+                file_bytes  = Some(field.bytes().await.map_err(|e| {
+                    eprintln!("read upload error: {:?}", e);
+                    StatusCode::BAD_REQUEST
+                })?);
+            }
+            "x" => {
+                let text = field.text().await.map_err(|e| {
+                    eprintln!("read field error: {:?}", e);
+                    StatusCode::BAD_REQUEST
+                })?;
+                x = Some(text.parse::<f32>().map_err(|_| StatusCode::BAD_REQUEST)?);
+            }
+            "y" => {
+                let text = field.text().await.map_err(|e| {
+                    eprintln!("read field error: {:?}", e);
+                    StatusCode::BAD_REQUEST
+                })?;
+                y = Some(text.parse::<f32>().map_err(|_| StatusCode::BAD_REQUEST)?);
+            }
+            "z" => {
+                let text = field.text().await.map_err(|e| {
+                    eprintln!("read field error: {:?}", e);
+                    StatusCode::BAD_REQUEST
+                })?;
+                z = Some(text.parse::<f32>().map_err(|_| StatusCode::BAD_REQUEST)?);
+            }
+            _ => {
+                eprintln!("Unknown field: {}", name);
+                continue;
+            }
         }
     }
-    Err(StatusCode::BAD_REQUEST)
+
+    let bytes = file_bytes.ok_or(StatusCode::BAD_REQUEST)?;
+    let volume_size_mm = Vec3::new(
+        x.ok_or(StatusCode::BAD_REQUEST)?,
+        y.ok_or(StatusCode::BAD_REQUEST)?,
+        z.ok_or(StatusCode::BAD_REQUEST)?,
+    );
+
+    let path = std::env::temp_dir().join(format!("{}.obj", uuid::Uuid::new_v4()));
+    tokio::fs::write(&path, &bytes).await.map_err(|e| {
+        eprintln!("write failed: {:?}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    let meshes = Mesh::import_obj(path.to_str().unwrap(), volume_size_mm).map_err(|e| {
+        eprintln!("OBJ import failed: {:?}", e);
+        StatusCode::BAD_REQUEST
+    })?;
+
+    let bin = bincode::serialize(&meshes).map_err(|e| {
+        eprintln!("serialize failed: {:?}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
+    Ok(Response::builder()
+        .header("Content-Type", "application/octet-stream")
+        .body(Body::from(bin))
+        .unwrap())
 }
 
 pub async fn start_segmentation(

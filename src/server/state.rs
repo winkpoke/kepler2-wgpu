@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use serde::Serialize;
 use tokio::sync::{broadcast, RwLock};
 
@@ -49,6 +49,8 @@ pub struct ServerState {
     pub ws_tx: broadcast::Sender<WsMessage>,
     /// Directory where uploaded MHA files 
     pub series_dir: PathBuf,
+    /// offset for the entry and tip points in the patient coordinate system
+    pub offset: Arc<Mutex<[f32; 3]>>,
 }
 
 impl ServerState {
@@ -65,7 +67,16 @@ impl ServerState {
             start_time: chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
             ws_tx,
             series_dir,
+            offset: Arc::new(Mutex::new([0.0, 0.0, 0.0])),
         }
+    }
+
+    pub fn set_offset(&mut self, offset: [f32; 3]) {
+        *self.offset.lock().unwrap() = offset;
+    }
+
+    pub fn get_offset(&self) -> [f32; 3] {
+        *self.offset.lock().unwrap()
     }
 
     /// Store a new volume from a raw CTVolume and return its ID

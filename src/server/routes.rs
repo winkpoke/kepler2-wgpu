@@ -17,6 +17,7 @@ pub fn create_router(state: ServerState) -> Router {
         .route("/api/health", get(handlers::health_check))
         .route("/api/volumes/upload", post(handlers::upload_volume))
         .route("/api/upload_needle_params", post(handlers::upload_needle_params))
+        .route("/api/needle_point_offset", post(handlers::needle_point_offset))
         .route("/api/upload_obj", post(handlers::upload_obj))
         .route("/api/dicom/build/:id", get(handlers::build_ct_dicom_axum))
         .route("/api/segment", post(handlers::start_segmentation))
