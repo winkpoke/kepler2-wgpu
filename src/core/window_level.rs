@@ -16,13 +16,13 @@ use crate::core::error::{KeplerError, KeplerResult, MprError};
 #[derive(Copy, Debug, Clone, PartialEq)]
 pub struct WindowLevel {
     /// Window width for contrast control (must be positive)
-    window_width: f32,
+    pub window_width: f32,
     /// Window level for brightness center
-    window_level: f32,
+    pub window_level: f32,
     /// Bias offset applied to window level
-    bias: f32,
+    pub bias: f32,
     /// Flag indicating if parameters have changed and need GPU update
-    dirty: bool,
+    pub dirty: bool,
 }
 
 impl WindowLevel {

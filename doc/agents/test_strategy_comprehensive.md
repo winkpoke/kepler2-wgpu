@@ -660,3 +660,58 @@ Kepler2-WGPU has a **critical need for improved test coverage**, especially in m
 4. Long-term: Maintain >80% on all patient-critical paths
 
 **Medical software demands higher standards than general-purpose applications.** This strategy ensures patient safety through rigorous testing while maintaining development velocity through proper infrastructure.
+
+
+## 1. Current Coverage Assessment (当前覆盖率评估)
+
+Based on the actual codebase (`src/` excluding `src/acquisition`) and the existing test suite (`tests/`), here is the professional assessment of the current test coverage:
+
+### 1.1 Well-Covered Areas (覆盖较好的模块)
+- **DICOM Pixel Data Validation**: The `src/data/dicom/ct_image.rs` is thoroughly tested in `tests/dicom_pixel_data_validation_tests.rs`. Edge cases like signed/unsigned `pixel_representation`, `rescale_slope`/`intercept`, and pixel data bounds (`i16::MIN` to `i16::MAX`) are well-covered.
+- **Patient Safety & Metadata**: `src/data/dicom/patient.rs` and related structures are robustly tested in `tests/patient_safety_tests.rs`. Mandatory fields, UID validation, and hierarchy (Study -> Series -> Image) have solid test coverage.
+- **Volume Integrity**: Tested extensively in `tests/volume_integrity_tests.rs` (e.g., negative dimensions, origin, voxel spacing).
+
+### 1.2 Critical Coverage Gaps & Risk Points (核心风险与缺失覆盖)
+
+**Zero or Low Coverage Files:**
+- **Application Layer (`src/application/app.rs`, `appview.rs`, `render_app.rs`)**: 0% coverage. 
+  - *Risk*: The application state machine, event handling (Winit EventLoop), and lifecycle management are entirely untested. UI freezes or state corruption during concurrent view updates could occur.
+- **Rendering Core (`src/rendering/core/graphics.rs`, `pipeline.rs`)**: 0% coverage. 
+  - *Risk*: GPU initialization, backend selection (DX12/Vulkan/GL), and pipeline creation have no automated verification.
+- **Shader Correctness (`src/rendering/shaders/`)**: 
+  - *Risk*: Tests in `tests/rendering_correctness_tests.rs` (e.g., `test_invalid_wgsl_syntax_detected`, `test_missing_uniform_detected`) are currently marked with `#[ignore]`. Shader compilation errors will only be caught at runtime.
+- **MHA/MHD Formats (`src/data/medical_imaging/formats/mha.rs`, `mhd.rs`)**: 
+  - *Risk*: Several parsing tests in `tests/medical_imaging_tests.rs` are `#[ignore]`. Medical data corruption due to endianness or compression issues might slip through.
+
+---
+
+## 2. Comprehensive Test Strategy (综合测试策略)
+
+To elevate the software to medical-grade reliability, the testing strategy must be distributed across Unit, Integration, and E2E layers (Suggested Ratio: 60% / 30% / 10%).
+
+### 2.1 Unit Testing Strategy (60% - Core Logic & Math)
+- **Action**: Un-ignore and implement the `mha.rs` and `mhd.rs` parser tests in `tests/medical_imaging_tests.rs`.
+- **Action**: Test mathematical transformations in `src/core/geometry.rs` (currently `doc-tests` are ignored) and `src/core/coord/` to prevent MPR slice position errors.
+- **Edge Cases**: 
+  - Division by zero in WGSL ray intersection (as noted in project core memories).
+  - Out-of-memory (OOM) protection for extremely large CT volumes (e.g., 2048x2048x2048).
+
+### 2.2 Integration Testing Strategy (30% - GPU & Rendering)
+- **Action**: Implement **Headless GPU Testing** for `src/rendering/core/graphics.rs`. 
+  - *Implementation*: Use `wgpu::Instance::request_adapter` with software rendering (e.g., Vulkan CPU or Lavapipe) in CI to test pipeline creation and texture binding without a physical display.
+- **Action**: Activate `tests/rendering_correctness_tests.rs`. Load `mesh.wgsl`, `mpr.wgsl`, and `mip.wgsl` dynamically during tests and call `device.create_shader_module` to validate syntax and bindings at compile-time.
+
+### 2.3 End-to-End (E2E) & Architecture Testing (10% - App Lifecycle)
+- **Action**: Decouple `src/application/app.rs` logic from the `winit` windowing system. Extract the state management into a pure, testable struct (`AppModel` or similar) so lifecycle events (Resize, Redraw, Input) can be simulated programmatically.
+- **Action**: WebAssembly (WASM) E2E testing. Since the project targets native and WASM, ensure `wasm-pack test --headless --firefox` is integrated into the CI pipeline to verify browser-specific WebGL2 limits.
+
+---
+
+## 3. Recommended Phased Execution (分阶段执行计划)
+
+**Phase 1: Fix the Ignored Tests (Weeks 1-2)**
+- Re-enable `#[ignore]` tests in `rendering_correctness_tests.rs` using a headless WGPU context.
+- Complete the MHA/MHD parser tests in `medical_imaging_tests.rs`.
+
+**Phase 2: Application Layer Decoupling (Weeks 3-4)**
+- Refactor `src/application/app.rs` to allow unit testing of state transitions without `winit::event_loop::EventLoop`.

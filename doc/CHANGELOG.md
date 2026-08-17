@@ -1,5 +1,73 @@
 # Changelog
 
+## 2026-08-06T16-05-00
+- **Unify Mesh/Volume in `[0, 1]^3` UV-Space**
+  - Removed the `volume_scale` AABB remap from `MeshView::update_uniforms` and the
+    `MeshUniforms` struct. The model matrix is now the identity in `[0, 1]^3`
+    UV/world space, so the volume and the spine/needle meshes all share the
+    same `model_view_proj` (the camera's view-projection matrix).
+  - `volume.wgsl` builds ray origins/directions via the inverse of that
+    shared matrix and projects the first hit through the same matrix to
+    write `frag_depth`; `mesh_basic.wgsl` reads its clip-space position
+    through the same matrix, so the two passes produce directly comparable
+    depth values in the shared depth attachment.
+  - `instance_for_needle` and `set_needle_radius` continue to operate in
+    UV space (entry/tip/radius converted from mm on the CPU side by
+    `App::set_new_needle_mm` and `App::set_needle_radius`).
+  - `test_spine_model_matches_dvr_aabb` rewritten to assert the identity
+    model matrix and that the mesh round-trips any `[0, 1]^3` coordinate
+    unchanged, locking in the unified-space contract.
+  - Files:
+    - `src/rendering/view/mesh/mesh_view.rs`
+    - `src/rendering/view/mesh/mesh.rs`
+    - `src/rendering/view/mesh/basic_mesh_context.rs`
+    - `src/rendering/shaders/volume.wgsl`
+    - `src/rendering/shaders/mesh_basic.wgsl`
+
+## 2026-06-16T16-00-00
+- **Add Oblique Cutting Plane to 3D Mesh View (REQ-025/026/027)**
+  - Added a second plane-quad overlay to `dvr_ray_march` in `mesh.wgsl`. The new plane is driven by `u_vol.oblique_center`, `u_vol.oblique_normal`, `u_vol.oblique_visible`, and `u_vol.oblique_alpha`.
+  - The two tangent vectors spanning the plane are derived in-shader from the normal using a stable world-Y / world-X reference, so the quad stays numerically stable for any oblique angle.
+  - Color is warm yellow `(1.00, 0.85, 0.20)` to distinguish it from the green perpendicular needle plane.
+  - `MeshUniforms` (WGSL + Rust) gained the four matching fields, placed *before* the `needles` array so the array's 16-byte stride is not disturbed.
+  - `MeshView` gained a `set_oblique_plane(center, normal, visible, alpha)` API and four private state fields drained into the uniforms each frame.
+  - `MprView` gained a `get_oblique_center_world()` helper.
+  - Linkage: in `App::set_oblique_rotation_radians`, after the MprView rotation succeeds, the (center, normal) is pushed to the 3D mesh view so the dvr_ray_march overlay tracks the oblique rotation in real time.
+  - Build verified with `cargo check` — no errors, no new warnings.
+  - Files:
+    - `src/rendering/shaders/mesh.wgsl`
+    - `src/rendering/view/mesh/mesh.rs`
+    - `src/rendering/view/mesh/mesh_view.rs`
+    - `src/rendering/view/mpr/mpr_view.rs`
+    - `src/application/app.rs`
+
+## 2026-05-20T16-00-00
+- **Oblique Parallel Plane Intersection Line Fix**
+  - Fixed full-screen red rendering when oblique plane is parallel/near-parallel to a standard MPR view.
+  - Added plane normal dot product check (`> 0.99`) to detect parallel planes.
+  - When planes are parallel, intersection line is constrained to center only (single line instead of full plane fill).
+  - Files:
+    - `src/rendering/shaders/shader_tex.wgsl`
+
+## 2026-05-20T09-44-19
+- **Virtual Needle Rendering in 3D Mesh View**
+  - Added virtual needle rendering capability in the 3D volume view (`mesh.wgsl`) for surgical planning and needle insertion simulation.
+  - Needle is rendered as a cylinder segment between entry and target points within the volume coordinate space.
+  - Implemented distance-based ray marching integration with proper alpha blending.
+  - Added needle control APIs to `MeshView`: enable/disable, set entry/target points, radius, and color.
+  - Extended `MeshUniforms` struct with needle parameters (entry, target, radius, color, enabled flag).
+  - Files:
+    - `src/rendering/shaders/mesh.wgsl`
+    - `src/rendering/view/mesh/mesh.rs`
+    - `src/rendering/view/mesh/mesh_view.rs`
+
+## 2026-04-03T10-50-00
+- **Dual Orthogonal MPR Rendering**
+  - Added support for rendering two orthogonal MPR slices simultaneously within the same canvas.
+  - Updated MPR shader (`shader_tex.wgsl`) to accept two distinct transformation matrices and sample from the 3D CT volume accordingly.
+  - Implemented an intersecting indicator line to show where the two orthogonal slices meet, providing spatial correlation between planes.
+  - Added `enable_dual_mode` and `disable_dual_mode` to `MprView` and updated `AppView` and `App` to expose this functionality to the UI/WASM.
+
 ## 2026-02-26T00-00-00
 - **Oblique MPR View Rotation Controls (Slicer-style)**
   - Added oblique plane control via normal vector + in-plane rotation (supports Horizontal/Vertical/In-Plane style control mapping).
@@ -147,6 +215,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Fixed
+- **MeshView Aspect Ratio Distortion**: Fixed 3D view distortion when resizing the window.
+  - Added `aspect_ratio` and padding fields to `MeshUniforms` in Rust to maintain 16-byte alignment.
+  - Updated `mesh.wgsl` to apply aspect ratio compensation to the `uv_centered` coordinates, ensuring the volume maintains correct proportions regardless of window dimensions.
+
+### Added
+- **3D Volume Rendering**: Introduced GPU volume rendering for the 3D mesh view using ray-marched volume sampling.
+  - Added a new WGSL shader `mesh.wgsl` for front-to-back accumulation of volume intensities.
+  - Added controls to toggle between mesh rendering and volume rendering in the 3D view.
 
 ### In Progress
 - 2025-11-17T17-40-00: Camera orbiting implementation in `mesh_view.rs`:
@@ -158,6 +235,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - 2025-12-17T16-10-36: Updated `doc/redering/basic-mesh-rendering.md` with current WGPU architecture notes and corrected mesh doc paths.
+- 2026-04-28T18-01-01: Consolidated ViewFactory-related view docs and added current implementation notes for `src/rendering/view/`.
+  - ViewFactory notes: `doc/views/2025-11-08T21-26-05-view-factory-extraction.md`
+  - View/layout overview: `doc/views/view-layout-refactoring-plan.md`
 
 ### Changed
 - 2025-11-17T17-50-00: Reorganized documentation folder structure:
@@ -184,7 +264,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Preserves existing behavior; public API unchanged (fields are `pub(crate)`).
   - All existing call sites continue to work via auto-deref to `&Device`/`&Queue`.
   - Verified native build succeeds; tests mostly pass (2 integration tests fail due to missing external files).
-  - Documentation: `doc/views/2025-11-08T22-27-07-default-view-factory-init-and-arc-device-queue.md`.
+  - Documentation: `doc/views/2025-11-08T21-26-05-view-factory-extraction.md`.
 
 ### Added
 - 2025-11-08T22-28-40: Declared `trace-logging` feature in `Cargo.toml` to gate heavy TRACE logs as required.
@@ -212,7 +292,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Forwarding implementation in `ViewManager` with INFO/DEBUG logging and error propagation.
   - Updated test mocks to implement the new method; all `view_transition_integration_tests` pass.
   - Verified native build (`cargo build`) and WASM build (`wasm-pack build -t web`) succeed.
-  - Documentation added in `doc/views/2025-11-08T21-32-39-mip-view-factory.md`.
+  - Documentation: `doc/views/2025-11-08T21-26-05-view-factory-extraction.md`.
 
 ### Changed
 - 2025-11-08T21-58-55: Moved `DefaultViewFactory` into `src/rendering/view/view_factory.rs` and removed separate `default_factory` module.
@@ -456,7 +536,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documentation: add `doc/window-level/2025-11-05T13-58-43-dicom-window-level-analysis.md` with detailed comparison to professional DICOM viewers, improvement suggestions, and no_run code examples.
 - Rationale: Align grayscale rendering with DICOM PS3.3 C.11.2.1 to match expected display behavior and reduce discrepancies across viewers.
 ## 2025-11-08T22-43-25
-Fix WASM panic caused by cross-device TextureView usage after Graphics swap. Reinitialize DefaultViewFactory inside State::swap_graphics with the new device/queue to ensure bind groups are created with resources from the same device. This prevents `wgpu-core` panic: `TextureView[...] does not exist` when creating bind groups on web. See doc/views/2025-11-08T22-43-25-wasm-textureview-panic-fix.md.
+Fix WASM panic caused by cross-device TextureView usage after Graphics swap. Reinitialize DefaultViewFactory inside State::swap_graphics with the new device/queue to ensure bind groups are created with resources from the same device. This prevents `wgpu-core` panic: `TextureView[...] does not exist` when creating bind groups on web. See doc/views/2025-11-08T21-26-05-view-factory-extraction.md.
 ## 2025-11-09T14-14-57
 
 - Fix wasm build failure (error E0425: cannot find value `volume`) in `src/application/render_app.rs`.

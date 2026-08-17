@@ -2,12 +2,10 @@
 
 use anyhow::Result;
 use std::fmt;
-
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-
 use crate::core::coord::Base;
 use glam::Mat4;
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 
 // Define the CTVolume struct to hold 3D data
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -60,6 +58,68 @@ impl CTVolume {
 
     pub fn base(&self) -> &Base {
         &self.base
+    }
+
+    pub fn get_voxel(&self, x: usize, y: usize, z: usize) -> Option<i16> {
+        let (rows, cols, _slices) = self.dimensions;
+        let idx = z * rows * cols + y * cols + x;
+        self.voxel_data.get(idx).copied()
+    }
+
+    /// Downsample XY plane by 2x using 2x2 average pooling.
+    /// Keeps Z dimension unchanged. Reduces GPU memory by ~75%.
+    /// New dimensions: (rows/2, cols/2, slices)
+    /// New spacing: (spacing_x*2, spacing_y*2, spacing_z)
+    /// New Base: scales direction vectors by 2 to match new voxel size
+    pub fn downsample_2x(&self) -> CTVolume {
+        let (rows, cols, slices) = self.dimensions;
+        
+        let new_rows = rows / 2;
+        let new_cols = cols / 2;
+        
+        if new_rows == 0 || new_cols == 0 {
+            return self.clone();
+        }
+        
+        let new_data_len = new_rows * new_cols * slices;
+        let mut new_data = Vec::with_capacity(new_data_len);
+
+        // new_rows = rows/2, new_cols = cols/2 (integer division) guarantee
+        // y0=2y, y1=2y+1 < rows and x0=2x, x1=2x+1 < cols for all y<x in range,
+        // so the 2x2 source block is always fully present — no per-pixel bounds checks needed.
+        for z in 0..slices {
+            let z_off = z * rows * cols;
+            for y in 0..new_rows {
+                let y0 = z_off + 2 * y * cols;
+                // One slice covers two full rows (row y and row y+1)
+                let pair = &self.voxel_data[y0..y0 + 2 * cols];
+                for x in 0..new_cols {
+                    let base = 2 * x;
+                    let sum = pair[base] as i32
+                        + pair[base + 1] as i32
+                        + pair[cols + base] as i32
+                        + pair[cols + base + 1] as i32;
+                    // Use /4 (truncation toward zero) rather than >>2 to keep correct
+                    // behavior for negative i16 averages.
+                    new_data.push((sum / 4) as i16);
+                }
+            }
+        }
+
+        let (sx, sy, sz) = self.voxel_spacing;
+        
+        let mut new_base = self.base.clone();
+        let mut m = new_base.matrix;
+        m.x_axis = m.x_axis * 2.0;
+        m.y_axis = m.y_axis * 2.0;
+        new_base.matrix = m;
+        
+        CTVolume::new(
+            (new_rows, new_cols, slices),
+            (sx * 2.0, sy * 2.0, sz),
+            new_data,
+            new_base,
+        )
     }
 }
 

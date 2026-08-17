@@ -5,9 +5,8 @@
 
 mod mesh_integration_tests {
     use kepler_wgpu::mesh::{
-        basic_mesh_context::BasicMeshContext,
-        mesh::Mesh,
-        mesh_view::{MeshRenderError, MeshView},
+        mesh::*,
+        mesh_view::MeshView,
         performance::{QualityController, QualityLevel},
     };
 
@@ -45,7 +44,7 @@ mod mesh_integration_tests {
 
     #[tokio::test]
     async fn test_mesh_view_creation() {
-        /// Test basic MeshView creation and initialization
+        // Test basic MeshView creation and initialization
         let mesh_view = MeshView::new();
 
         assert!(mesh_view.is_healthy(), "New MeshView should be healthy");
@@ -54,7 +53,7 @@ mod mesh_integration_tests {
 
     #[tokio::test]
     async fn test_performance_monitoring_integration() {
-        /// Test integration between MeshView and performance monitoring
+        // Test integration between MeshView and performance monitoring
         let mut quality_controller = QualityController::new();
 
         // Test initial state

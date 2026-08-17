@@ -407,9 +407,7 @@ impl PassExecutor {
 
         // Build the pass plan for this frame
         let effective_has_mesh_view = has_mesh_view && !self.mesh_pass_disabled;
-        let plan =
-            self.registry
-                .build_pass_plan(effective_has_mesh_view, has_mip_view, has_mpr_view);
+        let plan =self.registry.build_pass_plan(effective_has_mesh_view, has_mip_view, has_mpr_view);
         let mut frame_success = true;
 
         log::trace!(

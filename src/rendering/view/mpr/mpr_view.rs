@@ -1,12 +1,15 @@
-use std::sync::Arc;
-use glam::{Mat4, Quat, Vec3, Vec4};
+use std::sync::{Arc, Mutex};
+use glam::{Mat4, Quat, Vec3};
 use crate::{
     core::{
         error::{KeplerResult, MprError},
         GeometryBuilder, WindowLevel,
     },
     data::CTVolume,
-    rendering::{Orientation, RenderContent, StatefulView, ViewState},
+    rendering::view::{
+        mesh::{Mesh, MultiMeshContext},
+        NeedleUniform, Orientation, RenderContent, StatefulView, ViewState,
+    },
     Renderable, View,
 };
 use super::{MprRenderContext, MprViewWgpuImpl};
@@ -34,6 +37,7 @@ use crate::rendering::view::layout::compute_aspect_fit;
 /// 4. **Window/Level Processing**: Applies CT display windowing
 /// 5. **Final Rendering**: Outputs the processed image to the view
 pub struct MprView {
+    view_id: usize,
     /// WGPU implementation containing per-view GPU resources
     wgpu_impl: MprViewWgpuImpl,
     /// Current slice position (internal units)
@@ -60,12 +64,26 @@ pub struct MprView {
     window_level: WindowLevel,
     /// Anatomical orientation for this view (Axial, Coronal, Sagittal)
     orientation: Orientation,
+    /// Antialiasing flag
+    aliasing: bool,
     /// Physical in-plane content width in millimeters
     content_w_mm: f32,
     /// Physical in-plane content height in millimeters
     content_h_mm: f32,
     /// Uniform viewport padding in pixels
     padding_px: u32,
+    /// Whether to orthogonally project 3D needles onto the slice plane.
+    needle_enabled: bool,
+    /// Active needle list (volume-UV coordinates). Synced into the GPU fragment uniforms each frame.
+    needles: Vec<NeedleUniform>,
+    /// Cached last-uploaded needle count, used to avoid redundant GPU writes.
+    last_uploaded_needle_count: usize,
+    /// Optional mesh context for drawing the loaded OBJ mesh on this slice.
+    mesh_ctx: Option<Arc<Mutex<MultiMeshContext>>>,
+    /// When true, the mesh overlay is drawn on top of the slice each frame.
+    mesh_overlay_enabled: bool,
+    /// Mesh overlay slab thickness in UV units (default 1.0).
+    mesh_overlay_thickness: f32,
 }
 
 impl MprView {
@@ -195,6 +213,7 @@ impl MprView {
         );
 
         Self {
+            view_id: 0,
             wgpu_impl,
             slice: 0.0,
             base_screen,
@@ -208,10 +227,21 @@ impl MprView {
             dim,
             window_level, // Use provided WindowLevel with configured bias
             orientation,  // Store orientation for cross-sectional linking
+            aliasing: false,
             content_w_mm,
             content_h_mm,
             padding_px: 0,
+            needle_enabled: false,
+            needles: Vec::new(),
+            last_uploaded_needle_count: 0,
+            mesh_ctx: None,
+            mesh_overlay_enabled: false,
+            mesh_overlay_thickness: 1.0,
         }
+    }
+
+    pub fn view_id(&self) -> usize {
+        self.view_id
     }
 
     /// Update the transformation matrix based on current view parameters.
@@ -279,13 +309,88 @@ impl MprView {
         Ok(())
     }
 
+    /// Set the current oblique rotation angle using degrees for convenience
+    pub fn set_oblique_rotation_angle_degrees(&mut self, degrees_x: f32, degrees_y: f32) {
+        let right = self.oblique_rotation * Vec3::Y;
+        let up = self.oblique_rotation * Vec3::X;
+        let dx = degrees_x.to_radians();
+        let dy = degrees_y.to_radians();
+        let qx = Quat::from_axis_angle(up.normalize(), dx);
+        let qy = Quat::from_axis_angle(right.normalize(), dy);
+        let delta = qy * qx;
+        self.oblique_rotation = (delta * self.oblique_rotation).normalize();
+        self.oblique_center_world();
+        log::info!(
+            "Oblique rotation set to (deg_x: {}, deg_y: {})",
+            degrees_x,
+            degrees_y
+        );
+    }
+
     fn oblique_center_world(&mut self) {
         let r = Mat4::from_quat(self.oblique_rotation);
         let center = self.base_screen_raw.transform_point3(Vec3::new(0.5, 0.5, 0.0));
         let t1 = Mat4::from_translation(-center);
         let t2 = Mat4::from_translation(center);
         self.base_screen = t2 * r * t1 * self.base_screen_raw;
-        self.oblique_normal = r.transform_vector3(Vec3::Z).normalize_or_zero();
+        self.oblique_normal = self.base_screen.col(2).truncate().normalize_or_zero();
+    }
+
+    pub fn get_base_screen(&self) -> Mat4 {
+        self.base_screen
+    }
+
+    /// Return the UV space base matrix
+    pub fn get_oblique_rotation_uv(&self) -> Vec3 {
+        let screen_to_uv = self.base_uv.inverse() * self.base_screen;
+        let r_screen = Mat4::from_quat(self.oblique_rotation);
+        let r_uv = screen_to_uv * r_screen * screen_to_uv.inverse();
+
+        // Extract basis vectors and normalize to handle non-uniform scaling
+        let right = (r_uv * glam::Vec4::new(1.0, 0.0, 0.0, 0.0)).truncate().normalize();
+        let up = (r_uv * glam::Vec4::new(0.0, 1.0, 0.0, 0.0)).truncate().normalize();
+        let n = right.cross(up).normalize();
+        n
+    }
+
+    /// Return the current slice plane in volume-UV space as `(normal, d)`
+    pub fn get_slice_plane_uv(&self) -> (Vec3, f32) {
+        Self::compute_slice_plane_uv(
+            self.base_uv,
+            self.base_screen,
+            self.oblique_rotation,
+            self.scale,
+            self.pan,
+        )
+    }
+
+    /// Pure (no-GPU) implementation of `get_slice_plane_uv`. Exposed so the
+    /// math can be exercised in unit tests without spinning up a wgpu device.
+    pub(crate) fn compute_slice_plane_uv(
+        base_uv: Mat4,
+        base_screen: Mat4,
+        oblique_rotation: Quat,
+        scale: f32,
+        pan: Vec3,
+    ) -> (Vec3, f32) {
+        let screen_to_uv = base_uv.inverse() * base_screen;
+        let r_screen = Mat4::from_quat(oblique_rotation);
+        let r_uv = screen_to_uv * r_screen * screen_to_uv.inverse();
+        let right = (r_uv * glam::Vec4::new(1.0, 0.0, 0.0, 0.0)).truncate().normalize();
+        let up = (r_uv * glam::Vec4::new(0.0, 1.0, 0.0, 0.0)).truncate().normalize();
+        let normal = right.cross(up).normalize();
+
+        // UV-space position of the screen-center at the current depth.
+        let screen_pt = Vec3::new(0.5, 0.5, pan.z);
+        let t_pan = Mat4::from_translation(-pan);
+        let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
+        let s_scale = Mat4::from_scale(Vec3::splat(scale).with_z(1.0));
+        let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
+        let screen_to_world = base_screen * t_pan * t_center * s_scale * t_uncenter;
+        let uv_pt = (base_uv.inverse() * screen_to_world).transform_point3(screen_pt);
+
+        let d = -normal.dot(uv_pt);
+        (normal, d)
     }
 
     /// Return the current screen base matrix (including translation, scaling)
@@ -299,26 +404,165 @@ impl MprView {
 
         self.base_screen * t_pan * t_center * s_scale * t_uncenter
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    /// Attach an OBJ mesh to be drawn on this slice.
+    ///
+    /// Creates a `MultiMeshContext` on the first call and uploads the meshes
+    /// into it. Re-uploading later replaces the mesh slots. The context's
+    /// pipeline uses `CompareFunction::Always` so the mesh is always drawn
+    /// on top of the slice, regardless of depth-buffer state.
+    pub fn set_mesh(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        meshes: Arc<Vec<Mesh>>,
+    ) {
+        if self.mesh_ctx.is_none() {
+            let ctx = MultiMeshContext::new(device, queue);
+            self.mesh_ctx = Some(Arc::new(Mutex::new(ctx)));
+        }
+        if let Some(ctx_arc) = &self.mesh_ctx {
+            if let Ok(mut guard) = ctx_arc.lock() {
+                guard.set_meshes(device, &meshes);
+            }
+        }
+    }
 
-    /// Function-level comment: 验证参数校验与钳制逻辑在异常与边界输入下的行为
-    #[test]
-    fn test_validate_and_clamp_params() {
-        let scale = -5.0; // 非法，需替换为默认并钳制
-        let translate = Vec3::new(f32::INFINITY, -20_000.0, 0.0);
-        let pos = (200_000, -200_000);
-        let dim = (0, 200_000);
-        let ((s, t), p, d) = MprView::validate_and_clamp_params(scale, translate, pos, dim);
-        assert!(s >= MprView::MIN_SCALE && s <= MprView::MAX_SCALE);
-        assert!(t.x.is_finite() && t.x.abs() <= MprView::MAX_PAN_DISTANCE);
-        assert!(t.y.abs() <= MprView::MAX_PAN_DISTANCE);
-        assert_eq!(p.0, 100_000);
-        assert_eq!(p.1, -100_000);
-        assert!(d.0 >= 1 && d.1 >= 1);
+    /// Toggle the mesh overlay and set the slab thickness (UV units).
+    pub fn set_mesh_overlay(&mut self, enabled: bool, thickness: f32) {
+        self.mesh_overlay_enabled = enabled;
+        self.mesh_overlay_thickness = thickness.max(0.0);
+    }
+
+    /// Push the current view's MVP and slice plane into the mesh context.
+    ///
+    /// MVP is the inverse of the slice's screen-to-UV transform composed with
+    /// the screen-UV-to-NDC mapping, so a mesh vertex at volume UV `(u, v, w)`
+    /// projects to the same NDC as the slice's texel at screen UV `(u, v)`
+    /// with depth `w`.
+    fn update_mesh_overlay(&mut self, queue: &wgpu::Queue) {
+        if !self.mesh_overlay_enabled {
+            return;
+        }
+        let Some(ctx_arc) = &self.mesh_ctx else {
+            return;
+        };
+
+        // Reconstruct the same transform matrix the slice uses.
+        let t_pan = Mat4::from_translation(-self.pan);
+        let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
+        let s_scale = Mat4::from_scale(Vec3::splat(self.scale).with_z(1.0));
+        let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
+        let screen_to_uv = self.base_uv.inverse()
+            * self.base_screen
+            * t_pan
+            * t_center
+            * s_scale
+            * t_uncenter;
+
+        // Map volume UV [0, 1]^3 -> NDC. X/Y come from screen-UV-to-NDC,
+        // Z is left as the mesh's own depth (already in NDC range after the
+        // inverse). The pipeline's `CompareFunction::Always` makes the depth
+        // value irrelevant for visibility.
+        let uv_to_screen = screen_to_uv.inverse();
+        let screen_to_ndc = Mat4::from_translation(Vec3::splat(-1.0)) * Mat4::from_scale(Vec3::splat(2.0));
+        let mvp = screen_to_ndc * uv_to_screen;
+
+        let (normal, d) = self.get_slice_plane_uv();
+        if let Ok(mut guard) = ctx_arc.lock() {
+            guard.update_uniforms(queue, &mvp.to_cols_array_2d());
+            guard.set_slice_plane(queue, normal.to_array(), d, self.mesh_overlay_thickness, true);
+        }
+    }
+
+    pub fn set_aliasing(&mut self, aliasing: bool) {
+        self.aliasing = aliasing;
+        self.wgpu_impl.set_aliasing(aliasing);
+    }
+
+    /// Toggle the orthogonal projection of 3D needles onto the slice plane.
+    pub fn set_needle_enabled(&mut self, enabled: bool) {
+        self.needle_enabled = enabled;
+        self.wgpu_impl.set_needles_enabled(enabled);
+    }
+
+    /// Insert or update a needle by id. Coordinates are in volume-UV space
+    /// (i.e. what `mm_to_uv` returns in the application layer). Color is RGBA
+    /// in linear [0,1] range.
+    pub fn set_new_needle(
+        &mut self,
+        id: u32,
+        entry: [f32; 3],
+        tip: [f32; 3],
+        color: [f32; 4],
+    ) {
+        if let Some(needle) = self.needles.iter_mut().find(|n| n.id == id) {
+            needle.entry = entry;
+            needle.tip = tip;
+            needle.color = color;
+        } else if self.needles.len() < 32 {
+            self.needles.push(NeedleUniform {
+                entry,
+                radius: NeedleUniform::default().radius,
+                tip,
+                id,
+                color,
+            });
+        } else {
+            log::warn!(
+                "[NEEDLE→MPR] Needle capacity (32) reached; ignoring needle {}",
+                id
+            );
+        }
+    }
+
+    /// Update only the tip of an existing needle (keeps the entry fixed).
+    pub fn set_needle_position(&mut self, id: u32, tip: [f32; 3]) {
+        if let Some(needle) = self.needles.iter_mut().find(|n| n.id == id) {
+            needle.tip = tip;
+        }
+    }
+
+    /// Set the radius (volume-UV units) of an existing needle.
+    pub fn set_needle_radius(&mut self, id: u32, radius: f32) {
+        if let Some(needle) = self.needles.iter_mut().find(|n| n.id == id) {
+            needle.radius = radius.clamp(0.0001, 0.1);
+        }
+    }
+
+    /// Replace the entire needle list (e.g. when syncing from the mesh view).
+    /// `enabled` is forwarded to the GPU as well.
+    pub fn set_needles(&mut self, needles: &[NeedleUniform], enabled: bool) {
+        self.needles.clear();
+        for n in needles.iter().take(32) {
+            self.needles.push(*n);
+        }
+        self.needle_enabled = enabled;
+        self.wgpu_impl.set_needles(&self.needles, enabled);
+        self.last_uploaded_needle_count = self.needles.len();
+    }
+
+    /// Swap the segmentation texture for this view. 
+    /// Pass `None` to revert to the default empty texture and hide the overlay.
+    /// The `device` is required to rebuild the per-view texture bind group
+    /// after the segmentation `RenderContent` changes.
+    pub fn set_segmentation(
+        &mut self,
+        device: &wgpu::Device,
+        seg: Option<Arc<RenderContent>>,
+    ) {
+        self.wgpu_impl.set_segmentation(device, seg);
+    }
+
+    /// Push the 8-slot label visibility mask to the GPU uniform so the fragment
+    /// shader shows/hides individual segmentation labels on the MPR slice.
+    pub fn set_segmentation_visibility(&mut self, queue: &wgpu::Queue, mask: [f32; 8]) {
+        self.wgpu_impl.set_segmentation_visibility(queue, mask);
+    }
+
+    /// Returns the current overlay-enabled flag.
+    pub fn is_segmentation_enabled(&self) -> bool {
+        self.wgpu_impl.uniforms.frag.seg_enabled > 0.5
     }
 }
 
@@ -354,6 +598,17 @@ impl Renderable for MprView {
 
         // Recalculate transformation matrix if view parameters changed
         self.update_transform_matrix();
+
+        // Sync needle overlay state to the GPU
+        if self.needles.len() != self.last_uploaded_needle_count {
+            self.wgpu_impl.set_needles(&self.needles, self.needle_enabled);
+            self.last_uploaded_needle_count = self.needles.len();
+        } else if self.needle_enabled {
+            self.wgpu_impl.set_needles(&self.needles, self.needle_enabled);
+        }
+
+        // Push the latest MVP and slice plane into the mesh overlay.
+        self.update_mesh_overlay(queue);
 
         // Update GPU buffers with all current uniform values
         self.wgpu_impl.update_uniforms_buffers(queue);
@@ -406,6 +661,16 @@ impl Renderable for MprView {
 
         // Draw the screen-aligned quad
         render_pass.draw_indexed(0..self.wgpu_impl.render_context.num_indices, 0, 0..1);
+
+        // Draw the mesh overlay on top of the slice, in the same viewport
+        if self.mesh_overlay_enabled {
+            if let Some(ctx_arc) = &self.mesh_ctx {
+                if let Ok(guard) = ctx_arc.lock() {
+                    guard.render_no_depth(render_pass);
+                }
+            }
+        }
+
         Ok(())
     }
 }
@@ -752,6 +1017,32 @@ impl MprView {
         self.oblique_normal
     }
 
+    pub fn set_oblique_normal(&mut self, normal: Vec3) {
+        let new_normal = normal.normalize_or_zero();
+        if new_normal == Vec3::ZERO {
+            return;
+        }
+        let current_normal = self.oblique_normal.normalize_or_zero();
+        if current_normal == Vec3::ZERO || new_normal == current_normal {
+            self.oblique_normal = new_normal;
+            return;
+        }
+        let dot = current_normal.dot(new_normal).clamp(-1.0, 1.0);
+        if dot < -0.99999 {
+            let axis = if current_normal.x.abs() < 0.9 {
+                current_normal.cross(Vec3::X).normalize()
+            } else {
+                current_normal.cross(Vec3::Y).normalize()
+            };
+            self.oblique_rotation = (Quat::from_axis_angle(axis, std::f32::consts::PI) * self.oblique_rotation).normalize();
+        } else if dot < 0.99999 {
+            let axis = current_normal.cross(new_normal).normalize();
+            let angle = dot.acos();
+            self.oblique_rotation = (Quat::from_axis_angle(axis, angle) * self.oblique_rotation).normalize();
+        }
+        self.oblique_center_world();
+    }
+
     pub fn get_oblique_rotation(&self) -> Quat {
         self.oblique_rotation
     }
@@ -986,3 +1277,146 @@ pub type ObliqueView = MprView;
 pub type SagittalView = MprView;
 pub type TransverseView = MprView;
 pub type CoronalView = MprView;
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Function-level comment: 验证参数校验与钳制逻辑在异常与边界输入下的行为
+    #[test]
+    fn test_validate_and_clamp_params() {
+        let scale = -5.0; // 非法，需替换为默认并钳制
+        let translate = Vec3::new(f32::INFINITY, -20_000.0, 0.0);
+        let pos = (200_000, -200_000);
+        let dim = (0, 200_000);
+        let ((s, t), p, d) = MprView::validate_and_clamp_params(scale, translate, pos, dim);
+        assert!(s >= MprView::MIN_SCALE && s <= MprView::MAX_SCALE);
+        assert!(t.x.is_finite() && t.x.abs() <= MprView::MAX_PAN_DISTANCE);
+        assert!(t.y.abs() <= MprView::MAX_PAN_DISTANCE);
+        assert_eq!(p.0, 100_000);
+        assert_eq!(p.1, -100_000);
+        assert!(d.0 >= 1 && d.1 >= 1);
+    }
+
+    /// Build a representative `[0, 1]^3` UV base matrix. Mimics the matrix
+    /// `GeometryBuilder::build_uv_base` produces for a cube volume.
+    fn fake_base_uv() -> Mat4 {
+        Mat4::from_scale(Vec3::new(1.0, 1.0, 1.0))
+    }
+
+    /// Build a representative screen base matrix for a transverse view of a
+    /// cube volume with isotropic 1mm spacing (matches the regression tests
+    /// in `mpr_view_integration_tests`).
+    fn fake_base_screen() -> Mat4 {
+        // Translate by 0.5 (volume center) and scale by 1.0 (mm per UV unit).
+        Mat4::from_translation(Vec3::splat(0.5))
+    }
+
+    /// `compute_slice_plane_uv` must return a unit-length normal and a `d`
+    /// such that the slice center lies on the plane.
+    #[test]
+    fn test_slice_plane_center_satisfies_equation() {
+        let base_uv = fake_base_uv();
+        let base_screen = fake_base_screen();
+        let pan = Vec3::new(0.1, -0.2, 0.3);
+        let (normal, d) = MprView::compute_slice_plane_uv(
+            base_uv, base_screen, Quat::IDENTITY, 1.0, pan,
+        );
+        // Normal must be unit-length.
+        assert!((normal.length() - 1.0).abs() < 1e-5);
+        // The slice center (screen [0.5, 0.5, pan.z] → UV) must satisfy the
+        // equation. Recompute the UV-space center the same way.
+        let screen_pt = Vec3::new(0.5, 0.5, pan.z);
+        let t_pan = Mat4::from_translation(-pan);
+        let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
+        let s_scale = Mat4::from_scale(Vec3::splat(1.0).with_z(1.0));
+        let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
+        let screen_to_world = base_screen * t_pan * t_center * s_scale * t_uncenter;
+        let uv_pt = (base_uv.inverse() * screen_to_world).transform_point3(screen_pt);
+        let signed = normal.dot(uv_pt) + d;
+        assert!(signed.abs() < 1e-5, "center not on plane: signed={}", signed);
+    }
+
+    /// Tilting the slice (non-identity `oblique_rotation`) must rotate the
+    /// returned normal correspondingly, and the plane must still pass through
+    /// the slice center.
+    #[test]
+    fn test_slice_plane_rotates_with_oblique() {
+        let base_uv = fake_base_uv();
+        // In real usage `oblique_center_world` rotates `base_screen` around
+        // the slice center (the world position of screen [0.5, 0.5, 0]).
+        // Mirror that so the slice center is invariant under the rotation.
+        let base_screen_raw = fake_base_screen();
+        let screen_center_world =
+            base_screen_raw.transform_point3(Vec3::new(0.5, 0.5, 0.0));
+
+        let (n0, _) = MprView::compute_slice_plane_uv(
+            base_uv, base_screen_raw, Quat::IDENTITY, 1.0, Vec3::ZERO,
+        );
+
+        // 90° around the world Y axis: normal should swing to ±X.
+        let rot_y = Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
+        let r_mat = Mat4::from_quat(rot_y);
+        let t1 = Mat4::from_translation(-screen_center_world);
+        let t2 = Mat4::from_translation(screen_center_world);
+        let base_screen_rot = t2 * r_mat * t1 * base_screen_raw;
+
+        let (n1, d1) = MprView::compute_slice_plane_uv(
+            base_uv, base_screen_rot, rot_y, 1.0, Vec3::ZERO,
+        );
+        assert!((n1.length() - 1.0).abs() < 1e-5);
+        assert!(
+            (n1.x.abs() - 1.0).abs() < 1e-5 && n1.y.abs() < 1e-5 && n1.z.abs() < 1e-5,
+            "expected normal along ±X after 90° Y rotation, got {:?}",
+            n1
+        );
+        // Rotated normal must differ from the identity normal.
+        assert!(n0.dot(n1).abs() < 0.5);
+
+        // Because the rotation was applied around the slice center, the
+        // slice center itself does not move, and the plane must pass through
+        // it. Recompute the UV-space center the same way the implementation
+        // does.
+        let pan = Vec3::ZERO;
+        let screen_pt = Vec3::new(0.5, 0.5, pan.z);
+        let t_pan = Mat4::from_translation(-pan);
+        let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
+        let s_scale = Mat4::from_scale(Vec3::splat(1.0).with_z(1.0));
+        let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
+        let screen_to_world =
+            base_screen_rot * t_pan * t_center * s_scale * t_uncenter;
+        let uv_pt =
+            (base_uv.inverse() * screen_to_world).transform_point3(screen_pt);
+        let signed = n1.dot(uv_pt) + d1;
+        assert!(
+            signed.abs() < 1e-4,
+            "rotated plane misses its own slice center: {}",
+            signed
+        );
+    }
+
+    /// A point known to be on the slice must have `|normal · x + d|` ≈ 0;
+    /// a point far from the slice must have a large value. This is the
+    /// invariant the shader relies on for the discard.
+    #[test]
+    fn test_slice_plane_signed_distance() {
+        let base_uv = fake_base_uv();
+        let base_screen = fake_base_screen();
+        let (normal, d) = MprView::compute_slice_plane_uv(
+            base_uv, base_screen, Quat::IDENTITY, 1.0, Vec3::ZERO,
+        );
+        // Center point on the slice should have distance ≈ 0.
+        let center_dist = (normal.dot(Vec3::splat(0.5)) + d).abs();
+        assert!(center_dist < 1e-5, "center distance should be 0, got {}", center_dist);
+        // Point a quarter of the volume away from the slice should have
+        // distance ≈ 0.25.
+        let off_slice = Vec3::new(0.5, 0.5, 0.75);
+        let far_dist = (normal.dot(off_slice) + d).abs();
+        assert!(
+            (far_dist - 0.25).abs() < 1e-5,
+            "expected ~0.25 distance for z=0.75, got {}",
+            far_dist
+        );
+    }
+}

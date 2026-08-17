@@ -1,0 +1,655 @@
+# AI Segmentation Integration Design
+## TotalSegmentator Integration for dirac2 + kepler2-wgpu
+
+**Project:** dirac2 + kepler2-wgpu  
+**Author:**  admin
+**Date:**    2026-07-13
+**Version:** 1.0
+
+---
+
+# 1. Overview
+
+This document describes the design for integrating AI-based anatomical segmentation into the existing medical imaging platform.
+
+The current system consists of:
+
+- Electron desktop application (`dirac2`)
+- Rust backend server (`axum`)
+- WebSocket communication layer
+- Rust/WASM rendering engine (`kepler2-wgpu`)
+- WebGPU-based MPR, Volume Rendering, and Mesh Rendering pipelines
+
+The goal is to integrate the **TotalSegmentator** model to provide:
+
+- Automatic multi-organ segmentation
+- Segmentation overlay in MPR views
+- Segmentation overlay in Volume Rendering
+- Surface mesh generation from segmentation masks
+- Anatomical measurements and future AI-assisted workflows
+
+---
+
+# 2. Existing Architecture
+
+```text
+Electron / Browser UI
+          │
+          │ WebSocket
+          │
+      Rust Axum Server
+          │
+          │
+      kepler2-wgpu
+          │
+          │
+      WebGPU Renderer
+          │
+          ├── MPR
+          ├── Volume Rendering
+          └── Mesh Rendering
+```
+
+# 3. Design Goals
+
+## Functional Goals
+
+1. Automatic segmentation of CT datasets.
+2. Real-time segmentation progress reporting.
+3. Segmentation visualization in all viewers.
+4. Segmentation mesh generation.
+5. Future support for additional AI models.
+
+## Non-Functional Goals
+
+1. No modifications to existing coordinate systems.
+2. No AI inference inside WASM.
+3. No AI inference inside WebGPU shaders.
+4. Minimal changes to existing rendering pipelines.
+5. Extensible architecture for future AI services.
+
+---
+
+# 4. Proposed Architecture
+
+```text
+Electron / Browser
+          │
+          │ WebSocket
+          │
+      Rust Axum Server
+          │
+          │ HTTP/WebSocket
+          │
+    +-----+--------------------+
+    │                          │
+    │                          │
+kepler2-wgpu            Python AI Service
+    │                          │
+    │                    TotalSegmentator
+    │                          │
+    │                    Segmentation Masks
+    │
+    ├── MPR
+    ├── Volume Rendering
+    ├── Mesh Rendering
+    └── Segmentation Overlay
+```
+
+The AI inference service is completely independent of the rendering engine.
+
+---
+
+# 5. Why TotalSegmentator Runs as an External Service
+
+TotalSegmentator is based on:
+
+- Python
+- PyTorch
+- nnU-Net
+- CUDA acceleration
+
+Running the model inside WASM is not feasible because:
+
+- WASM does not support CUDA execution.
+- PyTorch inference inside WASM is impractical.
+- Model size is very large.
+- GPU memory requirements are significant.
+
+Therefore, segmentation inference will be deployed as a separate Python service.
+
+---
+
+# 6. Server Module Design
+
+## Directory Structure
+
+```text
+server/
+├── route.rs      // 注册 HTTP API
+├── handler.rs    // 提供 REST API 接口
+├── ws.rs         // 收 websocket 消息、推送进度
+├── state.rs      // 保存 AiService、TaskManager
+├── ai.rs         // reqwest调用Python
+├── ai_task.rs    // task管理、进度查询
+├── ai_model.rs   // 请求响应结构体
+└── ai_handler.rs // 开始分割、取消、查询结果
+```
+
+---
+
+# 7. Module Responsibilities
+
+## route.rs
+
+Responsibilities:
+
+- Register HTTP APIs
+- Register WebSocket routes
+- Inject application state
+
+Example:
+
+```text
+POST /api/segment
+GET  /ws
+```
+
+---
+
+## handler.rs
+
+Responsibilities:
+
+- Handle REST APIs
+- Start segmentation tasks through HTTP requests
+
+Example:
+
+```text
+POST /api/segment
+```
+
+---
+
+## ws.rs
+
+Responsibilities:
+
+- Receive WebSocket messages
+- Dispatch AI commands
+- Send progress updates
+- Send completion notifications
+
+Supported messages:
+
+```text
+segment
+segment_progress
+segment_complete
+segment_failed
+segment_cancel
+```
+
+---
+
+## state.rs
+
+Responsibilities:
+
+- Store global application state
+- Store AI service instances
+- Store task manager
+
+Example:
+
+```text
+AppState
+ ├── AiService
+ └── TaskManager
+```
+
+---
+
+## ai_model.rs
+
+Responsibilities:
+
+- Request structures
+- Response structures
+- WebSocket message structures
+
+Example:
+
+```text
+SegmentRequest
+SegmentResponse
+ProgressResponse
+```
+
+---
+
+## ai.rs
+
+Responsibilities:
+
+- HTTP communication with Python service
+- Submit segmentation requests
+- Query task progress
+- Download segmentation results
+
+Example:
+
+```text
+Rust
+  │
+reqwest
+  │
+Python AI Service
+```
+
+---
+
+## ai_handler.rs
+
+Responsibilities:
+
+- Business logic layer
+- Start segmentation
+- Query progress
+- Load segmentation results
+- Future AI workflows
+
+Example:
+
+```text
+segment
+cancel
+progress
+download
+```
+
+---
+
+## ai_task.rs
+
+Responsibilities:
+
+- Manage task lifecycle
+- Store task status
+- Store progress information
+- Map task_id to segmentation data
+
+Task states:
+
+```text
+Pending
+Running
+Completed
+Failed
+Cancelled
+```
+
+---
+
+# 8. WebSocket Message Design
+
+## Start Segmentation
+
+Client → Server
+
+```json
+{
+  "type": "segment",
+  "model": "totalsegmentator",
+  "series": "CT001"
+}
+```
+
+---
+
+## Segmentation Accepted
+
+Server → Client
+
+```json
+{
+  "type": "segment_started",
+  "task_id": "8cfa-123"
+}
+```
+
+---
+
+## Progress Update
+
+Server → Client
+
+```json
+{
+  "type": "segment_progress",
+  "task_id": "8cfa-123",
+  "value": 65
+}
+```
+
+---
+
+## Segmentation Completed
+
+Server → Client
+
+```json
+{
+  "type": "segment_complete",
+  "task_id": "8cfa-123",
+  "volume": "seg001"
+}
+```
+
+---
+
+## Segmentation Failed
+
+Server → Client
+
+```json
+{
+  "type": "segment_failed",
+  "task_id": "8cfa-123",
+  "message": "Segmentation failed."
+}
+```
+
+---
+
+# 9. Python AI Service
+
+Recommended implementation:
+
+- FastAPI
+- TotalSegmentator
+- PyTorch
+- CUDA
+
+API:
+
+```text
+POST /segment
+GET  /task/{id}
+GET  /result/{id}
+```
+
+---
+
+## Segmentation Workflow
+
+```text
+Rust Server
+      │
+      │ POST /segment
+      │
+Python Service
+      │
+Create Task
+      │
+Run TotalSegmentator
+      │
+Generate Masks
+      │
+Return task_id
+```
+
+---
+
+# 10. Segmentation Data Flow
+
+Current pipeline:
+
+```text
+DICOM
+   │
+CTVolume
+   │
+Density Texture
+   │
+Volume Rendering
+```
+
+Extended pipeline:
+
+```text
+DICOM
+   │
+CTVolume
+   │
+   ├── Density Texture
+   │
+   └── Segmentation Texture
+```
+
+Both textures share the same coordinate system.
+
+---
+
+# 11. Segmentation Output Format
+
+TotalSegmentator produces:
+
+```text
+spine.nii.gz
+```
+
+These files should be converted into:
+
+```text
+segmentation.raw
+segmentation.json
+```
+
+Example:
+
+```json
+{
+  "labels": {
+    "1": "spine",
+  }
+}
+```
+
+---
+
+# 12. Segmentation Volume Structure
+
+```text
+SegmentationVolume
+├── dimensions
+├── labels
+└── label_table
+```
+
+Example:
+
+```text
+512 x 512 x 300
+uint8 labels
+```
+
+Label values:
+
+```text
+0 = background
+1 = spine
+```
+
+---
+
+# 13. GPU Texture Design
+
+Recommended texture format:
+
+```text
+TextureFormat::R8Uint
+```
+
+Advantages:
+
+- Compact memory footprint
+- Fast upload
+- Simple shader sampling
+- Direct label lookup
+
+Pipeline:
+
+```text
+SegmentationVolume
+        │
+Texture3D<R8Uint>
+        │
+Shader Sampling
+```
+
+---
+
+# 14. MPR Integration
+
+Segmentation textures must use exactly the same coordinate system as CTVolume.
+
+Coordinate information:
+
+```text
+ImagePositionPatient
+ImageOrientationPatient
+Voxel Spacing
+Base Matrix
+```
+
+Both textures share:
+
+```text
+CT Texture
+Segmentation Texture
+```
+
+Benefits:
+
+- Axial synchronization
+- Coronal synchronization
+- Sagittal synchronization
+- Oblique synchronization
+- No additional transforms required
+
+---
+
+# 15. Volume Rendering Integration
+
+Current pipeline:
+
+```text
+Ray Marching
+Window/Level
+Transfer Function
+```
+
+Extended pipeline:
+
+```text
+Ray Marching
+      │
+Sample Density
+      │
+Sample Segmentation Label
+      │
+Apply Overlay Color
+      │
+Composite Result
+```
+
+Example:
+
+```text
+Label = 1
+Color = Green
+Opacity = 0.3
+```
+
+---
+
+# 16. Mesh Integration
+
+Pipeline:
+
+```text
+Segmentation Mask
+        │
+Marching Cubes
+        │
+Vertex Buffer
+        │
+Index Buffer
+        │
+Mesh Rendering
+```
+
+Benefits:
+
+- Surface visualization
+- Organ isolation
+- Measurement tools
+- Surgical planning
+
+---
+
+# 17. Task Lifecycle
+
+```text
+Client
+   │
+segment
+   │
+Rust Server
+   │
+Create Task
+   │
+Python Service
+   │
+Running
+   │
+Progress Updates
+   │
+Completed
+   │
+Load Segmentation
+   │
+Create Texture
+   │
+Render Overlay
+```
+
+
+# 18. Final Architecture
+
+```text
+                 dirac2
+                    │
+               WebSocket
+                    │
+                 Axum
+                    │
+        +-----------+-----------+
+        │                       │
+        │                       │
+   kepler2-wgpu            AI Service
+        │                       │
+        │                 TotalSegmentator
+        │                       │
+        │                 Segmentation Masks
+        │
+        ├── MPR
+        ├── Volume Rendering
+        ├── Mesh Rendering
+        ├── Segmentation Overlay
+        └── Measurements
+```
+
+The integration introduces an independent AI inference service while preserving the existing rendering architecture and coordinate systems.

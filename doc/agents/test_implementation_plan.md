@@ -2,8 +2,8 @@
 ## Kepler2-WGPU Medical Imaging Software
 
 **Status**: Active Implementation Plan  
-**Based on**: `test_strategy_comprehensive.md`  
-**Target**: 80% coverage on critical medical paths (3 months)
+**Based on**: `test_strategy_comprehensive.md` (Updated)
+**Target**: 80% coverage on critical medical paths and address actual coverage gaps in Rendering, Application, and Ignored Tests (3 months)
 
 ---
 
@@ -1458,6 +1458,132 @@ Next Week Focus:
 
 ---
 
-**Last Updated**: 2026-01-18  
-**Next Review**: After Phase 1 completion (Week 2)
+## 📋 Overview2
+
+Based on the latest static and dynamic analysis of the codebase, previous critical gaps in DICOM parsing (`ct_image.rs`) and Patient metadata (`patient.rs`) **have already been successfully covered** by `dicom_pixel_data_validation_tests.rs` and `patient_safety_tests.rs`. 
+
+The new priority order shifts towards the remaining untested boundaries:
+1. **Rendering Correctness** - Re-enable ignored tests and Headless WGPU (Weeks 5-6)
+2. **Medical Formats (MHA/MHD)** - Fix ignored parser tests (Weeks 5-6)
+3. **Application Layer** - Decouple Winit and test state machine (Weeks 5-6)
+
+---
+
+## 🚨 Phase 1: Rendering Core & Shader Safety
+
+### Week 1: Headless GPU Testing Infrastructure (无头GPU测试基建)
+
+**Objective**: Establish a test environment that can run WGPU without a physical window.
+
+#### Task 1.1: Headless WGPU Setup
+**File**: `tests/common/gpu_mocks.rs` (NEW)  
+**Effort**: 4 hours
+
+**Deliverables**:
+- [ ] Create `setup_headless_device()` returning `(wgpu::Device, wgpu::Queue)`.
+- [ ] Use `wgpu::Instance::request_adapter` with `wgpu::Backends::all()` and force software rendering fallback if needed in CI.
+- [ ] Ensure tests can run in GitHub Actions without display servers.
+
+#### Task 1.2: Graphics Context Initialization Tests
+**File**: `tests/graphics_core_tests.rs` (NEW)  
+**Effort**: 6 hours
+
+**Deliverables**:
+- [ ] Test `Graphics::initialize` error handling (simulating adapter failure).
+- [ ] Test `GraphicsContext::new` and `update_surface_config`.
+- [ ] **Coverage Target**: `src/rendering/core/graphics.rs` from 0% -> 60%.
+
+---
+
+### Week 2: Shader Syntax & Bindings (着色器语法与绑定测试)
+
+**Objective**: Re-enable and implement the `#[ignore]` tests in `tests/rendering_correctness_tests.rs`.
+
+#### Task 1.3: Shader Compilation Tests
+**File**: `tests/rendering_correctness_tests.rs` (UPDATE)  
+**Effort**: 8 hours
+
+**Deliverables**:
+- [ ] Remove `#[ignore]` from `test_shader_compilation_succeeds`.
+- [ ] Load `src/rendering/shaders/mesh.wgsl`, `mpr.wgsl`, and `mip.wgsl`.
+- [ ] Call `device.create_shader_module()` to statically verify WGSL syntax at test time.
+- [ ] Implement `test_invalid_wgsl_syntax_detected` by passing intentionally malformed WGSL.
+
+#### Task 1.4: Pipeline & Uniform Tests
+**File**: `tests/rendering_correctness_tests.rs` (UPDATE)  
+**Effort**: 6 hours
+
+**Deliverables**:
+- [ ] Remove `#[ignore]` from `test_missing_uniform_detected` and `test_texture_format_mismatch_detected`.
+- [ ] Attempt to create a `wgpu::RenderPipeline` with mismatched bind group layouts to ensure WGPU validation catches it.
+- [ ] **Coverage Target**: `src/rendering/core/pipeline.rs` from ~5% -> 50%.
+
+---
+
+## 📊 Phase 2: Medical Format Integrity (Weeks 3-4)
+
+### Week 3: MHA/MHD Parser Verification (MHA/MHD解析器验证)
+
+**Objective**: Fix the `#[ignore]` tests in `tests/medical_imaging_tests.rs`.
+
+#### Task 2.1: MHA Parser Tests
+**File**: `tests/medical_imaging_tests.rs` (UPDATE)  
+**Effort**: 6 hours
+
+**Deliverables**:
+- [ ] Re-enable `test_mha_parse_by_bytes` and `test_mha_parser_header_by_bytes`.
+- [ ] Use `tests/common/fixtures/format.rs` to generate valid MHA bytes in-memory.
+- [ ] Verify parsing of `NDims`, `DimSize`, `ElementType`, and `ElementSpacing`.
+- [ ] **Coverage Target**: `src/data/medical_imaging/formats/mha.rs` from ~40% -> 80%.
+
+#### Task 2.2: MHD External Data Tests
+**File**: `tests/medical_imaging_tests.rs` (UPDATE)  
+**Effort**: 6 hours
+
+**Deliverables**:
+- [ ] Re-enable `test_mhd_parse_by_bytes`.
+- [ ] Mock the file system or use relative paths to test `ElementDataFile` parsing.
+- [ ] Verify compressed vs uncompressed data loading paths.
+- [ ] **Coverage Target**: `src/data/medical_imaging/formats/mhd.rs` from 0% -> 60%.
+
+---
+
+## 🏗️ Phase 3: Application Layer & E2E (Weeks 5-6)
+
+### Week 5: App Logic Decoupling (应用层逻辑解耦)
+
+**Objective**: Make `src/application/app.rs` testable without `winit::event_loop`.
+
+#### Task 3.1: State Machine Extraction
+**File**: `src/application/app_model.rs` (NEW or REFACTOR)  
+**Effort**: 12 hours
+
+**Deliverables**:
+- [ ] Extract UI state, layout mode, and view configurations from `App` into a pure `AppModel` struct.
+- [ ] Ensure `AppModel` can process custom enum events (e.g., `AppEvent::Resize`, `AppEvent::KeyDown`) without Winit.
+
+#### Task 3.2: App State Tests
+**File**: `tests/app_state_tests.rs` (NEW)  
+**Effort**: 8 hours
+
+**Deliverables**:
+- [ ] Test layout switching (e.g., 1x1 to 2x2 layout).
+- [ ] Test keyboard shortcuts (e.g., pressing 'C' switches to pure mesh view, 'B' switches to 2x2 layout).
+- [ ] Test volume rendering toggles.
+- [ ] **Coverage Target**: `src/application/` module from 0% -> 50%.
+
+---
+
+## ✅ Success Metrics (成功指标)
+
+1. **Test Suite Stability**: `cargo test` executes all 100+ tests (including previously ignored ones) in under 30 seconds.
+2. **Coverage Thresholds**: 
+   - `src/rendering/core/`: > 50%
+   - `src/application/`: > 40%
+   - `src/data/medical_imaging/formats/`: > 80%
+
+---
+
+**Last Updated**: 2026-04-29
+**Next Review**: After Phase 3 completion (Week 6)
 **Maintained By**: Development Team

@@ -40,6 +40,11 @@ struct MipUniforms {
     mode: f32,
     lower_threshold: f32,
     upper_threshold: f32,
+    needle_enabled: f32,
+    needle_count : u32,
+    _pad: f32,
+    _pad2: f32,
+    needles : array<NeedleUniform, 32>,
     rotation: mat4x4<f32>,
 }
 @group(1) @binding(0)
@@ -47,17 +52,16 @@ var<uniform> u_mip: MipUniforms;
 
 // Intersect axis-aligned unit box [0,1]^3
 fn intersect_volume(ray_origin: vec3<f32>, ray_dir: vec3<f32>) -> vec2<f32> {
-    let box_min = vec3<f32>(0.0, 0.0, 0.0);
-    let box_max = vec3<f32>(1.0, 1.0, 1.0);
-    let eps = 1e-6;
-    let inv_dir = select(vec3<f32>(1e20, 1e20, 1e20), 1.0 / ray_dir, abs(ray_dir) > vec3<f32>(eps, eps, eps));
-    let t0 = (box_min - ray_origin) * inv_dir;
-    let t1 = (box_max - ray_origin) * inv_dir;
-    let tmin3 = min(t0, t1);
-    let tmax3 = max(t0, t1);
-    let t_min = max(max(tmin3.x, tmin3.y), tmin3.z);
-    let t_max = min(min(tmax3.x, tmax3.y), tmax3.z);
-    return vec2<f32>(t_min, t_max);
+    let is_zero = abs(ray_dir) < vec3<f32>(1e-6);
+    let sign_dir = select(sign(ray_dir), vec3<f32>(1.0), is_zero);
+    let inv = 1.0 / max(abs(ray_dir), vec3<f32>(1e-6)) * sign_dir;
+    let t0 = (vec3<f32>(0.0) - ray_origin) * inv;
+    let t1 = (vec3<f32>(1.0) - ray_origin) * inv;
+
+    let tmin = max(max(min(t0.x,t1.x), min(t0.y,t1.y)), min(t0.z,t1.z));
+    let tmax = min(min(max(t0.x,t1.x), max(t0.y,t1.y)), max(t0.z,t1.z));
+
+    return vec2<f32>(tmin, tmax);
 }
 
 fn sample_volume(coords: vec3<f32>) -> f32 {
@@ -83,23 +87,19 @@ fn sample_volume(coords: vec3<f32>) -> f32 {
 fn apply_window_level(value: f32) -> f32 {
     let center = u_mip.level;
     let width = max(u_mip.window, 1e-6);
-    var v: f32;
-    if (value <= (center - 0.5 - (width - 1.0) / 2.0)) {
-        v = 0.0;
-    } else if (value > (center - 0.5 + (width - 1.0) / 2.0)) {
-        v = 1.0;
-    } else {
-        v = ((value - (center - 0.5)) / (width - 1.0)) + 0.5;
-    }
+    let min_val = center - 0.5 - (width - 1.0) * 0.5;
+    let max_val = center - 0.5 + (width - 1.0) * 0.5;
+    let v = (value - min_val) / (max_val - min_val);
     return clamp(v, 0.0, 1.0);
 }
 
-// Ray march with MIP / MinIP / AvgIP
-fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end: f32) -> f32 {
+// Ray march with MIP / MinIP / AvgIP, with optional needle overlay
+fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end: f32) -> vec4<f32> {
     var max_intensity = -1e20;
     var min_intensity = 1e20;
     var sum_intensity = 0.0;
     var count: u32 = 0u;
+    var needle_color = vec3<f32>(0.0);
 
     let step_size = max(u_mip.ray_step_size, 1e-6);
     let max_steps = u32(max(u_mip.max_steps, 1.0));
@@ -115,11 +115,22 @@ fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end:
         if (t > t_end) { break; }
 
         let sample_pos = ray_origin + t * ray_dir;
-        let intensity = sample_volume(sample_pos);
+        var intensity = sample_volume(sample_pos);
 
         // threshold filtering (uniform-driven)
         if (intensity < u_mip.lower_threshold || intensity > u_mip.upper_threshold) {
             continue;
+        }
+
+        // check for needle overlay
+        if (u_mip.needle_enabled > 0.5) {
+            for (var k: u32 = 0u; k < u_mip.needle_count; k = k + 1u) {
+                let needle = u_mip.needles[k];
+                if (point_inside_needle(sample_pos, needle.entry, needle.tip, needle.radius)) {
+                    needle_color = needle.color.rgb;
+                    break;
+                }
+            }
         }
 
         // choose aggregator by mode: mode ~ 0 => MIP, mode ~1 => MinIP, else AvgIP
@@ -134,52 +145,53 @@ fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end:
     }
 
     // Fallback: if nothing sampled, return lower_threshold (so MinIP will invert to bright)
+    var final_intensity: f32;
     if (u_mip.mode < 0.5) {
-        if (max_intensity < -1e19) { return u_mip.lower_threshold; }
-        return max_intensity;
+        if (max_intensity < -1e19) { final_intensity = u_mip.lower_threshold; }
+        final_intensity = max_intensity;
     } else if (u_mip.mode < 1.5) {
-        if (min_intensity > 1e19) { return u_mip.lower_threshold; }
-        return min_intensity;
+        if (min_intensity > 1e19) { final_intensity = u_mip.lower_threshold; }
+        final_intensity = min_intensity;
     } else {
-        if (count == 0u) { return u_mip.lower_threshold; }
-        return sum_intensity / f32(count);
+        if (count == 0u) { final_intensity = u_mip.lower_threshold; }
+        final_intensity = sum_intensity / f32(count);
     }
+    return vec4<f32>(final_intensity, needle_color);
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // pan/scale centered at 0.5
-    let scale = max(u_mip.scale, 0.0001);
-    let uv_centered = in.tex_coords - vec2<f32>(0.5, 0.5);
-    let uv_scaled = uv_centered / scale;
-    let uv = uv_scaled + vec2<f32>(0.5, 0.5) + vec2<f32>(u_mip.pan_x, u_mip.pan_y);
-    let uv_clamped = clamp(uv, vec2<f32>(0.0, 0.0), vec2<f32>(1.0, 1.0));
+    let scale = max(u_mip.scale * 1.5, 0.0001);
+    let uv = (in.tex_coords - vec2<f32>(0.5)) * scale + vec2<f32>(0.5) + vec2<f32>(u_mip.pan_x, u_mip.pan_y);
 
     // Establish orthographic ray along +Z (texture coords space)
     let center = vec3<f32>(0.5, 0.5, 0.5);
     // Note the flip in y to match screen->texture coord mapping
-    let base_ray_origin = vec3<f32>(uv_clamped.x, 1.0 - uv_clamped.y, -0.5);
+    let base_ray_origin = vec3<f32>(uv.x, 1.0 - uv.y, -0.5);
 
     let volume_ray_origin = (u_mip.rotation * vec4<f32>(base_ray_origin - center, 1.0)).xyz + center;
     let volume_ray_dir = normalize((u_mip.rotation * vec4<f32>(0.0, 0.0, 1.0, 0.0)).xyz);
 
     let intersection = intersect_volume(volume_ray_origin, volume_ray_dir);
-    let t_start = max(intersection.x, 0.0);
+    let t_start = intersection.x;
     let t_end = intersection.y;
 
     if (t_start >= t_end) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
 
-    let intensity = mip_ray_march(volume_ray_origin, volume_ray_dir, t_start, t_end);
+    let mip_result = mip_ray_march(volume_ray_origin, volume_ray_dir, t_start, t_end);
+    let intensity = mip_result.r;
+    let needle_color = mip_result.gba;
+
+    // Needle overlay: if any needle was hit during raymarching, show needle color
+    if (needle_color.r + needle_color.g + needle_color.b > 0.001) {
+        return vec4<f32>(needle_color, 0.4);
+    }
 
     // Map intensity -> display value using window/level
-    var processed = apply_window_level(intensity);
-
-    // // For MinIP (mode == 1), invert the display mapping so low-HU -> bright.
-    // if (u_mip.mode >= 1.0 && u_mip.mode < 2.0) {
-    //     processed = 1.0 - processed;
-    // }
+    let processed = apply_window_level(intensity);
 
     return vec4<f32>(processed, processed, processed, 1.0);
 }
