@@ -3,7 +3,7 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
     Json,
-    body::Body,
+    body::{Body, Bytes},
     response::Response,
 };
 use serde::{Deserialize, Serialize};
@@ -311,8 +311,11 @@ pub async fn upload_volume(
     Query(params): Query<UploadParams>,
     mut multipart: Multipart,
 ) -> Result<Json<String>, (StatusCode, String)> {
-    let mut mha_bytes: Vec<u8> = Vec::new();
-    let mut data_bytes: Vec<u8> = Vec::new();
+    // Hold the uploaded fields as `Bytes` (refcounted, cheap to clone if ever needed).
+    // We deliberately avoid `to_vec()` here so the MHA buffer is only copied once,
+    // at the point where `StoredVolume` requires an owned `Vec<u8>`.
+    let mut mha_bytes: Option<Bytes> = None;
+    let mut data_bytes: Option<Bytes> = None;
 
     while let Some(field) = multipart.next_field().await.map_err(|e| {
         (StatusCode::BAD_REQUEST, format!("Multipart parse error: {}", e))
@@ -321,19 +324,25 @@ pub async fn upload_volume(
         let bytes = field.bytes().await.map_err(|e| {
             (StatusCode::BAD_REQUEST, format!("Field read error: {}", e))
         })?;
-        
+
         if name == "mha" {
-            mha_bytes = bytes.to_vec();
+            mha_bytes = Some(bytes);
         } else if name == "data" {
-            data_bytes = bytes.to_vec();
+            data_bytes = Some(bytes);
         }
     }
+
+    let mha_bytes = mha_bytes
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing 'mha' multipart field".to_string()))?;
+    let data_bytes = data_bytes.unwrap_or_default();
 
     log::info!("upload_volume called with mha={} bytes, data={} bytes", mha_bytes.len(), data_bytes.len());
 
     let id = generate_uid();
     let now = chrono::Local::now();
 
+    // Persist the MHA to disk by reference (no copy). `Bytes` derefs to `&[u8]`,
+    // which `tokio::fs::write` accepts via `AsRef<[u8]>`.
     let mha_disk_path = {
         let path = state.series_path(&id);
         if let Err(e) = tokio::fs::write(&path, &mha_bytes).await {
@@ -352,10 +361,12 @@ pub async fn upload_volume(
         path
     };
 
+    // Only one copy of the MHA buffer is made here, when we move it into the
+    // owned `Vec<u8>` that `StoredVolume` requires.
     let stored = StoredVolume {
         id: id.clone(),
-        mhx_path: Some(mha_bytes),
-        data_path: Some(data_bytes),
+        mhx_path: Some(mha_bytes.to_vec()),
+        data_path: if data_bytes.is_empty() { None } else { Some(data_bytes.to_vec()) },
         mha_disk_path,
         loaded_at: now.format("%Y-%m-%dT%H:%M:%S").to_string(),
         patient: Patient {
@@ -380,7 +391,10 @@ pub async fn upload_volume(
     };
 
     let count_before = state.volume_count().await;
-    let series_uid = state.store_raw_volume(stored.clone()).await;
+    // Move `stored` directly into the store instead of cloning. After this call
+    // we never read `stored` again, so a full deep clone (which would copy
+    // every byte of the MHA payload) is unnecessary.
+    let series_uid = state.store_raw_volume(stored).await;
     let count_after = state.volume_count().await;
     broadcast_message(&state, WsMessage::ServerStatus {
         loaded_volumes: count_after,

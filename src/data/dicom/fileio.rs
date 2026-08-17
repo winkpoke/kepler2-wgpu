@@ -167,9 +167,13 @@ pub async fn parse_dcm_files(file_paths: Vec<std::path::PathBuf>) -> Result<Dico
         }
     }
 
-    // Extract the final repository and return it
-    let repo = repo.lock().await;
-    Ok((*repo).clone())
+    // Move the DicomRepo out of the Arc<Mutex<_>> without deep-cloning its pixel data.
+    // All task-local Arc clones have been dropped with their owning tasks, so the
+    // outer `repo` is the sole strong reference and try_unwrap is expected to succeed.
+    let repo = Arc::try_unwrap(repo)
+        .map_err(|_| anyhow::anyhow!("DicomRepo still has multiple strong references"))?
+        .into_inner();
+    Ok(repo)
 }
 
 //------------------------------ WASM Code -------------------------------------
@@ -287,9 +291,14 @@ pub async fn parse_dcm_files_wasm(files: Array) -> Result<DicomRepo, JsValue> {
     let all_promise = js_sys::Promise::all(&tasks.into_iter().collect::<Array>());
     wasm_bindgen_futures::JsFuture::from(all_promise).await?;
 
-    // Return the DicomRepo directly as a JsValue
-    let repo = repo.lock().map_err(|e| JsValue::from(e.to_string()))?;
-    Ok(repo.clone())
+    // Move the DicomRepo out of the Arc<Mutex<_>> without deep-cloning its pixel data.
+    // All Promise task closures have completed, so the Arc clones they held are
+    // already dropped and the outer `repo` is the sole strong reference.
+    let repo = Arc::try_unwrap(repo)
+        .map_err(|_| JsValue::from("DicomRepo still has multiple strong references"))?
+        .into_inner()
+        .map_err(|e| JsValue::from(format!("DicomRepo mutex poisoned: {}", e)))?;
+    Ok(repo)
 }
 
 /// Function-level comment: Parses common medical imaging files (MHA, MHD, etc.) for WASM
