@@ -111,6 +111,13 @@ impl PixelData {
                     voxel_data.push(val);
                 }
             }
+            PixelType::UInt16 => {
+                for chunk in raw_data.chunks_exact(2).take(voxel_count) {
+                    let val = u16::from_le_bytes([chunk[0], chunk[1]]);
+                    let val = (val.min(i16::MAX as u16)) as i16;
+                    voxel_data.push(val);
+                }
+            }
             PixelType::Float32 => {
                 for chunk in raw_data.chunks_exact(4).take(voxel_count) {
                     let val = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);

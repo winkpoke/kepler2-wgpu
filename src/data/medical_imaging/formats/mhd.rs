@@ -4,9 +4,10 @@ use crate::data::medical_imaging::{
     validation::MedicalImageValidator,
     ImageFormat,
 };
+use super::common::parse_metaimage_header;
 use std::fs::File;
 use std::path::PathBuf;
-use std::{collections::HashMap, io::Read};
+use std::io::Read;
 
 /// Function-level comment: Parses MHD (MetaIO) files with separate data files
 /// Handles header files that reference external raw or compressed data
@@ -78,27 +79,7 @@ impl MhdParser {
 
     /// Parses MHD header file from raw bytes
     pub fn parse_metadata_only(mhd_data: &[u8]) -> MedicalImagingResult<ImageMetadata> {
-        let mut kv: HashMap<String, String> = HashMap::new();
-        let data_offset: Option<usize> = None;
-
-        // Parse header lines from the MHD file content
-        for line in mhd_data.split(|&b| b == b'\n') {
-            let line = std::str::from_utf8(line)
-                .map_err(|e| MedicalImagingError::ParseError {
-                    field: format!("Line {:?}", line),
-                    reason: e.to_string(),
-                })?
-                .trim();
-
-            let l = line.split('#').next().unwrap_or("").trim();
-            if l.is_empty() {
-                continue;
-            }
-
-            if let Some((k, v)) = line.split_once('=') {
-                kv.insert(k.trim().to_string(), v.trim().to_string());
-            }
-        }
+        let (kv, _data_offset) = parse_metaimage_header(mhd_data)?;
 
         // Check if the MHD file references an external data file
         if let Some(data_file) = kv.get("ElementDataFile") {
@@ -109,7 +90,7 @@ impl MhdParser {
         }
 
         // Parse the metadata from header key-value pairs
-        let mut metadata = ImageMetadata::get_header(kv, data_offset)?;
+        let mut metadata = ImageMetadata::get_header(kv, None)?;
 
         // Mark that this is a header-only parse for WASM
         metadata.element_data_file = "WASM_HEADER_ONLY".to_string();

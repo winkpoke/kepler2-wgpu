@@ -6,6 +6,7 @@ use crate::data::medical_imaging::{
     mha::MhaParser,
     mhd::MhdParser,
 };
+use std::collections::HashMap;
 use std::path::Path;
 
 /// Image format enumeration
@@ -69,4 +70,53 @@ pub enum CompressionType {
     GZip,
     ZLib,
     Raw,
+}
+
+/// Parses MetaImage header (MHA/MHD) key-value pairs from raw bytes
+/// Returns (key-value pairs, data_offset if ElementDataFile=LOCAL was found)
+pub fn parse_metaimage_header(data: &[u8]) -> MedicalImagingResult<(HashMap<String, String>, Option<usize>)> {
+    let mut kv: HashMap<String, String> = HashMap::new();
+    let mut data_offset: Option<usize> = None;
+
+    // Limit header scan to 64KB to avoid scanning entire file
+    let max_size = 64 * 1024;
+    let header_region = &data[..std::cmp::min(data.len(), max_size)];
+    let mut cursor: usize = 0;
+
+    for (line_no, raw_line) in header_region.split(|&b| b == b'\n').enumerate() {
+        let line = std::str::from_utf8(raw_line)
+            .map_err(|e| MedicalImagingError::ParseError {
+                field: format!("Line {}", line_no),
+                reason: e.to_string(),
+            })?
+            .trim();
+
+        cursor += raw_line.len() + 1; // +1 for '\n'
+
+        // Strip comments
+        let l = line.split('#').next().unwrap_or("").trim();
+        if l.is_empty() {
+            continue;
+        }
+
+        if let Some((k, v)) = l.split_once('=') {
+            let key = k.trim();
+            let val = v.trim();
+            kv.insert(key.to_string(), val.to_string());
+
+            // For MHA files, track where binary data starts
+            if key.eq_ignore_ascii_case("ElementDataFile") {
+                if val.eq_ignore_ascii_case("LOCAL") {
+                    data_offset = Some(cursor);
+                }
+                break; // ElementDataFile is typically the last header line
+            }
+        } else {
+            return Err(MedicalImagingError::UnsupportedFormat {
+                format: format!("Invalid line {}: {}", line_no, l),
+            });
+        }
+    }
+
+    Ok((kv, data_offset))
 }

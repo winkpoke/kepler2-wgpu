@@ -14,30 +14,33 @@ define_dicom_struct!(Patient, {
 // Native version for reading DICOM from a file directly (e.g., from the file system)
 impl Patient {
     // Function to parse the DICOM file and generate the Patient structure
-    pub fn from_bytes(dicom_data: &[u8]) -> Result<Patient> {
-        // Parse the DICOM file into a `FileDicomObject`
-        let dicom_obj: FileDicomObject<InMemDicomObject> =
-            FileDicomObject::from_reader(dicom_data)?;
-
+    pub fn from_dicom_object(obj: &InMemDicomObject) -> Result<Patient> {
         // Retrieve required fields using `get_value`
-        let id = get_value::<String>(&dicom_obj, "PatientID")
+        let id = get_value::<String>(obj, "PatientID")
             .ok_or_else(|| anyhow!("Missing PatientID"))?;
-        let name = get_value::<String>(&dicom_obj, "PatientName")
+        let name = get_value::<String>(obj, "PatientName")
             .ok_or_else(|| anyhow!("Missing PatientName"))?;
 
         // Optional fields
-        let birthdate = get_value::<String>(&dicom_obj, "PatientBirthDate");
-        let sex = get_value::<String>(&dicom_obj, "PatientSex");
+        let birthdate = get_value::<String>(obj, "PatientBirthDate");
+        let sex = get_value::<String>(obj, "PatientSex");
 
         // Return the populated struct
-        let patient = Patient {
+        Ok(Patient {
             patient_id: id,
             name,
             birthdate,
             sex,
-        };
+        })
+    }
+
+    // Function to parse the DICOM file and generate the Patient structure
+    pub fn from_bytes(dicom_data: &[u8]) -> Result<Patient> {
+        // Parse the DICOM file into a `FileDicomObject` (once), then extract.
+        let dicom_obj: FileDicomObject<InMemDicomObject> =
+            FileDicomObject::from_reader(dicom_data)?;
+        Self::from_dicom_object(&dicom_obj)
         // patient.validate()?; // Skip strict validation to allow display of imperfect data
-        Ok(patient)
     }
 
     /// Validates the patient data against DICOM standards

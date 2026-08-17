@@ -25,20 +25,17 @@ define_dicom_struct!(CTImage, {
 
 impl CTImage {
     // Function to parse the DICOM file and generate the CTImage structure
-    pub fn from_bytes(dicom_data: &[u8]) -> Result<CTImage> {
-        // Parse the DICOM file into a `FileDicomObject`
-        let obj: FileDicomObject<InMemDicomObject> = FileDicomObject::from_reader(dicom_data)?;
-
+    pub fn from_dicom_object(obj: &InMemDicomObject) -> Result<CTImage> {
         // Populate fields based on DICOM tags
         Ok(CTImage {
-            uid: get_value::<String>(&obj, "SOPInstanceUID")
+            uid: get_value::<String>(obj, "SOPInstanceUID")
                 .ok_or_else(|| anyhow!("Missing SOPInstanceUID"))?,
-            series_uid: get_value::<String>(&obj, "SeriesInstanceUID")
+            series_uid: get_value::<String>(obj, "SeriesInstanceUID")
                 .ok_or_else(|| anyhow!("Missing SeriesInstanceUID"))?,
-            rows: get_value::<u16>(&obj, "Rows").ok_or_else(|| anyhow!("Missing Rows"))?,
-            columns: get_value::<u16>(&obj, "Columns").ok_or_else(|| anyhow!("Missing Columns"))?,
+            rows: get_value::<u16>(obj, "Rows").ok_or_else(|| anyhow!("Missing Rows"))?,
+            columns: get_value::<u16>(obj, "Columns").ok_or_else(|| anyhow!("Missing Columns"))?,
             pixel_spacing: {
-                let spacing = get_value::<String>(&obj, "PixelSpacing");
+                let spacing = get_value::<String>(obj, "PixelSpacing");
                 spacing.and_then(|v| {
                     let vals: Vec<f32> = v
                         .split('\\')
@@ -51,10 +48,10 @@ impl CTImage {
                     }
                 })
             },
-            slice_thickness: get_value::<f32>(&obj, "SliceThickness"),
-            spacing_between_slices: get_value::<f32>(&obj, "SpacingBetweenSlices"),
+            slice_thickness: get_value::<f32>(obj, "SliceThickness"),
+            spacing_between_slices: get_value::<f32>(obj, "SpacingBetweenSlices"),
             image_position_patient: {
-                let pos = get_value::<String>(&obj, "ImagePositionPatient");
+                let pos = get_value::<String>(obj, "ImagePositionPatient");
                 pos.and_then(|v| {
                     let vals: Vec<f32> = v
                         .split('\\')
@@ -68,7 +65,7 @@ impl CTImage {
                 })
             },
             image_orientation_patient: {
-                let orientation = get_value::<String>(&obj, "ImageOrientationPatient");
+                let orientation = get_value::<String>(obj, "ImageOrientationPatient");
                 orientation.and_then(|v| {
                     let vals: Vec<f32> = v
                         .split('\\')
@@ -82,17 +79,24 @@ impl CTImage {
                 })
             },
             patient_position: {
-                let pos = get_value::<String>(&obj, "PatientPosition");
+                let pos = get_value::<String>(obj, "PatientPosition");
                 pos.map(|v| PatientPosition::from_str(&v).to_string())
             },
-            rescale_slope: get_value::<f32>(&obj, "RescaleSlope"),
-            rescale_intercept: get_value::<f32>(&obj, "RescaleIntercept"),
-            window_center: get_value::<f32>(&obj, "WindowCenter"),
-            window_width: get_value::<f32>(&obj, "WindowWidth"),
-            pixel_representation: get_value::<u16>(&obj, "PixelRepresentation")
+            rescale_slope: get_value::<f32>(obj, "RescaleSlope"),
+            rescale_intercept: get_value::<f32>(obj, "RescaleIntercept"),
+            window_center: get_value::<f32>(obj, "WindowCenter"),
+            window_width: get_value::<f32>(obj, "WindowWidth"),
+            pixel_representation: get_value::<u16>(obj, "PixelRepresentation")
                 .ok_or_else(|| anyhow!("Missing PixelRepresentation"))?,
             pixel_data: obj.element_by_name("PixelData")?.to_bytes()?.to_vec(), // Pixel data is mandatory
         })
+    }
+
+    // Function to parse the DICOM file and generate the CTImage structure
+    pub fn from_bytes(dicom_data: &[u8]) -> Result<CTImage> {
+        // Parse the DICOM file into a `FileDicomObject` (once), then extract.
+        let obj: FileDicomObject<InMemDicomObject> = FileDicomObject::from_reader(dicom_data)?;
+        Self::from_dicom_object(&obj)
     }
 
     pub fn get_pixel_data(&self) -> Result<Vec<i16>> {

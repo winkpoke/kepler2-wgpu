@@ -13,17 +13,13 @@ define_dicom_struct!(ImageSeries, {
 
 impl ImageSeries {
     // Function to parse the DICOM file and generate the ImageSeries structure
-    pub fn from_bytes(dicom_data: &[u8]) -> Result<ImageSeries> {
-        // Parse the DICOM file into a `FileDicomObject`
-        let dicom_obj: FileDicomObject<InMemDicomObject> =
-            FileDicomObject::from_reader(dicom_data)?;
-
+    pub fn from_dicom_object(obj: &InMemDicomObject) -> Result<ImageSeries> {
         // Retrieve required fields using `get_value`
-        let series_uid = get_value::<String>(&dicom_obj, "SeriesInstanceUID")
+        let series_uid = get_value::<String>(obj, "SeriesInstanceUID")
             .ok_or_else(|| anyhow!("Missing SeriesInstanceUID"))?;
-        let studyset_uid = get_value::<String>(&dicom_obj, "StudyInstanceUID")
+        let studyset_uid = get_value::<String>(obj, "StudyInstanceUID")
             .ok_or_else(|| anyhow!("Missing StudyInstanceUID"))?;
-        let modality = get_value::<String>(&dicom_obj, "Modality")
+        let modality = get_value::<String>(obj, "Modality")
             .ok_or_else(|| anyhow!("Missing Modality"))?;
 
         // Ensure the modality is "CT"
@@ -32,7 +28,7 @@ impl ImageSeries {
         }
 
         // Optional fields
-        let description = get_value::<String>(&dicom_obj, "SeriesDescription");
+        let description = get_value::<String>(obj, "SeriesDescription");
 
         // Return the populated struct
         Ok(ImageSeries {
@@ -41,5 +37,13 @@ impl ImageSeries {
             modality,
             description,
         })
+    }
+
+    // Function to parse the DICOM file and generate the ImageSeries structure
+    pub fn from_bytes(dicom_data: &[u8]) -> Result<ImageSeries> {
+        // Parse the DICOM file into a `FileDicomObject` (once), then extract.
+        let dicom_obj: FileDicomObject<InMemDicomObject> =
+            FileDicomObject::from_reader(dicom_data)?;
+        Self::from_dicom_object(&dicom_obj)
     }
 }

@@ -425,6 +425,26 @@ impl App {
         }
     }
 
+    /// Load three volumes and show each one's Transverse slice in a 2x2 grid.
+    ///
+    /// Function-level comment: Each volume gets its own GPU texture and MPR view;
+    /// the 4th grid cell stays empty. vol_1 is kept in the app model so that
+    /// subsequent single-view mode switches still have a volume to rebuild from.
+    pub fn load_dr_to_pro(&mut self, vol_1: &CTVolume, vol_2: &CTVolume, vol_3: &CTVolume) {
+        let model_vol = if vol_1.dimensions.0 > 512 || vol_1.dimensions.1 > 512 {
+            vol_1.downsample_2x()
+        } else {
+            vol_1.clone()
+        };
+        let _ = self.app_model.load_volume(model_vol);
+
+        if let Err(e) = self.app_view.configure_dr_transverse_layout(vol_1, vol_2, vol_3){
+            log::error!("Failed to configure DR-to-PRO transverse layout: {}", e);
+        }
+
+        self.saved_states = [0, 0, 0, 0];
+    }
+
     /// Render mode setter for MPR, MIP, and Mesh.
     ///
     /// Function-level comment:
@@ -543,7 +563,7 @@ impl App {
                     mpr_view.set_segmentation(device, None);
                 }
                 if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
-                    mesh_view.set_meshes(device, Arc::new(Vec::new()));
+                    mesh_view.set_meshes(0, 3, device, Arc::new(Vec::new()));
                 }
             }
         } else {
@@ -572,7 +592,7 @@ impl App {
                     self.current_meshes = Arc::new(spine_meshes);
                     for view in self.app_view.layout.views().iter() {
                         if let Some(mesh_view) = view.as_any().downcast_ref::<MeshView>() {
-                            mesh_view.set_meshes(device, self.current_meshes.clone());
+                            mesh_view.set_meshes(0, 3, device, self.current_meshes.clone());
                         }
                     }
                 }
@@ -583,9 +603,7 @@ impl App {
         }
     }
 
-    /// Push the 8-slot label visibility mask to every MPR view. This only updates
-    /// the fragment-shader visibility uniform — it does not re-upload the
-    /// segmentation texture (use `set_ai_segmentation` for that).
+    /// Push the 8-slot label visibility mask to every MPR view
     pub fn set_ai_segmentation_visibility(&mut self, mask: [f32; 8]) {
         let queue = &self.graphics_context.graphics.queue;
         for view in self.app_view.layout.views_mut().iter_mut() {
@@ -1073,26 +1091,20 @@ impl App {
         }
     }
 
-    pub fn set_obj_mesh(&mut self, raw: Vec<u8>) {
+    pub fn set_obj_mesh(&mut self, raw: Vec<u8>, id: u32, kind: u32) {
         let device = &self.graphics_context.graphics.device;
         let queue = self.graphics_context.graphics.queue.clone();
         let meshes: Vec<Mesh> = bincode::deserialize(&raw).unwrap();
         self.current_meshes = Arc::new(meshes);
-        // let unit = match meshes.into_iter().next() {
-        //     Some(u) => u,
-        //     None => { log::warn!("set_obj_mesh: OBJ 里没有任何 mesh"); return; }
-        // };
         for view in self.app_view.layout.views_mut().iter_mut() {
             if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
-                // mesh_view.set_needle_unit_mesh(unit.clone());
-                // mesh_view.rebuild_needle_meshes(&device);
-                mesh_view.set_meshes(device, self.current_meshes.clone());
+                mesh_view.set_meshes(id, kind, device, self.current_meshes.clone());
             }
         }
 
         for view in self.app_view.layout.views_mut().iter_mut() {
             let (normal, d) = if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                mpr_view.set_mesh(device, &queue, self.current_meshes.clone());
+                mpr_view.set_mesh(id, kind, device, &queue, self.current_meshes.clone());
                 mpr_view.set_mesh_overlay(true, 1.0);
                 mpr_view.get_slice_plane_uv()
             } else {
@@ -1104,19 +1116,7 @@ impl App {
         }
     }
 
-    pub fn set_new_needle_mm(
-        &mut self,
-        id: u32,
-        sx: f32,
-        sy: f32,
-        sz: f32,
-        lx: f32,
-        ly: f32,
-        lz: f32,
-        r: f32,
-        g: f32,
-        b: f32,
-    ) {
+    pub fn set_new_needle_mm(&mut self, needle_id: u32, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32, r: f32, g: f32, b: f32) {
         let entry_mm = [sx, sy, sz];
         let pos_mm = [lx, ly, lz];
         let entry_vol = self.mm_to_uv(entry_mm);
@@ -1124,21 +1124,21 @@ impl App {
         let device_arc = self.graphics().device.clone();
 
         if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
-            mesh_view.set_new_needle(id, entry_vol, pos_vol, [r, g, b, 1.0]);
-            mesh_view.rebuild_needle_meshes(&device_arc);
+            mesh_view.set_new_needle(needle_id, entry_vol, pos_vol, [r, g, b, 1.0]);
+            // mesh_view.rebuild_needle_meshes(&device_arc);
         };
         if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
-            mip_view.set_new_needle(id, entry_vol, pos_vol,[r, g, b, 0.5]);
+            mip_view.set_new_needle(needle_id, entry_vol, pos_vol,[r, g, b, 0.5]);
         }
         // Push the same trajectory to every MPR view for orthogonal projection.
         for view in self.app_view.layout.views_mut().iter_mut() {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                mpr_view.set_new_needle(id, entry_vol, pos_vol, [r, g, b, 1.0]);
+                mpr_view.set_new_needle(needle_id, entry_vol, pos_vol, [r, g, b, 1.0]);
             }
         }
         log::info!(
             "Needle {} set: entry_mm={:?} -> vol={:?}, pos_mm={:?} -> vol={:?}",
-            id, entry_mm, entry_vol, pos_mm, pos_vol
+            needle_id, entry_mm, entry_vol, pos_mm, pos_vol
         );
     }
 
@@ -1160,7 +1160,7 @@ impl App {
 
         if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
             mesh_view.set_needle_radius(id, radius_uv);
-            mesh_view.rebuild_needle_meshes(&device_arc);
+            // mesh_view.rebuild_needle_meshes(&device_arc);
         };
         if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
             mip_view.set_needle_radius(id, radius_uv);
@@ -1180,7 +1180,7 @@ impl App {
 
         if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
             mesh_view.set_needle_position(id, pos_vol);
-            mesh_view.rebuild_needle_meshes(&device_arc);
+            // mesh_view.rebuild_needle_meshes(&device_arc);
         };
         if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
             mip_view.set_needle_position(id, pos_vol);

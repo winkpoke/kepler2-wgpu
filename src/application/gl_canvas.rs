@@ -19,6 +19,7 @@ pub enum UserEvent {
     SetPanMM(usize, f32, f32), // pan in mm space
     SetAliasing(usize, bool), // set antialiasing
     LoadDataFromCTVolume(CTVolume),
+    LoadDrToPro(CTVolume, CTVolume, CTVolume),
     Resize(u32, u32), // width, height
     Quit,
     SetWindowByDivId(String, CTVolume),
@@ -71,7 +72,7 @@ pub enum UserEvent {
     SetMeshNeedleAngle(usize, u32, f32),
     SetSegmentationAll(Vec<u8>),
     SetSegmentationVisibility([f32; 8]),
-    SetOBJMesh(Vec<u8>),
+    SetOBJMesh(Vec<u8>, u32, u32),
     #[cfg(target_arch = "wasm32")]
     ExportCurrentObj(oneshot::Sender<String>),
 }
@@ -117,6 +118,17 @@ impl GLCanvas {
             log::error!("Failed to send LoadDataFromCTVolume event {:?}", e);
         } else {
             log::info!("Sent LoadDataFromCTVolume event");
+        }
+    }
+
+    pub fn load_dr_to_pro(&self, vol_1: &CTVolume, vol_2: &CTVolume, vol_3: &CTVolume) {
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::LoadDrToPro(vol_1.clone(), vol_2.clone(), vol_3.clone()))
+        {
+            log::error!("Failed to send LoadDrToPro event {:?}", e);
+        } else {
+            log::info!("Sent LoadDrToPro event");
         }
     }
 
@@ -176,8 +188,8 @@ impl GLCanvas {
         }
     }
 
-    pub fn set_obj_mesh(&self, raw: Vec<u8>) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetOBJMesh(raw.clone())) {
+    pub fn set_obj_mesh(&self, raw: Vec<u8>, id: u32, kind: u32) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetOBJMesh(raw.clone(), id, kind)) {
             log::error!("Failed to send SetOBJMesh event: {:?}", e);
         } else {
             log::info!("Sent SetOBJMesh event");

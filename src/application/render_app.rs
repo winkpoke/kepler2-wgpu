@@ -106,6 +106,9 @@ impl RenderApp {
                         log::info!("Loaded data from CTVolume");
                     }
                 }
+                Event::UserEvent(UserEvent::LoadDrToPro(vol_1, vol_2, vol_3)) => {
+                    state.load_dr_to_pro(&vol_1, &vol_2, &vol_3);
+                }
                 Event::UserEvent(UserEvent::Resize(width, height)) => {
                     log::info!("Resizing to width: {}, height: {}", width, height);
                     state.resize(PhysicalSize { width, height });
@@ -270,8 +273,8 @@ impl RenderApp {
                 Event::UserEvent(UserEvent::SetSegmentationVisibility(m)) => {
                     state.set_ai_segmentation_visibility(m);
                 }
-                Event::UserEvent(UserEvent::SetOBJMesh(raw)) => {
-                    state.set_obj_mesh(raw);
+                Event::UserEvent(UserEvent::SetOBJMesh(raw, id, kind)) => {
+                    state.set_obj_mesh(raw, id, kind);
                 }
                 #[cfg(target_arch = "wasm32")]
                 Event::UserEvent(UserEvent::ExportCurrentObj(sender)) => {

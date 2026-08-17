@@ -247,6 +247,31 @@
             flex: 1 1 auto;
         }
 
+        .controls {
+            margin-top: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .controls label {
+            background: #ffffff;
+            color: #0e0d0d;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            text-align: center;
+        }
+
+        .controls label:hover {
+            background: #ffffff;
+        }
+
+        .controls input[type="file"] {
+            display: none;
+        }
+
         .row-action {
             width: 18px;
             height: 18px;
@@ -445,9 +470,7 @@
             background: #f0f7ff;
         }
 
-        .file-input-wrapper input[type="file"] {
-            display: none;
-        }
+        .file-input-wrapper input[type="file"] { display: none;}
 
         .file-input-label {
             font-size: 13px;
@@ -672,6 +695,10 @@
                 <div id="tree-container" class="slicer-tree"></div>
                 <div class="file-row">
                     DICOM: <input type="file" id="file" multiple>
+                    <div class="controls">
+                        <label>选择 DR0度  <input type="file" id= "dr0" accept=".mha"></label>
+                        <label>选择 DR90度 <input type="file" id="dr90" accept=".mha"></label>
+                    </div>
                 </div>
                 <div class="file-row">
                     <button id="openMhxModalBtn" class="btn">Import MHA/MHD</button>
@@ -727,26 +754,20 @@
                         <button id="needle-apply" title="Apply geometry/colors to active needle ID">Apply</button>
                     </div>
                     <div class="needle-row">
+                        <span class="needle-label">Offset</span>
+                        <input type="number" id="needle-ox" step="0.1" value="0.0">
+                        <input type="number" id="needle-oy" step="0.1" value="0.0">
+                        <input type="number" id="needle-oz" step="0.1" value="0.0">
+                    </div>
+                    <div class="needle-row">
                         <span class="needle-label">Shape</span>
+                        <input type="number" id="mesh-id" step="1" value="1" min="1" style="width:50px">
+                        <select id="mesh-kind" title="Mesh kind">
+                            <option value="0">Spine</option>
+                            <option value="1">Needle</option>
+                            <option value="2">Other</option>
+                        </select>
                         <input type="file" id="obj_file" accept=".obj" title="Replace the procedural needle with an imported OBJ (cross-section shape)">
-                    </div>
-                    <div class="needle-row">
-                        <span class="needle-label">Depth</span>
-                        <span id="needle-depth-val" style="min-width:80px;font-weight:bold;color:#e0a030">0.0mm (0%)</span>
-                        <input type="range" id="needle-depth" min="0" max="100" value="0" style="width:30%">
-                        <button id="needle-reset" title="Retract to entry" style="font-size:11px;color:#f55">Reset↺</button>
-                    </div>
-                    <div class="needle-row">
-                        <label class="needle-toggle" title="Show the inserted portion from entry to depth (solid)">
-                            <input type="checkbox" id="needle-show-solid" checked>
-                            <span class="solid-swatch-bar"></span>inserted
-                            <input type="color" id="needle-solid-swatch" value="#22cc88" class="swatch">
-                        </label>
-                        <label class="needle-toggle" title="Show the planned trajectory from entry to tip (dashed)">
-                            <input type="checkbox" id="needle-show-planned" checked>
-                            <span class="dashed-swatch-bar"></span>planned
-                            <input type="color" id="needle-planned-swatch" value="#f59e0b" class="swatch">
-                        </label>
                     </div>
                     <div class="needle-row" id="needle-api-info" style="display:none;border-top:1px dashed #555;padding-top:6px;margin-top:6px">
                         <span class="needle-label">Last API</span>
@@ -943,9 +964,7 @@
                     <label>Volume File (.mha, .mhd, .raw)</label>
                     <div class="file-input-wrapper" id="fileDropZone">
                         <input type="file" id="mhxInput" multiple accept=".mha,.mhd,.raw">
-                        <label for="mhxInput" class="file-input-label">
-                            Click to select or <strong>drag & drop</strong> files here
-                        </label>
+                        <label for="mhxInput" class="file-input-label">Click to select files here</label>
                         <div id="fileNames" class="file-name-display" style="display: none;"></div>
                     </div>
                 </div>
@@ -983,18 +1002,38 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" id="cancelModalBtn">Cancel</button>
                 <button class="btn btn-primary" id="updateModalBtn">Import & Update</button>
             </div>
         </div>
     </div> 
 
     <script type="module">
-        // 辅助工具函数
+        /* ====================================================================
+         一、通用工具函数
+         ==================================================================== */
+
+        /** 按 id 获取 DOM 元素（简写）。 */
         const byId = (id) => document.getElementById(id);
+        /** 角度转弧度。 */
         const deg2rad = (d) => d * Math.PI / 180;
+        /** 弧度转角度。 */
         const rad2deg = (r) => r * 180 / Math.PI;
 
+        /**
+         * 读取数字输入框的值；非法 / 空时返回默认值 d。
+         * @param {string} id 元素 id
+         * @param {number} d  解析失败时的兜底值
+         * @returns {number}
+         */
+        function num(id, d = 0) {
+            const v = parseFloat(byId(id)?.value);
+            return Number.isFinite(v) ? v : d;
+        }
+
+        /**
+         * 带颜色的分类日志输出（info/success/error/warn）。
+         * 对象会展开打印，字符串会带 [TYPE] 前缀。
+         */
         function log(msg, type = 'info') {
             const colors = { info: '#4a90d9', success: '#22c55e', error: '#ef4444', warn: '#f59e0b' };
             const color = colors[type] || colors.info;
@@ -1005,21 +1044,28 @@
             }
         }
 
+        /**
+         * 给一组输入框同时绑定 input 和 change 事件（兼容 number / checkbox）。
+         * 元素不存在时自动跳过。
+         * @param {string[]} ids 元素 id 列表
+         * @param {Function} handler 事件回调
+         */
         function bindInput(ids, handler) {
-        ids.forEach(id => {
-            const el = document.getElementById(id);
-            if (!el) return;
-            el.addEventListener('input', handler);
-            el.addEventListener('change', handler); // 兼容 number / checkbox
-        });
+            ids.forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('input', handler);
+                el.addEventListener('change', handler);
+            });
         }
 
+        /** 把任意对象序列化为 UTF-8 字节数组（用于传给 WASM）。 */
         function toUint8Array(obj) {
             const json = JSON.stringify(obj);
-            const enc = new TextEncoder();
-            return enc.encode(json);
+            return new TextEncoder().encode(json);
         }
 
+        /** 触发浏览器下载一个 Blob。 */
         function downloadBlob(blob, filename) {
             const a = document.createElement("a");
             a.href = URL.createObjectURL(blob);
@@ -1027,12 +1073,38 @@
             a.click();
         }
 
-        // 动态读取当前访问地址，使局域网/公网任何客户端都能正确连回本服务器
+        /**
+         * 画布守卫：返回当前 gl_canvas；若尚未加载则弹窗提示并返回 null。
+         * 用它可以消除原代码中大量重复的 `if (!gl_canvas) { alert(...) }` 判断。
+         */
+        function requireCanvas() {
+            if (!gl_canvas) {
+                alert('Please select a series first!');
+                return null;
+            }
+            return gl_canvas;
+        }
+
+        /* 动态读取当前访问地址，使局域网 / 公网任何客户端都能正确连回本服务器 */
         const SERVER_URL = window.location.origin;
         
-        // 状态管理
-        var repo;
-        let state = {
+        /* ====================================================================
+         二、全局状态
+         ==================================================================== */
+
+        let repo;                 // WASM 解析出的 DICOM 仓库对象
+        let gl_canvas = null;     // 当前 WebGPU 画布（WASM 提供）
+        let series_id;            // 当前选中的序列 id
+        let fileLists = [];       // 最近一次选择的文件列表
+        let flag = true;          // 首帧渲染标志（渲染器只初始化一次）
+        let scaleValue = 0.1;     // 缩放缓存（历史遗留，保留）
+        let serverConnected = false; // 后端服务器是否在线
+        let currentVolumeId = null;  // 后端侧当前 volume id
+        let ws = null;            // WebSocket 实例
+        let wsReconnectTimer = null; // 重连定时器
+
+        /** 应用级状态对象：保存画布句柄、体积数据、渲染参数等。 */
+        const state = {
             wasmModule: null,
             render_app: null,
             gl_canvas: null,
@@ -1045,17 +1117,24 @@
             indexValue: 0,
             volume: null,
             mhx: null,
+            raw: null,
+            files: null,
+            mha: null,
+            mhd: null,
+            dr0: null,
+            dr90: null,
+            label_ids: null,
+            oblique_rotation: [0, 0, 0],
         };
-        let gl_canvas = null;
-        let series_id;
-        let fileLists = [];
-        let flag = true;
-        let scaleValue = 0.1;
-        let serverConnected = false;
-        let currentVolumeId = null;
-        let ws = null;
-        let wsReconnectTimer = null;
 
+        /* ====================================================================
+         三、WebSocket 与服务器连接
+         ==================================================================== */
+
+        /**
+         * 建立到后端 /ws 的 WebSocket 长连接。
+         * 若已连接则直接返回；连接成功后发送 ping，并按消息类型分派到各处理器。
+         */
         function connectWebSocket() {
             if (ws && ws.readyState === WebSocket.OPEN) return;
             const wsUrl = SERVER_URL.replace('http', 'ws') + '/ws';
@@ -1070,85 +1149,55 @@
                 try {
                     const msg = JSON.parse(event.data);
                     switch (msg.type) {
-                        case 'server_status':// 更新标题栏的 volume 数量
-                            document.getElementById('server-text').textContent = `Server (${msg.loaded_volumes} volumes) - ${msg.message}`;
+                        case 'server_status':   // 更新标题栏的 volume 数量
+                            byId('server-text').textContent =
+                                `Server (${msg.loaded_volumes} volumes) - ${msg.message}`;
                             break;
-                        case 'parsing_progress': // 打印日志
-                            if (typeof log === 'function') log(`Parsing: ${msg.current_file}/${msg.total_files} files`, 'info');
+                        case 'parsing_progress': // DICOM 解析进度日志
+                            log(`Parsing: ${msg.current_file}/${msg.total_files} files`, 'info');
                             break;
-                        case 'export_progress': // 打印导出进度
-                            if (typeof log === 'function') log(`Export: ${msg.current_slice}/${msg.total_slices} slices`, 'info');
+                        case 'export_progress':  // 导出进度日志
+                            log(`Export: ${msg.current_slice}/${msg.total_slices} slices`, 'info');
                             break;
-                        case 'error': // 打印错误
-                            if (typeof log === 'function') log(`Server error: ${msg.message}`, 'error');
+                        case 'error':            // 服务器错误日志
+                            log(`Server error: ${msg.message}`, 'error');
                             break;
-                        case 'heartbeat':
+                        case 'heartbeat':        // 心跳（忽略）
                             break;
-                        case 'segment_started':
-                            handleSegmentStarted(msg);
-                            break;
-                        case 'segment_progress':
-                            handleSegmentProgress(msg);
-                            break;
-                        case 'segment_complete':
-                            handleSegmentComplete(msg);
-                            break;
-                        case 'segment_failed':
-                            handleSegmentFailed(msg);
-                            break;
-                        case 'needle_set':
-                            if (gl_canvas) {
-                                gl_canvas.set_new_needle(
-                                    state.indexValue, 0,
-                                    msg.x, msg.y, msg.z,
-                                    msg.lx, msg.ly, msg.lz,
-                                    msg.r, msg.g, msg.b
-                                );
-                            }
-                            // 把后端日志的 pos/dir/len/tip 显示到页面
-                            {
-                                const infoEl = document.getElementById('needle-api-info');
-                                const textEl = document.getElementById('needle-api-text');
-                                if (textEl) {
-                                    const fmt = (v) => (v === undefined ? '?' : Number(v).toFixed(2));
-                                    const dirArr = Array.isArray(msg.dir) ? msg.dir : [0, 0, 0];
-                                    textEl.textContent =
-                                        `id=${msg.id}\n` +
-                                        `entry=(${fmt(msg.x)}, ${fmt(msg.y)}, ${fmt(msg.z)}) mm\n` +
-                                        `dir=(${fmt(dirArr[0])}, ${fmt(dirArr[1])}, ${fmt(dirArr[2])})\n` +
-                                        `len=${fmt(msg.len_mm)}mm\n` +
-                                        `tip=(${fmt(msg.lx)}, ${fmt(msg.ly)}, ${fmt(msg.lz)}) mm`;
-                                }
-                                if (infoEl) infoEl.style.display = '';
-                            }
-                            break;
+                        case 'segment_started':  handleSegmentStarted(msg); break;
+                        case 'segment_progress': handleSegmentProgress(msg); break;
+                        case 'segment_complete': handleSegmentComplete(msg); break;
+                        case 'segment_failed':   handleSegmentFailed(msg); break;
+                        case 'needle_set':       handleNeedleSet(msg); break;  // 后端回写的针位置
                     }
                 } catch (e) {
-                    // Ignore malformed messages
+                    // 忽略格式错误的消息
                 }
             };
 
             ws.onclose = () => {
-                if (typeof log === 'function') log('WebSocket disconnected', 'error');
-                document.getElementById('server-dot').className = 'server-dot disconnected';
-                document.getElementById('server-text').textContent = 'Server disconnected';
+                log('WebSocket disconnected', 'error');
+                byId('server-dot').className = 'server-dot disconnected';
+                byId('server-text').textContent = 'Server disconnected';
                 wsReconnectTimer = setTimeout(() => {
                     if (serverConnected) connectWebSocket();
                 }, 3000);
             };
 
-            ws.onerror = () => {
-                ws.close();
-            };
+            ws.onerror = () => { ws.close(); };
         }
 
+        /**
+         * 通过 GET /api/health 检测后端是否在线。
+         * 在线则更新状态点并启动 WebSocket；否则回退到本地 WASM 模式。
+         */
         async function checkServer() {
             try {
                 const resp = await fetch(`${SERVER_URL}/api/health`);
                 if (resp.ok) {
-                    const data = await resp.json();// data 就是后端返回的 JSON
-                    document.getElementById('server-dot').className = 'server-dot connected';
-                    document.getElementById('server-text').textContent = `Server (${data.loaded_volumes} volumes)`;
+                    const data = await resp.json();
+                    byId('server-dot').className = 'server-dot connected';
+                    byId('server-text').textContent = `Server (${data.loaded_volumes} volumes)`;
                     serverConnected = true;
                     connectWebSocket();
                     return;
@@ -1157,11 +1206,19 @@
             } catch (e) {
                 console.error('Cannot reach server:', e.message);
             }
-            document.getElementById('server-dot').className = 'server-dot disconnected';
-            document.getElementById('server-text').textContent = 'Local WASM mode';
+            byId('server-dot').className = 'server-dot disconnected';
+            byId('server-text').textContent = 'Local WASM mode';
             serverConnected = false;
         }
 
+        /* ====================================================================
+         四、WASM 模块加载
+         ==================================================================== */
+
+        /**
+         * 懒加载 WASM 模块（/pkg/kepler_wgpu.js），保证只初始化一次。
+         * @returns {Promise<object>} 加载完成的 wasmModule
+         */
         async function ensureWasm() {
             if (!state.wasmModule) {
                 state.wasmModule = await import('/pkg/kepler_wgpu.js');
@@ -1170,6 +1227,15 @@
             return state.wasmModule;
         }
 
+        /* ====================================================================
+         五、体积上传到服务器
+         ==================================================================== */
+
+        /**
+         * 把当前选中的 MHA/MHD 体积连同元信息上传到后端 /api/volumes/upload。
+         * 未连接服务器或无文件时直接返回。成功后会刷新当前 volume id。
+         * @param {object} params 附加参数（slope/intercept/kv/m_as/patient_* 等）
+         */
         async function uploadToServer(params = {}) {
             if (!serverConnected) return;
             if (!state.mhx) {
@@ -1178,7 +1244,6 @@
             }
             
             try {
-                // Build query parameters
                 const queryParams = new URLSearchParams();
                 if (params.slope !== undefined) queryParams.append('slope', params.slope);
                 if (params.intercept !== undefined) queryParams.append('intercept', params.intercept);
@@ -1189,8 +1254,6 @@
                 
                 const queryString = queryParams.toString();
                 const url = `${SERVER_URL}/api/volumes/upload${queryString ? '?' + queryString : ''}`;
-                
-                // Create multipart form data
                 const formData = new FormData();
                 formData.append('mha', state.mhx);
                 if (state.raw) {
@@ -1199,10 +1262,7 @@
                     formData.append('data', new Blob([]), 'empty.raw');
                 }
                 
-                const resp = await fetch(url, {
-                    method: 'POST',
-                    body: formData,
-                });
+                const resp = await fetch(url, { method: 'POST', body: formData});
                 if (resp.ok) {
                     const id = await resp.json();
                     onVolumeChanged(id);
@@ -1216,16 +1276,16 @@
             }
         }
 
-        // Modal functionality
+        /* ====================================================================
+         六、导入模态框（MHA/MHD）
+         ==================================================================== */
+
         const modal = byId('mhxModal');
         const openModalBtn = byId('openMhxModalBtn');
         const closeModalBtn = byId('closeModalBtn');
-        const cancelModalBtn = byId('cancelModalBtn');
         const updateModalBtn = byId('updateModalBtn');
         const fileNamesDisplay = byId('fileNames');
         const mhxInput = byId('mhxInput');
-
-        // Modal input elements
         const kvInputModal = byId('kv-input-modal');
         const masInputModal = byId('mas-input-modal');
         const slopeInputModal = byId('slope-input-modal');
@@ -1244,16 +1304,18 @@
 
         openModalBtn.addEventListener('click', openModal);
         closeModalBtn.addEventListener('click', closeModal);
-        cancelModalBtn.addEventListener('click', closeModal);
-        
-        // Close modal when clicking on overlay
+
+        // 点击遮罩空白处关闭
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
                 closeModal();
             }
         });
 
-        // Handle file selection
+        /**
+         * 监听文件选择：按扩展名分拣出 mha / mhd / raw，
+         * 并把文件名显示在模态框中。
+         */
         mhxInput.addEventListener("change", async (e) => {
             state.files = Array.from(e.target.files);
             state.mha = state.files.find((f) => /\.mha$/i.test(f.name)) || null;
@@ -1261,10 +1323,8 @@
             state.raw = state.files.find((f) => /\.raw$/i.test(f.name)) || null;
             state.mhx = state.mha || state.mhd || null;
 
-            // Display selected file names
             if (state.files.length > 0) {
-                const names = state.files.map(f => f.name).join(', ');
-                fileNamesDisplay.textContent = `Selected: ${names}`;
+                fileNamesDisplay.textContent = `Selected: ${state.files.map(f => f.name).join(', ')}`;
                 fileNamesDisplay.style.display = 'block';
             } else {
                 fileNamesDisplay.style.display = 'none';
@@ -1333,7 +1393,39 @@
 
         byId('rerender').addEventListener('click', renderCurrentVolume);
 
-        // ========= AI Segmentation =========
+        const info_small = {
+            slope: 1.0,
+            intercept: 0.0,
+        }
+
+        document.querySelector('#dr0').addEventListener('change', async () => {
+            const file = document.querySelector('#dr0').files[0];
+            if (!file) {
+                alert('Please select a DR0 file first!');
+                return;
+            }
+            state.dr0 = await state.wasmModule.parse_common_files_wasm([file], toUint8Array(info_small));
+        });
+
+        document.querySelector('#dr90').addEventListener('change', async () => {
+            const file = document.querySelector('#dr90').files[0];
+            if (!file) {
+                alert('Please select a DR90 file first!');
+                return;
+            }
+            state.dr90 = await state.wasmModule.parse_common_files_wasm([file], toUint8Array(info_small));
+            if (state.dr0 && state.volume) {
+                const cv = requireCanvas();
+                if (!cv) return;
+                cv.load_dr_to_pro(state.dr0, state.dr90, state.volume);
+            }
+        });
+
+        /* ====================================================================
+         八、AI 分段（Segmentation）
+         ==================================================================== */
+
+        /** 分段运行态对象，集中保存任务 / 状态 / 标签等。 */
         const seg = {
             taskId: null,        // task id currently running / last run
             model: null,         // model name used in the active run
@@ -1703,8 +1795,14 @@
                 alert('Please select a OBJ file first!');
                 return;
             }
+            const x = 512.0;
+            const y = 512.0;
+            const z = 240.0;
             const formData = new FormData();
             formData.append('file', file);
+            formData.append('x', x.toString());
+            formData.append('y', y.toString());
+            formData.append('z', z.toString());
             try {
                 const url = `${SERVER_URL}/api/upload_obj`;
                 const resp = await fetch(url, {
@@ -1725,7 +1823,9 @@
                     log('No volume on client; cannot derive mask dimensions', 'error');
                     return;
                 }
-                gl_canvas.set_obj_mesh(data);
+                const meshId = parseInt(byId('mesh-id').value);
+                const kind = parseInt(byId('mesh-kind').value);
+                gl_canvas.set_obj_mesh(data, meshId, kind);
                 log(`OBJ uploaded to GPU`, 'success');
             } catch (e) {
                 log(`Import OBJ error: ${e.message}`, 'error');
@@ -2008,19 +2108,36 @@
             gl_canvas.set_mesh_roi(indexValue, sx, sy, sz, lx, ly, lz);
         })
 
-        // ==================== Needle Controls ====================
+        /** 3D 增量旋转（dx/dy）：按相对差下发 GPU。 */
+        bindInput(['3d-rotation-x', '3d-rotation-y'], () => {
+            const cv = requireCanvas(); if (!cv) return;
+            const rotation_x = parseFloat(byId('3d-rotation-x').value) || 0;
+            const rotation_y = parseFloat(byId('3d-rotation-y').value) || 0;
+            const dx = rotation_x - state.rotation[0];
+            const dy = rotation_y - state.rotation[1];
+            state.rotation[0] = rotation_x;
+            state.rotation[1] = rotation_y;
+            cv.set_rotation_degrees(state.indexValue, dx, dy);
+        });
+
+        /* ====================================================================
+         十三、Needle（穿刺针）控制
+         ==================================================================== */
+
+        /** 穿刺针局部状态：当前 id、进针深度、轨迹长度、单位方向向量。 */
         const needleState = { id: 0, depthPx: 0, trajLength: 120, dir: [1,0,0]};
 
+         /** 读取 Entry（针尾）坐标 [x,y,z]。 */
         function needleGetEntry() {
-            return [parseFloat(byId('needle-ex').value), parseFloat(byId('needle-ey').value), parseFloat(byId('needle-ez').value)].map(v => Number.isNaN(v) ? 0 : v);
+            return [num('needle-ex'), num('needle-ey'), num('needle-ez')];
         }
-
+        /** 读取 Target（针尖）坐标 [x,y,z]。 */
         function needleGetTarget() {
-            return [parseFloat(byId('needle-tx').value), parseFloat(byId('needle-ty').value), parseFloat(byId('needle-tz').value)].map(v => Number.isNaN(v) ? 0 : v);
+            return [num('needle-tx'), num('needle-ty'), num('needle-tz')];
         }
-
+        /** 读取针的颜色 [r,g,b]（0~1）。 */
         function needleGetColor() {
-            return [parseFloat(byId('needle-cx').value), parseFloat(byId('needle-cy').value), parseFloat(byId('needle-cz').value)].map(v => Number.isNaN(v) ? 0 : v);
+            return [num('needle-cx'), num('needle-cy'), num('needle-cz')];
         }
 
         function needleUpdateTrajLength() {
@@ -2052,52 +2169,38 @@
             if (gl_canvas) {
                 gl_canvas.set_needle_position(state.indexValue, needleState.id, pos[0], pos[1], pos[2]);
             }
-            const pct = Math.round(clamped /maxDepth * 100);
-            byId('needle-depth').value = pct;
-            byId('needle-depth-val').textContent = clamped.toFixed(1) + ' mm (' + pct + '%)';
             needleState.depthPx = clamped;
         }
 
+        /** 切换针的插入模式（clear/inside/inside crop/plan）。 */
         byId('needle-enable').addEventListener('change', () => {
-            if (!gl_canvas) {
-                alert('Please select a series first!');
-                return;
-            }
+            const cv = requireCanvas(); if (!cv) return;
             const opt = byId('needle-enable').value;
             state.index = parseInt(byId('index-input').value, 10);
-            if (opt == "0") {
-                gl_canvas.set_mesh_needle_enabled(state.index, 0.0);
-            } else if (opt == "1") {
-                gl_canvas.set_mesh_needle_enabled(state.index, 1.0);
-            } else if (opt == "2") {
-                gl_canvas.set_mesh_needle_enabled(state.index, 2.0);
-            } else {
-                gl_canvas.set_mesh_needle_enabled(state.index, 3.0);
-            }
+            const modeMap = { "0": 0.0, "1": 1.0, "2": 2.0, "3": 3.0 };
+            cv.set_mesh_needle_enabled(state.index, modeMap[opt] ?? 0.0);
         });
 
-        // Color <-> swatch two-way sync
+        /** RGB(0~1) -> 十六进制颜色字符串（用于色块同步）。 */
         function needleRgbToHex(r, g, b) {
             const clamp01 = v => Math.min(1, Math.max(0, v));
             const to2 = v => Math.round(clamp01(v) * 255).toString(16).padStart(2, '0');
             return '#' + to2(r) + to2(g) + to2(b);
         }
+        /** 十六进制颜色字符串 -> RGB(0~1) 数组。 */
         function needleHexToRgb(hex) {
             const m = /^#?([0-9a-fA-F]{6})$/.exec(hex || '');
             if (!m) return null;
             const n = parseInt(m[1], 16);
             return [((n >> 16) & 0xff) / 255, ((n >> 8) & 0xff) / 255, (n & 0xff) / 255];
         }
-        // RGB number inputs -> swatch
+        // RGB 数字输入框 -> 同步到色块
         ['needle-cx', 'needle-cy', 'needle-cz'].forEach(id => {
             byId(id).addEventListener('input', () => {
-                const r = parseFloat(byId('needle-cx').value);
-                const g = parseFloat(byId('needle-cy').value);
-                const b = parseFloat(byId('needle-cz').value);
-                byId('needle-swatch').value = needleRgbToHex(r, g, b);
+                byId('needle-swatch').value = needleRgbToHex(num('needle-cx'), num('needle-cy'), num('needle-cz'));
             });
         });
-        // Swatch -> RGB number inputs
+        // 色块 -> 同步到 RGB 数字输入框
         byId('needle-swatch').addEventListener('input', () => {
             const rgb = needleHexToRgb(byId('needle-swatch').value);
             if (rgb) {
@@ -2107,50 +2210,37 @@
             }
         });
 
+        /** Apply：根据 Entry/Target/Color 创建或更新针，并复位到 Entry。 */
         byId('needle-apply').addEventListener('click', () => {
+            const cv = requireCanvas(); if (!cv) return;
             const idx = state.indexValue;
             needleState.id = parseInt(byId('needle-id').value, 10);
-            const e = needleGetEntry();
-            const t = needleGetTarget();
-            const c = needleGetColor();
-            if (!gl_canvas) {
-                alert('Please select a series first!'); 
-                return; 
-            }
             needleUpdateTrajLength();
+            const e = needleGetEntry();
             const d = needleState.dir;
-            const fixedLength = needleState.trajLength;
-            const fixedTip = [
-                e[0] + d[0] * fixedLength,
-                e[1] + d[1] * fixedLength,
-                e[2] + d[2] * fixedLength
-            ];
-            gl_canvas.set_new_needle(idx, needleState.id, e[0], e[1], e[2], fixedTip[0], fixedTip[1], fixedTip[2], c[0], c[1], c[2]);
-            needleMoveToDepth(0);
+            const len = needleState.trajLength;
+            const tip = [e[0] + d[0] * len, e[1] + d[1] * len, e[2] + d[2] * len];
+            const c = needleGetColor();
+            cv.set_new_needle(idx, needleState.id, e[0], e[1], e[2], tip[0], tip[1], tip[2], c[0], c[1], c[2]);
+            needleMoveToDepth(len);
         });
 
-        byId('needle-reset').addEventListener('click', () => needleMoveToDepth(0));
-
-        byId('needle-depth').addEventListener('input', () => {
-            const pct = parseInt(byId('needle-depth').value, 10);
-            const depth = needleState.trajLength * pct / 100;
-            needleMoveToDepth(depth);
-        });
-
+        /** 半径滑块：更新半径显示并下发 GPU。 */
         byId('needle-radius').addEventListener('input', () => {
             const val = parseFloat(byId('needle-radius').value);
             byId('needle-radius-val').textContent = val.toFixed(1) + 'mm';
-            if (gl_canvas) {
-                gl_canvas.set_needle_radius(state.indexValue, needleState.id, val);
-            }
+            const cv = requireCanvas();
+            if (cv) cv.set_needle_radius(state.indexValue, needleState.id, val);
         });
 
+        /** 长度变更：重算轨迹并按当前百分比重新定位针尖。 */
         byId('needle-length').addEventListener('change', () => {
             needleUpdateTrajLength();
-            const pct = parseInt(byId('needle-depth').value,10);
-            needleMoveToDepth(needleState.trajLength * pct / 100);
+            needleState.trajLength = parseFloat(byId('needle-length').value) || 120;
+            needleMoveToDepth(needleState.trajLength);
         });
 
+        /** 角度变更：下发针的旋转角（弧度）。 */
         byId('needle-angle').addEventListener('change', () => {
             const val = parseInt(byId('needle-angle').value, 10);
             if (gl_canvas) {
@@ -2158,18 +2248,56 @@
             }
         });
 
-        bindInput(['3d-rotation-x', '3d-rotation-y'], async () => {
-            const rotation_x = parseFloat(byId('3d-rotation-x').value) || 0;
-            const rotation_y = parseFloat(byId('3d-rotation-y').value) || 0;
-            const dx_deg = rotation_x - state.rotation[0];
-            const dy_deg = rotation_y - state.rotation[1];
-            state.rotation[0] = rotation_x;
-            state.rotation[1] = rotation_y;
-            const indexValue = state.indexValue;
-            gl_canvas.set_rotation_degrees(indexValue, dx_deg, dy_deg);
+        /** 偏移输入：把 (x,y,z) 偏移 POST 给后端。 */
+        bindInput(['needle-ox', 'needle-oy', 'needle-oz'], async () => {
+            const x = num('needle-ox'), y = num('needle-oy'), z = num('needle-oz');
+            try {
+                const res = await fetch(`${SERVER_URL}/api/needle_point_offset`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ x, y, z }),
+                });
+                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                console.log('当前 Offset:', await res.json());
+            } catch (err) {
+                console.error('设置 Offset 失败:', err);
+            }
         });
 
-        // ======================= DICOM 解析与树状图数据生成 =======================
+        /** WebSocket: needle_set —— 把后端回写的针位姿显示到页面。 */
+        function handleNeedleSet(msg) {
+            const cv = requireCanvas();
+            if (cv) {
+                cv.set_new_needle(
+                    state.indexValue, 0,
+                    msg.x, msg.y, msg.z,
+                    msg.lx, msg.ly, msg.lz,
+                    msg.r, msg.g, msg.b
+                );
+            }
+            const infoEl = byId('needle-api-info');
+            const textEl = byId('needle-api-text');
+            if (textEl) {
+                const fmt = (v) => (v === undefined ? '?' : Number(v).toFixed(2));
+                const dirArr = Array.isArray(msg.dir) ? msg.dir : [0, 0, 0];
+                textEl.textContent =
+                    `id=${msg.id}\n` +
+                    `entry=(${fmt(msg.x)}, ${fmt(msg.y)}, ${fmt(msg.z)}) mm\n` +
+                    `dir=(${fmt(dirArr[0])}, ${fmt(dirArr[1])}, ${fmt(dirArr[2])})\n` +
+                    `len=${fmt(msg.len_mm)}mm\n` +
+                    `tip=(${fmt(msg.lx)}, ${fmt(msg.ly)}, ${fmt(msg.lz)}) mm`;
+            }
+            if (infoEl) infoEl.style.display = '';
+        }
+
+
+        /* ====================================================================
+         十四、DICOM 解析与数据树
+         ==================================================================== */
+
+        /**
+         * 选择 DICOM 文件：重置渲染器，用 WASM 解析出患者/研究/序列/图像树。
+         */
         document.querySelector('#file').addEventListener('change', async () => {
             if (state.render_app) {
                 delete state.render_app;
@@ -2182,6 +2310,12 @@
             renderSlicerTree(patient_list);
         })
 
+        /**
+         * 用 WASM 解析 DICOM 文件，构建层级数据树
+         * patient -> study -> series -> images。
+         * @param {File[]} fileArray 选中的文件
+         * @returns {Promise<Array>} 树形结构数组
+         */
         function get_tree(fileArray) {
             return new Promise(async (resolve, reject) => {
                 try {
@@ -2227,69 +2361,71 @@
             })
         }
 
-        // ======================= Slicer =======================
+        /* ====================================================================
+         十五、Slicer 风格数据树渲染
+         ==================================================================== */
+
         let selectedRowEl = null;
-        // 根据名称返回内联 SVG 图标的 HTML 字符串
+
+        /** 按名称返回内联 SVG 图标 HTML 字符串（caret/user/folder/cube/...）。 */
         function svg(name) {
-            if (name === 'caret-right') {
-                return `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 2 L7 5 L3 8 Z" fill="#333"></path></svg>`;
+            switch (name) {
+                case 'caret-right':
+                    return `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 2 L7 5 L3 8 Z" fill="#333"></path></svg>`;
+                case 'caret-down':
+                    return `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 3 L5 7 L8 3 Z" fill="#333"></path></svg>`;
+                case 'user':
+                    return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 12c2.2 0 4-1.8 4-4s-1.8-4-4-4-4 1.8-4 4 1.8 4 4 4Z" fill="#333"></path><path d="M4 20c0-4 3.6-6 8-6s8 2 8 6" stroke="#333" stroke-width="2" fill="none"></path></svg>`;
+                case 'folder':
+                    return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 6h7l2 2h9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z" fill="#333"></path></svg>`;
+                case 'cube':
+                    return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Z" stroke="#333" stroke-width="2" fill="none"></path><path d="M12 22V12" stroke="#333" stroke-width="2"></path><path d="M21 7 12 12 3 7" stroke="#333" stroke-width="2"></path></svg>`;
+                case 'eye':
+                    return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z" stroke="#333" stroke-width="2"></path><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" fill="#333"></path></svg>`;
+                case 'gear':
+                    return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="#333" stroke-width="2"></path><path d="M19.4 15a8.2 8.2 0 0 0 .1-2l2-1.2-2-3.5-2.3.6a7.6 7.6 0 0 0-1.7-1l-.3-2.3h-4l-.3 2.3a7.6 7.6 0 0 0-1.7 1l-2.3-.6-2 3.5 2 1.2a8.2 8.2 0 0 0 .1 2l-2 1.2 2 3.5 2.3-.6a7.6 7.6 0 0 0 1.7 1l.3 2.3h4l.3-2.3a7.6 7.6 0 0 0 1.7-1l2.3.6 2-3.5-2-1.2Z" stroke="#333" stroke-width="1.5" fill="none"></path></svg>`;
+                default:
+                    return '';
             }
-            if (name === 'caret-down') {
-                return `<svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 3 L5 7 L8 3 Z" fill="#333"></path></svg>`;
-            }
-            if (name === 'user') {
-                return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 12c2.2 0 4-1.8 4-4s-1.8-4-4-4-4 1.8-4 4 1.8 4 4 4Z" fill="#333"></path><path d="M4 20c0-4 3.6-6 8-6s8 2 8 6" stroke="#333" stroke-width="2" fill="none"></path></svg>`;
-            }
-            if (name === 'folder') {
-                return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M3 6h7l2 2h9v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z" fill="#333"></path></svg>`;
-            }
-            if (name === 'cube') {
-                return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Z" stroke="#333" stroke-width="2" fill="none"></path><path d="M12 22V12" stroke="#333" stroke-width="2"></path><path d="M21 7 12 12 3 7" stroke="#333" stroke-width="2"></path></svg>`;
-            }
-            if (name === 'eye') {
-                return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z" stroke="#333" stroke-width="2"></path><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" fill="#333"></path></svg>`;
-            }
-            if (name === 'gear') {
-                return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" stroke="#333" stroke-width="2"></path><path d="M19.4 15a8.2 8.2 0 0 0 .1-2l2-1.2-2-3.5-2.3.6a7.6 7.6 0 0 0-1.7-1l-.3-2.3h-4l-.3 2.3a7.6 7.6 0 0 0-1.7 1l-2.3-.6-2 3.5 2 1.2a8.2 8.2 0 0 0 .1 2l-2 1.2 2 3.5 2.3-.6a7.6 7.6 0 0 0 1.7 1l.3 2.3h4l.3-2.3a7.6 7.6 0 0 0 1.7-1l2.3.6 2-3.5-2-1.2Z" stroke="#333" stroke-width="1.5" fill="none"></path></svg>`;
-            }
-            return '';
         }
 
+        /** 渲染整个数据树（表头 + 树体）。 */
         function renderSlicerTree(data) {
-            const container = document.getElementById('tree-container');
+            const container = byId('tree-container');
             container.innerHTML = '';
-
             const header = document.createElement('div');
             header.className = 'slicer-tree-header';
             header.innerHTML = `<div>Node</div><div style="text-align:right;">&nbsp;</div>`;
-
             const body = document.createElement('div');
             body.className = 'slicer-tree-body';
-
             const ul = document.createElement('ul');
             ul.className = 'tree-list';
             ul.setAttribute('role', 'tree');
-
             data.forEach(item => ul.appendChild(createSlicerNode(item, 0)));
-
             body.appendChild(ul);
             container.appendChild(header);
             container.appendChild(body);
         }
 
+        /** 设置当前选中行高亮。 */
         function setSelectedRow(rowEl) {
             if (selectedRowEl) selectedRowEl.classList.remove('selected');
             selectedRowEl = rowEl;
             selectedRowEl.classList.add('selected');
         }
 
+        /**
+         * 递归创建树节点（含展开 / 收起与叶子点击加载体积）。
+         * @param {object} item 节点数据（label / children / images）
+         * @param {number} depth 层级深度（用于缩进）
+         * @returns {HTMLLIElement}
+         */
         function createSlicerNode(item, depth) {
             const hasChildren = Array.isArray(item.children) && item.children.length > 0;
             const isLeafSeries = !hasChildren;
 
             const li = document.createElement('li');
             li.className = 'tree-item';
-
             const row = document.createElement('div');
             row.className = 'tree-row';
 
@@ -2310,40 +2446,27 @@
             label.className = 'label';
             label.textContent = item.label ?? '';
 
-            row.appendChild(indent);
-            row.appendChild(caretBtn);
-            row.appendChild(icon);
-            row.appendChild(label);
+            row.append(indent, caretBtn, icon, label);
             li.appendChild(row);
 
             let childWrap = null;
 
+            // 展开 / 收起（带 force 参数支持强制状态）
             function toggleExpand(force) {
                 if (!hasChildren) return;
-                const shouldExpand = typeof force === 'boolean'
-                    ? force
-                    : !(childWrap && childWrap.classList.contains('expanded'));
-
-                if (shouldExpand) {
-                    childWrap.classList.add('expanded');
-                    caretBtn.innerHTML = svg('caret-down');
-                } else {
-                    childWrap.classList.remove('expanded');
-                    caretBtn.innerHTML = svg('caret-right');
-                }
+                const shouldExpand = typeof force === 'boolean' ? force : !(childWrap.classList.contains('expanded'));
+                if (shouldExpand) { childWrap.classList.add('expanded'); caretBtn.innerHTML = svg('caret-down'); }
+                else { childWrap.classList.remove('expanded'); caretBtn.innerHTML = svg('caret-right'); }
             }
 
             if (hasChildren) {
                 childWrap = document.createElement('div');
                 childWrap.className = 'child-container';
-
                 const childUl = document.createElement('ul');
                 childUl.className = 'tree-list';
                 item.children.forEach(ch => childUl.appendChild(createSlicerNode(ch, depth + 1)));
-
                 childWrap.appendChild(childUl);
                 li.appendChild(childWrap);
-
                 caretBtn.addEventListener('click', (e) => {
                     e.stopPropagation();
                     setSelectedRow(row);
@@ -2389,7 +2512,11 @@
             return li;
         }
 
-        // ==================== Tab Switching ====================
+        /* ====================================================================
+         十六、标签页切换
+         ==================================================================== */
+
+        /** 切换左侧 Data / Needle / Oblique / Segmentation 标签页。 */
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -2399,6 +2526,7 @@
             });
         });
 
+        /* 启动：检测后端服务器状态 */
         checkServer();
     </script>
 </body>

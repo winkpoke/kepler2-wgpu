@@ -471,6 +471,56 @@ impl AppView {
         Ok(())
     }
 
+    /// Configure a 2x2 grid showing the Transverse slice of three different volumes.
+    ///
+    /// Function-level comment: Unlike the other layout builders, each view gets its own
+    /// RenderContent because the three volumes are distinct datasets (no shared texture).
+    /// The 4th grid cell is left empty.
+    pub fn configure_dr_transverse_layout(
+        &mut self,
+        vol_1: &CTVolume,
+        vol_2: &CTVolume,
+        vol_3: &CTVolume,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.set_grid_layout(2, 2, 2);
+        self.remove_all();
+
+        for vol in [vol_1, vol_2] {
+            let view = self.view_factory.create_mpr_view(
+                vol,
+                Orientation::Transverse,
+                (0, 0),
+                (0, 0),
+            )?;
+            LayoutContainer::add_view(&mut self.layout, view);
+        }
+
+        let view_col = self.view_factory.create_mpr_view(
+            vol_3,
+            Orientation::Coronal,
+            (0, 0),
+            (0, 0),
+        )?;
+        LayoutContainer::add_view(&mut self.layout, view_col);
+        
+        let view_sag = self.view_factory.create_mpr_view(
+            vol_3,
+            Orientation::Sagittal,
+            (0, 0),
+            (0, 0),
+        )?;
+        LayoutContainer::add_view(&mut self.layout, view_sag);
+
+
+        let _ = self.set_window_level(1, 13310.0);
+        let _ = self.set_window_width(1, 20612.0);
+        let _ = self.set_scale(1, 1.5);
+        let _ = self.set_window_level(0, 13310.0);
+        let _ = self.set_window_width(0, 20612.0);
+        let _ = self.set_scale(0, 1.5);
+        Ok(())
+    }
+
     /// Switch to a single-cell layout and display the requested view type.
     ///
     /// Function-level comment: Configures a single large view for detailed inspection (MPR, MIP).
