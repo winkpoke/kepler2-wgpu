@@ -19,7 +19,7 @@ pub enum UserEvent {
     SetPanMM(usize, f32, f32), // pan in mm space
     SetAliasing(usize, bool), // set antialiasing
     LoadDataFromCTVolume(CTVolume),
-    LoadDrToPro(CTVolume, CTVolume, CTVolume),
+    LoadDrToPro(CTVolume, CTVolume, CTVolume, Vec<u8>, Vec<u8>), // load DR to PRO data with average dark and bright values
     Resize(u32, u32), // width, height
     Quit,
     SetWindowByDivId(String, CTVolume),
@@ -121,10 +121,10 @@ impl GLCanvas {
         }
     }
 
-    pub fn load_dr_to_pro(&self, vol_1: &CTVolume, vol_2: &CTVolume, vol_3: &CTVolume) {
+    pub fn load_dr_to_pro(&self, vol_1: &CTVolume, vol_2: &CTVolume, vol_3: &CTVolume, avg_dark: Vec<u8>, avg_bright: Vec<u8>) {
         if let Err(e) = self
             .proxy
-            .send_event(UserEvent::LoadDrToPro(vol_1.clone(), vol_2.clone(), vol_3.clone()))
+            .send_event(UserEvent::LoadDrToPro(vol_1.clone(), vol_2.clone(), vol_3.clone(), avg_dark, avg_bright))
         {
             log::error!("Failed to send LoadDrToPro event {:?}", e);
         } else {

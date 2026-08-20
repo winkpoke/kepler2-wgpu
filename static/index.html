@@ -694,10 +694,13 @@
                 </div>
                 <div id="tree-container" class="slicer-tree"></div>
                 <div class="file-row">
-                    DICOM: <input type="file" id="file" multiple>
                     <div class="controls">
+                        <label>选择 CT dicom<input type="file" id="file" multiple></label>
                         <label>选择 DR0度  <input type="file" id= "dr0" accept=".mha"></label>
                         <label>选择 DR90度 <input type="file" id="dr90" accept=".mha"></label>
+                        <label>选择 暗场 <input type="file" id="darkFolder" accept=".raw"></label>
+                        <label>选择 亮场 <input type="file" id="brightFolder" accept=".raw" multiple></label>
+                        <button id="apply-dark-bright">DR校准</button>
                     </div>
                 </div>
                 <div class="file-row">
@@ -765,7 +768,6 @@
                         <select id="mesh-kind" title="Mesh kind">
                             <option value="0">Spine</option>
                             <option value="1">Needle</option>
-                            <option value="2">Other</option>
                         </select>
                         <input type="file" id="obj_file" accept=".obj" title="Replace the procedural needle with an imported OBJ (cross-section shape)">
                     </div>
@@ -1123,6 +1125,8 @@
             mhd: null,
             dr0: null,
             dr90: null,
+            avgDark: null,
+            avgBright: null,
             label_ids: null,
             oblique_rotation: [0, 0, 0],
         };
@@ -1414,11 +1418,45 @@
                 return;
             }
             state.dr90 = await state.wasmModule.parse_common_files_wasm([file], toUint8Array(info_small));
-            if (state.dr0 && state.volume) {
-                const cv = requireCanvas();
-                if (!cv) return;
-                cv.load_dr_to_pro(state.dr0, state.dr90, state.volume);
+        });
+
+        document.querySelector('#darkFolder').addEventListener('change', async (e) => {
+            const file = document.querySelector('#darkFolder').files[0];
+            const buffer = await file.arrayBuffer();
+            state.avgDark = new Uint8Array(buffer);
+            console.log(
+                'avgDark:',
+                file.name,
+                state.avgDark.length,
+                'bytes'
+            );
+        });
+
+        document.querySelector('#brightFolder').addEventListener('change', async (e) => {
+            const file = document.querySelector('#brightFolder').files[0];
+            const buffer = await file.arrayBuffer();
+            state.avgBright = new Uint8Array(buffer);
+            console.log(
+                'avgBright:',
+                file.name,
+                state.avgBright.length,
+                'bytes'
+            );
+        });
+
+        byId('apply-dark-bright').addEventListener('click', async () => {
+            if (!state.avgDark || !state.avgBright) {
+                alert('Please load both dark and bright frames first!');
+                return;
             }
+            if (!state.volume || !state.dr0 || !state.dr90) {
+                alert('No volume loaded. Import a DICOM or MHA first.');
+                return;
+            }
+
+            const cv = requireCanvas();
+            if (!cv) return;
+            cv.load_dr_to_pro(state.dr0, state.dr90, state.volume, state.avgDark, state.avgBright);
         });
 
         /* ====================================================================
@@ -2251,11 +2289,17 @@
         /** 偏移输入：把 (x,y,z) 偏移 POST 给后端。 */
         bindInput(['needle-ox', 'needle-oy', 'needle-oz'], async () => {
             const x = num('needle-ox'), y = num('needle-oy'), z = num('needle-oz');
+            const ptm = [
+                0.999950882, -0.007056614, -0.006959693, 0.0,
+                0.007074652, 0.999971670, 0.002570663, 0.0,
+                0.006941356, -0.002619774, 0.999972477, 0.0,
+                -5.427908, 87.284000, -582.195858, 1.0
+            ]
             try {
                 const res = await fetch(`${SERVER_URL}/api/needle_point_offset`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ x, y, z }),
+                    body: JSON.stringify({ x, y, z, ptm }),
                 });
                 if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
                 console.log('当前 Offset:', await res.json());

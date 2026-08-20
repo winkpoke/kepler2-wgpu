@@ -489,68 +489,6 @@ impl Mesh {
         Ok(result)
     }
 
-    /// Transform a unit needle mesh into a concrete instance along the (entry, tip) segment
-    pub fn instance_for_needle(
-        unit: &Mesh, entry: Vec3, tip: Vec3,
-        radius: f32, color: [f32; 4]
-    ) -> Mesh {
-        let segment = tip - entry;
-        let len = segment.length();
-
-        if len < 1e-6 || radius <= 0.0 {
-            return Mesh {
-                label_id: 0,
-                label_name: "needle-empty".into(),
-                vertices: Vec::new(),
-                indices: Vec::new(),
-            };
-        }
-        let axis = segment / len;
-        let rot = glam::Quat::from_rotation_arc(Vec3::Y, axis);
-
-        // Pre-compute the maximum radial magnitude from the unit mesh so the
-        // `radius` parameter controls the actual rendered cross-section radius
-        // independently of the model's length-to-thickness ratio.
-        let max_radial = {
-            let mut m = 0.0f32;
-            for v in &unit.vertices {
-                let p = Vec3::from(v.position);
-                let along = p.dot(Vec3::Y);
-                m = m.max((p - along * Vec3::Y).length());
-            }
-            m.max(1e-6) // guard: empty or degenerate mesh
-        };
-
-        let mut m = unit.clone();
-        m.label_name = "needle".into();
-        for v in &mut m.vertices {
-            // [-1, 1]³ → [-0.5, 0.5]³ (cross-section centered at origin)
-            let p = Vec3::from(v.position) * 0.5;
-            let along = p.dot(Vec3::Y);
-            let radial = p - along * Vec3::Y;
-            // Cross-section: normalise so `radius` is the actual rendered radius.
-            //   p-space max |radial| = max_radial * 0.5
-            //   normalise → [-0.5, 0.5]:  radial / (max_radial * 0.5) * 0.5 = radial / max_radial
-            //   then × 2·radius → radial * (2 · radius / max_radial)
-            // Length: along p ∈ [-0.5, 0.5] → [0, len]
-            let scaled = radial * (2.0 * radius / max_radial) + Vec3::Y * (along + 0.5) * len;
-            let world = entry + rot * scaled;
-            v.position = world.to_array();
-
-            // Normal correction (inverse-transpose of non-uniform scale):
-            //   position scale : radial · 2·radius/max_radial,  along · len
-            //   normal  scale : radial · max_radial/(2·radius), along · 1/len
-            let n = Vec3::from(v.normal);
-            let n_along = n.dot(Vec3::Y);
-            let n_radial = n - n_along * Vec3::Y;
-            let n_corrected =
-                (n_radial * (max_radial / (2.0 * radius)) + Vec3::Y * n_along / len).normalize();
-            v.normal = (rot * n_corrected).to_array();
-            v.color = [color[0], color[1], color[2]];
-        }
-        m
-    }
-
     pub fn meshes_to_obj(meshes: &Vec<Self>) -> String {
         let mut obj = String::new();
         let mut offset = 0;
@@ -718,8 +656,7 @@ pub fn spine(
 impl MeshVertex {
     /// Function-level comment: Vertex attribute array for position, normal, and color
     /// Defines position, normal, and color attributes for the vertex shader
-    const ATTRS: [wgpu::VertexAttribute; 3] =
-        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x3];
+    const ATTRS: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x3];
 
     /// Function-level comment: Creates vertex buffer layout descriptor for lighting-enabled mesh
     /// Returns layout for position, normal, and color vertex attributes

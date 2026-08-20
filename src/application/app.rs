@@ -17,6 +17,7 @@ use crate::rendering::view::mesh::mesh::spine;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::*;
 use crate::application::appview::AppView;
+use crate::acquisition::process::{process_raw, load_average_raw_from_bytes};
 #[cfg(target_arch = "wasm32")]
 use async_lock::Mutex;
 #[cfg(target_arch = "wasm32")]
@@ -430,16 +431,52 @@ impl App {
     /// Function-level comment: Each volume gets its own GPU texture and MPR view;
     /// the 4th grid cell stays empty. vol_1 is kept in the app model so that
     /// subsequent single-view mode switches still have a volume to rebuild from.
-    pub fn load_dr_to_pro(&mut self, vol_1: &CTVolume, vol_2: &CTVolume, vol_3: &CTVolume) {
-        let model_vol = if vol_1.dimensions.0 > 512 || vol_1.dimensions.1 > 512 {
-            vol_1.downsample_2x()
-        } else {
-            vol_1.clone()
-        };
-        let _ = self.app_model.load_volume(model_vol);
+    pub fn load_dr_to_pro(
+        &mut self, 
+        vol_1: &CTVolume, 
+        vol_2: &CTVolume, 
+        vol_3: &CTVolume,
+        avg_dark_raw: &[u8],
+        avg_bright_raw: &[u8],
+    ) {
+        let mut vol_1 = vol_1.clone();
+        let mut vol_2 = vol_2.clone();
 
-        if let Err(e) = self.app_view.configure_dr_transverse_layout(vol_1, vol_2, vol_3){
+        let avg_dark = load_average_raw_from_bytes(&avg_dark_raw).expect("Failed to load dark field");
+        let avg_bright = load_average_raw_from_bytes(&avg_bright_raw).expect("Failed to load bright field");
+        let p1 = process_raw(vol_1.clone().voxel_data, &avg_dark, &avg_bright, 1e-8).unwrap();
+        let p2 = process_raw(vol_2.clone().voxel_data, &avg_dark, &avg_bright, 1e-8).unwrap();
+        vol_1.set_voxel_data(p1);
+        vol_2.set_voxel_data(p2);
+        
+        let _ = self.app_model.load_volume(vol_1.clone());
+        if let Err(e) = self.app_view.configure_dr_transverse_layout(&vol_1, &vol_2, vol_3){
             log::error!("Failed to configure DR-to-PRO transverse layout: {}", e);
+        }
+
+        let device = &self.graphics_context.graphics.device;
+        let queue = &self.graphics_context.graphics.queue;
+        let dr_dims = vol_1.dimensions();
+        const DR_OVERLAY_THRESHOLD: i16 = 1000;
+        let dr_label_bytes: Vec<u8> = vol_1.voxel_data().iter().map(|&v| if v > DR_OVERLAY_THRESHOLD { 1u8 } else { 0u8 }).collect();
+        match RenderContent::from_labels_r8(
+            device, queue, &dr_label_bytes,
+            "DR Label Overlay",
+            dr_dims.1 as u32, // width
+            dr_dims.0 as u32, // height
+            dr_dims.2 as u32, // depth
+        ) {
+            Ok(dr_label) => {
+                if let Some(view) = self.app_view.layout.views_mut().get_mut(0 as usize) {
+                    if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                        mpr_view.set_segmentation(device, Some(Arc::new(dr_label)));
+                        mpr_view.set_segmentation_visibility(queue, [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to build DR label overlay: {}", e);
+            }
         }
 
         self.saved_states = [0, 0, 0, 0];
@@ -1080,7 +1117,6 @@ impl App {
 
     pub fn set_needle_angle(&mut self, index: usize, id: u32, angle: f32){
         let mut normal = glam::Vec3::splat(0.0);
-
         if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
             (normal, _) = mesh_view.set_needle_angle(id, angle);
         };

@@ -28,9 +28,9 @@ pub struct WindowLevel {
 impl WindowLevel {
     /// Medical imaging parameter bounds for validation
     pub const MIN_WINDOW_WIDTH: f32 = 1.0; // Minimum contrast range
-    pub const MAX_WINDOW_WIDTH: f32 = 4096.0; // Maximum contrast range for CT
+    pub const MAX_WINDOW_WIDTH: f32 = f32::MAX; // Maximum contrast range for CT
     pub const MIN_WINDOW_LEVEL: f32 = -2048.0; // Minimum brightness for CT
-    pub const MAX_WINDOW_LEVEL: f32 = 2048.0; // Maximum brightness for CT
+    pub const MAX_WINDOW_LEVEL: f32 = f32::MAX; // Maximum brightness for CT
     pub const MIN_BIAS: f32 = -2048.0; // Minimum bias offset
     pub const MAX_BIAS: f32 = 2048.0; // Maximum bias offset
 

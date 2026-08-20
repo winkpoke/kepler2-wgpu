@@ -71,19 +71,8 @@ pub enum MeshKind {
 /// CPU-side description of one mesh upload/update.
 /// This type is used to synchronize one logical CPU mesh with its GPU buffers.
 /// `id` identifies the logical mesh
-/// 
-/// `revision` identifies the geometry version. When:
-/// ```text
-/// CPU revision == uploaded_revision
-/// ```
-/// no GPU buffer recreation is performed.
-///
-/// When:
-/// ```text
-/// CPU revision != uploaded_revision
-/// ```
-/// the mesh buffers are rebuilt.
-///
+/// `revision` identifies the geometry version. When "CPU revision == uploaded_revision" no GPU buffer recreation is performed.
+/// When "CPU revision != uploaded_revision" the mesh buffers are rebuilt.
 /// This is the core Gate 2 mechanism that prevents unrelated meshes from
 /// being re-uploaded when another mesh changes.
 pub struct MeshUpload<'a> {
@@ -130,11 +119,7 @@ struct MeshSlot {
 }
 
 impl MeshSlot {
-    fn from_upload(
-        device: &Device,
-        upload: MeshUpload<'_>,
-        visible: bool,
-    ) -> Self {
+    fn from_upload(device: &Device, upload: MeshUpload<'_>, visible: bool) -> Self {
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("MultiMesh Vertex Buffer"),
             contents: bytemuck::cast_slice(&upload.mesh.vertices),
@@ -191,8 +176,6 @@ pub struct MultiMeshContext {
     lighting_uniform_buffer: wgpu::Buffer,
     lighting_bind_group: wgpu::BindGroup,
     /// Cached CPU-side uniforms.
-    ///
-    /// Updating MVP preserves slice clipping state.
     cached_uniforms: BasicUniforms,
 }
 
@@ -281,15 +264,11 @@ impl MultiMeshContext {
         Self {
             pipeline,
             pipeline_no_depth,
-
             slots: HashMap::new(),
-
             uniform_buffer,
             bind_group,
-
             lighting_uniform_buffer,
             lighting_bind_group,
-
             cached_uniforms: default_uniforms,
         }
     }
@@ -304,74 +283,39 @@ impl MultiMeshContext {
     ///
     /// Behavior:
     ///
-    /// ```text
-    /// MeshId missing
-    ///     -> create GPU buffers
+    /// MeshId missing -> create GPU buffers
     ///
-    /// MeshId exists, revision unchanged
-    ///     -> do nothing
+    /// MeshId exists, revision unchanged -> do nothing
     ///
-    /// MeshId exists, revision changed
-    ///     -> recreate only that mesh's GPU buffers
-    /// ```
+    /// MeshId exists, revision changed -> recreate only that mesh's GPU buffers
     ///
     /// Existing visibility is preserved when geometry is updated.
-    pub fn sync_mesh(
-        &mut self,
-        device: &Device,
-        upload: MeshUpload<'_>,
-    ) {
+    fn sync_mesh(&mut self, device: &Device, upload: MeshUpload<'_>) {
         let id = upload.id;
-
         match self.slots.get(&id) {
             Some(slot)
                 if slot.uploaded_revision == upload.revision =>
             {
                 // Geometry is already current.
-                //
-                // Metadata may still change independently, so update it
-                // without touching GPU buffers.
-                let slot = self
-                    .slots
-                    .get_mut(&id)
-                    .expect("slot must still exist");
-
+                // Metadata may still change independently, so update it without touching GPU buffers.
+                let slot = self.slots.get_mut(&id).expect("slot must still exist");
                 slot.kind = upload.kind;
                 slot.label_id = upload.label_id;
-                slot.label_name =
-                    upload.label_name.map(str::to_owned);
-
+                slot.label_name = upload.label_name.map(str::to_owned);
                 return;
             }
 
             Some(_) => {
-                let visible = self
-                    .slots
-                    .get(&id)
-                    .map(|slot| slot.visible)
-                    .unwrap_or(true);
-
-                let new_slot =
-                    MeshSlot::from_upload(device, upload, visible);
-
+                let visible = self.slots.get(&id).map(|slot| slot.visible).unwrap_or(true);
+                let new_slot = MeshSlot::from_upload(device, upload, visible);
                 self.slots.insert(id, new_slot);
-
-                log::debug!(
-                    "Re-uploaded mesh {:?} due to revision change",
-                    id
-                );
+                log::debug!("Re-uploaded mesh {:?} due to revision change", id);
             }
 
             None => {
-                let new_slot =
-                    MeshSlot::from_upload(device, upload, true);
-
+                let new_slot = MeshSlot::from_upload(device, upload, true);
                 self.slots.insert(id, new_slot);
-
-                log::debug!(
-                    "Uploaded new mesh {:?}",
-                    id
-                );
+                log::debug!("Uploaded new mesh {:?}", id);
             }
         }
     }
@@ -448,9 +392,7 @@ impl MultiMeshContext {
 
     /// Returns the GPU-uploaded revision for one mesh.
     pub fn uploaded_revision(&self, id: u32) -> Option<u64> {
-        self.slots
-            .get(&id)
-            .map(|slot| slot.uploaded_revision)
+        self.slots.get(&id).map(|slot| slot.uploaded_revision)
     }
 
     /// Legacy spine/segmentation synchronization with explicit revision.
@@ -462,10 +404,11 @@ impl MultiMeshContext {
             _ => MeshKind::Other,
         };
         for mesh in meshes {
+            let slot_id = id.saturating_mul(8).saturating_add(mesh.label_id as u32);
             self.sync_mesh(
                 device,
                 MeshUpload {
-                    id,
+                    id: slot_id,
                     kind,
                     label_id: Some(mesh.label_id),
                     label_name: Some(&mesh.label_name),
@@ -499,11 +442,7 @@ impl MultiMeshContext {
     }
 
     /// Set visibility for all meshes of a given semantic category.
-    pub fn set_kind_visibility(
-        &mut self,
-        kind: MeshKind,
-        visible: bool,
-    ) {
+    pub fn set_kind_visibility(&mut self, kind: MeshKind, visible: bool) {
         for slot in self.slots.values_mut() {
             if slot.kind == kind {
                 slot.visible = visible;
@@ -511,25 +450,14 @@ impl MultiMeshContext {
         }
     }
 
-    /// Returns the current visibility of one mesh.
-    pub fn is_visible(&self, id: u32) -> Option<bool> {
-        self.slots.get(&id).map(|slot| slot.visible)
-    }
-
     // ---------------------------------------------------------------------
     // Uniforms
     // ---------------------------------------------------------------------
 
     /// Update only the model-view-projection matrix.
-    ///
     /// Existing slice clipping configuration is preserved.
-    pub fn update_uniforms(
-        &mut self,
-        queue: &Queue,
-        mvp: &[[f32; 4]; 4],
-    ) {
+    pub fn update_uniforms(&mut self, queue: &Queue, mvp: &[[f32; 4]; 4]) {
         self.cached_uniforms.model_view_proj = *mvp;
-
         queue.write_buffer(
             &self.uniform_buffer,
             0,
@@ -538,32 +466,16 @@ impl MultiMeshContext {
     }
 
     /// Configure the slice plane used to clip all meshes.
-    ///
     /// The plane is expressed in `[0, 1]^3` volume-UV space.
-    pub fn set_slice_plane(
-        &mut self,
-        queue: &Queue,
-        plane_normal: [f32; 3],
-        plane_d: f32,
-        thickness: f32,
-        enabled: bool,
-    ) {
+    pub fn set_slice_plane(&mut self, queue: &Queue, plane_normal: [f32; 3], plane_d: f32, thickness: f32, enabled: bool) {
         self.cached_uniforms.plane_normal = plane_normal;
         self.cached_uniforms.plane_d = plane_d;
         self.cached_uniforms.slice_thickness = thickness.max(0.0);
         self.cached_uniforms.slice_enabled = if enabled { 1.0 } else { 0.0 };
-        queue.write_buffer(
-            &self.uniform_buffer,
-            0,
-            bytemuck::cast_slice(&[self.cached_uniforms]),
-        );
+        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[self.cached_uniforms]));
     }
 
-    pub fn update_lighting(
-        &self,
-        queue: &Queue,
-        lighting: BasicLightingUniforms,
-    ) {
+    pub fn update_lighting(&self, queue: &Queue, lighting: BasicLightingUniforms) {
         queue.write_buffer(
             &self.lighting_uniform_buffer,
             0,

@@ -172,16 +172,6 @@ impl MeshView {
         log::debug!("MeshView::attach_needle_context - Needle context attached successfully");
     }
 
-    // /// Cache the unit-needle mesh
-    // pub fn set_needle_unit_mesh(&mut self, unit: Mesh) {
-    //     log::info!(
-    //         "MeshView::set_needle_unit_mesh - {} verts / {} idx",
-    //         unit.vertices.len(),
-    //         unit.indices.len()
-    //     );
-    //     self.needle_unit = Some(unit);
-    // }
-
     // /// Re-bake every needle's transform into vertex data and upload to the needle contex
     // pub fn rebuild_needle_meshes(&self, device: &wgpu::Device) {
     //     let (Some(ctx), Some(unit)) = (&self.needle_ctx, &self.needle_unit) else {
@@ -207,16 +197,19 @@ impl MeshView {
     // }
 
     pub fn set_meshes(&self, id: u32, kind: u32, device: &wgpu::Device, meshes: Arc<Vec<Mesh>>) {
-        if let Some(ctx) = &self.spine_ctx {
+        let ctx = match kind {
+            0 | 3 => &self.spine_ctx,
+            1 => &self.needle_ctx,
+            _ => {
+                log::warn!("MeshView::set_meshes - unknown kind {}", kind);
+                return;
+            }
+        };
+
+        if let Some(ctx) = ctx {
             if let Ok(mut guard) = ctx.lock() {
                 guard.set_meshes(id, kind, device, &meshes);
-                log::info!(
-                    "MeshView::set_meshes - uploaded {} vertebra meshes",
-                    meshes.len()
-                );
             }
-        } else {
-            log::warn!("MeshView::set_meshes - no spine context attached");
         }
     }
 
@@ -647,7 +640,7 @@ impl MeshView {
         if let Some(spine_ctx) = &self.spine_ctx {
             if let Ok(mut guard) = spine_ctx.lock() {
                 guard.update_uniforms(queue, &mesh_vp.to_cols_array_2d());
-                self.spine_lighting.opacity = 1.0;
+                self.spine_lighting.opacity = 0.5;
                 guard.update_lighting(queue, self.spine_lighting);
             }
         }

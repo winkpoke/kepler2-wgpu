@@ -495,28 +495,25 @@ impl AppView {
             LayoutContainer::add_view(&mut self.layout, view);
         }
 
-        // let view_col = self.view_factory.create_mpr_view(
-        //     vol_3,
-        //     Orientation::Coronal,
-        //     (0, 0),
-        //     (0, 0),
-        // )?;
-        // LayoutContainer::add_view(&mut self.layout, view_col);
+        let mip_view = self.view_factory.create_mip_view(
+            vol_3,
+            (0, 0),
+            (0, 0),
+        )?;
+        LayoutContainer::add_view(&mut self.layout, mip_view);
         
-        // let view_sag = self.view_factory.create_mpr_view(
-        //     vol_3,
-        //     Orientation::Sagittal,
-        //     (0, 0),
-        //     (0, 0),
-        // )?;
-        // LayoutContainer::add_view(&mut self.layout, view_sag);
+        let mesh_view = self.view_factory.create_mesh_view(
+            vol_3,
+            (0, 0),
+            (0, 0),
+        )?;
+        LayoutContainer::add_view(&mut self.layout, mesh_view);
 
-
-        let _ = self.set_window_level(1, 13310.0);
-        let _ = self.set_window_width(1, 20612.0);
+        let _ = self.set_window_level(1, 1500.0);
+        let _ = self.set_window_width(1, 3000.0);
         let _ = self.set_scale(1, 1.5);
-        let _ = self.set_window_level(0, 13310.0);
-        let _ = self.set_window_width(0, 20612.0);
+        let _ = self.set_window_level(0, 1500.0);
+        let _ = self.set_window_width(0, 3000.0);
         let _ = self.set_scale(0, 1.5);
         Ok(())
     }

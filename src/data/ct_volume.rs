@@ -13,7 +13,6 @@ use wasm_bindgen::prelude::*;
 pub struct CTVolume {
     pub(crate) dimensions: (usize, usize, usize), // (rows, columns, number of slices)
     pub(crate) voxel_spacing: (f32, f32, f32), // (spacing_x, spacing_y, spacing_z)
-    // pub(crate) voxel_data: Vec<Vec<i16>>, // 3D voxel data flattened into slices
     pub(crate) voxel_data: Vec<i16>, // 3D voxel data 
     pub(crate) base: Base,
 }
@@ -56,6 +55,10 @@ impl CTVolume {
         &self.voxel_data
     }
 
+    pub fn set_voxel_data(&mut self, new_data: Vec<i16>) {
+        self.voxel_data = new_data;
+    }
+
     pub fn base(&self) -> &Base {
         &self.base
     }
@@ -67,10 +70,6 @@ impl CTVolume {
     }
 
     /// Downsample XY plane by 2x using 2x2 average pooling.
-    /// Keeps Z dimension unchanged. Reduces GPU memory by ~75%.
-    /// New dimensions: (rows/2, cols/2, slices)
-    /// New spacing: (spacing_x*2, spacing_y*2, spacing_z)
-    /// New Base: scales direction vectors by 2 to match new voxel size
     pub fn downsample_2x(&self) -> CTVolume {
         let (rows, cols, slices) = self.dimensions;
         

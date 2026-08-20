@@ -216,14 +216,21 @@ pub struct OffsetParams {
     x: f32,
     y: f32,
     z: f32,
+    ptm: [f32; 16],
 }
 
 pub async fn needle_point_offset(
-    State(mut state): State<ServerState>,
+    State(state): State<ServerState>,
     Json(params): Json<OffsetParams>,
-) -> Result<Json<[f32; 3]>, StatusCode> {
+) -> Result<Json<([f32; 3], [f32; 16])>, StatusCode> {
+    log::info!(
+        "needle_point_offset: offset=({:.3},{:.3},{:.3}) ptm_cols={:?}",
+        params.x, params.y, params.z,
+        params.ptm
+    );
     state.set_offset([params.x, params.y, params.z]);
-    Ok(Json(state.get_offset()))
+    state.set_ptm(Mat4::from_cols_array(&params.ptm));
+    Ok(Json((state.get_offset(), state.get_ptm().to_cols_array())))
 }
 
 pub async fn upload_needle_params(
@@ -252,12 +259,14 @@ pub async fn upload_needle_params(
     let end_m = tip_m + dir_m * len;
     debug_assert!(((tip_m - end_m).length() - len).abs() < 0.001);
 
-    let ptm = Mat4::from_cols(
-        Vec4::new(0.999950882, -0.007056614, -0.006959693, 0.0),
-        Vec4::new(0.007074652, 0.999971670, 0.002570663, 0.0),
-        Vec4::new(0.006941356, -0.002619774, 0.999972477, 0.0),
-        Vec4::new(-5.427908, 87.284000, -582.195858, 1.0),
-    );
+    // let ptm = Mat4::from_cols(
+    //     Vec4::new(0.999950882, -0.007056614, -0.006959693, 0.0),
+    //     Vec4::new(0.007074652, 0.999971670, 0.002570663, 0.0),
+    //     Vec4::new(0.006941356, -0.002619774, 0.999972477, 0.0),
+    //     Vec4::new(-5.427908, 87.284000, -582.195858, 1.0),
+    // );
+    let ptm = state.get_ptm();
+    log::info!("upload_needle_params: using ptm_cols={:?}", ptm.to_cols_array());
 
     let axis_transform  = Mat4::from_cols(
         Vec4::new(1.0, 0.0, 0.0, 0.0),

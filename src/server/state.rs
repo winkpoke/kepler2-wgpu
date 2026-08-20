@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use parking_lot::Mutex;
 use serde::Serialize;
 use tokio::sync::{broadcast, RwLock};
 
@@ -51,6 +52,7 @@ pub struct ServerState {
     pub series_dir: PathBuf,
     /// offset for the entry and tip points in the patient coordinate system
     pub offset: Arc<Mutex<[f32; 3]>>,
+    pub ptm: Arc<Mutex<glam::Mat4>>,
 }
 
 impl ServerState {
@@ -68,15 +70,24 @@ impl ServerState {
             ws_tx,
             series_dir,
             offset: Arc::new(Mutex::new([0.0, 0.0, 0.0])),
+            ptm: Arc::new(Mutex::new(glam::Mat4::IDENTITY)),
         }
     }
 
-    pub fn set_offset(&mut self, offset: [f32; 3]) {
-        *self.offset.lock().unwrap() = offset;
+    pub fn set_offset(&self, offset: [f32; 3]) {
+        *self.offset.lock() = offset;
+    }
+
+    pub fn set_ptm(&self, ptm: glam::Mat4) {
+        *self.ptm.lock() = ptm;
     }
 
     pub fn get_offset(&self) -> [f32; 3] {
-        *self.offset.lock().unwrap()
+        *self.offset.lock()
+    }
+
+    pub fn get_ptm(&self) -> glam::Mat4 {
+        *self.ptm.lock()
     }
 
     /// Store a new volume from a raw CTVolume and return its ID
