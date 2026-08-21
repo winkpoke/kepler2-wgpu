@@ -361,6 +361,7 @@ impl MprView {
             self.oblique_rotation,
             self.scale,
             self.pan,
+            self.slice,
         )
     }
 
@@ -372,6 +373,7 @@ impl MprView {
         oblique_rotation: Quat,
         scale: f32,
         pan: Vec3,
+        slice: f32,
     ) -> (Vec3, f32) {
         let screen_to_uv = base_uv.inverse() * base_screen;
         let r_screen = Mat4::from_quat(oblique_rotation);
@@ -380,8 +382,9 @@ impl MprView {
         let up = (r_uv * glam::Vec4::new(0.0, 1.0, 0.0, 0.0)).truncate().normalize();
         let normal = right.cross(up).normalize();
 
-        // UV-space position of the screen-center at the current depth.
-        let screen_pt = Vec3::new(0.5, 0.5, pan.z);
+        // UV-space position of the screen-center at the displayed depth
+        // (`slice - pan.z` after `T_pan`), matching `mpr.wgsl` sampling.
+        let screen_pt = Vec3::new(0.5, 0.5, slice);
         let t_pan = Mat4::from_translation(-pan);
         let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
         let s_scale = Mat4::from_scale(Vec3::splat(scale).with_z(1.0));
@@ -1020,30 +1023,95 @@ impl MprView {
         self.oblique_normal
     }
 
-    pub fn set_oblique_normal(&mut self, normal: Vec3) {
-        let new_normal = normal.normalize_or_zero();
-        if new_normal == Vec3::ZERO {
+    /// Rotate the slice so its normal becomes `normal_uv` and the displayed
+    /// plane passes through `through_uv` (both in volume-UV space).
+    ///
+    /// `normal_uv` comes from needle geometry computed against UV-space
+    /// endpoints (`mm_to_uv`), which is anisotropic whenever the volume
+    /// extents differ per axis. The normal must be pulled into the world
+    /// frame via the inverse-transpose of the UV→world map; reusing the
+    /// anisotropic UV normal as a world direction tilts the slice by the
+    /// extent ratio (e.g. ~256/200 for a typical chest CT).
+    pub fn set_oblique_plane_from_uv(&mut self, normal_uv: Vec3, through_uv: Vec3) {
+        let Some((delta, pan_z)) = Self::compute_oblique_plane_from_uv(
+            self.base_uv,
+            self.base_screen,
+            self.pan.z,
+            normal_uv,
+            through_uv,
+        ) else {
             return;
-        }
-        let current_normal = self.oblique_normal.normalize_or_zero();
-        if current_normal == Vec3::ZERO || new_normal == current_normal {
-            self.oblique_normal = new_normal;
-            return;
-        }
-        let dot = current_normal.dot(new_normal).clamp(-1.0, 1.0);
-        if dot < -0.99999 {
-            let axis = if current_normal.x.abs() < 0.9 {
-                current_normal.cross(Vec3::X).normalize()
-            } else {
-                current_normal.cross(Vec3::Y).normalize()
-            };
-            self.oblique_rotation = (Quat::from_axis_angle(axis, std::f32::consts::PI) * self.oblique_rotation).normalize();
-        } else if dot < 0.99999 {
-            let axis = current_normal.cross(new_normal).normalize();
-            let angle = dot.acos();
-            self.oblique_rotation = (Quat::from_axis_angle(axis, angle) * self.oblique_rotation).normalize();
-        }
+        };
+        self.oblique_rotation = (delta * self.oblique_rotation).normalize();
+        self.pan.z = pan_z;
         self.oblique_center_world();
+        log::info!(
+            "[NEEDLE→MPR] oblique plane: normal_uv={normal_uv:?} through_uv={through_uv:?} pan.z={:.4}",
+            self.pan.z
+        );
+    }
+
+    /// Pure (no-GPU) implementation of `set_oblique_plane_from_uv`.
+    /// Returns the delta rotation to compose into `oblique_rotation` and the
+    /// new `pan.z` that places the displayed slice plane on `through_uv`.
+    pub(crate) fn compute_oblique_plane_from_uv(
+        base_uv: Mat4,
+        base_screen: Mat4,
+        pan_z: f32,
+        normal_uv: Vec3,
+        through_uv: Vec3,
+    ) -> Option<(Quat, f32)> {
+        // Covector transport: plane {n·p_uv = c} with p_w = M·p_uv becomes
+        // {(M^-T n)·p_w = c}, so the world normal is M^-T · n_uv.
+        let n_world = base_uv.inverse().transpose().transform_vector3(normal_uv).normalize_or_zero();
+        if n_world == Vec3::ZERO {
+            return None;
+        }
+
+        let current_normal = base_screen.col(2).truncate().normalize_or_zero();
+        if current_normal == Vec3::ZERO {
+            return None;
+        }
+
+        // Shortest-arc rotation from the current slice normal to the target,
+        // applied in world space (pre-multiplied), mirroring the composition
+        // in `set_oblique_normal`.
+        let delta = {
+            let dot = current_normal.dot(n_world).clamp(-1.0, 1.0);
+            if dot < -0.99999 {
+                let axis = if current_normal.x.abs() < 0.9 {
+                    current_normal.cross(Vec3::X).normalize()
+                } else {
+                    current_normal.cross(Vec3::Y).normalize()
+                };
+                Quat::from_axis_angle(axis, std::f32::consts::PI)
+            } else if dot < 0.99999 {
+                let axis = current_normal.cross(n_world).normalize();
+                Quat::from_axis_angle(axis, dot.acos())
+            } else {
+                Quat::IDENTITY
+            }
+        };
+
+        // Preview of the rotated screen frame (`oblique_center_world` math).
+        let center = base_screen.transform_point3(Vec3::new(0.5, 0.5, 0.0));
+        let t1 = Mat4::from_translation(-center);
+        let t2 = Mat4::from_translation(center);
+        let base_screen_new = t2 * Mat4::from_quat(delta) * t1 * base_screen;
+
+        // The shader samples the screen plane {z = slice - pan.z} (the slice
+        // uniform stays 0). Shift pan.z so that plane contains the world
+        // point of `through_uv`.
+        let p_w = base_uv.transform_point3(through_uv);
+        let n_new = base_screen_new.col(2).truncate().normalize();
+        let q_w = base_screen_new.transform_point3(Vec3::new(0.5, 0.5, -pan_z));
+        // Moving pan.z by Δ shifts the plane by −Δ along the screen z-axis.
+        let dz = n_new.dot(base_screen_new.transform_vector3(Vec3::Z));
+        if dz.abs() < 1e-6 {
+            return None;
+        }
+        let pan_z_new = pan_z + (n_new.dot(q_w) - n_new.dot(p_w)) / dz;
+        Some((delta, pan_z_new))
     }
 
     pub fn get_oblique_rotation(&self) -> Quat {
@@ -1324,13 +1392,14 @@ mod tests {
         let base_screen = fake_base_screen();
         let pan = Vec3::new(0.1, -0.2, 0.3);
         let (normal, d) = MprView::compute_slice_plane_uv(
-            base_uv, base_screen, Quat::IDENTITY, 1.0, pan,
+            base_uv, base_screen, Quat::IDENTITY, 1.0, pan, 0.0,
         );
         // Normal must be unit-length.
         assert!((normal.length() - 1.0).abs() < 1e-5);
-        // The slice center (screen [0.5, 0.5, pan.z] → UV) must satisfy the
-        // equation. Recompute the UV-space center the same way.
-        let screen_pt = Vec3::new(0.5, 0.5, pan.z);
+        // The displayed plane sits at screen z = slice - pan.z; the screen
+        // center fed to the shader is (0.5, 0.5, slice). Recompute the
+        // UV-space center the same way and it must satisfy the equation.
+        let screen_pt = Vec3::new(0.5, 0.5, 0.0);
         let t_pan = Mat4::from_translation(-pan);
         let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
         let s_scale = Mat4::from_scale(Vec3::splat(1.0).with_z(1.0));
@@ -1355,7 +1424,7 @@ mod tests {
             base_screen_raw.transform_point3(Vec3::new(0.5, 0.5, 0.0));
 
         let (n0, _) = MprView::compute_slice_plane_uv(
-            base_uv, base_screen_raw, Quat::IDENTITY, 1.0, Vec3::ZERO,
+            base_uv, base_screen_raw, Quat::IDENTITY, 1.0, Vec3::ZERO, 0.0,
         );
 
         // 90° around the world Y axis: normal should swing to ±X.
@@ -1366,7 +1435,7 @@ mod tests {
         let base_screen_rot = t2 * r_mat * t1 * base_screen_raw;
 
         let (n1, d1) = MprView::compute_slice_plane_uv(
-            base_uv, base_screen_rot, rot_y, 1.0, Vec3::ZERO,
+            base_uv, base_screen_rot, rot_y, 1.0, Vec3::ZERO, 0.0,
         );
         assert!((n1.length() - 1.0).abs() < 1e-5);
         assert!(
@@ -1407,7 +1476,7 @@ mod tests {
         let base_uv = fake_base_uv();
         let base_screen = fake_base_screen();
         let (normal, d) = MprView::compute_slice_plane_uv(
-            base_uv, base_screen, Quat::IDENTITY, 1.0, Vec3::ZERO,
+            base_uv, base_screen, Quat::IDENTITY, 1.0, Vec3::ZERO, 0.0,
         );
         // Center point on the slice should have distance ≈ 0.
         let center_dist = (normal.dot(Vec3::splat(0.5)) + d).abs();
@@ -1476,5 +1545,78 @@ mod tests {
         for (a, b) in pan0.to_cols_array().iter().zip(legacy.to_cols_array().iter()) {
             assert!((a - b).abs() < 1e-6, "pan=0 MVP changed: {a} vs {b}");
         }
+    }
+
+    /// `compute_oblique_plane_from_uv` must land the slice on the needle
+    /// plane: the world normal is the inverse-transpose transport of the
+    /// anisotropic UV normal, and the displayed plane contains the needle tip.
+    #[test]
+    fn test_oblique_plane_from_uv_anisotropic_normal_and_offset() {
+        // Typical chest-CT extents: 512·0.5 mm in-plane, 100·2.0 mm axial.
+        let base_uv = Mat4::from_scale(Vec3::new(256.0, 256.0, 200.0));
+        // Transverse-style screen base: isotropic d, centered on the box.
+        let d = (256.0 + 256.0 + 200.0) / 3.0;
+        let off = Vec3::new(128.0 - d / 2.0, 128.0 - d / 2.0, 100.0);
+        let base_screen = Mat4::from_translation(off) * Mat4::from_scale(Vec3::splat(d));
+
+        // Needle tilted 45° in the UV y–z plane; at angle 0 the plane normal
+        // is axis × X = (0, 1, -1)/√2 in UV space.
+        let needle = NeedleUniform {
+            entry: [0.5, 0.5, 0.4],
+            tip: [0.5, 0.6, 0.5],
+            ..Default::default()
+        };
+        let (normal_uv, tip_uv) = needle.plane_from_needle(0.0);
+        assert!(
+            (normal_uv - Vec3::new(0.0, 0.70710677, -0.70710677)).length() < 1e-5,
+            "unexpected UV normal: {normal_uv:?}"
+        );
+
+        // Regression documentation: treating the UV normal as a world
+        // direction (the old behavior) is wrong by the anisotropy ratio.
+        let n_world = base_uv
+            .inverse()
+            .transpose()
+            .transform_vector3(normal_uv)
+            .normalize();
+        let old_error = normal_uv.cross(n_world).length().asin();
+        assert!(old_error > 0.05, "expected ~7° anisotropy error, got {old_error:.3} rad");
+
+        let (delta, pan_z) = MprView::compute_oblique_plane_from_uv(
+            base_uv, base_screen, 0.0, normal_uv, tip_uv,
+        )
+        .expect("plane computation must succeed");
+
+        // Rebuild the rotated frame exactly like `oblique_center_world`.
+        let center = base_screen.transform_point3(Vec3::new(0.5, 0.5, 0.0));
+        let t1 = Mat4::from_translation(-center);
+        let t2 = Mat4::from_translation(center);
+        let base_screen_new = t2 * Mat4::from_quat(delta) * t1 * base_screen;
+
+        // 1. New slice normal must equal the transported world normal.
+        let n_new = base_screen_new.col(2).truncate().normalize();
+        assert!(
+            n_new.cross(n_world).length() < 1e-4,
+            "slice normal {n_new:?} != needle-plane normal {n_world:?}"
+        );
+
+        // 2. Displayed plane (screen z = -pan.z) must contain the needle tip.
+        let p_w = base_uv.transform_point3(tip_uv);
+        let q_w = base_screen_new.transform_point3(Vec3::new(0.5, 0.5, -pan_z));
+        let miss = n_new.dot(q_w - p_w);
+        assert!(miss.abs() < 1e-3, "plane misses needle tip by {miss:.4} mm");
+    }
+
+    /// A zero/degenerate UV normal must be rejected, not rotated through.
+    #[test]
+    fn test_oblique_plane_from_uv_rejects_degenerate() {
+        assert!(MprView::compute_oblique_plane_from_uv(
+            Mat4::IDENTITY,
+            Mat4::IDENTITY,
+            0.0,
+            Vec3::ZERO,
+            Vec3::ONE,
+        )
+        .is_none());
     }
 }

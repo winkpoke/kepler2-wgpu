@@ -523,13 +523,14 @@ impl MeshView {
         log::debug!("[NEEDLE]Mesh needle radius set to {:.6}", radius);
     }
 
-    pub fn set_needle_angle(&mut self, id: u32, angle: f32) -> (Vec3, f32) {
-        if self.needle_enabled > 1.5 {
-            self.needle_index = id;
-            self.plane_rotation_angle = angle;
-            return self.needles[id as usize].plane_from_needle(angle);
+    pub fn set_needle_angle(&mut self, id: u32, angle: f32) -> Option<(Vec3, Vec3)> {
+        if self.needle_enabled <= 1.5 {
+            return None;
         }
-        (Vec3::splat(0.0), 0.0)
+        let index = self.needles.iter().position(|n| n.id == id)?;
+        self.needle_index = index as u32;
+        self.plane_rotation_angle = angle;
+        Some(self.needles[index].plane_from_needle(angle))
     }
 
     pub fn set_window_level(&mut self, window: f32) -> KeplerResult<()> {

@@ -1116,13 +1116,19 @@ impl App {
     }
 
     pub fn set_needle_angle(&mut self, index: usize, id: u32, angle: f32){
-        let mut normal = glam::Vec3::splat(0.0);
-        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
-            (normal, _) = mesh_view.set_needle_angle(id, angle);
+        let plane = self.app_view.layout.views_mut().iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>())
+            .and_then(|mesh_view| mesh_view.set_needle_angle(id, angle));
+        let Some((normal_uv, tip_uv)) = plane else {
+            return;
         };
+        if normal_uv == glam::Vec3::ZERO {
+            log::warn!("set_needle_angle: degenerate needle plane (axis ∥ +X), view not rotated");
+            return;
+        }
         if let Some(view) = self.app_view.layout.views_mut().get_mut(index){
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                mpr_view.set_oblique_normal(normal);
+                mpr_view.set_oblique_plane_from_uv(normal_uv, tip_uv);
             }
         }
     }

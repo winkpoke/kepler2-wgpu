@@ -84,13 +84,17 @@ impl Default for NeedleUniform {
     }
 }
 
-impl NeedleUniform{
-    pub fn plane_from_needle(&self, angle_rad: f32) -> (glam::Vec3, f32) {
-        let axis = (glam::Vec3::from(self.tip) - glam::Vec3::from(self.entry)).normalize();
+impl NeedleUniform {
+    pub fn plane_from_needle(&self, angle_rad: f32) -> (glam::Vec3, glam::Vec3) {
+        let entry = glam::Vec3::from(self.entry);
+        let tip = glam::Vec3::from(self.tip);
+        let axis = (tip - entry).normalize_or_zero();
+        if axis == glam::Vec3::ZERO {
+            return (glam::Vec3::ZERO, tip);
+        }
         let ref_vec = glam::Quat::from_axis_angle(axis, angle_rad) * glam::Vec3::new(1.0, 0.0, 0.0);
-        let normal = axis.cross(ref_vec).normalize();
-        let d = -normal.dot(glam::Vec3::from(self.tip));
-        (normal, d)
+        let normal = axis.cross(ref_vec).normalize_or_zero();
+        (normal, tip)
     }
 }
 
