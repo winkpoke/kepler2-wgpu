@@ -1,5 +1,6 @@
 use axum::{
-    extract::{Multipart, Path, Query, State, WebSocketUpgrade},
+    extract::{ConnectInfo, Multipart, Path, Query, State, WebSocketUpgrade},
+    extract::ws::{WebSocket, Message},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -14,7 +15,7 @@ use crate::server::ai_handler;
 use crate::server::ai_model::{CancelRequest, SegmentRequest, SegmentResponse};
 use crate::data::dicom::{build_ct_dicom, FsSink, generate_uid, Patient, StudySet};
 use crate::server::state::{ServerState, StoredVolume};
-use crate::server::ws::WsMessage;
+use crate::server::ws::{WsMessage, WsClientCommand};
 use crate::rendering::view::mesh::Mesh;
 use glam::{Vec3, Vec4, Mat4, Mat3};
 
@@ -32,9 +33,7 @@ pub struct HealthResponse {
     pub uptime: String,
 }
 
-pub async fn health_check(
-    State(state): State<ServerState>,
-) -> Json<HealthResponse> {
+pub async fn health_check(State(state): State<ServerState>) -> Json<HealthResponse> {
     let count = state.volume_count().await; // 从 ServerState 获取已加载体积数量
     Json(HealthResponse {
         status: "ok".to_string(),
@@ -51,16 +50,15 @@ pub async fn ws_handler(
     ws.on_upgrade(|socket| handle_socket(socket, state))
 }
 
-async fn handle_socket(mut socket: axum::extract::ws::WebSocket, state: ServerState) {
+async fn handle_socket(mut socket: WebSocket, state: ServerState) {
     let mut rx = state.ws_tx.subscribe();
-
     let count = state.volume_count().await;
     let msg = WsMessage::ServerStatus {
         loaded_volumes: count,
         message: "Connected".to_string(),
     };
     if let Ok(json) = serde_json::to_string(&msg) {
-        let _ = socket.send(axum::extract::ws::Message::Text(json)).await;
+        let _ = socket.send(Message::Text(json)).await;
     }
 
     loop {
@@ -69,7 +67,7 @@ async fn handle_socket(mut socket: axum::extract::ws::WebSocket, state: ServerSt
                 match ws_msg {
                     Ok(msg) => {
                         if let Ok(json) = serde_json::to_string(&msg) {
-                            if socket.send(axum::extract::ws::Message::Text(json)).await.is_err() {
+                            if socket.send(Message::Text(json)).await.is_err() {
                                 break;
                             }
                         }
@@ -81,39 +79,43 @@ async fn handle_socket(mut socket: axum::extract::ws::WebSocket, state: ServerSt
             result = socket.recv() => {
                 match result {
                     Some(Ok(msg)) => match msg {
-                        axum::extract::ws::Message::Text(text) => {
-                            if let Ok(cmd) = serde_json::from_str::<crate::server::ws::WsClientCommand>(&text) {
+                        Message::Text(text) => {
+                            if let Ok(cmd) = serde_json::from_str::<WsClientCommand>(&text) {
                                 match cmd {
-                                    crate::server::ws::WsClientCommand::Segment { model, series } => {
+                                    WsClientCommand::Segment { model, series } => {
                                         log::info!("WS: start segment model={} series={}", model, series);
-                                        if let Err(e) = ai_handler::handle_segment(
-                                            state.clone(),
-                                            model,
-                                            series,
-                                        )
-                                        .await
-                                        {
+                                        if let Err(e) = ai_handler::handle_segment(state.clone(), model, series).await {
                                             log::error!("WS segment dispatch failed: {e}");
                                         }
                                     }
-                                    crate::server::ws::WsClientCommand::SegmentCancel { task_id } => {
+                                    WsClientCommand::SegmentCancel { task_id } => {
                                         log::info!("WS: cancel segment task_id={}", task_id);
                                         if let Err(e) = ai_handler::handle_cancel(
                                             state.clone(),
                                             CancelRequest { task_id: task_id.clone() },
-                                        )
-                                        .await
-                                        {
+                                        ).await {
                                             log::error!("WS segment cancel failed: {e}");
                                         }
                                     }
-                                    crate::server::ws::WsClientCommand::SegmentProgressQuery { task_id } => {
+                                    WsClientCommand::SegmentProgressQuery { task_id } => {
                                         if let Some(t) = state.tasks.get(&task_id).await {
                                             let _ = state.ws_tx.send(WsMessage::SegmentProgress {
                                                 task_id: task_id.clone(),
                                                 value: t.progress,
                                             });
                                         }
+                                    }
+                                    WsClientCommand::LoadSlice { slice, width, height } => {
+                                        handle_load_slice(&mut socket, &state, slice, width, height).await;
+                                    }
+                                    WsClientCommand::ConfirmCircle { slice, circle } => {
+                                        handle_confirm_circle(&mut socket, &state, slice, circle).await;
+                                    }
+                                    WsClientCommand::RunCalibration => {
+                                        handle_run_calibration(&mut socket, &state).await;
+                                    }
+                                    WsClientCommand::EccCancel => {
+                                        // 后面可以实现 cancellation token
                                     }
                                 }
                             } else if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
@@ -122,19 +124,19 @@ async fn handle_socket(mut socket: axum::extract::ws::WebSocket, state: ServerSt
                                         timestamp: chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
                                     };
                                     if let Ok(json) = serde_json::to_string(&hb) {
-                                        if socket.send(axum::extract::ws::Message::Text(json)).await.is_err() {
+                                        if socket.send(Message::Text(json)).await.is_err() {
                                             break;
                                         }
                                     }
                                 }
                             }
                         }
-                        axum::extract::ws::Message::Ping(bytes) => {
-                            if socket.send(axum::extract::ws::Message::Pong(bytes)).await.is_err() {
+                        Message::Ping(bytes) => {
+                            if socket.send(Message::Pong(bytes)).await.is_err() {
                                 break;
                             }
                         }
-                        axum::extract::ws::Message::Close(_) => break,
+                        Message::Close(_) => break,
                         _ => {}
                     },
                     Some(Err(_)) => break,
@@ -201,16 +203,6 @@ pub struct UploadNeedleJson {
     pub coordinate_frame: Option<String>,
 }
 
-#[derive(Serialize)]
-pub struct NeedleEcho {
-    pub status: String,
-    pub id: u32,
-    pub pos: (f32, f32, f32),
-    pub dir: (f32, f32, f32),
-    pub len_mm: f32,
-    pub tip: (f32, f32, f32),
-}
-
 #[derive(Deserialize)]
 pub struct OffsetParams {
     x: f32,
@@ -235,8 +227,11 @@ pub async fn needle_point_offset(
 
 pub async fn upload_needle_params(
     State(state): State<ServerState>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    parts: axum::http::request::Parts,
     body: Option<Json<UploadNeedleJson>>,
-) -> Result<Json<NeedleEcho>, StatusCode> {
+) -> StatusCode {
+    let started = std::time::Instant::now();
     let (pos, dir, id) = if let Some(Json(b)) = body {
         (
             (b.position.x, b.position.y, b.position.z),
@@ -244,9 +239,33 @@ pub async fn upload_needle_params(
             b.frame_sequence.unwrap_or(0),
         )
     } else {
-        return Err(StatusCode::BAD_REQUEST);
+        return StatusCode::BAD_REQUEST;
     };
-    log::info!("Needle JSON: pos: {:?}, dir: {:?}", pos, dir);
+    
+    static LAST_ARRIVAL_MS: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+    let now_ms = chrono::Local::now().timestamp_millis();
+    let prev_ms = LAST_ARRIVAL_MS.swap(now_ms, std::sync::atomic::Ordering::Relaxed);
+    let gap_ms = now_ms - prev_ms;
+    log::debug!("Needle JSON from {peer}: pos: {:?}, dir: {:?}, gap={}ms", pos, dir, gap_ms);
+    if prev_ms != 0 && gap_ms > 500 {
+        log::warn!("Needle stream gap {gap_ms}ms from {peer} — request arrived late (send-side or network)");
+    }
+
+    // Keep-alive diagnostic: the server (hyper) keeps HTTP/1.1 connections open by
+    // default; if the needle device opens a new TCP conn per POST it is client-side.
+    let conn_hdr = parts.headers.get(axum::http::header::CONNECTION).and_then(|v| v.to_str().ok()).unwrap_or("").to_ascii_lowercase();
+    let reusable = conn_hdr.contains("keep-alive")|| (parts.version >= axum::http::Version::HTTP_11 && !conn_hdr.contains("close"));
+    static KA_WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if !reusable {
+        if !KA_WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            log::warn!(
+                "{peer} sends non-reusable HTTP ({:?}, Connection: {:?}) — \
+                 client forces a new TCP connection per POST",
+                parts.version, conn_hdr
+            );
+        }
+        log::debug!("{peer} non-reusable HTTP ({:?}, Connection: {:?})", parts.version, conn_hdr);
+    }
 
     let len = 400.0;
     let rx = dir.0.to_radians();
@@ -259,12 +278,6 @@ pub async fn upload_needle_params(
     let end_m = tip_m + dir_m * len;
     debug_assert!(((tip_m - end_m).length() - len).abs() < 0.001);
 
-    // let ptm = Mat4::from_cols(
-    //     Vec4::new(0.999950882, -0.007056614, -0.006959693, 0.0),
-    //     Vec4::new(0.007074652, 0.999971670, 0.002570663, 0.0),
-    //     Vec4::new(0.006941356, -0.002619774, 0.999972477, 0.0),
-    //     Vec4::new(-5.427908, 87.284000, -582.195858, 1.0),
-    // );
     let ptm = state.get_ptm();
     log::info!("upload_needle_params: using ptm_cols={:?}", ptm.to_cols_array());
 
@@ -283,11 +296,6 @@ pub async fn upload_needle_params(
     let entry_p = offset.transform_point3(ptm.transform_point3(end_t));
     let tip_p   = offset.transform_point3(ptm.transform_point3(tip_t));
 
-    log::info!(
-        "Needle params: entry: {:?}, dir: {:?}, len: {:.1}mm, tip: {:?}",
-        entry_p, dir_m, len, tip_p
-    );
-
     // Broadcast to every connected browser so the wasm renderer can draw the needle.
     let _ = state.ws_tx.send(WsMessage::NeedleSet {
         id,
@@ -304,14 +312,12 @@ pub async fn upload_needle_params(
         len_mm: len,
     });
 
-    Ok(Json(NeedleEcho {
-        status: "ok".to_string(),
-        id,
-        pos: (entry_p.x, entry_p.y, entry_p.z),
-        dir: (dir_m.x, dir_m.y, dir_m.z),
-        len_mm: len,
-        tip: (tip_p.x, tip_p.y, tip_p.z),
-    }))
+    log::info!(
+        "Needle params from {peer}: entry: {:?}, tip: {:?} (handler took {:.3} ms)",
+        entry_p, tip_p, started.elapsed().as_secs_f32() * 1000.0
+    );
+
+    StatusCode::OK
 }
 
 /// Upload a volume to the server (MHA binary data in POST body)
@@ -601,4 +607,233 @@ pub async fn segment_result_raw(
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct Circle {
+    pub width: f32,
+    pub height: f32,
+    pub x1: f32,
+    pub y1: f32,
+    pub radius_1: f32,
+    pub x2: f32,
+    pub y2: f32,
+    pub radius_2: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CalibrationResult {
+    pub c: [f64; 5],
+    pub a: [f64; 5],
+    pub b: [[f64; 5]; 5],
+    pub condition_number: f64,
+    pub determinant: f64,
+    pub singular_values: [f64; 5],
+}
+
+pub const WATER_MU: f32 = 0.27;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MaskData {
+    pub w: Vec<f32>,
+    pub t: Vec<f32>,
+    pub mask: Vec<u8>,
+    pub water_mask: Vec<bool>,
+    pub air_mask: Vec<bool>,
+}
+
+pub async fn handle_load_slice(
+    socket: &mut WebSocket,
+    state: &ServerState,
+    slice: usize,
+    width: usize,
+    height: usize
+) {
+    let data = match state.get_ct_slice(slice) {
+        Ok(data) => data,
+        Err(err) => {
+            send_error(socket, err.to_string()).await;
+            return;
+        }
+    };
+    let message = WsMessage::Slice { slice, width, height, data };
+    send_json(socket, &message).await;
+}
+
+/// Build a binary mask from the user's confirmed circle and stash it in
+/// `ServerState::mask_data`. Returns the mask so the caller can also
+/// forward it to the calibration stage.
+fn build_circle_mask(width: usize, height: usize, circle: Circle) -> MaskData {
+    let len = width * height;
+    let mut w = vec![0.0f32; len];
+    let mut t = vec![0.0f32; len];
+    let mut mask = vec![0u8; len];
+    let mut water_mask = vec![false; len];
+    let mut air_mask = vec![false; len];
+    let water_radius = circle.radius_1;
+    let air_radius = circle.radius_2;
+    let water_radius2 = water_radius * water_radius;
+    let air_radius2 = air_radius * air_radius;
+    for y in 0..height {
+        for x in 0..width {
+            let dx = x as f32 - circle.x1;
+            let dy = y as f32 - circle.y1;
+            let dist2 = dx * dx + dy * dy;
+            let index = y * width + x;
+
+            if dist2 <= water_radius2 {
+                water_mask[index] = true;
+                w[index] = 1.0;
+                t[index] = WATER_MU;
+                mask[index] = 1;
+            }
+
+            if dist2 >= water_radius2 && dist2 <= air_radius2 {
+                air_mask[index] = true;
+                w[index] = 1.0;
+                t[index] = 0.0;
+                mask[index] = 2;
+            }
+        }
+    }
+
+    MaskData { w, t, mask, water_mask, air_mask }
+}
+
+/// Serialize a `WsMessage` to JSON and push it to the client as a
+/// text WebSocket frame. Centralises the (de)serialization so every
+/// handler emits the same wire format.
+pub async fn send_json(socket: &mut WebSocket, msg: &WsMessage) {
+    match serde_json::to_string(msg) {
+        Ok(json) => {
+            if let Err(e) = socket.send(Message::Text(json)).await {
+                log::debug!("WS send_text failed: {e}");
+            }
+        }
+        Err(e) => log::error!("WS serialize failed: {e}"),
+    }
+}
+
+/// Convenience: send an `Error` message to the client.
+pub async fn send_error(socket: &mut WebSocket, message: String) {
+    send_json(socket, &WsMessage::Error { message }).await;
+}
+
+/// Handle `ConfirmCircle { slice, circle }` from the client:
+/// stash the circle (and the mask it implies) in `ServerState`, then
+/// acknowledge the client.
+pub async fn handle_confirm_circle(
+    socket: &mut WebSocket,
+    state: &ServerState,
+    slice: usize,
+    circle: Circle,
+) {
+    // Build a mask from the confirmed circle. We use the circle's own
+    // (width, height) for the working buffer; the slice index is just
+    // metadata carried over from the client.
+    let width = circle.width as usize;
+    let height = circle.height as usize;
+    let mask = build_circle_mask(width, height, circle);
+    state.set_mask_data(Some(mask));
+    state.set_mask_circle(Some(circle));
+
+    send_json(
+        socket,
+        &WsMessage::CircleAccepted { slice, circle },
+    )
+    .await;
+}
+
+/// Handle `RunCalibration` from the client. The actual computation is
+/// spawned onto a Tokio task so that the WebSocket receive loop keeps
+/// processing other commands while the calibration runs.
+pub async fn handle_run_calibration(socket: &mut WebSocket, state: &ServerState) {
+    // Pull the current mask / circle out of shared state up front so the
+    // spawned task can run with a self-contained snapshot.
+    let (circle, mask) = match (state.mask_circle(), state.mask_data()) {
+        (Some(c), Some(m)) => (c, m),
+        _ => {
+            send_error(
+                socket,
+                "no confirmed circle yet — please confirm a circle first".to_string(),
+            )
+            .await;
+            return;
+        }
+    };
+
+    // Acknowledge that the request has been accepted.
+    send_json(
+        socket,
+        &WsMessage::Progress {
+            stage: "Starting calibration".to_string(),
+            progress: 0.0,
+        },
+    )
+    .await;
+
+    let tx = state.ws_tx.clone();
+    tokio::spawn(async move {
+        run_calibration_pipeline(tx, circle, mask).await;
+    });
+}
+
+/// Calibration pipeline executed on a background Tokio task. The real
+/// algorithm lives behind `compute_calibration` below; this wrapper just
+/// turns its progress into `WsMessage::Progress` updates on the broadcast
+/// channel so every connected client can observe them.
+async fn run_calibration_pipeline(
+    tx: broadcast::Sender<WsMessage>,
+    circle: Circle,
+    mask: MaskData,
+) {
+    let stages: &[(&str, f32)] = &[
+        ("Creating masks", 0.1),
+        ("Computing a", 0.3),
+        ("Computing B", 0.5),
+        ("SVD", 0.8),
+    ];
+
+    for (stage, progress) in stages {
+        let _ = tx.send(WsMessage::Progress {
+            stage: (*stage).to_string(),
+            progress: *progress,
+        });
+        // Cooperative yield so progress messages flush promptly even if
+        // each stage is currently a no-op stub.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+
+    match compute_calibration(&circle, &mask) {
+        Ok(result) => {
+            let _ = tx.send(WsMessage::CalibrationResult { result });
+        }
+        Err(e) => {
+            log::error!("calibration failed: {e}");
+            let _ = tx.send(WsMessage::Error {
+                message: format!("calibration failed: {e}"),
+            });
+        }
+    }
+
+    let _ = tx.send(WsMessage::Finished);
+}
+
+/// Placeholder for the actual CBCT calibration. Returns a zero-initialised
+/// result so the wire protocol is fully exercised end-to-end. The real
+/// algorithm (water/air regression, SVD, etc.) will replace this body in
+/// a follow-up change.
+fn compute_calibration(circle: &Circle, _mask: &MaskData) -> Result<CalibrationResult, String> {
+    log::info!(
+        "compute_calibration(stub): circle=(x1={:.2}, y1={:.2}, r1={:.2}, x2={:.2}, y2={:.2}, r2={:.2})",
+        circle.x1, circle.y1, circle.radius_1, circle.x2, circle.y2, circle.radius_2
+    );
+    Ok(CalibrationResult {
+        c: [0.0; 5],
+        a: [0.0; 5],
+        b: [[0.0; 5]; 5],
+        condition_number: 0.0,
+        determinant: 0.0,
+        singular_values: [0.0; 5],
+    })
 }

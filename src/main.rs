@@ -46,7 +46,8 @@ async fn start_server(port: u16) {
         }
     };
 
-    if let Err(e) = axum::serve(listener, app).await {
+    let make_service = app.into_make_service_with_connect_info::<std::net::SocketAddr>();
+    if let Err(e) = axum::serve(listener, make_service).tcp_nodelay(true).await {
         log::error!("Server error: {e}");
         std::process::exit(1);
     }

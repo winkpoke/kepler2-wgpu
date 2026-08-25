@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use crate::server::handlers::{Circle, CalibrationResult};
 
 /// WebSocket message types sent from server to client.
+/// 服务器返回 / 推送给客户端的消息
 #[derive(Serialize, Clone)]
 #[serde(tag = "type")]
 pub enum WsMessage {
@@ -31,8 +33,7 @@ pub enum WsMessage {
         timestamp: String,
     },
     // ---------- AI segmentation (Section 8 of the design doc) ----------
-    /// Sent when a `POST /api/segment` request has been accepted and a new
-    /// task has been registered.
+    /// Sent when a `POST /api/segment` request has been accepted and a new task has been registered.
     #[serde(rename = "segment_started")]
     SegmentStarted {
         task_id: String,
@@ -61,7 +62,6 @@ pub enum WsMessage {
         message: String,
     },
     /// A remote client set needle parameters via `POST /api/upload_needle_params`.
-    /// Entry point = (x, y, z), tip = (lx, ly, lz), RGB color = (r, g, b).
     #[serde(rename = "needle_set")]
     NeedleSet {
         id: u32,
@@ -74,9 +74,7 @@ pub enum WsMessage {
         r: f32,
         g: f32,
         b: f32,
-        /// 方向向量（未归一化的原始值），用于前端展示
         dir: (f32, f32, f32),
-        /// 针长度 mm
         len_mm: f32,
     },
     /// Task was cancelled (either by the user or by the AI service).
@@ -84,9 +82,28 @@ pub enum WsMessage {
     SegmentCancelled {
         task_id: String,
     },
+    Slice {
+        slice: usize,
+        width: usize,
+        height: usize,
+        data: Vec<u16>,
+    },
+    CircleAccepted {
+        slice: usize,
+        circle: Circle,
+    },
+    Progress {
+        stage: String,
+        progress: f32,
+    },
+    CalibrationResult {
+        result: CalibrationResult,
+    },
+    Finished,
 }
 
 /// Client → server WebSocket commands. The discriminator lives in `type`.
+/// 客户端发送给服务器的命令
 #[derive(Deserialize)]
 #[serde(tag = "type")]
 pub enum WsClientCommand {
@@ -107,4 +124,15 @@ pub enum WsClientCommand {
     SegmentProgressQuery {
         task_id: String,
     },
+    LoadSlice {
+        slice: usize,
+        width: usize,
+        height: usize,
+    },
+    ConfirmCircle {
+        slice: usize,
+        circle: Circle,
+    },
+    RunCalibration,
+    EccCancel,
 }

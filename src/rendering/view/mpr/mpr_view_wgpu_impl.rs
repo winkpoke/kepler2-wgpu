@@ -22,7 +22,7 @@ pub struct UniformsFrag {
     pub is_packed_rg8: f32,
     pub bias: f32,
     pub is_dual_mode: f32,
-    pub slice2: f32,
+    pub seg_jet: f32,
     pub aliasing: u32,  // Change from bool to u32
     pub mat: [f32; 16],
     pub needle_count: u32,
@@ -43,7 +43,7 @@ impl Default for UniformsFrag {
             is_packed_rg8: 0.0,
             bias: 0.0,
             is_dual_mode: 0.0,
-            slice2: 0.0,
+            seg_jet: 0.0,
             aliasing: 0,
             mat: [0.0; 16],
             needle_count: 0,
@@ -126,7 +126,7 @@ impl MprViewWgpuImpl {
             is_packed_rg8: decode_params.is_packed_flag as f32,
             bias: decode_params.bias,
             is_dual_mode: 0.0,
-            slice2: 0.0,
+            seg_jet: 0.0,
             aliasing: 0,
             mat: transform_matrix.to_cols_array(),
             needle_count: 0,
@@ -260,13 +260,15 @@ impl MprViewWgpuImpl {
     pub fn set_segmentation_visibility(
         &mut self, 
         queue: &wgpu::Queue, 
-        mask: [f32; 8]
+        mask: [f32; 8],
+        jet: bool
     ){
         for (i, &v) in mask.iter().enumerate() {
             if let Some(slot) = self.uniforms.frag.label_visibility.get_mut(i) {
                 slot[0] = if v > 0.5 { 1.0 } else { 0.0 };
             }
         }
+        self.uniforms.frag.seg_jet = if jet { 1.0 } else { 0.0 };
         self.update_uniforms_buffers(queue);
     }
 
@@ -299,8 +301,8 @@ impl MprViewWgpuImpl {
     }
 
     /// Set second slice position
-    pub fn set_slice2(&mut self, slice: f32) {
-        self.uniforms.frag.slice2 = slice;
+    pub fn seg_jet(&mut self, slice: f32) {
+        self.uniforms.frag.seg_jet = slice;
     }
 
     /// Set antialiasing flag

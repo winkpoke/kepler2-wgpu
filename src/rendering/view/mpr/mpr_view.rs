@@ -562,8 +562,8 @@ impl MprView {
 
     /// Push the 8-slot label visibility mask to the GPU uniform so the fragment
     /// shader shows/hides individual segmentation labels on the MPR slice.
-    pub fn set_segmentation_visibility(&mut self, queue: &wgpu::Queue, mask: [f32; 8]) {
-        self.wgpu_impl.set_segmentation_visibility(queue, mask);
+    pub fn set_segmentation_visibility(&mut self, queue: &wgpu::Queue, mask: [f32; 8], jet: bool) {
+        self.wgpu_impl.set_segmentation_visibility(queue, mask, jet);
     }
 
     /// Returns the current overlay-enabled flag.

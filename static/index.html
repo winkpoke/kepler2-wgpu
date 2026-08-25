@@ -523,6 +523,65 @@
             word-break: break-all;
         }
 
+        /* ----- ECC Modal: CBCT Circle Picker ----- */
+        .ecc-content {
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #181818;
+            padding: 16px;
+            min-height: 420px;
+            overflow: hidden;
+        }
+
+        .ecc-content canvas {
+            display: block;
+            background: black;
+            cursor: crosshair;
+            box-shadow: 0 0 0 1px #555, 0 0 20px rgba(0,0,0,0.6);
+        }
+
+        .ecc-parameters {
+            position: absolute;
+            left: 24px;
+            bottom: 24px;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.75);
+            border: 1px solid #555;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 13px;
+            color: #eee;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .ecc-status {
+            position: absolute;
+            right: 24px;
+            bottom: 24px;
+            padding: 8px 12px;
+            background: rgba(0, 0, 0, 0.75);
+            border: 1px solid #555;
+            border-radius: 5px;
+            font-size: 12px;
+            color: #bbb;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .btn-cancel-ecc {
+            background: #6b2b2b;
+            border-color: #8d3b3b;
+            color: #eee;
+        }
+
+        .btn-cancel-ecc:hover {
+            background: #833636;
+            border-color: #a04545;
+        }
+
         .tab-bar {
             display: flex;
             border-bottom: 1px solid #cfcfcf;
@@ -701,6 +760,7 @@
                         <label>选择 暗场 <input type="file" id="darkFolder" accept=".raw"></label>
                         <label>选择 亮场 <input type="file" id="brightFolder" accept=".raw" multiple></label>
                         <button id="apply-dark-bright">DR校准</button>
+                        <button id="openEccModalBtn" class="btn">ECC标定</button>
                     </div>
                 </div>
                 <div class="file-row">
@@ -1009,6 +1069,44 @@
         </div>
     </div> 
 
+    <div id="eccModal" class="modal-overlay">
+        <div class="modal" style="width: 640px; max-width: 95vw;">
+            <div class="modal-header">
+                <h3 class="modal-title">ECC标定 — CBCT Mask 圆心 / 半径选择</h3>
+                <button class="modal-close" id="closeEccModalBtn">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 0;">
+                <div class="ecc-content">
+                    <canvas id="canvas"></canvas>
+                    <div class="ecc-parameters" id="eccParameters">center = -<br>radius = -</div>
+                    <div class="ecc-status" id="eccStatus">等待操作</div>
+                    <div class="ecc-slice-bar" id="eccSliceBar" style="display:flex; align-items:center; gap:8px; padding:6px 12px; font-size:13px;">
+                        <label for="eccSliceIndex">Slice</label>
+                        <input type="number" id="eccSliceIndex" min="0" step="1" value="100"
+                               style="width:90px;" />
+                        <button id="eccPrevSlice" class="btn btn-secondary">上一层</button>
+                        <button id="eccNextSlice" class="btn btn-secondary">下一层</button>
+                    </div>
+                    <div class="ecc-progress" id="eccProgress"
+                         style="padding:6px 12px; font-size:12px; color:#555; display:none;">
+                        <div id="eccProgressStage" style="margin-bottom:4px;">Idle</div>
+                        <div style="background:#e5e7eb; height:6px; border-radius:3px; overflow:hidden;">
+                            <div id="eccProgressFill" style="background:#4a90d9; height:100%; width:0%;"></div>
+                        </div>
+                    </div>
+                    <pre id="eccResult"
+                         style="display:none; margin:0 12px 12px 12px; padding:8px; background:#f3f4f6; border-radius:4px; max-height:140px; overflow:auto; font-size:11px; white-space:pre-wrap;"></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="resetButton" class="btn btn-secondary">重置</button>
+                <button id="confirmButton" class="btn btn-primary">确认</button>
+                <button id="runCalibrationButton" class="btn btn-primary">开始计算</button>
+                <button id="cancelButton" class="btn btn-cancel-ecc">取消</button>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         /* ====================================================================
          一、通用工具函数
@@ -1165,6 +1263,7 @@
                             break;
                         case 'error':            // 服务器错误日志
                             log(`Server error: ${msg.message}`, 'error');
+                            handleMaskWsError(msg.message);
                             break;
                         case 'heartbeat':        // 心跳（忽略）
                             break;
@@ -1173,6 +1272,11 @@
                         case 'segment_complete': handleSegmentComplete(msg); break;
                         case 'segment_failed':   handleSegmentFailed(msg); break;
                         case 'needle_set':       handleNeedleSet(msg); break;  // 后端回写的针位置
+                        case 'slice':            handleMaskSlice(msg); break;
+                        case 'circle_accepted':  handleMaskCircleAccepted(msg); break;
+                        case 'progress':         handleMaskProgress(msg); break;
+                        case 'calibration_result': handleMaskCalibrationResult(msg); break;
+                        case 'finished':         handleMaskFinished(msg); break;
                     }
                 } catch (e) {
                     // 忽略格式错误的消息
@@ -1458,6 +1562,584 @@
             if (!cv) return;
             cv.load_dr_to_pro(state.dr0, state.dr90, state.volume, state.avgDark, state.avgBright);
         });
+
+        
+        /* ============================================================
+        * CBCT Circle Picker (ECC Modal) — WebSocket driven
+        * ============================================================
+        *
+        * 点击圆心，然后拖动设置半径。
+        * 点击已有圆的边缘可调整半径。
+        * 坐标全部使用原始 CT slice 像素坐标。
+        *
+        * Workflow（所有交互都通过同一 WebSocket）：
+        *   1. 打开模态 → send { type: "load_slice", slice, width, height }
+        *   2. 收到 { type: "slice", data: [...] } → 渲染 CT 切片
+        *   3. 点击确认 → send { type: "confirm_circle", slice, circle: {...} }
+        *   4. 收到 { type: "circle_accepted" } → 标记当前圆已确认
+        *   5. 点击开始计算 → send { type: "run_calibration" }
+        *   6. 收到 { type: "progress" } 更新进度条
+        *   7. 收到 { type: "calibration_result" } 显示 c / a / B
+        *   8. 收到 { type: "finished" } 复位 UI
+        */
+        const ecc           = byId('eccModal');
+        const eccCanvas     = byId('canvas');
+        const eccCtx        = eccCanvas.getContext('2d');
+        const eccParams     = byId('eccParameters');
+        const eccStatus     = byId('eccStatus');
+        const eccResetBtn   = byId('resetButton');
+        const eccConfirmBtn = byId('confirmButton');
+        const eccCancelBtn  = byId('cancelButton');
+        const eccRunBtn     = byId('runCalibrationButton');
+        const eccSliceInput = byId('eccSliceIndex');
+        const eccPrevSliceBtn = byId('eccPrevSlice');
+        const eccNextSliceBtn = byId('eccNextSlice');
+        const eccProgressEl = byId('eccProgress');
+        const eccProgressStage = byId('eccProgressStage');
+        const eccProgressFill  = byId('eccProgressFill');
+        const eccResultEl   = byId('eccResult');
+
+        let eccWidth    = 512;
+        let eccHeight   = 512;
+        let eccSliceIdx = 100;
+        let eccImage    = null;
+        let eccScale    = 1.0;
+        let eccCircles = [];
+        let eccCenter   = null;
+        let eccRadius   = 0;
+        let eccDragging = false;
+        let eccMouseX   = 0;
+        let eccMouseY   = 0;
+        const ECC_MAX_CIRCLES = 2;
+
+        /**
+         * Send a typed payload over the shared WebSocket. Logs and silently
+         * drops the message if the connection is not yet open.
+         */
+        function sendMaskWs(payload) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('WebSocket is not open; cannot send ' + payload.type, 'error');
+                return;
+            }
+            ws.send(JSON.stringify(payload));
+        }
+
+        /**
+         * Ask the server for one axial slice. Used both when the modal
+         * is first opened and when the user steps through slices.
+         */
+        function eccRequestSlice(sliceIdx) {
+            eccSliceIdx = sliceIdx;
+            if (eccSliceInput) eccSliceInput.value = String(sliceIdx);
+            sendMaskWs({
+                type: 'load_slice',
+                slice: sliceIdx,
+                width: eccWidth,
+                height: eccHeight,
+            });
+        }
+
+        /* ---- modal open / close ---- */
+        byId('openEccModalBtn').addEventListener('click', () => {
+            ecc.classList.add('active');
+            // Defer to next frame so the modal has real dimensions
+            requestAnimationFrame(() => {
+                eccResizeCanvas();
+                eccRequestSlice(eccSliceIdx);
+                if (eccCircles.length === 0 && !eccCenter) {
+                    eccStatus.textContent = '请点击第一个圆的圆心';
+                } else if (eccCircles.length === 1 && !eccCenter) {
+                    eccStatus.textContent = '请点击第二个圆的圆心';
+                } else if (eccCircles.length >= ECC_MAX_CIRCLES) {
+                    eccStatus.textContent = '两个圆均已设置';
+                }
+            });
+        });
+
+        byId('closeEccModalBtn').addEventListener('click', () => {
+            ecc.classList.remove('active');
+        });
+
+        ecc.addEventListener('click', (e) => {
+            if (e.target === ecc) ecc.classList.remove('active');
+        });
+
+        /* ---- slice navigation ---- */
+        if (eccPrevSliceBtn) {
+            eccPrevSliceBtn.addEventListener('click', () => {
+                eccRequestSlice(Math.max(0, eccSliceIdx - 1));
+            });
+        }
+        if (eccNextSliceBtn) {
+            eccNextSliceBtn.addEventListener('click', () => {
+                eccRequestSlice(eccSliceIdx + 1);
+            });
+        }
+        if (eccSliceInput) {
+            eccSliceInput.addEventListener('change', () => {
+                const v = parseInt(eccSliceInput.value, 10);
+                if (Number.isFinite(v) && v >= 0) {
+                    eccRequestSlice(v);
+                }
+            });
+        }
+
+        /* ---- fallback test image (only used when the server has no CT volume yet) ---- */
+        function createEccTestImage() {
+            eccImage = new Float32Array(eccWidth * eccHeight);
+            const cx = eccWidth / 2;
+            const cy = eccHeight / 2;
+            const r = 200;
+            for (let y = 0; y < eccHeight; y++) {
+                for (let x = 0; x < eccWidth; x++) {
+                    const dx = x - cx;
+                    const dy = y - cy;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    let value = distance < r ? 0.4 : 0.1;
+                    value += Math.sin(x * 0.05) * Math.sin(y * 0.05) * 0.03;
+                    eccImage[y * eccWidth + x] = value;
+                }
+            }
+        }
+
+        /* ---- image range (min / max) ---- */
+        function eccGetImageRange() {
+            let min = Infinity;
+            let max = -Infinity;
+            for (let i = 0; i < eccImage.length; i++) {
+                const v = eccImage[i];
+                if (v < min) min = v;
+                if (v > max) max = v;
+            }
+            return { min, max };
+        }
+
+        /* ---- draw scaled image + circle overlay ---- */
+        function eccRenderScaledImage() {
+            if (!eccImage) return;
+            const offscreen = document.createElement('canvas');
+            offscreen.width  = eccWidth;
+            offscreen.height = eccHeight;
+            const offCtx = offscreen.getContext('2d');
+            const range      = eccGetImageRange();
+            const rangeValue = Math.max(range.max - range.min, 1e-6);
+            const imageData  = offCtx.createImageData(eccWidth, eccHeight);
+
+            for (let i = 0; i < eccImage.length; i++) {
+                const normalized = (eccImage[i] - range.min) / rangeValue;
+                const gray = Math.max(0, Math.min(255, normalized * 255));
+                const p = i * 4;
+                imageData.data[p]     = gray;
+                imageData.data[p + 1] = gray;
+                imageData.data[p + 2] = gray;
+                imageData.data[p + 3] = 255;
+            }
+
+            offCtx.putImageData(imageData, 0, 0);
+            eccCtx.clearRect(0, 0, eccCanvas.width, eccCanvas.height);
+            eccCtx.drawImage(offscreen, 0, 0, eccCanvas.width, eccCanvas.height);
+            eccDrawCircle();
+        }
+
+        /* ---- draw circle overlay ---- */
+        function eccDrawCircle() {
+            for (let i = 0; i < eccCircles.length; i++) {
+                const circle = eccCircles[i];
+                eccDrawSingleCircle(
+                    circle,
+                    i + 1,
+                    false
+                );
+            }
+
+            if (eccCenter && eccRadius >= 0) {
+                eccDrawSingleCircle(
+                    {
+                        x: eccCenter.x,
+                        y: eccCenter.y,
+                        radius: eccRadius
+                    },
+                    eccCircles.length + 1,
+                    true
+                );
+            }
+
+            eccUpdateParameters();
+        }
+
+        function eccDrawSingleCircle(circle, circleNumber, isCurrent) {
+            const cx = circle.x * eccScale;
+            const cy = circle.y * eccScale;
+            const r  = circle.radius * eccScale;
+
+            // circle
+            eccCtx.beginPath();
+            eccCtx.arc(cx, cy, r, 0, Math.PI * 2);
+            if (isCurrent) {
+                eccCtx.strokeStyle = '#00ff00';
+                eccCtx.lineWidth = 2;
+            } else {
+                eccCtx.strokeStyle = '#00ffff';
+                eccCtx.lineWidth = 3;
+            }
+            eccCtx.stroke();
+
+            // center dot
+            eccCtx.beginPath();
+            eccCtx.arc(cx, cy, 4, 0, Math.PI * 2);
+            eccCtx.fillStyle = isCurrent ? '#ff0000' : '#00ffff';
+            eccCtx.fill();
+
+            eccCtx.font = 'bold 16px Arial';
+            eccCtx.fillStyle = '#ffffff';
+            eccCtx.fillText(
+                String(circleNumber),
+                cx + 8,
+                cy - 8
+            );
+
+            // radius helper line
+            if (isCurrent && eccDragging) {
+                eccCtx.beginPath();
+                eccCtx.moveTo(cx, cy);
+                eccCtx.lineTo(eccMouseX * eccScale, eccMouseY * eccScale);
+                eccCtx.strokeStyle = 'rgba(0,255,0,0.6)';
+                eccCtx.lineWidth   = 1;
+            }
+        }
+
+        /* ---- update parameters overlay ---- */
+        function eccUpdateParameters() {
+            let html = '';
+
+            /*
+             * 显示已经确认的圆。
+             */
+            for (let i = 0; i < eccCircles.length; i++) {
+                const circle = eccCircles[i];
+                html += 'circle ' + (i + 1) + ' = (' + circle.x.toFixed(1) + ', ' + circle.y.toFixed(1) + ')' + '<br>' + 'radius = ' + circle.radius.toFixed(1) + ' px' + '<br>';
+            }
+
+            /*
+             * 显示当前正在编辑的圆。
+             */
+            if (eccCenter) {
+                html +=
+                    'circle ' +
+                    (eccCircles.length + 1) +
+                    ' = (' +
+                    eccCenter.x.toFixed(1) +
+                    ', ' +
+                    eccCenter.y.toFixed(1) +
+                    ')' +
+                    '<br>' +
+                    'radius = ' +
+                    eccRadius.toFixed(1) +
+                    ' px';
+            }
+            if (!html) { html = 'center = -<br>radius = -'; }
+            eccParams.innerHTML = html;
+        }
+
+
+        /* ---- canvas sizing (relative to modal content) ---- */
+        function eccResizeCanvas() {
+            const content = document.querySelector('.ecc-content');
+            if (!content) return;
+            const availableWidth  = content.clientWidth  - 32;
+            const availableHeight = content.clientHeight - 32;
+            eccScale = Math.min(availableWidth / eccWidth, availableHeight / eccHeight);
+            eccScale = Math.max(eccScale, 0.1);
+            eccCanvas.width  = eccWidth  * eccScale;
+            eccCanvas.height = eccHeight * eccScale;
+            eccRenderScaledImage();
+        }
+
+        /* ---- canvas -> image coords ---- */
+        function eccCanvasToImage(event) {
+            const rect = eccCanvas.getBoundingClientRect();
+            return {
+                x: (event.clientX - rect.left) / eccScale,
+                y: (event.clientY - rect.top)  / eccScale
+            };
+        }
+
+        /* ---- mouse: set center / adjust radius ---- */
+        eccCanvas.addEventListener('mousedown', (event) => {
+            if (event.button !== 0) return;
+            if (eccCircles.length >= ECC_MAX_CIRCLES) {
+                eccStatus.textContent = '两个圆均已设置';
+                return;
+            }
+            const p = eccCanvasToImage(event);
+
+            if (eccCenter) {
+                const dx = p.x - eccCenter.x;
+                const dy = p.y - eccCenter.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                // click near circle edge → adjust radius
+                if (Math.abs(distance - eccRadius) < 15) {
+                    eccDragging = true;
+                    eccStatus.textContent = '正在调整半径';
+                    return;
+                }
+            }
+
+            // otherwise set new center
+            eccCenter   = { x: p.x, y: p.y };
+            eccRadius   = 0;
+            eccDragging = true;
+            eccStatus.textContent = '正在设置半径';
+            eccRenderScaledImage();
+        });
+
+        eccCanvas.addEventListener('mousemove', (event) => {
+            const p = eccCanvasToImage(event);
+            eccMouseX = p.x;
+            eccMouseY = p.y;
+
+            if (eccDragging && eccCenter) {
+                const dx = p.x - eccCenter.x;
+                const dy = p.y - eccCenter.y;
+                eccRadius = Math.sqrt(dx * dx + dy * dy);
+                eccRenderScaledImage();
+            }
+        });
+
+        eccCanvas.addEventListener('mouseup', () => {
+            if (eccDragging) {
+                eccDragging = false;
+                eccStatus.textContent ='第 ' + (eccCircles.length + 1) +' 个圆形已设置，请点击确认';
+            }
+        });
+
+        eccCanvas.addEventListener('mouseleave', () => {
+            if (eccDragging) {
+                eccDragging = false;
+                eccStatus.textContent ='第 ' + (eccCircles.length + 1) +' 个圆形已设置，请点击确认';
+            }
+        });
+
+        /* ---- reset ---- */
+        eccResetBtn.addEventListener('click', () => {
+            eccCircles = [];
+            eccCenter   = null;
+            eccRadius   = 0;
+            eccDragging = false;
+            eccStatus.textContent = '已重置';
+            eccRenderScaledImage();
+        });
+
+        /* ---- confirm ---- */
+        eccConfirmBtn.addEventListener('click', () => {
+            eccConfirmCircle();
+        });
+
+        /* ---- run calibration ---- */
+        if (eccRunBtn) {
+            eccRunBtn.addEventListener('click', () => {
+                eccRunCalibration();
+            });
+        }
+
+        /* ---- cancel ---- */
+        eccCancelBtn.addEventListener('click', () => {
+            eccCancelPicker();
+        });
+
+        /* ---- keyboard shortcuts (only when modal is active) ---- */
+        document.addEventListener('keydown', (event) => {
+            if (!ecc.classList.contains('active')) return;
+            if (event.key === 'Enter') {
+                eccConfirmCircle();
+            } else if (event.key === 'Escape') {
+                eccCancelPicker();
+            }
+        });
+
+        /**
+         * Push the current in-progress circle to the server.
+         * The server replies with `circle_accepted` (handled below).
+         * We only forward the actual mask to the server when both circles
+         * have been confirmed (so the server has the full Circle payload).
+         */
+        function eccConfirmCircle() {
+            if (eccCircles.length >= ECC_MAX_CIRCLES) {
+                eccStatus.textContent = '两个圆均已设置';
+                return;
+            }
+            if (!eccCenter || eccRadius <= 0) {
+                alert('请先选择圆心和半径');
+                return;
+            }
+
+            // 保存当前圆
+            const circle = {
+                x: eccCenter.x,
+                y: eccCenter.y,
+                radius: eccRadius
+            };
+            eccCircles.push(circle);
+            if (eccCircles.length === 1) {
+                // 清除当前正在编辑的圆
+                eccCenter = null;
+                eccRadius = 0;
+                eccDragging = false;
+                eccStatus.textContent = '第一个圆已确认，请设置第二个圆';
+                eccRenderScaledImage();
+                return;
+            }
+
+            if (eccCircles.length === ECC_MAX_CIRCLES) {
+                // Both circles confirmed → forward the full payload to the server.
+                const payload = {
+                    width: eccWidth,
+                    height: eccHeight,
+                    x1: eccCircles[0].x,
+                    y1: eccCircles[0].y,
+                    radius_1: eccCircles[0].radius,
+                    x2: eccCircles[1].x,
+                    y2: eccCircles[1].y,
+                    radius_2: eccCircles[1].radius,
+                };
+                sendMaskWs({
+                    type: 'confirm_circle',
+                    slice: eccSliceIdx,
+                    circle: payload,
+                });
+                eccStatus.textContent = '已提交两个圆';
+                eccCenter = null;
+                eccRadius = 0;
+                eccDragging = false;
+                eccRenderScaledImage();
+            }
+        }
+
+        /**
+         * Trigger the calibration stage. The server runs the heavy work
+         * in a background Tokio task and streams progress via WebSocket.
+         */
+        function eccRunCalibration() {
+            if (eccCircles.length < ECC_MAX_CIRCLES) {
+                alert('请先确认两个圆');
+                return;
+            }
+            if (eccResultEl) {
+                eccResultEl.style.display = 'none';
+                eccResultEl.textContent = '';
+            }
+            if (eccProgressEl) {
+                eccProgressEl.style.display = 'block';
+            }
+            if (eccProgressFill) {
+                eccProgressFill.style.width = '0%';
+            }
+            if (eccProgressStage) {
+                eccProgressStage.textContent = 'Submitting…';
+            }
+            sendMaskWs({ type: 'run_calibration' });
+            eccStatus.textContent = '已提交，开始计算…';
+        }
+
+        /**
+         * Cancel any in-flight calibration / reset the picker. Sends the
+         * `ecc_cancel` command (the server uses it for future cancellation
+         * tokens) and clears the local UI.
+         */
+        function eccCancelPicker() {
+            sendMaskWs({ type: 'ecc_cancel' });
+            eccCircles = [];
+            eccCenter   = null;
+            eccRadius   = 0;
+            eccDragging = false;
+            eccStatus.textContent = '已取消';
+            if (eccProgressEl) eccProgressEl.style.display = 'none';
+            if (eccResultEl) eccResultEl.style.display = 'none';
+            eccRenderScaledImage();
+        }
+
+        /* ---- window resize: only resize when modal is visible ---- */
+        window.addEventListener('resize', () => {
+            if (ecc.classList.contains('active')) eccResizeCanvas();
+        });
+
+        /* ---- WebSocket message handlers (server → client) ---- */
+
+        /** `slice` message: render the Float32 CT data the server just sent. */
+        function handleMaskSlice(msg) {
+            if (msg.width && msg.height) {
+                eccWidth  = msg.width;
+                eccHeight = msg.height;
+            }
+            if (msg.data && Array.isArray(msg.data)) {
+                eccImage = new Float32Array(msg.data);
+            } else {
+                // No data — fall back to the synthetic test image so the
+                // user can still play with the UI.
+                createEccTestImage();
+            }
+            if (ecc.classList.contains('active')) eccResizeCanvas();
+            else eccRenderScaledImage();
+            eccStatus.textContent = 'Slice ' + msg.slice + ' 已加载';
+        }
+
+        /** `circle_accepted`: server has stored the circles. */
+        function handleMaskCircleAccepted(msg) {
+            log('Server accepted circle on slice ' + msg.slice, 'success');
+            eccStatus.textContent = '圆已确认 (' + eccCircles.length + '/2)';
+        }
+
+        /** `progress`: update the progress bar / stage text. */
+        function handleMaskProgress(msg) {
+            if (eccProgressEl) eccProgressEl.style.display = 'block';
+            if (eccProgressStage) eccProgressStage.textContent = msg.stage || '';
+            if (eccProgressFill) {
+                const pct = Math.max(0, Math.min(1, msg.progress || 0)) * 100;
+                eccProgressFill.style.width = pct.toFixed(1) + '%';
+            }
+        }
+
+        /** `calibration_result`: render the computed c / a / B. */
+        function handleMaskCalibrationResult(msg) {
+            const r = msg.result || {};
+            const lines = [
+                'c  = [' + (r.c  || []).map((v) => v.toFixed(6)).join(', ') + ']',
+                'a  = [' + (r.a  || []).map((v) => v.toFixed(6)).join(', ') + ']',
+                '|B|         = ' + (r.b ? r.b.length : 0) + ' x ' + (r.b && r.b[0] ? r.b[0].length : 0),
+                'cond(B)     = ' + (r.condition_number ?? 0).toFixed(6),
+                'det(B)      = ' + (r.determinant ?? 0).toFixed(6),
+                'singular(B) = [' + (r.singular_values || []).map((v) => v.toFixed(6)).join(', ') + ']',
+            ];
+            if (eccResultEl) {
+                eccResultEl.style.display = 'block';
+                eccResultEl.textContent = lines.join('\n');
+            }
+            if (eccProgressStage) {
+                eccProgressStage.textContent = 'Calibration finished';
+            }
+            if (eccProgressFill) {
+                eccProgressFill.style.width = '100%';
+            }
+            eccStatus.textContent = '校准完成';
+            log('Calibration finished:\n' + lines.join('\n'), 'success');
+        }
+
+        /** `finished`: server has fully drained the calibration pipeline. */
+        function handleMaskFinished() {
+            if (eccProgressStage) {
+                eccProgressStage.textContent = 'Finished';
+            }
+            if (eccRunBtn) eccRunBtn.disabled = false;
+        }
+
+        /** `error` (already routed through the generic error handler too). */
+        function handleMaskWsError(message) {
+            if (ecc.classList.contains('active')) {
+                eccStatus.textContent = 'Server error: ' + message;
+            }
+        }
+
 
         /* ====================================================================
          八、AI 分段（Segmentation）

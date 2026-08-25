@@ -7,9 +7,11 @@ use tokio::sync::{broadcast, RwLock};
 
 use crate::server::ai::AiService;
 use crate::server::ai_task::TaskManager;
+use crate::server::handlers::{Circle, MaskData};
 use crate::server::ws::WsMessage;
 use crate::data::dicom::Patient;
 use crate::data::dicom::StudySet;
+use crate::data::ct_volume::CTVolume;
 
 /// Represents a stored volume in server memory
 #[derive(Clone, Serialize)]
@@ -53,6 +55,12 @@ pub struct ServerState {
     /// offset for the entry and tip points in the patient coordinate system
     pub offset: Arc<Mutex<[f32; 3]>>,
     pub ptm: Arc<Mutex<glam::Mat4>>,
+    /// Latest CT volume available to the mask-picker workflow.
+    pub ct_volume: Arc<Mutex<Option<CTVolume>>>,
+    /// Circle currently confirmed by the user in the mask picker.
+    pub mask_circle: Arc<Mutex<Option<Circle>>>,
+    /// Resulting mask generated from the confirmed circle (water / air).
+    pub mask_data: Arc<Mutex<Option<MaskData>>>,
 }
 
 impl ServerState {
@@ -71,6 +79,9 @@ impl ServerState {
             series_dir,
             offset: Arc::new(Mutex::new([0.0, 0.0, 0.0])),
             ptm: Arc::new(Mutex::new(glam::Mat4::IDENTITY)),
+            ct_volume: Arc::new(Mutex::new(None)),
+            mask_circle: Arc::new(Mutex::new(None)),
+            mask_data: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -116,6 +127,44 @@ impl ServerState {
     /// ```
     pub fn series_path(&self, series_id: &str) -> PathBuf {
         self.series_dir.join(format!("{}.mha", series_id))
+    }
+
+    /// Cache the most recent CT volume for the mask-picker workflow.
+    pub fn set_ct_volume(&self, volume: CTVolume) {
+        *self.ct_volume.lock() = Some(volume);
+    }
+
+    /// Returns the cached CT volume (if any).
+    pub fn ct_volume(&self) -> Option<CTVolume> {
+        self.ct_volume.lock().clone()
+    }
+
+    /// Extract one axial slice from the cached CT volume.
+    pub fn get_ct_slice(&self, slice: usize) -> Result<Vec<u16>, String> {
+        match self.ct_volume.lock().as_ref() {
+            Some(vol) => vol.slice(slice),
+            None => Err("no CT volume has been loaded yet".to_string()),
+        }
+    }
+
+    /// Stash the circle that the user just confirmed in the mask picker.
+    pub fn set_mask_circle(&self, circle: Option<Circle>) {
+        *self.mask_circle.lock() = circle;
+    }
+
+    /// Returns the currently confirmed circle, if any.
+    pub fn mask_circle(&self) -> Option<Circle> {
+        *self.mask_circle.lock()
+    }
+
+    /// Stash the mask generated from the confirmed circle.
+    pub fn set_mask_data(&self, mask: Option<MaskData>) {
+        *self.mask_data.lock() = mask;
+    }
+
+    /// Returns the cached mask, if any.
+    pub fn mask_data(&self) -> Option<MaskData> {
+        self.mask_data.lock().clone()
     }
 }
 

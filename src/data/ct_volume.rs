@@ -43,6 +43,20 @@ impl CTVolume {
         }
     }
 
+    pub fn slice(&self, slice: usize) -> Result<Vec<u16>, String> {
+        if slice >= self.dimensions.2 {
+            return Err(format!(
+                "slice index {} out of range (depth = {})",
+                slice, self.dimensions.2
+            ));
+        }
+        let stride = self.dimensions.0 * self.dimensions.1;
+        let start = slice * stride;
+        let end = start + stride;
+        let data: Vec<u16> = self.voxel_data[start..end].iter().map(|x| *x as u16).collect();
+        Ok(data)
+    }
+
     pub fn dimensions(&self) -> (usize, usize, usize) {
         self.dimensions
     }

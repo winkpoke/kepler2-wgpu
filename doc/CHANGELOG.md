@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-08-24T15-48-14
+- **Refactor CBCT Mask Picker to a single WebSocket workflow**
+  - The ECC modal no longer uses `fetch` for `POST /api/mask/circle`,
+    `POST /api/circle/cancel`, or any other mask-picker REST endpoint.
+    Every interaction (load slice, confirm circle, run calibration, watch
+    progress, read the result) now travels over the existing `/ws`
+    WebSocket using the `load_slice` / `confirm_circle` / `run_calibration`
+    / `ecc_cancel` client commands and the `slice` / `circle_accepted` /
+    `progress` / `calibration_result` / `finished` server events defined
+    in `src/server/ws.rs`.
+  - Added the supporting Rust plumbing: a new `CtVolumeData` cache plus
+    `set_ct_volume` / `get_ct_slice` / `set_mask_circle` / `set_mask_data`
+    helpers in `src/server/state.rs`; `send_json` / `send_error` and the
+    `handle_confirm_circle` / `handle_run_calibration` WebSocket handlers
+    in `src/server/handlers.rs`. `handle_run_calibration` spawns the
+    calibration pipeline on a Tokio task so the WebSocket receive loop
+    keeps draining other commands.
+  - The HTML modal now exposes a slice index input, prev/next buttons, a
+    progress bar + stage text, a result panel, and a "开始计算" button.
+    On open it requests slice 100; on confirm it forwards the full
+    `Circle` (with `width`/`height`/`x1`/`y1`/`radius_1`/`x2`/`y2`/`radius_2`)
+    to the server; on run it streams progress events until the
+    `finished` event arrives.
+  - Files:
+    - `src/server/state.rs`
+    - `src/server/handlers.rs`
+    - `src/server/mod.rs`
+    - `static/index.html`
+
 ## 2026-08-06T16-05-00
 - **Unify Mesh/Volume in `[0, 1]^3` UV-Space**
   - Removed the `volume_scale` AABB remap from `MeshView::update_uniforms` and the
