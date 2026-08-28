@@ -28,7 +28,7 @@ pub struct UniformsFrag {
     pub needle_count: u32,
     pub needle_enabled: f32,
     pub seg_enabled: f32,
-    pub _pad0: f32,
+    pub seg_alpha: f32,
     pub needles: [NeedleUniform; 32],
     pub label_colors: [[f32; 4]; 8],
     pub label_visibility: [[f32; 4]; 8],
@@ -49,7 +49,7 @@ impl Default for UniformsFrag {
             needle_count: 0,
             needle_enabled: 0.0,
             seg_enabled: 0.0,
-            _pad0: 0.0,
+            seg_alpha: 0.3,
             needles: [NeedleUniform::default(); 32],
             label_colors: LABEL_COLORS,
             label_visibility: [[0.0; 4]; 8],
@@ -132,7 +132,7 @@ impl MprViewWgpuImpl {
             needle_count: 0,
             needle_enabled: 0.0,
             seg_enabled: 0.0,
-            _pad0: 0.0,
+            seg_alpha: 0.3,
             needles: [NeedleUniform::default(); 32],
             label_colors: LABEL_COLORS,
             label_visibility: [[0.0; 4]; 8],
@@ -269,6 +269,12 @@ impl MprViewWgpuImpl {
             }
         }
         self.uniforms.frag.seg_jet = if jet { 1.0 } else { 0.0 };
+        self.update_uniforms_buffers(queue);
+    }
+
+    /// Set the segmentation overlay opacity 
+    pub fn set_segmentation_alpha(&mut self, queue: &wgpu::Queue, alpha: f32) {
+        self.uniforms.frag.seg_alpha = alpha.clamp(0.0, 1.0);
         self.update_uniforms_buffers(queue);
     }
 

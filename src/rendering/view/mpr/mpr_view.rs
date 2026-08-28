@@ -566,6 +566,11 @@ impl MprView {
         self.wgpu_impl.set_segmentation_visibility(queue, mask, jet);
     }
 
+    /// Set the segmentation overlay opacity
+    pub fn set_segmentation_alpha(&mut self, queue: &wgpu::Queue, alpha: f32) {
+        self.wgpu_impl.set_segmentation_alpha(queue, alpha);
+    }
+
     /// Returns the current overlay-enabled flag.
     pub fn is_segmentation_enabled(&self) -> bool {
         self.wgpu_impl.uniforms.frag.seg_enabled > 0.5

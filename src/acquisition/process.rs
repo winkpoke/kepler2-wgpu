@@ -98,21 +98,6 @@ ElementDataFile = {basename}.raw
     Ok(())
 }
 
-// Average multiple frames (dark / bright field)
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen(js_name = compute_average_frames)]
-pub fn average_frames(frames: &[i16], n_frames: usize) -> Vec<f32> {
-    let total_pixels = WIDTH * HEIGHT;
-    assert_eq!(frames.len(), total_pixels * n_frames);
-    let mut acc = vec![0f64; total_pixels];
-    for frame in frames.chunks_exact(total_pixels) {
-        for (i, &v) in frame.iter().enumerate() {
-            acc[i] += v as f64;
-        }
-    }
-    acc.into_iter().map(|v| (v / n_frames as f64).round() as f32).collect()
-}
-
 pub fn load_average_raw_from_bytes(bytes: &[u8]) -> Result<Array2<f32>, Box<dyn std::error::Error>> {
     let expected_size = WIDTH * HEIGHT * 2;
     if bytes.len() != expected_size {

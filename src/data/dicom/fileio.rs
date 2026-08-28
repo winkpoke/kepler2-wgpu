@@ -1,7 +1,5 @@
 use anyhow::Result;
 use std::sync::Arc;
-#[cfg(not(target_arch = "wasm32"))]
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::fs::{self, File};
@@ -89,13 +87,11 @@ pub async fn parse_dcm_directories(directories: Vec<&str>) -> Result<DicomRepo> 
 pub async fn parse_dcm_files(file_paths: Vec<std::path::PathBuf>) -> Result<DicomRepo> {
     // Shared repository and counter tracker
     let repo = Arc::new(Mutex::new(DicomRepo::new()));
-    let count = Arc::new(AtomicUsize::new(0));
 
     // Process files concurrently
     let mut tasks = vec![];
     for file_path in file_paths {
         let repo_clone = Arc::clone(&repo);
-        let count_clone = Arc::clone(&count);
 
         let task: tokio::task::JoinHandle<Result<(), anyhow::Error>> = tokio::spawn(async move {
             // Open the file asynchronously
@@ -125,7 +121,6 @@ pub async fn parse_dcm_files(file_paths: Vec<std::path::PathBuf>) -> Result<Dico
                             file_path.display(),
                             err
                         );
-                        count_clone.fetch_add(1, Ordering::SeqCst);
                         return Ok(());
                     }
                 };
@@ -150,8 +145,7 @@ pub async fn parse_dcm_files(file_paths: Vec<std::path::PathBuf>) -> Result<Dico
             if let Ok(ct_image) = parsed_ct_image {
                 repo.add_ct_image(ct_image);
             }
-
-            count_clone.fetch_add(1, Ordering::SeqCst);
+            
             Ok(())
         });
 
@@ -200,11 +194,7 @@ use web_sys::{File, FileReader, ProgressEvent};
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[cfg(target_arch = "wasm32")]
 pub async fn parse_dcm_files_wasm(files: Array) -> Result<DicomRepo, JsValue> {
-    // use futures::channel::oneshot;
-    // use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
-    // use wasm_bindgen_futures::future_to_promise;
-    // use log::error;
 
     // Shared repository and counter
     let repo = Arc::new(Mutex::new(DicomRepo::new()));

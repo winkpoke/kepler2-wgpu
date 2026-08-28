@@ -109,6 +109,9 @@ impl RenderApp {
                 Event::UserEvent(UserEvent::LoadDrToPro(vol_1, vol_2, vol_3, avg_dark, avg_bright)) => {
                     state.load_dr_to_pro(&vol_1, &vol_2, &vol_3, &avg_dark, &avg_bright);
                 }
+                Event::UserEvent(UserEvent::LoadDrOverlay(overlay_vol_0, overlay_vol_90)) => {
+                    state.overlay_dr_segmentation(&overlay_vol_0, &overlay_vol_90);
+                }
                 Event::UserEvent(UserEvent::Resize(width, height)) => {
                     log::info!("Resizing to width: {}, height: {}", width, height);
                     state.resize(PhysicalSize { width, height });

@@ -1,5 +1,76 @@
 # Changelog
 
+## 2026-08-26
+- **Split DR display and DR overlay into two functions**
+  - `App::load_dr_to_pro` (`src/application/app.rs`) no longer builds the
+    pseudo-color label overlay from the processed DR volume itself; it
+    only runs dark/bright correction and configures the 2x2 DR-to-PRO
+    transverse layout.
+  - `App::overlay_dr_segmentation(&CTVolume, &CTVolume)` takes two
+    separate MHA volumes, applies the same full-range pseudo-color
+    encoding (1..255 into `RenderContent::from_labels_r8`) to each, and
+    stacks them on the DR MPR views in grid cells 0 and 1 (matching
+    `vol_1` / `vol_2` of `load_dr_to_pro`) at 50% opacity. Geometry
+    lines up only when each overlay volume shares its DR volume's voxel
+    grid.
+  - Segmentation overlay opacity is now uniform-driven: the unused
+    `_pad0` f32 in `UniformsFrag` is repurposed as `seg_alpha`
+    (byte-identical layout, no pipeline change). `mpr.wgsl` mixes both
+    the jet and label-color paths with `clamp(seg_alpha, 0, 1)`
+    (previously hardcoded 1.0 / 0.3). Default stays 0.3 so AI
+    segmentation keeps its look; new `MprView::set_segmentation_alpha`
+    sets it per view.
+  - Wired through the public chain: `UserEvent::LoadDrOverlay(CTVolume,
+    CTVolume)`, `GLCanvas::load_dr_overlay(&CTVolume, &CTVolume)`
+    (wasm-bindgen export), and the render-loop arm in
+    `src/application/render_app.rs`.
+  - `static/index.html`: `选择 Overlay 0 MHA` / `选择 Overlay 90 MHA`
+    file inputs; the DR校准 button calls `load_dr_to_pro` and, when both
+    overlay MHAs are selected, `load_dr_overlay` right after (fixed the
+    90° handler reading the 0° input's file). Requires a
+    `wasm-pack build` to regenerate `pkg/` exports.
+  - Files: `src/application/app.rs`, `src/application/gl_canvas.rs`,
+    `src/application/render_app.rs`, `src/rendering/shaders/mpr.wgsl`,
+    `src/rendering/view/mpr/mpr_view.rs`,
+    `src/rendering/view/mpr/mpr_view_wgpu_impl.rs`, `static/index.html`.
+
+## 2026-08-25
+- **Add Navigation Computer bridge mount points**
+  - Matches the real Navigation Computer contract: every outbound
+    request goes to `{base_url}/api/navigation/v1/...` and carries
+    `Authorization: Bearer <token>`. Base URL defaults to
+    `http://172.18.3.17:8765`; URL and token come from
+    `POST /api/nav/config` or the `KEPLER_NAVCOMPUTER_URL` /
+    `KEPLER_NAVCOMPUTER_TOKEN` env vars (`GET` returns the token
+    masked). Responses (status + body) are relayed verbatim; unreachable
+    upstreams map to 502 and malformed JSON fails fast with a local 400.
+  - Outbound (`/api/nav/*`) in new module `src/server/navcomputer.rs`:
+    `GET|POST /api/nav/config`, `GET /api/nav/health` and
+    `GET /api/nav/status` (forward `GET /health` / `GET /status`),
+    `POST /api/nav/prepared-ct-lookups` (JSON passthrough),
+    `POST /api/nav/prepared-cts` (ZIP upload, multipart `file` field or
+    raw body, idempotency key via `?idempotency_key=` or the
+    `Idempotency-Key` header), `POST /api/nav/setup-registrations`
+    (multipart `payload` JSON + `fixed_mha` F1 + `moving_mha` F2),
+    `POST /api/nav/navigation-sessions/:id/target-observations` and
+    `POST /api/nav/navigation-sessions/:id/completion` (JSON passthrough).
+  - Inbound callbacks the Navigation Computer pushes to:
+    `PUT /callbacks/:session/events/:sequence` (ordered, idempotent
+    BTreeMap storage, replies 204), `PUT /callbacks/:session/live-state`
+    (latest state, 204), plus `GET /api/nav/callbacks/:session` to
+    inspect and `DELETE` to clear for replay tests.
+  - `static/navcomputer.html`: a dark-themed input console that drives
+    every mount point from the browser (base URL + Bearer-token config,
+    health/status, cache lookup, ZIP upload with generated idempotency
+    key, F1/F2 MHA registration, callback simulation, target
+    observations, completion) with a color-coded response log. Served by
+    the existing static fallback at `/navcomputer.html`.
+  - Wiring: `NavState` added to `ServerState`, routes registered in
+    `src/server/routes.rs`, `reqwest` gains the `multipart` feature.
+  - Files: `src/server/navcomputer.rs` (new), `src/server/state.rs`,
+    `src/server/routes.rs`, `src/server/mod.rs`, `Cargo.toml`,
+    `static/navcomputer.html` (new).
+
 ## 2026-08-24T15-48-14
 - **Refactor CBCT Mask Picker to a single WebSocket workflow**
   - The ECC modal no longer uses `fetch` for `POST /api/mask/circle`,

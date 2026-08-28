@@ -1,6 +1,6 @@
 [package]
 name = "kepler-wgpu"
-version = "1.0.0"
+version = "0.16.0"
 edition = "2021"
 
 [package.metadata.wasm-pack.profile.release]
@@ -59,9 +59,11 @@ tokio = { version = "1.47.1", features = ["full"] }
 tokio-serial = "5"
 rayon = "1.11.0"
 parking_lot = "0.12"
-zip = "2.2"
-reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+zip = "4"
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "multipart", "stream"] }
 base64 = "0.22"
+tokio-util = { version = "0.7", features = ["io"] }
+walkdir = "2"
 
 [dependencies.image]
 version = "0.25.2"

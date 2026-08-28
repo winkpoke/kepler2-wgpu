@@ -85,7 +85,7 @@ struct UniformsFrag {
     needle_count: u32,
     needle_enabled: f32,
     seg_enabled: f32,
-    _pad0: f32,
+    seg_alpha: f32,
     needles: array<NeedleUniform, 32>,
     label_colors: array<vec4<f32>, 8>,
     label_visibility: array<vec4<f32>, 8>,
@@ -174,12 +174,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         if (seg_label > 0u) {
             if (u_uniform_frag.seg_jet > 0.5) {
                 let t = f32(seg_label) / 255.0;
-                return vec4<f32>(jet(t), 1.0);
+                let a = clamp(u_uniform_frag.seg_alpha, 0.0, 1.0);
+                return vec4<f32>(mix(final_color, jet(t), a), 1.0);
             } else {
                 let idx = min(seg_label, 8u);
                 if (u_uniform_frag.label_visibility[idx].x > 0.5) {
                     let seg_overlay = u_uniform_frag.label_colors[idx].rgb;
-                    return vec4<f32>(mix(final_color, seg_overlay, 0.3), 1.0);
+                    let a = clamp(u_uniform_frag.seg_alpha, 0.0, 1.0);
+                    return vec4<f32>(mix(final_color, seg_overlay, a), 1.0);
                 }
             }
         }

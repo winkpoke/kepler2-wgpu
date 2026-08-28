@@ -8,6 +8,7 @@ use tokio::sync::{broadcast, RwLock};
 use crate::server::ai::AiService;
 use crate::server::ai_task::TaskManager;
 use crate::server::handlers::{Circle, MaskData};
+use crate::server::navcomputer::NavState;
 use crate::server::ws::WsMessage;
 use crate::data::dicom::Patient;
 use crate::data::dicom::StudySet;
@@ -61,6 +62,8 @@ pub struct ServerState {
     pub mask_circle: Arc<Mutex<Option<Circle>>>,
     /// Resulting mask generated from the confirmed circle (water / air).
     pub mask_data: Arc<Mutex<Option<MaskData>>>,
+    /// Navigation Computer 桥接状态（基地址 + 已接收回调）
+    pub nav: Arc<NavState>,
 }
 
 impl ServerState {
@@ -82,6 +85,7 @@ impl ServerState {
             ct_volume: Arc::new(Mutex::new(None)),
             mask_circle: Arc::new(Mutex::new(None)),
             mask_data: Arc::new(Mutex::new(None)),
+            nav: Arc::new(NavState::new()),
         }
     }
 

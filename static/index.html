@@ -754,9 +754,12 @@
                 <div id="tree-container" class="slicer-tree"></div>
                 <div class="file-row">
                     <div class="controls">
+                        <button onclick="window.location.href='/navcomputer.html'"> navcomputer </button>
                         <label>选择 CT dicom<input type="file" id="file" multiple></label>
                         <label>选择 DR0度  <input type="file" id= "dr0" accept=".mha"></label>
                         <label>选择 DR90度 <input type="file" id="dr90" accept=".mha"></label>
+                        <label>选择 Overlay 0 MHA <input type="file" id="drOverlay-0" accept=".mha"></label>
+                        <label>选择 Overlay 90 MHA <input type="file" id="drOverlay-90" accept=".mha"></label>
                         <label>选择 暗场 <input type="file" id="darkFolder" accept=".raw"></label>
                         <label>选择 亮场 <input type="file" id="brightFolder" accept=".raw" multiple></label>
                         <button id="apply-dark-bright">DR校准</button>
@@ -1223,6 +1226,8 @@
             mhd: null,
             dr0: null,
             dr90: null,
+            drOverlay0: null,
+            drOverlay90: null,
             avgDark: null,
             avgBright: null,
             label_ids: null,
@@ -1524,6 +1529,19 @@
             state.dr90 = await state.wasmModule.parse_common_files_wasm([file], toUint8Array(info_small));
         });
 
+        document.querySelector('#drOverlay-0').addEventListener('change', async () => {
+            const file = document.querySelector('#drOverlay-0').files[0];
+            if (!file) return;
+            state.drOverlay0 = await state.wasmModule.parse_common_files_wasm([file], toUint8Array(info_small));
+        });
+
+        
+        document.querySelector('#drOverlay-90').addEventListener('change', async () => {
+            const file = document.querySelector('#drOverlay-90').files[0];
+            if (!file) return;
+            state.drOverlay90 = await state.wasmModule.parse_common_files_wasm([file], toUint8Array(info_small));
+        });
+
         document.querySelector('#darkFolder').addEventListener('change', async (e) => {
             const file = document.querySelector('#darkFolder').files[0];
             const buffer = await file.arrayBuffer();
@@ -1561,6 +1579,9 @@
             const cv = requireCanvas();
             if (!cv) return;
             cv.load_dr_to_pro(state.dr0, state.dr90, state.volume, state.avgDark, state.avgBright);
+            if (state.drOverlay0 && state.drOverlay90) {
+                cv.load_dr_overlay(state.drOverlay0, state.drOverlay90);
+            }
         });
 
         

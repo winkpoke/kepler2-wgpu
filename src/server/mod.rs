@@ -1,5 +1,6 @@
 pub mod handlers;
 pub mod routes;
+pub mod navcomputer;
 pub mod state;
 pub mod ai;
 pub mod ai_task;

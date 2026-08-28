@@ -41,9 +41,9 @@ def _default_port() -> int:
 
 
 PORT = _default_port()
-BASE_URL = f"http://172.18.3.15:3000"
+BASE_URL = f"http://172.18.3.28:3000"
 URL = f"{BASE_URL}/api/upload_needle_params"
-WS_URL = f"ws://172.18.3.15:3000/ws"
+WS_URL = f"ws://172.18.3.28:3000/ws"
 
 LEN_MM = 120.0            # 服务器固定针长
 TOL = 0.05                # f32 容差（坐标比对用）
@@ -261,7 +261,7 @@ def scenario1_full() -> None:
     check_coord(body.get("tip"), exp_tip, "tip")
 
 if __name__ == "__main__":
-    scenario1_stream(50.0)
+    scenario1_stream(5.0)
     # scenario1_full()
     print("\n" + "=" * 64)
     print(f"汇总: PASS={_PASS}  FAIL={_FAIL}")

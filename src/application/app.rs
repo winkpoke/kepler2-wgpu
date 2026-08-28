@@ -454,39 +454,44 @@ impl App {
             log::error!("Failed to configure DR-to-PRO transverse layout: {}", e);
         }
 
+        self.saved_states = [0, 0, 0, 0];
+    }
+
+    pub fn overlay_dr_segmentation(&mut self, overlay_vol_0: &CTVolume, overlay_vol_90: &CTVolume) {
         let device = &self.graphics_context.graphics.device;
         let queue = &self.graphics_context.graphics.queue;
-        let dr_dims = vol_1.dimensions();
-        let data = vol_1.voxel_data();
-        let vmin = *data.iter().min().unwrap_or(&0);
-        let vmax = *data.iter().max().unwrap_or(&1);
-        let denom = ((vmax - vmin) as f32).max(1.0);
-        // Full-range pseudo-color encoding
-        let dr_label_bytes: Vec<u8> = data.iter().map(|&v| {
-            let t = (v - vmin) as f32 / denom;
-            (1.0 + t.clamp(0.0, 1.0) * 254.0) as u8
-        }).collect();
-        match RenderContent::from_labels_r8(
-            device, queue, &dr_label_bytes,
-            "DR Label Overlay",
-            dr_dims.1 as u32, // width
-            dr_dims.0 as u32, // height
-            dr_dims.2 as u32, // depth
-        ) {
-            Ok(dr_label) => {
-                if let Some(view) = self.app_view.layout.views_mut().get_mut(0 as usize) {
-                    if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                        mpr_view.set_segmentation(device, Some(Arc::new(dr_label)));
-                        mpr_view.set_segmentation_visibility(queue, [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], true);
+        let targets: [(usize, &CTVolume); 2] = [(0, overlay_vol_0), (1, overlay_vol_90)];
+        for (view_idx, overlay_vol) in targets {
+            let dims = overlay_vol.dimensions();
+            let data = overlay_vol.voxel_data();
+            let vmin = *data.iter().min().unwrap_or(&0);
+            let vmax = *data.iter().max().unwrap_or(&1);
+            let denom = ((vmax - vmin) as f32).max(1.0);
+            // Full-range pseudo-color encoding
+            let label_bytes: Vec<u8> = data.iter().map(|&v| {
+                let t = (v - vmin) as f32 / denom;
+                (1.0 + t.clamp(0.0, 1.0) * 254.0) as u8
+            }).collect();
+            match RenderContent::from_labels_r8(
+                device, queue, &label_bytes,
+                "DR Label Overlay",
+                dims.1 as u32, // width
+                dims.0 as u32, // height
+                dims.2 as u32, // depth
+            ) {
+                Ok(dr_label) => {
+                    if let Some(view) = self.app_view.layout.views_mut().get_mut(view_idx) {
+                        if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                            mpr_view.set_segmentation(device, Some(Arc::new(dr_label)));
+                            mpr_view.set_segmentation_visibility(queue, [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], true);
+                        }
                     }
                 }
-            }
-            Err(e) => {
-                log::error!("Failed to build DR label overlay: {}", e);
+                Err(e) => {
+                    log::error!("Failed to build DR label overlay for view {view_idx}: {}", e);
+                }
             }
         }
-
-        self.saved_states = [0, 0, 0, 0];
     }
 
     /// Render mode setter for MPR, MIP, and Mesh.
