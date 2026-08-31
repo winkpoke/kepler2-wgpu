@@ -31,7 +31,7 @@ pub fn create_router(state: ServerState) -> Router {
         .route("/api/nav/prepared-cts", post(nav::nav_prepared_ct_upload))
         .route("/api/nav/setup-registrations", post(nav::nav_setup_registration))
         .route("/api/nav/setup-registrations/:id", post(nav::nav_target_observation))
-        .route("/api/nav/navigation-sessions/:id/completion", post(nav::nav_completion))
+        .route("/api/nav/navigation-sessions/:id", get(nav::nav_navigation_session))
         .route("/callbacks/:session/events/:sequence", put(nav::nav_callback_event))
         .route("/callbacks/:session/live-state", put(nav::nav_callback_live_state))
         .route("/api/nav/callbacks/:session", get(nav::nav_callback_inspect).delete(nav::nav_callback_clear))

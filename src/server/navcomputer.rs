@@ -16,7 +16,7 @@ use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 use tokio_util::io::ReaderStream;
 use axum::{
     body::{to_bytes, Body, Bytes},
-    extract::{FromRequest, Multipart, Path, Query, Request, State},
+    extract::{Path, Query, Request, State},
     http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     Json,
@@ -210,57 +210,6 @@ fn add_dir_to_zip(
     Ok(())
 }
 
-/// multipart 中解析出的一个字段
-struct RelayField {
-    name: String,
-    filename: Option<String>,
-    mime: String,
-    data: Bytes,
-}
-
-/// 解析请求中的所有 multipart 字段（保留字段名/文件名/MIME）
-async fn collect_multipart(req: Request) -> Result<Vec<RelayField>, HandlerError> {
-    let mut mp = Multipart::from_request(req, &()).await
-        .map_err(|e| (StatusCode::UNSUPPORTED_MEDIA_TYPE, format!("multipart 解析失败: {e}")))?;
-    let mut fields = Vec::new();
-    while let Some(field) = mp
-        .next_field()
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("multipart 字段读取失败: {e}")))?
-    {
-        let name = field.name().unwrap_or("").to_string();
-        let filename = field.file_name().map(|s| s.to_string());
-        let mime = field
-            .content_type()
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| "application/octet-stream".into());
-        let data = field
-            .bytes()
-            .await
-            .map_err(|e| (StatusCode::BAD_REQUEST, format!("multipart 字段读取失败: {e}")))?;
-        fields.push(RelayField { name, filename, mime, data });
-    }
-    Ok(fields)
-}
-
-/// 用解析出的字段重建远端 multipart 表单
-fn build_form(fields: Vec<RelayField>) -> reqwest::multipart::Form {
-    let mut form = reqwest::multipart::Form::new();
-    for f in fields {
-        let part = match reqwest::multipart::Part::bytes(f.data.to_vec()).mime_str(&f.mime) {
-            Ok(p) => p,
-            Err(_) => reqwest::multipart::Part::bytes(f.data.to_vec()),
-        };
-        let part = if let Some(name) = f.filename {
-            part.file_name(name)
-        } else {
-            part
-        };
-        form = form.part(f.name, part);
-    }
-    form
-}
-
 // ---------------------------------------------------------------------------
 // 挂载点清单 / 配置
 // ---------------------------------------------------------------------------
@@ -408,8 +357,8 @@ pub async fn nav_setup_registration(
     Query(q): Query<IdempotencyQuery>,
     Json(metadata): Json<serde_json::Value>,
 ) -> Result<Response, HandlerError> {
-    let projection_f1_path = PathBuf::from("C:/user/DR_0.mha");
-    let projection_f2_path = PathBuf::from("C:/user/DR_90.mha");
+    let projection_f1_path = PathBuf::from("C:/user/Pet/DR_0/DR.mha");
+    let projection_f2_path = PathBuf::from("C:/user/Pet/DR_90/DR.mha");
     for path in [&projection_f1_path, &projection_f2_path] {
         if !path.is_file() {
             log::error!("setup-registration file not found: {:?}", path);
@@ -462,7 +411,7 @@ pub async fn nav_setup_registration(
     Ok(relay_response(resp).await)
 }
 
-// 6. 实时导航与目标观察
+// 5. 实时导航与目标观察
 /// POST /api/nav/setup-registrations/{id}
 pub async fn nav_target_observation(
     State(state): State<ServerState>,
@@ -472,23 +421,17 @@ pub async fn nav_target_observation(
     relay(&state, reqwest::Method::GET, &path, Bytes::new(), None).await
 }
 
-// 7. 结束会话（Completion）
-/// POST /api/nav/navigation-sessions/{id}/completion — JSON 可选
-pub async fn nav_completion(
+// 6. 查询导航会话（Navigation Session）
+/// GET /api/nav/navigation-sessions/{id} → 远端 GET /navigation-sessions/{id}
+pub async fn nav_navigation_session(
     State(state): State<ServerState>,
     Path(id): Path<String>,
-    req: Request,
 ) -> Result<Response, HandlerError> {
-    let (parts, body) = req.into_parts();
-    let bytes = to_bytes(body, RAW_BODY_LIMIT)
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("读取请求体失败: {e}")))?;
-    validate_json_body(&bytes)?;
-    let path = format!("/navigation-sessions/{id}/completion");
-    relay(&state, reqwest::Method::POST, &path, bytes, content_type_of(&parts.headers)).await
+    let path = format!("/navigation-sessions/{id}");
+    relay(&state, reqwest::Method::GET, &path, Bytes::new(), None).await
 }
 
-// 5. 注册事件回调（Durable registration events，Navigation Computer → 本机）
+// 7. 注册事件回调（Durable registration events，Navigation Computer → 本机）
 /// PUT /callbacks/{session}/events/{sequence} — 有序、幂等接收，204 确认
 pub async fn nav_callback_event(
     State(state): State<ServerState>,
@@ -500,7 +443,6 @@ pub async fn nav_callback_event(
     let entry = callbacks.entry(session.clone()).or_default();
     let duplicate = entry.events.insert(sequence, value).is_some();
     if duplicate {
-        // 幂等：重复 sequence 重新确认，不产生新事件
         log::warn!("callback event replay: session={session} sequence={sequence}");
     } else {
         log::info!("callback event: session={session} sequence={sequence}");

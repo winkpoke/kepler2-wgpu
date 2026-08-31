@@ -2992,12 +2992,17 @@
         /** 偏移输入：把 (x,y,z) 偏移 POST 给后端。 */
         bindInput(['needle-ox', 'needle-oy', 'needle-oz'], async () => {
             const x = num('needle-ox'), y = num('needle-oy'), z = num('needle-oz');
-            const ptm = [
-                0.999950882, -0.007056614, -0.006959693, 0.0,
-                0.007074652, 0.999971670, 0.002570663, 0.0,
-                0.006941356, -0.002619774, 0.999972477, 0.0,
-                -5.427908, 87.284000, -582.195858, 1.0
-            ]
+            const ptmString = localStorage.getItem("navigation_ptm");
+            if (ptmString) {
+                const ptm = JSON.parse(ptmString);
+                console.log("从上一个 HTML 获取 PTM:", ptm);
+            }
+            // const ptm = [
+            //     0.999950882, -0.007056614, -0.006959693, 0.0,
+            //     0.007074652, 0.999971670, 0.002570663, 0.0,
+            //     0.006941356, -0.002619774, 0.999972477, 0.0,
+            //     -5.427908, 87.284000, -582.195858, 1.0
+            // ]
             try {
                 const res = await fetch(`${SERVER_URL}/api/needle_point_offset`, {
                     method: 'POST',

@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-08-28
+- **New nav bridge mount point: query a navigation session**
+  - `GET /api/nav/navigation-sessions/{id}` (`src/server/routes.rs`,
+    `src/server/navcomputer.rs::nav_navigation_session`) forwards to the
+    Navigation Computer's
+    `GET /api/navigation/v1/navigation-sessions/{id}` with the configured
+    Bearer token, mirroring the existing relay pattern.
+  - `static/navcomputer.html`: new card "5 · 查询导航会话" after the
+    实时导航/目标观察 card (session-ID input defaults to
+    `navigation-session-3d559e145eeb40cbb20f6dcaad03d476`); the callback
+    card is renumbered 5 → 6.
+  - Verified end-to-end against a mock upstream: forwarded method, path
+    prefix, session id and `Authorization` header are exact; the button
+    click shows the relayed response in the page log.
+
 ## 2026-08-26
 - **Split DR display and DR overlay into two functions**
   - `App::load_dr_to_pro` (`src/application/app.rs`) no longer builds the
