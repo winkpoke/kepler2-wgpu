@@ -463,7 +463,11 @@ impl App {
         let targets: [(usize, &CTVolume); 2] = [(0, overlay_vol_0), (1, overlay_vol_90)];
         for (view_idx, overlay_vol) in targets {
             let dims = overlay_vol.dimensions();
-            let data = overlay_vol.voxel_data();
+            let scale= 8.0;
+            let data = overlay_vol.upscale_bilinear(scale);
+            let width = (dims.1 as f32 * scale).round() as u32;
+            let height = (dims.0 as f32 * scale).round() as u32;
+            let depth = dims.2 as u32;
             let vmin = *data.iter().min().unwrap_or(&0);
             let vmax = *data.iter().max().unwrap_or(&1);
             let denom = ((vmax - vmin) as f32).max(1.0);
@@ -475,9 +479,9 @@ impl App {
             match RenderContent::from_labels_r8(
                 device, queue, &label_bytes,
                 "DR Label Overlay",
-                dims.1 as u32, // width
-                dims.0 as u32, // height
-                dims.2 as u32, // depth
+                width,
+                height,
+                depth
             ) {
                 Ok(dr_label) => {
                     if let Some(view) = self.app_view.layout.views_mut().get_mut(view_idx) {

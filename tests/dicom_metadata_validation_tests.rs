@@ -340,6 +340,41 @@ mod dicom_metadata_validation_tests {
     }
 
     #[test]
+    fn test_patient_position_anatomical_orientation_codes() {
+        // MetaImage AnatomicalOrientation: letters are the anatomical direction
+        // of each positive image axis; the position is defined by the in-plane
+        // (x, y) pair, the third letter only reflects slice order (S or I).
+        let cases = [
+            ("LPS", PatientPosition::HFS),
+            ("LPI", PatientPosition::HFS),
+            ("RAS", PatientPosition::HFP),
+            ("RAI", PatientPosition::HFP),
+            ("RPS", PatientPosition::FFS),
+            ("RPI", PatientPosition::FFS),
+            ("LAS", PatientPosition::FFP),
+            ("LAI", PatientPosition::FFP),
+            ("PRS", PatientPosition::HFDR),
+            ("PRI", PatientPosition::HFDR),
+            ("ALS", PatientPosition::HFDL),
+            ("ALI", PatientPosition::HFDL),
+            ("ARS", PatientPosition::FFDR),
+            ("ARI", PatientPosition::FFDR),
+            ("PLS", PatientPosition::FFDL),
+            ("PLI", PatientPosition::FFDL),
+        ];
+
+        for (code, expected) in cases {
+            assert_eq!(
+                PatientPosition::from_str(code),
+                expected,
+                "orientation code {} should map to {}",
+                code,
+                expected
+            );
+        }
+    }
+
+    #[test]
     fn test_missing_optional_fields() {
         let (_patient, _study, _series, images) = common::create_missing_optional_fields_fixture();
 

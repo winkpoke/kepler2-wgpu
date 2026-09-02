@@ -174,7 +174,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         if (seg_label > 0u) {
             if (u_uniform_frag.seg_jet > 0.5) {
                 let t = f32(seg_label) / 255.0;
-                let a = clamp(u_uniform_frag.seg_alpha, 0.0, 1.0);
+                let a = clamp(0.1, 0.0, 1.0);
                 return vec4<f32>(mix(final_color, jet(t), a), 1.0);
             } else {
                 let idx = min(seg_label, 8u);

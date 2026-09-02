@@ -7,7 +7,7 @@
 //! 2. 入站（Navigation Computer → 本机回调）：`/callbacks/*`
 //!    接收配准事件（有序、幂等）与实时导航状态，返回 204 确认，
 //!    会话数据可通过 `/api/nav/callbacks/{session}` 查看。
-//! 远端地址与 Token 通过 `POST /api/nav/config` 设置。
+//! 远端地址与 Token（及 DRR 预览落盘目录）通过 `POST /api/nav/config` 设置。
 
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
@@ -34,6 +34,9 @@ pub const DEFAULT_NAV_URL: &str = "http://172.18.3.17:8765";
 
 /// 远端 API 路径前缀
 pub const NAV_PATH_PREFIX: &str = "/api/navigation/v1";
+
+/// DRR 预览默认落盘目录
+pub const DEFAULT_DRR_PREVIEW_DIR: &str = "C:/user/Pet/DRR";
 
 /// 出站转发超时：上传大 ZIP + 准备阶段（validate/prepare/publish）可能较慢
 const FORWARD_TIMEOUT: Duration = Duration::from_secs(600); // 10 分钟
@@ -66,8 +69,9 @@ pub struct NavState {
     pub client: reqwest::Client,
     /// 压缩文件存放路径
     pub zip_path: PathBuf,
+    /// DRR 预览落盘目录（POST /api/nav/config 可改）
+    pub drr_preview_dir: RwLock<PathBuf>,
 }
-
 impl NavState {
     pub fn new() -> Self {
         let base_url = DEFAULT_NAV_URL.to_string();
@@ -84,6 +88,7 @@ impl NavState {
             callbacks: RwLock::new(HashMap::new()),
             client,
             zip_path,
+            drr_preview_dir: RwLock::new(PathBuf::from(DEFAULT_DRR_PREVIEW_DIR)),
         }
     }
     
@@ -149,7 +154,31 @@ async fn relay_response(resp: reqwest::Response) -> Response {
     builder.body(Body::from(body)).unwrap_or_else(|_| StatusCode::BAD_GATEWAY.into_response())
 }
 
-/// JSON 端点通用转发：方法 + 路径 + 原始 body + 原始 Content-Type
+/// 通用转发：发出请求并取回（状态码 + Content-Type + body 字节），不做透传封装
+async fn relay_raw(
+    state: &ServerState,
+    method: reqwest::Method,
+    path: &str,
+    body: Bytes,
+    content_type: Option<String>,
+) -> Result<(StatusCode, Option<String>, Bytes), HandlerError> {
+    let url = format!("{}{}{}", state.nav.base().await, NAV_PATH_PREFIX, path); // 拼接远端完整 URL：`{base}{/api/navigation/v1}{path}`
+    let mut req = state.nav.with_auth(state.nav.client.request(method, &url)).await;
+    if !body.is_empty() {
+        req = req.header(header::CONTENT_TYPE, content_type.unwrap_or_else(|| "application/json".into())).body(body);
+    }
+    let resp = req.send().await.map_err(upstream_error)?;
+    let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let ct = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    let bytes = resp.bytes().await.unwrap_or_default();
+    Ok((status, ct, bytes))
+}
+
+/// JSON 端点通用转发：方法 + 路径 + 原始 body + 原始 Content-Type（透传）
 async fn relay(
     state: &ServerState,
     method: reqwest::Method,
@@ -157,13 +186,12 @@ async fn relay(
     body: Bytes,
     content_type: Option<String>,
 ) -> Result<Response, HandlerError> {
-    let url = format!("{}{}{}", state.nav.base().await, NAV_PATH_PREFIX, path); // 拼接远端完整 URL：`{base}{/api/navigation/v1}{path}`
-    let mut req = state.nav.with_auth(state.nav.client.request(method, &url)).await;
-    if !body.is_empty() {
-        req = req.header(header::CONTENT_TYPE, content_type.unwrap_or_else(|| "application/json".into())).body(body);
+    let (status, ct, bytes) = relay_raw(state, method, path, body, content_type).await?;
+    let mut builder = Response::builder().status(status);
+    if let Some(ct) = ct {
+        builder = builder.header(header::CONTENT_TYPE, ct);
     }
-    let resp = req.send().await.map_err(upstream_error)?;
-    Ok(relay_response(resp).await)
+    Ok(builder.body(Body::from(bytes)).unwrap_or_else(|_| StatusCode::BAD_GATEWAY.into_response()))
 }
 
 /// 将目录递归打包成 ZIP
@@ -214,11 +242,12 @@ fn add_dir_to_zip(
 // 挂载点清单 / 配置
 // ---------------------------------------------------------------------------
 
-/// POST /api/nav/config 请求体：base_url 与 token 均可选，只更新提供的字段
+/// POST /api/nav/config 请求体：base_url、token、drr_preview_dir 均可选，只更新提供的字段
 #[derive(Deserialize)]
 pub struct SetNavConfigBody {
     pub base_url: Option<String>,
     pub token: Option<String>,
+    pub drr_preview_dir: Option<String>,
 }
 
 /// GET /api/nav/config 响应：token 脱敏返回
@@ -228,6 +257,7 @@ pub struct NavConfig {
     pub path_prefix: String,
     pub token_set: bool,
     pub token_masked: Option<String>,
+    pub drr_preview_dir: String,
 }
 
 fn mask_token(token: &str) -> Option<String> {
@@ -246,6 +276,7 @@ async fn nav_config_of(state: &ServerState) -> NavConfig {
         path_prefix: NAV_PATH_PREFIX.to_string(),
         token_set: !token.is_empty(),
         token_masked: mask_token(&token),
+        drr_preview_dir: state.nav.drr_preview_dir.read().await.to_string_lossy().into_owned(),
     }
 }
 
@@ -270,6 +301,12 @@ pub async fn nav_set_config(
     if let Some(token) = body.token.as_deref() {
         *state.nav.token.write().await = token.trim().to_string();
         log::info!("Navigation Computer bearer token updated (len={})", token.len());
+    }
+    if let Some(dir) = body.drr_preview_dir.as_deref() {
+        let dir = dir.trim();
+        let path = if dir.is_empty() { PathBuf::from(DEFAULT_DRR_PREVIEW_DIR) } else { PathBuf::from(dir) };
+        log::info!("DRR preview save dir set to {}", path.display());
+        *state.nav.drr_preview_dir.write().await = path;
     }
     Ok(Json(nav_config_of(&state).await))
 }
@@ -419,6 +456,41 @@ pub async fn nav_target_observation(
 ) -> Result<Response, HandlerError> {
     let path = format!("/setup-registrations/{id}");
     relay(&state, reqwest::Method::GET, &path, Bytes::new(), None).await
+}
+
+/// GET /api/nav/setup-registrations/{id}/drr-previews/{frame}
+/// 远端 GET /setup-registrations/{id}/drr-previews/{frame} — DRR 预览 MHA 字节流透传（frame: F1/F2）
+pub async fn nav_drr_preview_save(
+    State(state): State<ServerState>,
+    Path((id, frame)): Path<(String, String)>,
+) -> Result<Response, HandlerError> {
+    if frame != "F1" && frame != "F2" {
+        return Err((StatusCode::BAD_REQUEST, format!("frame 必须是 F1 或 F2，收到: {frame}")));
+    }
+    let remote_path = format!("/setup-registrations/{id}/drr-previews/{frame}");
+    let (status, ct, data) = relay_raw(&state, reqwest::Method::GET, &remote_path, Bytes::new(), None).await?;
+    if !status.is_success() {
+        return Err((status, format!("远端 DRR 预览拉取失败（HTTP {status}），未落盘")));
+    }
+    let len = data.len();
+    let dir = state.nav.drr_preview_dir.read().await.clone();
+    let file_path = dir.join(format!("drr-preview-{frame}.mha"));
+    let dir_for_task = dir.clone();
+    let file_for_task = file_path.clone();
+    let data_for_task = data.clone();
+    tokio::task::spawn_blocking(move || {
+        fs::create_dir_all(&dir_for_task)?;
+        fs::write(&file_for_task, &data_for_task)
+    })
+    .await
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("落盘任务失败: {e}")))?
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("写入 DRR 预览失败: {file_path:?}: {e}")))?;
+    log::info!("DRR preview saved: {file_path:?} ({len} bytes, registration {id})");
+    let mut builder = Response::builder().status(StatusCode::OK);
+    if let Some(ct) = ct {
+        builder = builder.header(header::CONTENT_TYPE, ct);
+    }
+    Ok(builder.body(Body::from(data)).unwrap_or_else(|_| StatusCode::BAD_GATEWAY.into_response()))
 }
 
 // 6. 查询导航会话（Navigation Session）

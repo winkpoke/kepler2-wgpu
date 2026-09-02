@@ -78,6 +78,10 @@
     <input type="text" id="baseUrl" placeholder="http://172.18.3.17:8765">
   </div>
   <div class="row">
+    <label>DRR 落盘目录</label>
+    <input type="text" id="drrDir" placeholder="C:/user/Pet/DRR（留空 = 不修改）">
+  </div>
+  <div class="row">
     <label>Bearer Token</label>
     <input type="text" id="navToken">
     <button id="btnSaveBase">保存配置</button>
@@ -151,21 +155,30 @@
   <div class="row"><button id="btnObserve">提交目标观察</button></div>
 </div>
 
-<!-- 5. 查询导航会话（Navigation Session） -->
 <div class="card">
-  <h2>5 · 查询导航会话 <span class="badge">GET /navigation-sessions/{id}</span></h2>
+  <h2>5 · 获取DRR <span class="badge">GET /api/nav/setup-registrations/{id}/drr-previews/{frame}</span></h2>
+  <div class="row">
+    <label>Frame</label>
+    <input type="text" id="frameId" value="F1">
+  </div>
+  <div class="row"><button id="btndrrSession">获取DRR</button></div>
+</div>
+
+<!-- 6. 查询导航会话（Navigation Session） -->
+<div class="card">
+  <h2>6 · 查询导航会话 <span class="badge">GET /navigation-sessions/{id}</span></h2>
   <div class="hint">读取 Navigation Computer 上导航会话的当前状态。</div>
   <div class="row">
-    <label>会话 ID</label>
+    <label>navigation session</label>
     <input type="text" id="navSessionLookupId" value="navigation-session-3d559e145eeb40cbb20f6dcaad03d476">
   </div>
   <div class="row"><button id="btnNavSession">查询导航会话</button></div>
 </div>
 
 
-<!-- 6. 注册事件回调（模拟 NavComputer 推送） -->
+<!-- 7. 注册事件回调（模拟 NavComputer 推送） -->
 <div class="card">
-  <h2>6 · 注册事件回调 / 实时状态 <span class="badge">PUT /callbacks/…/events/{seq} · PUT /callbacks/…/live-state</span></h2>
+  <h2>7 · 注册事件回调 / 实时状态 <span class="badge">PUT /callbacks/…/events/{seq} · PUT /callbacks/…/live-state</span></h2>
   <div class="hint">
     Navigation Computer 会把配准事件推送到本机这两个挂载点（有序、幂等、204 确认）。
     这里可手动模拟推送，验证接收端是否工作。
@@ -255,6 +268,8 @@ async function loadConfig() {
   try {
     const cfg = JSON.parse(r.body);
     if (cfg.base_url && !baseInput.value) baseInput.value = cfg.base_url;
+    const drrDirInput = document.getElementById("drrDir");
+    if (cfg.drr_preview_dir && !drrDirInput.value) drrDirInput.placeholder = cfg.drr_preview_dir;
     const tok = cfg.token_set ? `令牌已设置（${cfg.token_masked || "***"}）` : "未设置令牌";
     navStatus.textContent = `${cfg.base_url}${cfg.path_prefix} · ${tok}`;
   } catch {}
@@ -264,6 +279,8 @@ document.getElementById("btnSaveBase").onclick = async () => {
   const body = { base_url: baseInput.value.trim().replace(/\/+$/, "") };
   const tok = document.getElementById("navToken").value.trim();
   if (tok) body.token = tok;   // 留空 = 不修改已保存令牌
+  const dir = document.getElementById("drrDir").value.trim().replace(/[\\/]+$/, "");
+  if (dir) body.drr_preview_dir = dir;   // 留空 = 不修改落盘目录
   await send("保存配置", "POST", `${ORIGIN}/api/nav/config`, {
     headers: JSON_HDR, body: JSON.stringify(body),
   });
@@ -383,6 +400,12 @@ document.getElementById("btnObserve").onclick = async() => {
     localStorage.setItem("navigation_ptm", JSON.stringify(ptm));
     console.log("PTM =", ptm);
   }
+};
+
+document.getElementById("btndrrSession").onclick = async() => {
+  const id = encodeURIComponent(document.getElementById("navSessionId").value.trim() || "setup-registration-ee1c8f64986b42bea9a939248447fe53");
+  const frame = encodeURIComponent(document.getElementById("frameId").value.trim() || "F1");
+  send("获取DRR", "GET", `${ORIGIN}/api/nav/setup-registrations/${id}/drr-previews/${frame}`);
 };
 
 // ---------- 查询导航会话（Navigation Session） ----------

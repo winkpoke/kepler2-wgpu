@@ -169,10 +169,8 @@ mod mha_mhd_tests {
     #[test]
     fn test_create_pixel_data_float32() {
         // Test Float32 pixel type with slope and intercept.
-        // Float32 path performs a CT-style normalization
-        //   val_norm = (val - 0.019) / 0.019 * 1000.0
-        //   out = (val_norm * slope + intercept).round() as i16
-        // and then clamps the result to a minimum of -1024.
+        //   out = (val * slope + intercept).round() as i16
+        // then clamped to a minimum of -1024 (HU floor).
         let val1 = 100.5f32;
         let val2 = -50.25f32;
         let val3 = 0.0f32;
@@ -184,30 +182,16 @@ mod mha_mhd_tests {
         raw_data.extend_from_slice(&val3.to_le_bytes());
         raw_data.extend_from_slice(&val4.to_le_bytes());
 
-        let voxel_count = 4;
-        let slope = 2.0;
-        let intercept = 10.0;
-
-        let result = PixelData::create_pixel_data(
-            raw_data,
-            PixelType::Float32,
-            voxel_count,
-            slope,
-            intercept,
-        );
+        let result = PixelData::create_pixel_data(raw_data, PixelType::Float32, 4, 2.0, 10.0);
 
         assert!(result.is_ok());
         let voxel_data = result.unwrap();
         assert_eq!(voxel_data.len(), 4);
 
-        // val1 normalized ~ 5,288,994.74; *2 +10 ~ 10.5M -> saturates to i16::MAX (not clamped)
-        assert_eq!(voxel_data[0], i16::MAX);
-        // val2 normalized ~ -2,644,684.21; *2 +10 ~ -5.3M -> saturates to i16::MIN, clamped to -1024
-        assert_eq!(voxel_data[1], -1024);
-        // val3 normalized = -1000.0; *2 +10 = -1990.0 -> -1990, then clamped to -1024
-        assert_eq!(voxel_data[2], -1024);
-        // val4 saturates to i16::MIN, clamped to -1024
-        assert_eq!(voxel_data[3], -1024);
+        assert_eq!(voxel_data[0], (100.5f32 * 2.0 + 10.0).round() as i16); // 211
+        assert_eq!(voxel_data[1], (-50.25f32 * 2.0 + 10.0).round() as i16); // -90
+        assert_eq!(voxel_data[2], 10);
+        assert_eq!(voxel_data[3], -1024); // -3990 clamped to HU floor
     }
 
     #[test]
@@ -458,41 +442,108 @@ mod mha_mhd_tests {
     // ============================================================================
 
     #[test]
-    fn test_create_pixel_data_unsupported_type() {
-        let raw_data = vec![0x01, 0x02, 0x03, 0x04];
-        let voxel_count = 1;
-        let slope = 1.0;
-        let intercept = 0.0;
+    fn test_create_pixel_data_uint8_converts() {
+        let raw_data = vec![0x01, 0x02, 0xFF, 0x00];
+        let result = PixelData::create_pixel_data(raw_data, PixelType::UInt8, 4, 1.0, 0.0);
+        assert_eq!(result.unwrap(), vec![1, 2, 255, 0]);
+    }
 
-        let result = PixelData::create_pixel_data(
-            raw_data,
-            PixelType::UInt8, // Unsupported type
-            voxel_count,
-            slope,
-            intercept,
-        );
+    #[test]
+    fn test_create_pixel_data_int32_clamps() {
+        let raw = 100_000i32.to_le_bytes()
+            .into_iter()
+            .chain((-100_000i32).to_le_bytes())
+            .chain(42i32.to_le_bytes())
+            .collect();
+        let result = PixelData::create_pixel_data(raw, PixelType::Int32, 3, 1.0, 0.0);
+        // above i16::MAX clamps to MAX; below -1024 hits the HU floor
+        assert_eq!(result.unwrap(), vec![i16::MAX, -1024, 42]);
+    }
 
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            MedicalImagingError::UnsupportedPixelType { pixel_type } => {
-                assert!(pixel_type.contains("UInt8"));
-            }
-            _ => panic!("Expected UnsupportedPixelType error"),
-        }
+    #[test]
+    fn test_create_pixel_data_float64_applies_slope_intercept() {
+        let raw = 1.5f64.to_le_bytes()
+            .into_iter()
+            .chain(2.0f64.to_le_bytes())
+            .collect();
+        let result = PixelData::create_pixel_data(raw, PixelType::Float64, 2, 2.0, -1.0);
+        assert_eq!(result.unwrap(), vec![2, 3]);
     }
 
     #[test]
     fn test_create_pixel_data_empty_input() {
         let raw_data = Vec::new();
         let voxel_count = 0;
-        let slope = 1.0;
-        let intercept = 0.0;
 
         let result =
-            PixelData::create_pixel_data(raw_data, PixelType::Int16, voxel_count, slope, intercept);
+            PixelData::create_pixel_data(raw_data, PixelType::Int16, voxel_count, 1.0, 0.0);
 
         assert!(result.is_ok());
         let voxel_data = result.unwrap();
         assert_eq!(voxel_data.len(), 0);
+    }
+
+    /// MetaIO optional keys (TransformMatrix/Offset/AnatomicalOrientation/ElementSpacing)
+    /// must default instead of failing the whole parse — headers written by older ITK,
+    /// MATLAB, and NIfTI converters commonly omit them.
+    #[test]
+    fn test_mhd_header_with_only_required_keys_parses() {
+        let header = b"ObjectType = Image\n\
+                       NDims = 3\n\
+                       BinaryData = True\n\
+                       ElementType = MET_SHORT\n\
+                       DimSize = 4 4 2\n\
+                       ElementDataFile = CT_new.raw\n";
+
+        let metadata = MhdParser::parse_metadata_only(header).unwrap();
+        assert_eq!(metadata.dimensions, vec![4, 4, 2]);
+        assert_eq!(metadata.pixel_type, PixelType::Int16);
+        assert_eq!(metadata.spacing, vec![1.0, 1.0, 1.0]);
+        assert_eq!(metadata.offset, vec![0.0, 0.0, 0.0]);
+        assert_eq!(metadata.orientation, [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]);
+    }
+
+    /// 2D MHD headers must pad to 3D so downstream dim[2]/spacing[2]/offset[2] indexing is safe
+    #[test]
+    fn test_mhd_2d_header_pads_to_3d() {
+        let header = b"ObjectType = Image\n\
+                       NDims = 2\n\
+                       BinaryData = True\n\
+                       TransformMatrix = 1 0 0 0 1 0\n\
+                       Offset = -1.5 -1.5\n\
+                       ElementSpacing = 0.5 0.5\n\
+                       ElementType = MET_UCHAR\n\
+                       DimSize = 8 8\n\
+                       ElementDataFile = CT_new.raw\n";
+
+        let metadata = MhdParser::parse_metadata_only(header).unwrap();
+        assert_eq!(metadata.dimensions, vec![8, 8, 1]);
+        assert_eq!(metadata.spacing, vec![0.5, 0.5, 1.0]);
+        assert_eq!(metadata.offset, vec![-1.5, -1.5, 0.0]);
+        assert_eq!(metadata.pixel_type, PixelType::UInt8);
+    }
+
+    /// All MetaIO ElementType spellings map to a supported PixelType
+    #[test]
+    fn test_element_type_mapping_covers_metaio_set() {
+        for (element_type, expected) in [
+            ("MET_CHAR", PixelType::UInt8),
+            ("MET_UCHAR", PixelType::UInt8),
+            ("MET_SHORT", PixelType::Int16),
+            ("MET_USHORT", PixelType::UInt16),
+            ("MET_INT", PixelType::Int32),
+            ("MET_UINT", PixelType::Int32),
+            ("MET_LONG", PixelType::Int32),
+            ("MET_ULONG", PixelType::Int32),
+            ("MET_FLOAT", PixelType::Float32),
+            ("MET_DOUBLE", PixelType::Float64),
+        ] {
+            let header = format!(
+                "NDims = 3\nBinaryData = True\nElementType = {}\nDimSize = 1 1 1\nElementDataFile = x.raw\n",
+                element_type
+            );
+            let metadata = MhdParser::parse_metadata_only(header.as_bytes()).unwrap();
+            assert_eq!(metadata.pixel_type, expected, "{}", element_type);
+        }
     }
 }

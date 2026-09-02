@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-09-01
+- **Fix DRR preview relay 404 and single-fetch passthrough**
+  - The DRR preview route was registered as
+    `/api/nav/setup-registrations/:id/drr-previews/:frame/save` in
+    `src/server/routes.rs`, but `static/navcomputer.html` (and the
+    handler's own doc comment) call `.../drr-previews/{frame}` without
+    the `/save` suffix — the browser got a 404 from the static-file
+    fallback instead of the relay. The stray `/save` is removed; the
+    documented path is now the only one.
+  - `nav_drr_preview_save` (`src/server/navcomputer.rs`) previously
+    fetched the DRR **twice** from the Navigation Computer (once to
+    save, once to return to the browser). It now returns the bytes it
+    already fetched, preserving the remote `Content-Type`.
+  - `POST /api/nav/config` accepts `drr_preview_dir` (empty resets to
+    `C:/user/Pet/DRR`), and `GET /api/nav/config` echoes it — the
+    module docs already claimed this but it was not implemented.
+    `static/navcomputer.html` gains a "DRR 落盘目录" input in the
+    connection card (留空 = 不修改).
+  - Verified against a mock upstream: route returns 200 with the exact
+    body + Content-Type, `drr-preview-{F1,F2}.mha` lands in the
+    configured dir with identical bytes, `F3` → 400, unreachable
+    upstream → 502 without writing a partial file, and the config
+    round-trip (input → POST body → state → response) works from the
+    browser page.
+
 ## 2026-08-28
 - **New nav bridge mount point: query a navigation session**
   - `GET /api/nav/navigation-sessions/{id}` (`src/server/routes.rs`,

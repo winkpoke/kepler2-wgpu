@@ -1,4 +1,5 @@
 use anyhow::Result;
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -417,39 +418,9 @@ pub async fn parse_common_files_wasm(
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[cfg(target_arch = "wasm32")]
 pub async fn read_file_as_bytes(file: File) -> Result<Vec<u8>, JsValue> {
-    use std::sync::{Arc, Mutex};
-
-    let bytes = Arc::new(Mutex::new(Vec::new()));
-    let file_reader = FileReader::new().unwrap();
-
-    let promise = Promise::new(&mut |resolve, reject| {
-        let reject_clone = Arc::clone(&bytes);
-        let onload = Closure::once_into_js(move |e: ProgressEvent| {
-            let result: Result<(), String> = {
-                let buffer = e
-                    .target()
-                    .ok_or_else(|| JsValue::from("Failed to retrieve target"))?
-                    .dyn_into::<FileReader>()?
-                    .result()?;
-                let mut bytes = reject_clone.lock().unwrap();
-                let uint8_array = Uint8Array::new(&buffer).to_vec();
-                *bytes = uint8_array;
-                Ok(())
-            };
-            match result {
-                Ok(_) => resolve.call0(&JsValue::NULL),
-                Err(err) => reject.call0(&JsValue::from(err)),
-            }
-        });
-        file_reader.set_onload(Some(onload.as_ref().unchecked_ref()));
-        file_reader.read_as_array_buffer(&file).unwrap();
-    });
-
-    JsFuture::from(promise).await?;
-    let bytes = bytes
-        .lock()
-        .map_err(|e| JsValue::from_str(&format!("Mutex lock error: {}", e)))?;
-    Ok(bytes.clone())
+    // array_buffer() rejects on read failure — no silent hang path
+    let buffer = JsFuture::from(file.array_buffer()).await?;
+    Ok(Uint8Array::new(&buffer).to_vec())
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]

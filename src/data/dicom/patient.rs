@@ -37,10 +37,10 @@ impl Patient {
     // Function to parse the DICOM file and generate the Patient structure
     pub fn from_bytes(dicom_data: &[u8]) -> Result<Patient> {
         // Parse the DICOM file into a `FileDicomObject` (once), then extract.
-        let dicom_obj: FileDicomObject<InMemDicomObject> =
-            FileDicomObject::from_reader(dicom_data)?;
-        Self::from_dicom_object(&dicom_obj)
-        // patient.validate()?; // Skip strict validation to allow display of imperfect data
+        let dicom_obj: FileDicomObject<InMemDicomObject> = FileDicomObject::from_reader(dicom_data)?;
+        let patient = Self::from_dicom_object(&dicom_obj).unwrap();
+        patient.validate()?; // Skip strict validation to allow display of imperfect data
+        Ok(patient)
     }
 
     /// Validates the patient data against DICOM standards

@@ -134,6 +134,44 @@ impl CTVolume {
             new_base,
         )
     }
+
+    pub fn upscale_bilinear(&self, scale: f32) -> Vec<i16> {
+        let src = &self.voxel_data;
+        let src_width  = self.dimensions.0;
+        let src_height = self.dimensions.1;
+
+        let dst_width = (src_width as f32 * scale).round() as usize;
+        let dst_height = (src_height as f32 * scale).round() as usize;
+
+        let mut dst = vec![0i16; dst_width * dst_height];
+
+        for y in 0..dst_height {
+            let fy = y as f32 / scale;
+            let y0 = fy.floor() as usize;
+            let y1 = (y0 + 1).min(src_height - 1);
+            let wy = fy - y0 as f32;
+
+            for x in 0..dst_width {
+                let fx = x as f32 / scale;
+                let x0 = fx.floor() as usize;
+                let x1 = (x0 + 1).min(src_width - 1);
+                let wx = fx - x0 as f32;
+
+                let p00 = src[y0 * src_width + x0] as f32;
+                let p10 = src[y0 * src_width + x1] as f32;
+                let p01 = src[y1 * src_width + x0] as f32;
+                let p11 = src[y1 * src_width + x1] as f32;
+
+                let top = p00 * (1.0 - wx) + p10 * wx;
+                let bottom = p01 * (1.0 - wx) + p11 * wx;
+                let value = top * (1.0 - wy) + bottom * wy;
+
+                dst[y * dst_width + x] = value.round().clamp(0.0, 255.0) as i16;
+            }
+        }
+
+        dst
+    }
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
