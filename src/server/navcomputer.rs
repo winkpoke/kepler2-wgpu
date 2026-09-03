@@ -161,11 +161,19 @@ async fn relay_raw(
     path: &str,
     body: Bytes,
     content_type: Option<String>,
+    idempotency_key: Option<&str>,
 ) -> Result<(StatusCode, Option<String>, Bytes), HandlerError> {
     let url = format!("{}{}{}", state.nav.base().await, NAV_PATH_PREFIX, path); // 拼接远端完整 URL：`{base}{/api/navigation/v1}{path}`
     let mut req = state.nav.with_auth(state.nav.client.request(method, &url)).await;
     if !body.is_empty() {
-        req = req.header(header::CONTENT_TYPE, content_type.unwrap_or_else(|| "application/json".into())).body(body);
+        req = req
+            .header(header::CONTENT_TYPE, content_type.unwrap_or_else(|| "application/json".into()))
+            .body(body);
+    } else if let Some(ct) = content_type {
+        req = req.header(header::CONTENT_TYPE, ct);
+    }
+    if let Some(key) = idempotency_key {
+        req = req.header("Idempotency-Key", key);
     }
     let resp = req.send().await.map_err(upstream_error)?;
     let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
@@ -185,8 +193,9 @@ async fn relay(
     path: &str,
     body: Bytes,
     content_type: Option<String>,
+    idempotency_key: Option<&str>,
 ) -> Result<Response, HandlerError> {
-    let (status, ct, bytes) = relay_raw(state, method, path, body, content_type).await?;
+    let (status, ct, bytes) = relay_raw(state, method, path, body, content_type, idempotency_key).await?;
     let mut builder = Response::builder().status(status);
     if let Some(ct) = ct {
         builder = builder.header(header::CONTENT_TYPE, ct);
@@ -314,12 +323,12 @@ pub async fn nav_set_config(
 // 1. 健康检查与状态
 /// GET /api/nav/health → 远端 GET /health
 pub async fn nav_health(State(state): State<ServerState>) -> Result<Response, HandlerError> {
-    relay(&state, reqwest::Method::GET, "/health", Bytes::new(), None).await
+    relay(&state, reqwest::Method::GET, "/health", Bytes::new(), None, None).await
 }
 
 /// GET /api/nav/status → 远端 GET /status
 pub async fn nav_status(State(state): State<ServerState>) -> Result<Response, HandlerError> {
-    relay(&state, reqwest::Method::GET, "/status", Bytes::new(), None).await
+    relay(&state, reqwest::Method::GET, "/status", Bytes::new(), None, None).await
 }
 
 // 2. 预准备 CT 查询（缓存优先）
@@ -331,7 +340,7 @@ pub async fn nav_prepared_ct_lookup(
     let (parts, body) = req.into_parts();
     let bytes = to_bytes(body, RAW_BODY_LIMIT).await.map_err(|e| (StatusCode::BAD_REQUEST, format!("读取请求体失败: {e}")))?;
     validate_json_body(&bytes)?;
-    relay(&state, reqwest::Method::POST, "/prepared-ct-lookups", bytes, content_type_of(&parts.headers)).await
+    relay(&state, reqwest::Method::POST, "/prepared-ct-lookups", bytes, content_type_of(&parts.headers), None).await
 }
 
 // 3. 上传并准备 CT（缓存未命中时）
@@ -455,7 +464,7 @@ pub async fn nav_target_observation(
     Path(id): Path<String>
 ) -> Result<Response, HandlerError> {
     let path = format!("/setup-registrations/{id}");
-    relay(&state, reqwest::Method::GET, &path, Bytes::new(), None).await
+    relay(&state, reqwest::Method::GET, &path, Bytes::new(), None, None).await
 }
 
 /// GET /api/nav/setup-registrations/{id}/drr-previews/{frame}
@@ -468,7 +477,7 @@ pub async fn nav_drr_preview_save(
         return Err((StatusCode::BAD_REQUEST, format!("frame 必须是 F1 或 F2，收到: {frame}")));
     }
     let remote_path = format!("/setup-registrations/{id}/drr-previews/{frame}");
-    let (status, ct, data) = relay_raw(&state, reqwest::Method::GET, &remote_path, Bytes::new(), None).await?;
+    let (status, ct, data) = relay_raw(&state, reqwest::Method::GET, &remote_path, Bytes::new(), None, None).await?;
     if !status.is_success() {
         return Err((status, format!("远端 DRR 预览拉取失败（HTTP {status}），未落盘")));
     }
@@ -500,7 +509,30 @@ pub async fn nav_navigation_session(
     Path(id): Path<String>,
 ) -> Result<Response, HandlerError> {
     let path = format!("/navigation-sessions/{id}");
-    relay(&state, reqwest::Method::GET, &path, Bytes::new(), None).await
+    relay(&state, reqwest::Method::GET, &path, Bytes::new(), None, None).await
+}
+/// POST /api/nav/navigation-sessions/{id}/completion — JSON 直通转发
+pub async fn nav_finish_navigation_session(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+    req: Request,
+) -> Result<Response, HandlerError> {
+    let (parts, body) = req.into_parts();
+    let bytes = to_bytes(body, RAW_BODY_LIMIT).await.map_err(|e| (StatusCode::BAD_REQUEST, format!("读取请求体失败: {e}")))?;
+    validate_json_body(&bytes)?;
+    let idem = parts.headers.get("Idempotency-Key")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .or_else(|| query.get("idempotency_key").map(|s| s.trim()))
+        .filter(|s| !s.is_empty());
+    if let Some(key) = idem {
+        log::info!("completion relay: idempotency key={key}, session={id}");
+    }
+    let path = format!("/navigation-sessions/{id}/completion");
+    let ct = content_type_of(&parts.headers).or_else(|| Some("application/json".into()));
+    relay(&state, reqwest::Method::POST, &path, bytes, ct, idem).await
 }
 
 // 7. 注册事件回调（Durable registration events，Navigation Computer → 本机）

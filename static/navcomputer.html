@@ -175,44 +175,18 @@
   <div class="row"><button id="btnNavSession">查询导航会话</button></div>
 </div>
 
-
-<!-- 7. 注册事件回调（模拟 NavComputer 推送） -->
 <div class="card">
-  <h2>7 · 注册事件回调 / 实时状态 <span class="badge">PUT /callbacks/…/events/{seq} · PUT /callbacks/…/live-state</span></h2>
-  <div class="hint">
-    Navigation Computer 会把配准事件推送到本机这两个挂载点（有序、幂等、204 确认）。
-    这里可手动模拟推送，验证接收端是否工作。
-  </div>
+  <h2>7 · 结束导航会话 <span class="badge">POST /navigation-sessions/{id}/completion</span></h2>
+  <div class="hint">结束 Navigation Computer 上的导航会话。可带 Idempotency-Key（留空则不带）。</div>
   <div class="row">
-    <label>回调会话</label>
-    <input type="text" id="cbSession" value="demo-registration">
+    <label>幂等键</label>
+    <input id="navIdemKey" type="text" placeholder="completion-navigation-session-…-001"/>
   </div>
-  <div class="row">
-    <label>事件序号</label>
-    <input type="text" id="cbSeq" value="1" style="max-width:90px">
-    <button id="btnSendEvent">模拟推送事件</button>
-    <button id="btnSendLive">模拟推送实时状态</button>
-    <button class="ghost" id="btnClearCb">清空会话</button>
-  </div>
-  <div class="row">
-    <label>事件 JSON</label>
-    <textarea id="cbEvent">{
-  "type": "registration.accepted",
-  "operation_id": "op-001",
-  "evidence_ids": ["ev-001", "ev-002"]
+    <textarea id="navBody">{
+      "schema_version": 1,
+      "navigation_session_id": "navigation-session-a601536ba4be4c78ae8adf0c45442f90"
 }</textarea>
-  </div>
-  <div class="row">
-    <label>实时状态 JSON</label>
-    <textarea id="cbLive">{
-  "needle_tip_mm": {"x": 12.5, "y": -3.2, "z": 48.0},
-  "target_id": "T1",
-  "distance_to_target_mm": 7.4
-}</textarea>
-  </div>
-  <div class="row">
-    <button class="ghost" id="btnInspectCb">查看已接收的事件/状态</button>
-  </div>
+  <div class="row"><button id="btnFinSession">结束导航会话</button></div>
 </div>
 
 <!-- 响应日志 -->
@@ -356,30 +330,6 @@ document.getElementById("btnSetupReg").onclick = async () => {
   }
 };
 
-// ---------- 4. 回调（模拟 NavComputer 推送） ----------
-const cbSessionEl = document.getElementById("cbSession");
-document.getElementById("btnSendEvent").onclick = () => {
-  const seq = document.getElementById("cbSeq").value.trim() || "1";
-  const s = encodeURIComponent(cbSessionEl.value.trim() || "default");
-  send("模拟事件推送", "PUT", `${ORIGIN}/callbacks/${s}/events/${seq}`, {
-    headers: JSON_HDR, body: document.getElementById("cbEvent").value,
-  });
-};
-document.getElementById("btnSendLive").onclick = () => {
-  const s = encodeURIComponent(cbSessionEl.value.trim() || "default");
-  send("模拟实时状态推送", "PUT", `${ORIGIN}/callbacks/${s}/live-state`, {
-    headers: JSON_HDR, body: document.getElementById("cbLive").value,
-  });
-};
-document.getElementById("btnClearCb").onclick = () => {
-  const s = encodeURIComponent(cbSessionEl.value.trim() || "default");
-  send("清空回调会话", "DELETE", `${ORIGIN}/api/nav/callbacks/${s}`);
-};
-document.getElementById("btnInspectCb").onclick = () => {
-  const s = encodeURIComponent(cbSessionEl.value.trim() || "default");
-  send("查看已接收回调", "GET", `${ORIGIN}/api/nav/callbacks/${s}`);
-};
-
 function rowMajorMatrixToPTM(matrix) {
     return [
         matrix[0][0], matrix[1][0], matrix[2][0], matrix[3][0],
@@ -413,6 +363,17 @@ document.getElementById("btnNavSession").onclick = () => {
   const id = encodeURIComponent(document.getElementById("navSessionLookupId").value.trim()
     || "navigation-session-3d559e145eeb40cbb20f6dcaad03d476");
   send("查询导航会话", "GET", `${ORIGIN}/api/nav/navigation-sessions/${id}`);
+};
+
+document.getElementById("btnFinSession").onclick = () => {
+  const id = document.getElementById("navSessionLookupId").value.trim();
+  const headers = { ...JSON_HDR };
+  const key = document.getElementById("navIdemKey").value.trim();
+  if (key) headers["Idempotency-Key"] = key;   // 留空 = 不带幂等键
+  send("结束导航会话", "POST", `${ORIGIN}/api/nav/navigation-sessions/${id}/completion`, {
+    headers,
+    body: document.getElementById("navBody").value,
+  });
 };
 
 </script>

@@ -157,20 +157,15 @@ impl RenderContent {
         })
     }
 
-
-
-    /// Build an R8Unorm 3D texture from a label buffer, with CPU-side
-    /// smoothing for anti-aliased edges.
+    /// Build an R8Unorm 3D texture from a continuous scalar volume.
     ///
-    /// The label values are converted to a coverage field: each voxel
-    /// stores the fraction of foreground voxels in a 5×5×5 neighbourhood.
-    /// This creates a smooth transition band that WGPU's hardware linear
-    /// filtering can interpolate, producing anti-aliased edges in the
-    /// shader.
+    /// The input bytes represent normalized scalar values in [0, 255].
+    /// Unlike `from_labels_r8`, this texture is treated as a continuous
+    /// scalar field rather than discrete segmentation labels.
     ///
-    /// The texture format is R8Unorm (not R8Uint) so the shader can use
-    /// `textureSampleLevel` with linear filtering.
-    pub fn from_labels_r8_smooth(
+    /// Sampling uses a linear filter so the scalar field can be smoothly
+    /// interpolated during volume/MPR rendering.
+    pub fn from_volume_r8(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         bytes: &[u8],
@@ -180,46 +175,12 @@ impl RenderContent {
         depth: u32,
     ) -> Result<Self> {
         let texture_format = wgpu::TextureFormat::R8Unorm;
-        let size = wgpu::Extent3d {width, height, depth_or_array_layers: depth};
 
-        // Compute smooth coverage field on CPU
-        let total = (width * height * depth) as usize;
-        let mut coverage = vec![0u8; total];
-
-        for z in 0..depth {
-            for y in 0..height {
-                for x in 0..width {
-                    let idx = ((z * height + y) * width + x) as usize;
-
-                    // Count foreground voxels in 5×5×5 neighbourhood
-                    let mut fg_count = 0u32;
-                    let mut total_count = 0u32;
-
-                    for dz in -2..=2 {
-                        for dy in -2..=2 {
-                            for dx in -2..=2 {
-                                let nx = x as i32 + dx;
-                                let ny = y as i32 + dy;
-                                let nz = z as i32 + dz;
-
-                                if nx >= 0 && nx < width as i32 &&
-                                   ny >= 0 && ny < height as i32 &&
-                                   nz >= 0 && nz < depth as i32 {
-                                    let nidx = ((nz as u32 * height + ny as u32) * width + nx as u32) as usize;
-                                    if bytes[nidx] > 0 {
-                                        fg_count += 1;
-                                    }
-                                    total_count += 1;
-                                }
-                            }
-                        }
-                    }
-
-                    // Coverage = foreground fraction, scaled to 0-255
-                    coverage[idx] = ((fg_count as f32 / total_count as f32) * 255.0) as u8;
-                }
-            }
-        }
+        let size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: depth,
+        };
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some(label),
@@ -228,7 +189,8 @@ impl RenderContent {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D3,
             format: texture_format,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
 
@@ -239,7 +201,7 @@ impl RenderContent {
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
-            &coverage,
+            bytes,
             wgpu::ImageDataLayout {
                 offset: 0,
                 bytes_per_row: Some(width),
@@ -249,20 +211,31 @@ impl RenderContent {
         );
 
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Volume R8 Sampler"),
+
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
+
+            // 关键：
+            // 连续标量场使用 Linear，而不是 Nearest
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+
             ..Default::default()
         });
+
         Ok(Self {
             texture,
             view,
             sampler,
             texture_format,
+
+            // 如果你的 VolumeEncoding 没有专门的 Normalized/R8 类型，
+            // 暂时保持现有枚举即可。
             volume_encoding: VolumeEncoding::HuFloat,
         })
     }

@@ -20,7 +20,7 @@ pub enum UserEvent {
     SetAliasing(usize, bool), // set antialiasing
     LoadDataFromCTVolume(CTVolume),
     LoadDrToPro(CTVolume, CTVolume, CTVolume, Vec<u8>, Vec<u8>), // load DR to PRO data with average dark and bright values
-    LoadDrOverlay(CTVolume, CTVolume), // stack a label overlay (from another MHA) on the DR view
+    LoadDrOverlay(CTVolume, CTVolume, f32), // stack a label overlay (from another MHA) on the DR view
     Resize(u32, u32), // width, height
     Quit,
     SetWindowByDivId(String, CTVolume),
@@ -137,10 +137,10 @@ impl GLCanvas {
     /// (a separate MHA) onto the DR MPR view in grid cell 0. Call after
     /// `load_dr_to_pro`; geometry lines up only when the overlay volume
     /// shares the DR volume's voxel grid.
-    pub fn load_dr_overlay(&self, overlay_vol_0: &CTVolume, overlay_vol_90: &CTVolume) {
+    pub fn load_dr_overlay(&self, overlay_vol_0: &CTVolume, overlay_vol_90: &CTVolume, scale: f32) {
         if let Err(e) = self
             .proxy
-            .send_event(UserEvent::LoadDrOverlay(overlay_vol_0.clone(), overlay_vol_90.clone()))
+            .send_event(UserEvent::LoadDrOverlay(overlay_vol_0.clone(), overlay_vol_90.clone(), scale))
         {
             log::error!("Failed to send LoadDrOverlay event {:?}", e);
         } else {

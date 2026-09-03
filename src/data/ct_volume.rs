@@ -73,6 +73,20 @@ impl CTVolume {
         self.voxel_data = new_data;
     }
 
+    /// Rotate the voxel data 180 degrees in the XY (in-plane) axis.
+    pub fn rotate_180_xy(&mut self) {
+        let (rows, cols, slices) = self.dimensions;
+        let slice_len = rows * cols;
+        if slice_len == 0 {
+            return;
+        }
+        for z in 0..slices {
+            let start = z * slice_len;
+            let end = start + slice_len;
+            self.voxel_data[start..end].reverse();
+        }
+    }
+
     pub fn base(&self) -> &Base {
         &self.base
     }

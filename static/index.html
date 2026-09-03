@@ -1510,6 +1510,11 @@
             intercept: 0.0,
         }
 
+        const info_big = {
+            slope: 500.0,
+            intercept: 0.0,
+        }
+
         document.querySelector('#dr0').addEventListener('change', async () => {
             const file = document.querySelector('#dr0').files[0];
             if (!file) {
@@ -1531,14 +1536,14 @@
         document.querySelector('#drOverlay-0').addEventListener('change', async () => {
             const file = document.querySelector('#drOverlay-0').files[0];
             if (!file) return;
-            state.drOverlay0 = await state.wasmModule.parse_common_files_wasm([file], toUint8Array(info_small));
+            state.drOverlay0 = await state.wasmModule.parse_common_files_wasm([file], toUint8Array(info_big));
         });
 
         
         document.querySelector('#drOverlay-90').addEventListener('change', async () => {
             const file = document.querySelector('#drOverlay-90').files[0];
             if (!file) return;
-            state.drOverlay90 = await state.wasmModule.parse_common_files_wasm([file], toUint8Array(info_small));
+            state.drOverlay90 = await state.wasmModule.parse_common_files_wasm([file], toUint8Array(info_big));
         });
 
         document.querySelector('#darkFolder').addEventListener('change', async (e) => {
@@ -1579,7 +1584,7 @@
             if (!cv) return;
             cv.load_dr_to_pro(state.dr0, state.dr90, state.volume, state.avgDark, state.avgBright);
             if (state.drOverlay0 && state.drOverlay90) {
-                cv.load_dr_overlay(state.drOverlay0, state.drOverlay90);
+                cv.load_dr_overlay(state.drOverlay0, state.drOverlay90, 8.0); // 128: 8.0 512: 2.0 与1024的倍数
             }
         });
 

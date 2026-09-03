@@ -349,13 +349,7 @@ impl App {
 
     /// Internal helper to load volume and create RenderContent without modifying layout
     fn load_render_content(&mut self, vol_input: &CTVolume) -> Result<Arc<RenderContent>, KeplerError> {
-        let vol = if vol_input.dimensions.0 > 512 || vol_input.dimensions.1 > 512 {
-            vol_input.downsample_2x()
-        } else {
-            vol_input.clone()
-        };
-        
-        let _ = self.app_model.load_volume(vol.clone());
+        let _ = self.app_model.load_volume(vol_input.clone());
         let mut winlev;
 
         // Delegate data preparation to AppModel
@@ -374,9 +368,9 @@ impl App {
                     &self.graphics().queue,
                     &bytes,
                     "CT Volume",
-                    vol.dimensions.0 as u32,
-                    vol.dimensions.1 as u32,
-                    vol.dimensions.2 as u32,
+                    vol_input.dimensions.0 as u32,
+                    vol_input.dimensions.1 as u32,
+                    vol_input.dimensions.2 as u32,
                     encoding,
                 )?))
             }
@@ -395,9 +389,9 @@ impl App {
                     &self.graphics().queue,
                     &bytes,
                     "CT Volume",
-                    vol.dimensions.0 as u32,
-                    vol.dimensions.1 as u32,
-                    vol.dimensions.2 as u32,
+                    vol_input.dimensions.0 as u32,
+                    vol_input.dimensions.1 as u32,
+                    vol_input.dimensions.2 as u32,
                     encoding,
                 )?))
             }
@@ -448,6 +442,8 @@ impl App {
         let p2 = process_raw(vol_2.clone().voxel_data, &avg_dark, &avg_bright, 1e-8).unwrap();
         vol_1.set_voxel_data(p1);
         vol_2.set_voxel_data(p2);
+        vol_1.rotate_180_xy();
+        vol_2.rotate_180_xy();
         
         let _ = self.app_model.load_volume(vol_1.clone());
         if let Err(e) = self.app_view.configure_dr_transverse_layout(&vol_1, &vol_2, vol_3){
@@ -457,13 +453,17 @@ impl App {
         self.saved_states = [0, 0, 0, 0];
     }
 
-    pub fn overlay_dr_segmentation(&mut self, overlay_vol_0: &CTVolume, overlay_vol_90: &CTVolume) {
+    pub fn overlay_dr_segmentation(
+        &mut self, 
+        overlay_vol_0: &CTVolume, 
+        overlay_vol_90: &CTVolume,
+        scale: f32
+    ) {
         let device = &self.graphics_context.graphics.device;
         let queue = &self.graphics_context.graphics.queue;
         let targets: [(usize, &CTVolume); 2] = [(0, overlay_vol_0), (1, overlay_vol_90)];
         for (view_idx, overlay_vol) in targets {
             let dims = overlay_vol.dimensions();
-            let scale= 8.0;
             let data = overlay_vol.upscale_bilinear(scale);
             let width = (dims.1 as f32 * scale).round() as u32;
             let height = (dims.0 as f32 * scale).round() as u32;
