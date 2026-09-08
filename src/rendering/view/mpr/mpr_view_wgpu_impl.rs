@@ -21,7 +21,7 @@ pub struct UniformsFrag {
     pub slice: f32,
     pub is_packed_rg8: f32,
     pub bias: f32,
-    pub is_dual_mode: f32,
+    pub ball_enabled: f32,
     pub seg_jet: f32,
     pub aliasing: u32,  // Change from bool to u32
     pub mat: [f32; 16],
@@ -32,6 +32,7 @@ pub struct UniformsFrag {
     pub needles: [NeedleUniform; 32],
     pub label_colors: [[f32; 4]; 8],
     pub label_visibility: [[f32; 4]; 8],
+    pub balls: [[f32; 4]; 4],
 }
 
 impl Default for UniformsFrag {
@@ -42,7 +43,7 @@ impl Default for UniformsFrag {
             slice: 0.0,
             is_packed_rg8: 0.0,
             bias: 0.0,
-            is_dual_mode: 0.0,
+            ball_enabled: 0.0,
             seg_jet: 0.0,
             aliasing: 0,
             mat: [0.0; 16],
@@ -53,6 +54,7 @@ impl Default for UniformsFrag {
             needles: [NeedleUniform::default(); 32],
             label_colors: LABEL_COLORS,
             label_visibility: [[0.0; 4]; 8],
+            balls: [[0.0; 4]; 4],
         }
     }
 }
@@ -125,7 +127,7 @@ impl MprViewWgpuImpl {
             slice: 0.0,
             is_packed_rg8: decode_params.is_packed_flag as f32,
             bias: decode_params.bias,
-            is_dual_mode: 0.0,
+            ball_enabled: 0.0,
             seg_jet: 0.0,
             aliasing: 0,
             mat: transform_matrix.to_cols_array(),
@@ -133,6 +135,7 @@ impl MprViewWgpuImpl {
             needle_enabled: 0.0,
             seg_enabled: 0.0,
             seg_alpha: 0.3,
+            balls: [[0.0; 4]; 4],
             needles: [NeedleUniform::default(); 32],
             label_colors: LABEL_COLORS,
             label_visibility: [[0.0; 4]; 8],
@@ -371,6 +374,18 @@ impl MprViewWgpuImpl {
         self.uniforms.frag.needle_enabled = if enabled { 1.0 } else { 0.0 };
     }
 
+    /// Replace the ball array (4 slots, xyz = center, w = radius in UV) and
+    /// its enabled flag.
+    pub fn set_balls(&mut self, balls: &[[f32; 4]; 4], enabled: bool) {
+        self.uniforms.frag.balls = *balls;
+        self.uniforms.frag.ball_enabled = if enabled { 1.0 } else { 0.0 };
+    }
+
+    /// Toggle ball rendering on/off without touching the ball list.
+    pub fn set_balls_enabled(&mut self, enabled: bool) {
+        self.uniforms.frag.ball_enabled = if enabled { 1.0 } else { 0.0 };
+    }
+
     /// Update vertex uniform buffer with current uniform values
     ///
     /// # Arguments
@@ -481,8 +496,10 @@ mod tests {
         //   so the byte layout matches the WGSL `array<vec4<f32>, 8>`)
         // + 8 * 16 bytes label_visibility (vec4, only .x is read by the
         //   shader; vec4 stride matches WGSL `array<vec4<f32>, 8>`)
-        // = 1904 bytes
-        assert_eq!(size, 1904);
+        // + 4 bytes ball_enabled + 12 bytes _ball_pad
+        // + 4 * 16 bytes balls (vec4, xyz = center UV, w = radius UV)
+        // = 1984 bytes
+        assert_eq!(size, 1984);
         let vert_size = std::mem::size_of::<UniformsVert>();
         assert_eq!(vert_size, 16);
         let uniforms_size = std::mem::size_of::<Uniforms>();

@@ -77,7 +77,8 @@ pub struct MipUniforms {
     pub needle_enabled:f32,
     pub needle_count: u32,
     pub _pad: f32,
-    pub _pad2:f32,
+    pub ball_enabled: f32,
+    pub balls: [[f32; 4]; 4],
     pub needles: [NeedleUniform; 32],
     pub rotation: [f32; 16],
 }
@@ -100,7 +101,8 @@ impl Default for MipUniforms {
             needle_enabled: 0.0,
             needle_count: 0,
             _pad: 0.0,
-            _pad2: 0.0,
+            ball_enabled: 0.0,
+            balls: [[0.0; 4]; 4],
             needles: [NeedleUniform::default(); 32],
             rotation: Mat4::IDENTITY.to_cols_array(),
         }
@@ -257,6 +259,8 @@ pub struct MipView {
     window_level: WindowLevel,
     needle_enabled: f32,
     needles: Vec<NeedleUniform>,
+    ball_enabled: bool,
+    balls: [[f32; 4]; 4],
 }
 
 impl MipView {
@@ -275,6 +279,8 @@ impl MipView {
             window_level: WindowLevel::new(),
             needle_enabled: 0.0,
             needles: Vec::new(),
+            ball_enabled: false,
+            balls: [[0.0; 4]; 4],
         }
     }
 
@@ -361,15 +367,15 @@ impl MipView {
     /// Function-level comment: Set the current rotation angle using degrees for convenience.
     /// This directly sets the orientation without affecting rotation speed.
     pub fn set_rotation_angle_degrees(&mut self, degrees_x: f32, degrees_y: f32) {
-        let right = self.rotation_quat * Vec3::Y;
-        let up = self.rotation_quat * Vec3::X;
-        let dx = degrees_x.to_radians();
-        let dy = degrees_y.to_radians();
-        let qx = Quat::from_axis_angle(up.normalize(), dx);
-        let qy = Quat::from_axis_angle(right.normalize(), dy);
-        let delta = qy * qx;
-        self.rotation_quat = (delta * self.rotation_quat).normalize();
-    }
+    let right = self.rotation_quat * Vec3::X;
+    let up = self.rotation_quat * Vec3::Y;
+    let dx = degrees_x.to_radians();
+    let dy = degrees_y.to_radians();
+    let qx = Quat::from_axis_angle(right.normalize(), dx);
+    let qy = Quat::from_axis_angle(up.normalize(), dy);
+    let delta = qy * qx;
+    self.rotation_quat = (delta * self.rotation_quat).normalize();
+}
 
     /// Set MIP rotation angles in degrees around X, Y, Z axes.
     pub fn set_rotation_degrees(&mut self, roll_deg: f32, yaw_deg: f32, pitch_deg: f32) {
@@ -406,6 +412,18 @@ impl MipView {
 
     pub fn set_needle_enabled(&mut self, enabled: f32) {
         self.needle_enabled = enabled;
+    }
+
+    pub fn set_ball_enabled(&mut self, enabled: bool) {
+        self.ball_enabled = enabled;
+    }
+
+    pub fn set_ball(&mut self, ball: usize, pos: [f32; 3], radius_uv: f32) {
+        if ball < 4usize {
+            self.balls[ball] = [pos[0], pos[1], pos[2], radius_uv];
+        } else {
+            log::warn!("[BALL] Invalid ball index: {}", ball);
+        }
     }
 
     pub fn set_new_needle(&mut self, id: u32, entry: [f32; 3], pos: [f32; 3], color: [f32; 4]) {
@@ -499,7 +517,8 @@ impl Renderable for MipView {
             needle_enabled: self.needle_enabled,
             needle_count: self.needles.len().min(32) as u32,
             _pad: 0.0,
-            _pad2: 0.0,
+            ball_enabled: if self.ball_enabled { 1.0 } else { 0.0 },
+            balls: self.balls,
             needles: gpu_needles,
             rotation: final_matrix.to_cols_array(),
         };

@@ -111,6 +111,8 @@ pub struct MeshView {
     needle_unit: Option<Mesh>,
     oblique_planes: [ObliquePlaneUniform; 4],
     camera: Camera,
+    ball_enabled: bool,
+    balls: [[f32; 4]; 4],
 }
 
 impl MeshView {
@@ -148,6 +150,8 @@ impl MeshView {
             needle_unit: None,
             oblique_planes: [ObliquePlaneUniform::default(); 4],
             camera: Camera::new(),
+            ball_enabled: false,
+            balls: [[0.0; 4]; 4],
         }
     }
 
@@ -446,6 +450,20 @@ impl MeshView {
         self.needle_enabled = enabled;
         log::info!("[NEEDLE] Mesh needle rendering {}", enabled);
     }
+    
+    pub fn set_ball_enabled(&mut self, enabled: bool) {
+        self.ball_enabled = enabled;
+        log::info!("[BALL] Mesh ball rendering {}", enabled);
+    }
+
+    pub fn set_ball(&mut self, ball: usize, pos: [f32; 3], radius_uv: f32) {
+        if ball < 4usize {
+            self.balls[ball] = [pos[0], pos[1], pos[2], radius_uv];
+            log::info!("[BALL] Mesh ball {} position set to {:?} (radius {:.4} uv)", ball, pos, radius_uv);
+        } else {
+            log::warn!("[BALL] Invalid ball index: {}", ball);
+        }
+    }
 
     pub fn set_new_needle(&mut self, id: u32, entry: [f32; 3], pos: [f32; 3], color: [f32; 4]) {
         let needle = self.needles.iter_mut().find(|n| n.id == id);
@@ -628,6 +646,8 @@ impl MeshView {
                 plane_rotation_angle: self.plane_rotation_angle,
                 oblique_planes: self.oblique_planes,
                 needles: gpu_needles,
+                ball_enabled: if self.ball_enabled { 1.0 } else { 0.0 },
+                balls: self.balls,
                 ..Default::default()
             };
 

@@ -78,6 +78,11 @@ pub struct MprView {
     needles: Vec<NeedleUniform>,
     /// Cached last-uploaded needle count, used to avoid redundant GPU writes.
     last_uploaded_needle_count: usize,
+    /// Whether to project the 3D balls onto the slice plane.
+    ball_enabled: bool,
+    /// Ball markers in volume-UV space (xyz = center, w = radius). Synced
+    /// into the GPU fragment uniforms on change; re-uploaded every frame.
+    balls: [[f32; 4]; 4],
     /// Optional mesh context for drawing the loaded OBJ mesh on this slice.
     mesh_ctx: Option<Arc<Mutex<MultiMeshContext>>>,
     /// When true, the mesh overlay is drawn on top of the slice each frame.
@@ -234,6 +239,8 @@ impl MprView {
             needle_enabled: false,
             needles: Vec::new(),
             last_uploaded_needle_count: 0,
+            ball_enabled: false,
+            balls: [[0.0; 4]; 4],
             mesh_ctx: None,
             mesh_overlay_enabled: false,
             mesh_overlay_thickness: 1.0,
@@ -490,6 +497,22 @@ impl MprView {
     pub fn set_needle_enabled(&mut self, enabled: bool) {
         self.needle_enabled = enabled;
         self.wgpu_impl.set_needles_enabled(enabled);
+    }
+
+    /// Toggle the projection of 3D balls onto the slice plane.
+    pub fn set_ball_enabled(&mut self, enabled: bool) {
+        self.ball_enabled = enabled;
+        self.wgpu_impl.set_balls_enabled(enabled);
+    }
+
+    /// Insert or update a ball (center in volume-UV space, radius in UV units).
+    pub fn set_ball(&mut self, ball: usize, pos: [f32; 3], radius_uv: f32) {
+        if ball < 4usize {
+            self.balls[ball] = [pos[0], pos[1], pos[2], radius_uv];
+            self.wgpu_impl.set_balls(&self.balls, self.ball_enabled);
+        } else {
+            log::warn!("[BALL→MPR] Invalid ball index: {}", ball);
+        }
     }
 
     /// Insert or update a needle by id. Coordinates are in volume-UV space

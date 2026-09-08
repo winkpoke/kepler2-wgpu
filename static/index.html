@@ -980,6 +980,15 @@
                     </select>
                 </div>
                 <div>
+                    <label for="ball-enabled">ball:</label>
+                    <input type="checkbox" id="ball-enabled">
+                    <input type="number" id="ball-id" step="1" value="0" min="0" max="3">
+                    x:<input type="number" id="ball-x" step="0.5" value="0.0">
+                    y:<input type="number" id="ball-y" step="0.5" value="0.0">
+                    z:<input type="number" id="ball-z" step="0.5" value="0.0">
+                    <button id="set-ball">set Ball</button>
+                </div>
+                <div>
                     <span id="rotation-label">rotation:</span>
                     <span id="rotation-x-label">roll:</span><input type="number"  id="rotation-x" step="15" value="0" min="0" max="360">
                     <span id="rotation-y-label">yaw:</span><input type="number" id="rotation-y" step="15" value="0" min="0" max="360">
@@ -1511,8 +1520,8 @@
         }
 
         const info_big = {
-            slope: 500.0,
-            intercept: 0.0,
+            slope: 1000.0,
+            intercept: 10.0,
         }
 
         document.querySelector('#dr0').addEventListener('change', async () => {
@@ -1522,6 +1531,15 @@
                 return;
             }
             state.dr0 = await state.wasmModule.parse_common_files_wasm([file], toUint8Array(info_small));
+
+            if (!state.avgDark || !state.avgBright) {
+                alert('Please load both dark and bright frames first!');
+                return;
+            }
+
+            const cv = requireCanvas();
+            if (!cv) return;
+            cv.load_dr_to_pro(0, state.dr0, state.avgDark, state.avgBright);
         });
 
         document.querySelector('#dr90').addEventListener('change', async () => {
@@ -1531,6 +1549,15 @@
                 return;
             }
             state.dr90 = await state.wasmModule.parse_common_files_wasm([file], toUint8Array(info_small));
+
+            if (!state.avgDark || !state.avgBright) {
+                alert('Please load both dark and bright frames first!');
+                return;
+            }
+
+            const cv = requireCanvas();
+            if (!cv) return;
+            cv.load_dr_to_pro(1, state.dr90, state.avgDark, state.avgBright);
         });
 
         document.querySelector('#drOverlay-0').addEventListener('change', async () => {
@@ -1550,24 +1577,12 @@
             const file = document.querySelector('#darkFolder').files[0];
             const buffer = await file.arrayBuffer();
             state.avgDark = new Uint8Array(buffer);
-            console.log(
-                'avgDark:',
-                file.name,
-                state.avgDark.length,
-                'bytes'
-            );
         });
 
         document.querySelector('#brightFolder').addEventListener('change', async (e) => {
             const file = document.querySelector('#brightFolder').files[0];
             const buffer = await file.arrayBuffer();
             state.avgBright = new Uint8Array(buffer);
-            console.log(
-                'avgBright:',
-                file.name,
-                state.avgBright.length,
-                'bytes'
-            );
         });
 
         byId('apply-dark-bright').addEventListener('click', async () => {
@@ -1582,7 +1597,8 @@
 
             const cv = requireCanvas();
             if (!cv) return;
-            cv.load_dr_to_pro(state.dr0, state.dr90, state.volume, state.avgDark, state.avgBright);
+            cv.load_dr_to_pro(0, state.dr0, state.avgDark, state.avgBright);
+            cv.load_dr_to_pro(1, state.dr90, state.avgDark, state.avgBright);
             if (state.drOverlay0 && state.drOverlay90) {
                 cv.load_dr_overlay(state.drOverlay0, state.drOverlay90, 8.0); // 128: 8.0 512: 2.0 与1024的倍数
             }
@@ -2740,6 +2756,22 @@
             const preset = parseInt(byId('3d-mode').value, 10);
             gl_canvas.set_mesh_mode(state.index, preset);
         });
+        
+        byId('ball-enabled').addEventListener('change', () => {
+            if (!gl_canvas) return;
+            gl_canvas.set_ball_enabled(state.indexValue, byId('ball-enabled').checked);
+        });
+
+        byId('set-ball').addEventListener('click', () => {
+            if (!gl_canvas) return;
+            gl_canvas.set_ball(
+                state.indexValue,
+                parseInt(byId('ball-id').value, 10),
+                parseFloat(byId('ball-x').value),
+                parseFloat(byId('ball-y').value),
+                parseFloat(byId('ball-z').value)
+            );
+        });
 
         byId('oblique-crop-3d').addEventListener('change', () => {
             if (!gl_canvas) {
@@ -3000,6 +3032,14 @@
             if (ptmString) {
                 const ptm = JSON.parse(ptmString);
                 console.log("从上一个 HTML 获取 PTM:", ptm);
+            } else {
+                console.log("没有从上一个 HTML 获取 PTM");
+                const ptm = [
+                    0.997059764, 0.064309190, 0.041667201 , 0.0,
+                    0.062925694, -0.997448864, 0.033706388, 0.0,
+                    0.043728533, -0.030985346, -0.998562829, 0.0,
+                    264.710586, 193.380746, -53.558139, 1.0
+                ]
             }
             // const ptm = [
             //     0.999950882, -0.007056614, -0.006959693, 0.0,

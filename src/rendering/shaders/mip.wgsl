@@ -43,7 +43,8 @@ struct MipUniforms {
     needle_enabled: f32,
     needle_count : u32,
     _pad: f32,
-    _pad2: f32,
+    ball_enabled: f32,
+    balls: array<vec4<f32>, 4>,
     needles : array<NeedleUniform, 32>,
     rotation: mat4x4<f32>,
 }
@@ -128,6 +129,22 @@ fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end:
                 let needle = u_mip.needles[k];
                 if (point_inside_needle(sample_pos, needle.entry, needle.tip, needle.radius)) {
                     needle_color = needle.color.rgb;
+                    break;
+                }
+            }
+        }
+
+        if (u_mip.ball_enabled > 0.5) {
+            for (var b: u32 = 0u; b < 4u; b = b + 1u) {
+                let ball = u_mip.balls[b];
+                if (ball.w <= 0.0) { 
+                    continue; 
+                }
+                let center = ball.xyz;
+                let radius = ball.w;
+                let to_center = sample_pos - center;
+                if (dot(to_center, to_center) <= radius * radius) {
+                    needle_color = vec3<f32>(0.9, 0.2, 0.2);
                     break;
                 }
             }

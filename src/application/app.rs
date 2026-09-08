@@ -427,26 +427,20 @@ impl App {
     /// subsequent single-view mode switches still have a volume to rebuild from.
     pub fn load_dr_to_pro(
         &mut self, 
-        vol_1: &CTVolume, 
-        vol_2: &CTVolume, 
-        vol_3: &CTVolume,
+        index: usize,
+        vol: &CTVolume, 
         avg_dark_raw: &[u8],
         avg_bright_raw: &[u8],
     ) {
-        let mut vol_1 = vol_1.clone();
-        let mut vol_2 = vol_2.clone();
-
+        let mut vol = vol.clone();
         let avg_dark = load_average_raw_from_bytes(&avg_dark_raw).expect("Failed to load dark field");
         let avg_bright = load_average_raw_from_bytes(&avg_bright_raw).expect("Failed to load bright field");
-        let p1 = process_raw(vol_1.clone().voxel_data, &avg_dark, &avg_bright, 1e-8).unwrap();
-        let p2 = process_raw(vol_2.clone().voxel_data, &avg_dark, &avg_bright, 1e-8).unwrap();
-        vol_1.set_voxel_data(p1);
-        vol_2.set_voxel_data(p2);
-        vol_1.rotate_180_xy();
-        vol_2.rotate_180_xy();
+        let p = process_raw(vol.clone().voxel_data, &avg_dark, &avg_bright, 1e-8).unwrap();
+        vol.set_voxel_data(p);
+        vol.rotate_180_xy();
         
-        let _ = self.app_model.load_volume(vol_1.clone());
-        if let Err(e) = self.app_view.configure_dr_transverse_layout(&vol_1, &vol_2, vol_3){
+        let _ = self.app_model.load_volume(vol.clone());
+        if let Err(e) = self.app_view.configure_dr_transverse_layout(index, &vol){
             log::error!("Failed to configure DR-to-PRO transverse layout: {}", e);
         }
 
@@ -1101,6 +1095,49 @@ impl App {
             mesh_view.set_roi(roi_min, roi_max);
             log::info!("Mesh roi set from {:?} to {:?}", roi_point_min, roi_point_max);
         };
+    }
+
+    pub fn set_ball_enabled(&mut self, enabled: bool) {
+        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+            mesh_view.set_ball_enabled(enabled);
+        };
+        if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
+            mip_view.set_ball_enabled(enabled);
+        }
+        for view in self.app_view.layout.views_mut().iter_mut() {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_ball_enabled(enabled);
+            }
+        }
+    }
+
+    pub fn set_ball(&mut self, ball: usize, x: f32, y: f32, z: f32){
+        let ball_mm = [x, y, z];
+        let ball_vol = self.mm_to_uv(ball_mm);
+        let radius_uv = if let Ok(vol) = self.app_model.volume() {
+            let (nx, ny, nz) = vol.dimensions();
+            let (sx, sy, sz) = vol.voxel_spacing();
+            let physical = [
+                nx as f32 * sx,
+                ny as f32 * sy,
+                nz as f32 * sz,
+            ];
+            let min_physical = physical.iter().cloned().reduce(f32::min).unwrap_or(1.0);
+            (3.0 / min_physical).clamp(0.0001, 0.1)
+        } else {
+            0.1
+        };
+        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+            mesh_view.set_ball(ball, ball_vol, radius_uv);
+        };
+        if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
+            mip_view.set_ball(ball, ball_vol, radius_uv);
+        }
+        for view in self.app_view.layout.views_mut().iter_mut() {
+            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr_view.set_ball(ball, ball_vol, radius_uv);
+            }
+        }
     }
 
     // NEEDLE

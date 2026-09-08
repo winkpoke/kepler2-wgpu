@@ -72,6 +72,14 @@ impl ServerState {
 
         // Resolve the on-disk series directory
         let series_dir = PathBuf::from("C:/user/kepler_series");
+        if series_dir.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&series_dir) {
+                log::warn!("failed to clean series dir {:?}: {}", series_dir, e);
+            }
+        }
+        if let Err(e) = std::fs::create_dir_all(&series_dir) {
+            log::error!("failed to create series dir {:?}: {}", series_dir, e);
+        }
 
         Self {
             ai: Arc::new(AiService::new()),

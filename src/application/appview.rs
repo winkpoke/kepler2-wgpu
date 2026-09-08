@@ -471,50 +471,27 @@ impl AppView {
         Ok(())
     }
 
-    /// Configure a 2x2 grid showing the Transverse slice of three different volumes.
-    ///
-    /// Function-level comment: Unlike the other layout builders, each view gets its own
-    /// RenderContent because the three volumes are distinct datasets (no shared texture).
-    /// The 4th grid cell is left empty.
+    /// Show the Transverse slice of a DR volume in one cell of the grid.
     pub fn configure_dr_transverse_layout(
         &mut self,
-        vol_1: &CTVolume,
-        vol_2: &CTVolume,
-        vol_3: &CTVolume,
+        index: usize,
+        vol: &CTVolume,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.set_grid_layout(2, 2, 2);
-        self.remove_all();
-
-        for vol in [vol_1, vol_2] {
-            let view = self.view_factory.create_mpr_view(
-                vol,
-                Orientation::Transverse,
-                (0, 0),
-                (0, 0),
-            )?;
+        let view = self.view_factory.create_mpr_view(
+            vol,
+            Orientation::Transverse,
+            (0, 0),
+            (0, 0),
+        )?;
+        if index < self.layout.views().len() {
+            self.layout.replace_view_at(index, view);
+        } else {
             LayoutContainer::add_view(&mut self.layout, view);
         }
 
-        let mip_view = self.view_factory.create_mip_view(
-            vol_3,
-            (0, 0),
-            (0, 0),
-        )?;
-        LayoutContainer::add_view(&mut self.layout, mip_view);
-        
-        let mesh_view = self.view_factory.create_mesh_view(
-            vol_3,
-            (0, 0),
-            (0, 0),
-        )?;
-        LayoutContainer::add_view(&mut self.layout, mesh_view);
-
-        let _ = self.set_window_level(1, 1500.0);
-        let _ = self.set_window_width(1, 3000.0);
-        let _ = self.set_scale(1, 1.5);
-        let _ = self.set_window_level(0, 1500.0);
-        let _ = self.set_window_width(0, 3000.0);
-        let _ = self.set_scale(0, 1.5);
+        let _ = self.set_window_level(index, 1500.0);
+        let _ = self.set_window_width(index, 3000.0);
+        let _ = self.set_scale(index, 1.5);
         Ok(())
     }
 

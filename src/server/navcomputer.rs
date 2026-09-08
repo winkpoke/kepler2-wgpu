@@ -393,6 +393,12 @@ pub async fn nav_prepared_ct_upload(
         url, zip_len, source_dir, zip_file, key
     );
     let resp = upstream.send().await.map_err(upstream_error)?;
+    if let Err(e) = tokio::fs::remove_file(&zip_file).await {
+        log::warn!(
+            "删除已上传的 ZIP 失败（不影响响应）: path={:?}, error={}",
+            zip_file, e
+        );
+    }
     Ok(relay_response(resp).await)
 }
  

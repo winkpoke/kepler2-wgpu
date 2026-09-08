@@ -106,8 +106,8 @@ impl RenderApp {
                         log::info!("Loaded data from CTVolume");
                     }
                 }
-                Event::UserEvent(UserEvent::LoadDrToPro(vol_1, vol_2, vol_3, avg_dark, avg_bright)) => {
-                    state.load_dr_to_pro(&vol_1, &vol_2, &vol_3, &avg_dark, &avg_bright);
+                Event::UserEvent(UserEvent::LoadDrToPro(index, vol, avg_dark, avg_bright)) => {
+                    state.load_dr_to_pro(index, &vol, &avg_dark, &avg_bright);
                 }
                 Event::UserEvent(UserEvent::LoadDrOverlay(overlay_vol_0, overlay_vol_90, scale)) => {
                     state.overlay_dr_segmentation(&overlay_vol_0, &overlay_vol_90, scale);
@@ -249,6 +249,12 @@ impl RenderApp {
                 Event::UserEvent(UserEvent::ViewClick(view_index, screen_x, screen_y, screen_z)) => {
                     state.handle_view_click(view_index, screen_x, screen_y, screen_z);
                     log::info!("ViewClick processed for view {}: screen_x={screen_x}, screen_y={screen_y}, screen_z={screen_z}", view_index);
+                }
+                Event::UserEvent(UserEvent::SetMeshBallEnabled(_index, enabled)) => {
+                    state.set_ball_enabled(enabled);
+                }
+                Event::UserEvent(UserEvent::SetBall(_index,ball, x, y, z)) => {
+                    state.set_ball(ball, x, y, z);
                 }
                 Event::UserEvent(UserEvent::SetMeshNeedleEnabled(_index, enabled)) => {
                     state.set_mesh_needle_enabled(enabled);

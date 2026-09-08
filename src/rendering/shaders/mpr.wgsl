@@ -78,7 +78,7 @@ struct UniformsFrag {
     slice: f32,
     is_packed_rg8: f32,
     bias: f32,
-    is_dual_mode: f32,
+    ball_enabled: f32,
     seg_jet: f32,
     aliasing: u32, 
     mat: mat4x4<f32>,
@@ -89,6 +89,7 @@ struct UniformsFrag {
     needles: array<NeedleUniform, 32>,
     label_colors: array<vec4<f32>, 8>,
     label_visibility: array<vec4<f32>, 8>,
+    balls: array<vec4<f32>, 4>,
 }
 
 @group(2) @binding(0)
@@ -171,21 +172,55 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         let seg_tex_size = vec3<f32>(textureDimensions(t_segmentation));
         let seg_coord = vec3<i32>(clamp(tex_coords_3d, vec3<f32>(0.0), vec3<f32>(1.0)) * seg_tex_size);
         let seg_label = textureLoad(t_segmentation, seg_coord, 0).r;
-        if (seg_label > 0u) {
-            if (u_uniform_frag.seg_jet > 0.5) {
-                let t = f32(seg_label) / 255.0;
-                let a = clamp(0.1, 0.0, 1.0);
-                return vec4<f32>(mix(final_color, jet(t), a), 1.0);
-            } else {
-                let idx = min(seg_label, 8u);
-                if (u_uniform_frag.label_visibility[idx].x > 0.5) {
-                    let seg_overlay = u_uniform_frag.label_colors[idx].rgb;
-                    let a = clamp(u_uniform_frag.seg_alpha, 0.0, 1.0);
-                    return vec4<f32>(mix(final_color, seg_overlay, a), 1.0);
+        if (u_uniform_frag.seg_jet > 0.5) {
+            var hits: f32 = 0.0;
+            var halo_label: u32 = 0u;
+            let ring_r = 3.0 / max(seg_tex_size.x, max(seg_tex_size.y, seg_tex_size.z));
+            var dirs = array<vec2<f32>, 8>(
+                vec2<f32>( 1.0,  0.0), vec2<f32>(-1.0,  0.0),
+                vec2<f32>( 0.0,  1.0), vec2<f32>( 0.0, -1.0),
+                vec2<f32>( 1.0,  1.0), vec2<f32>( 1.0, -1.0),
+                vec2<f32>(-1.0,  1.0), vec2<f32>(-1.0, -1.0),
+            );
+            for (var i: u32 = 0u; i < 8u; i = i + 1u) {
+                let d = dirs[i] * ring_r;
+                let p = (current_mat * vec4<f32>(local_x + d.x, in.tex_coords.y + d.y, depth, 1.0)).xyz;
+                let c = vec3<i32>(clamp(p, vec3<f32>(0.0), vec3<f32>(1.0)) * seg_tex_size);
+                let l = textureLoad(t_segmentation, c, 0).r;
+                if (l > 0u) {
+                    hits = hits + 1.0;
+                    if (l > halo_label) {
+                        halo_label = l;
+                    }
                 }
+            }
+            if (seg_label > 0u) {
+                let t = f32(seg_label) / 255.0;
+                let vivid = jet(t);
+                let backdrop = final_color * 0.85 + vivid * 0.06;
+                let overlay = mix(backdrop, vivid, 0.3);
+                let cov = (hits + 1.0) / 9.0;
+                let w = 0.35 + 0.55 * cov;
+                return vec4<f32>(mix(final_color, overlay, w), 1.0);
+            } else if (hits > 0.0) {
+                let halo_t = f32(halo_label) / 255.0;
+                let w = 0.30 * (hits / 8.0);
+                return vec4<f32>(mix(final_color, jet(halo_t), w), 1.0);
+            }
+        } else if (seg_label > 0u) {
+            let idx = min(seg_label, 8u);
+            if (u_uniform_frag.label_visibility[idx].x > 0.5) {
+                let seg_overlay = u_uniform_frag.label_colors[idx].rgb;
+                let a = clamp(u_uniform_frag.seg_alpha, 0.0, 1.0);
+                return vec4<f32>(mix(final_color, seg_overlay, a), 1.0);
             }
         }
     }
+
+    // Overlay starts from the grayscale slice; needle and ball intersections
+    // accumulate on top. Ball composites last so it stays visible where it
+    // overlaps the needle shaft (same precedence as the DVR pass).
+    var overlay_color = final_color;
 
     // 3D needle intersection on the slice
     if (u_uniform_frag.needle_enabled > 0.5 && u_uniform_frag.needle_count > 0u) {
@@ -207,10 +242,36 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
         if (best_alpha > 0.0) {
             // Composite needle over the slice using straight alpha
-            return vec4<f32>(mix(final_color, best_color, best_alpha), 1.0);
+            overlay_color = mix(overlay_color, best_color, best_alpha);
+        }
+    }
+
+    // 3D ball intersection on the slice (center/radius in volume-UV space)
+    if (u_uniform_frag.ball_enabled > 0.5) {
+        var best_ball_dist = 1e20;
+        var ball_color = vec3<f32>(0.0);
+        var ball_alpha: f32 = 0.0;
+
+        for (var b: u32 = 0u; b < 4u; b = b + 1u) {
+            let ball = u_uniform_frag.balls[b];
+            if (ball.w <= 0.0) {
+                continue;
+            }
+            let d = distance(tex_coords_3d, ball.xyz);
+            if (d < ball.w && d < best_ball_dist) {
+                best_ball_dist = d;
+                ball_color = vec3<f32>(0.9, 0.2, 0.2);
+                // Soft edge falloff for anti-aliased look
+                let edge = clamp((ball.w - d) / max(ball.w, 1e-6), 0.0, 1.0);
+                ball_alpha = 0.55 + 0.45 * edge;
+            }
+        }
+
+        if (ball_alpha > 0.0) {
+            overlay_color = mix(overlay_color, ball_color, ball_alpha);
         }
     }
 
     // Return the final computed color
-    return vec4<f32>(final_color, 1.0);
+    return vec4<f32>(overlay_color, 1.0);
 }

@@ -19,7 +19,7 @@ pub enum UserEvent {
     SetPanMM(usize, f32, f32), // pan in mm space
     SetAliasing(usize, bool), // set antialiasing
     LoadDataFromCTVolume(CTVolume),
-    LoadDrToPro(CTVolume, CTVolume, CTVolume, Vec<u8>, Vec<u8>), // load DR to PRO data with average dark and bright values
+    LoadDrToPro(usize, CTVolume, Vec<u8>, Vec<u8>), // load DR to PRO data with average dark and bright values
     LoadDrOverlay(CTVolume, CTVolume, f32), // stack a label overlay (from another MHA) on the DR view
     Resize(u32, u32), // width, height
     Quit,
@@ -66,6 +66,8 @@ pub enum UserEvent {
     SetMeshRotation(usize, [f32; 16]),
     SetMeshRoi(usize, f32, f32, f32, f32, f32, f32),
     SetMeshMode(usize, usize),
+    SetMeshBallEnabled(usize, bool),
+    SetBall(usize,usize, f32, f32, f32),
     SetMeshNeedleEnabled(usize, f32),
     SetMeshNeedleTrajectory(usize, u32, f32, f32, f32, f32, f32, f32, f32, f32, f32),
     SetMeshNeedlePosition(usize, u32, f32, f32, f32),
@@ -122,10 +124,10 @@ impl GLCanvas {
         }
     }
 
-    pub fn load_dr_to_pro(&self, vol_1: &CTVolume, vol_2: &CTVolume, vol_3: &CTVolume, avg_dark: Vec<u8>, avg_bright: Vec<u8>) {
+    pub fn load_dr_to_pro(&self, index: usize, vol: &CTVolume, avg_dark: Vec<u8>, avg_bright: Vec<u8>) {
         if let Err(e) = self
             .proxy
-            .send_event(UserEvent::LoadDrToPro(vol_1.clone(), vol_2.clone(), vol_3.clone(), avg_dark, avg_bright))
+            .send_event(UserEvent::LoadDrToPro(index, vol.clone(), avg_dark, avg_bright))
         {
             log::error!("Failed to send LoadDrToPro event {:?}", e);
         } else {
@@ -599,6 +601,8 @@ impl_user_event_senders_for_glcanvas! {
     set_rotation_degrees => SetRotationDeg(degrees_x: f32, degrees_y: f32),
     set_mesh_roi => SetMeshRoi(sx: f32,sy: f32, sz: f32, lx: f32, ly: f32,lz: f32),
     set_mesh_mode => SetMeshMode(mode: usize),
+    set_ball_enabled => SetMeshBallEnabled(enabled: bool),
+    set_ball => SetBall(id: usize, x: f32, y: f32, z: f32),
     set_mesh_needle_enabled => SetMeshNeedleEnabled(enabled: f32),
     set_new_needle => SetMeshNeedleTrajectory(id: u32, x: f32, y: f32, z: f32, lx: f32, ly: f32, lz: f32, r:f32, g:f32, b:f32),
     set_needle_position => SetMeshNeedlePosition(id: u32, x: f32, y: f32, z: f32),

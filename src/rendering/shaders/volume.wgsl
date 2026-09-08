@@ -79,7 +79,8 @@ struct VolumeUniforms {
     view_proj:mat4x4<f32>,
     inv_view_proj:mat4x4<f32>,
     camera_position:vec3<f32>,
-    _pad: f32,
+    ball_enabled: f32,
+    balls: array<vec4<f32>, 4>,
     volume_scale: vec3<f32>,
     _volume_scale_pad: f32,
     light_dir: vec3<f32>,
@@ -332,6 +333,7 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
 
         var tf = vec4<f32>(0.0);
         var is_needle = false;
+        var is_ball = false;
         var n = vec3<f32>(0.0);
 
         if (u_vol.needle_enabled > 0.5) {
@@ -339,9 +341,10 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
                 let needle = u_vol.needles[k];
                 let axis = normalize(needle.tip - needle.entry);
                 let inside_shaft = point_inside_needle(pos, needle.entry, needle.tip, needle.radius);
-                let inside_head = point_inside_disc(pos, needle.entry, axis, needle.radius * 2.0, needle.radius * 2.0);
+                // let inside_head = point_inside_disc(pos, needle.entry, axis, needle.radius * 2.0, needle.radius * 2.0);
 
-                if (inside_shaft || inside_head) {
+                // if (inside_shaft || inside_head) {
+                if (inside_shaft) {
                     is_needle = true;
                     let to_p = pos - needle.entry;
                     let proj = dot(to_p, axis) * axis;
@@ -357,7 +360,26 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
             }
         }
 
-        if (!is_needle) {
+        if (u_vol.ball_enabled > 0.5) {
+            for (var k: u32 = 0u; k <4u; k = k + 1u) {
+                let ball = u_vol.balls[k];
+                let center = ball.xyz;
+                let radius = ball.w;
+                let to_center = pos - center;
+                if (dot(to_center, to_center) <= radius * radius) {
+                    is_ball = true;
+                    n = normalize(to_center + vec3<f32>(1e-6));
+                    let vdir = normalize(-ray_dir);
+                    let base_color = vec3<f32>(0.9, 0.2, 0.2);
+                    let lit_color = compute_lighting(n, vdir, base_color);
+                    let alpha = 1.0 - exp(-4.0 * step_len);
+                    tf = vec4<f32>(lit_color, alpha);
+                    break;
+                }
+            }
+        }
+
+        if (!is_needle && !is_ball) {
             if (u_vol.needle_enabled > 1.5 && u_vol.needle_enabled < 2.5) {
                 let needle = u_vol.needles[u_vol.needle_index];
                 let v0 = needle.entry - needle.tip;
@@ -410,7 +432,7 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
             let vdir = normalize(-ray_dir);
             let lit_color = compute_lighting(n, vdir, tf.xyz);
 
-            let opacity_scale = select(mapped_opacity, 1.0, is_needle);
+            let opacity_scale = select(mapped_opacity, 1.0, is_needle || is_ball);
             let density = tf.a * opacity_scale * 3.0;
             let sample_alpha = 1.0 - exp(-density * step_len);
 

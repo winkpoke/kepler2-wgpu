@@ -6,7 +6,7 @@
 
 mod error_handling_tests {
     use kepler_wgpu::mesh::{
-        mesh::Mesh, BasicMeshContext, MeshRenderError, MeshView, QualityLevel,
+        mesh::Mesh, MeshRenderError, MeshView, QualityLevel,
     };
     use kepler_wgpu::rendering::mesh::mesh_view::FallbackMode;
 
