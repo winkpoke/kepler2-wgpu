@@ -12,8 +12,10 @@
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 use std::{fs::{self, File}, io, path::PathBuf};
+use uuid::Uuid;
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipWriter};
 use tokio_util::io::ReaderStream;
+use tokio::io::AsyncReadExt;
 use axum::{
     body::{to_bytes, Body, Bytes},
     extract::{Path, Query, Request, State},
@@ -30,7 +32,7 @@ use crate::server::state::ServerState;
 pub const NAV_TOKEN_ENV_VAR: &str = "OLpx9hhRTI_dnUOvyMqRncfnbotXEDPXY7p5eUrC62o";
 
 /// 默认基地址
-pub const DEFAULT_NAV_URL: &str = "http://172.18.3.17:8765";
+pub const DEFAULT_NAV_URL: &str = "http://10.20.22.19:8765";
 
 /// 远端 API 路径前缀
 pub const NAV_PATH_PREFIX: &str = "/api/navigation/v1";
@@ -91,7 +93,7 @@ impl NavState {
             drr_preview_dir: RwLock::new(PathBuf::from(DEFAULT_DRR_PREVIEW_DIR)),
         }
     }
-    
+
     /// 规范化后的IP地址
     pub async fn base(&self) -> String {
         let b = self.base_url.read().await.trim().trim_end_matches('/').to_string();
@@ -125,6 +127,22 @@ fn content_type_of(headers: &HeaderMap) -> Option<String> {
     headers.get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).map(|s| s.to_string())
 }
 
+/// 幂等键来源：Idempotency-Key 请求头优先，回退到 ?idempotency_key= 查询参数
+fn idempotency_key_of(
+    parts: &axum::http::request::Parts,
+    query: &HashMap<String, String>,
+) -> Option<String> {
+    parts
+        .headers
+        .get("Idempotency-Key")
+        .and_then(|v| v.to_str().ok())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .or_else(|| query.get("idempotency_key").map(|s| s.trim()))
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
 /// 非空 body 必须是合法 JSON，否则提前 400（输入挂载点的本地校验）
 fn validate_json_body(bytes: &Bytes) -> Result<(), HandlerError> {
     if bytes.is_empty() {
@@ -154,7 +172,15 @@ async fn relay_response(resp: reqwest::Response) -> Response {
     builder.body(Body::from(body)).unwrap_or_else(|_| StatusCode::BAD_GATEWAY.into_response())
 }
 
-/// 通用转发：发出请求并取回（状态码 + Content-Type + body 字节），不做透传封装
+/// 远端响应的透传要素：状态码 + Content-Type + Location（202 异步任务的轮询地址）+ body
+struct Relayed {
+    status: StatusCode,
+    content_type: Option<String>,
+    location: Option<String>,
+    body: Bytes,
+}
+
+/// 通用转发：发出请求并取回（状态码 + Content-Type + Location + body 字节），不做透传封装
 async fn relay_raw(
     state: &ServerState,
     method: reqwest::Method,
@@ -162,31 +188,41 @@ async fn relay_raw(
     body: Bytes,
     content_type: Option<String>,
     idempotency_key: Option<&str>,
-) -> Result<(StatusCode, Option<String>, Bytes), HandlerError> {
+) -> Result<Relayed, HandlerError> {
     let url = format!("{}{}{}", state.nav.base().await, NAV_PATH_PREFIX, path); // 拼接远端完整 URL：`{base}{/api/navigation/v1}{path}`
     let mut req = state.nav.with_auth(state.nav.client.request(method, &url)).await;
     if !body.is_empty() {
         req = req
-            .header(header::CONTENT_TYPE, content_type.unwrap_or_else(|| "application/json".into()))
+            .header(header::CONTENT_TYPE, content_type.clone().unwrap_or_else(|| "application/json".into()))
             .body(body);
-    } else if let Some(ct) = content_type {
-        req = req.header(header::CONTENT_TYPE, ct);
+    } else if let Some(ct) = &content_type {
+        req = req.header(header::CONTENT_TYPE, ct.clone());
     }
     if let Some(key) = idempotency_key {
         req = req.header("Idempotency-Key", key);
     }
     let resp = req.send().await.map_err(upstream_error)?;
     let status = StatusCode::from_u16(resp.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
-    let ct = resp
+    let content_type = resp
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
-    let bytes = resp.bytes().await.unwrap_or_default();
-    Ok((status, ct, bytes))
+    let location = resp
+        .headers()
+        .get(reqwest::header::LOCATION)
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
+    let body = resp.bytes().await.unwrap_or_default();
+    Ok(Relayed {
+        status,
+        content_type,
+        location,
+        body,
+    })
 }
 
-/// JSON 端点通用转发：方法 + 路径 + 原始 body + 原始 Content-Type（透传）
+/// JSON 端点通用转发：方法 + 路径 + 原始 body + 原始 Content-Type（透传，含 202 的 Location 头）
 async fn relay(
     state: &ServerState,
     method: reqwest::Method,
@@ -195,12 +231,17 @@ async fn relay(
     content_type: Option<String>,
     idempotency_key: Option<&str>,
 ) -> Result<Response, HandlerError> {
-    let (status, ct, bytes) = relay_raw(state, method, path, body, content_type, idempotency_key).await?;
-    let mut builder = Response::builder().status(status);
-    if let Some(ct) = ct {
+    let relayed = relay_raw(state, method, path, body, content_type, idempotency_key).await?;
+    let mut builder = Response::builder().status(relayed.status);
+    if let Some(ct) = relayed.content_type {
         builder = builder.header(header::CONTENT_TYPE, ct);
     }
-    Ok(builder.body(Body::from(bytes)).unwrap_or_else(|_| StatusCode::BAD_GATEWAY.into_response()))
+    if let Some(loc) = relayed.location {
+        builder = builder.header(header::LOCATION, loc);
+    }
+    Ok(builder
+        .body(Body::from(relayed.body))
+        .unwrap_or_else(|_| StatusCode::BAD_GATEWAY.into_response()))
 }
 
 /// 将目录递归打包成 ZIP
@@ -236,7 +277,7 @@ fn add_dir_to_zip(
         if path.is_dir() {
             let dir_name = format!("{zip_name}/");
             zip.add_directory(&dir_name, options)?;
-            add_dir_to_zip(zip, root_dir, &path, options,)?;
+            add_dir_to_zip(zip, root_dir, &path, options)?;
         } else if path.is_file() {
             log::info!("ZIP add file: {}", zip_name);
             zip.start_file(&zip_name, options)?;
@@ -338,7 +379,9 @@ pub async fn nav_prepared_ct_lookup(
     req: Request,
 ) -> Result<Response, HandlerError> {
     let (parts, body) = req.into_parts();
-    let bytes = to_bytes(body, RAW_BODY_LIMIT).await.map_err(|e| (StatusCode::BAD_REQUEST, format!("读取请求体失败: {e}")))?;
+    let bytes = to_bytes(body, RAW_BODY_LIMIT)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("读取请求体失败: {e}")))?;
     validate_json_body(&bytes)?;
     relay(&state, reqwest::Method::POST, "/prepared-ct-lookups", bytes, content_type_of(&parts.headers), None).await
 }
@@ -347,18 +390,24 @@ pub async fn nav_prepared_ct_lookup(
 #[derive(Deserialize)]
 pub struct IdempotencyQuery {
     pub idempotency_key: String,
+    /// 可选：服务器端源目录（未提供时使用 NavState.zip_path）
+    #[serde(default)]
+    pub path: Option<String>,
 }
 
-/// POST /api/nav/prepared-cts — 上传 ZIP路径，带幂等键
-pub async fn nav_prepared_ct_upload(
-    State(state): State<ServerState>,
-    Query(q): Query<IdempotencyQuery>,
+/// 通用：把服务器端目录打包成 ZIP，流式上传到远端挂载点
+/// （自动附加 Bearer 认证与 Idempotency-Key 头），透传远端响应
+async fn zip_dir_and_upload(
+    state: &ServerState,
+    source_dir: &std::path::Path,
+    remote_path: &str,
+    idempotency_key: &str,
+    zip_prefix: &str,
+    multipart: bool
 ) -> Result<Response, HandlerError> {
-    let key = q.idempotency_key;
-    let source_dir = state.nav.zip_path.clone();
-    let zip_file = source_dir.parent().unwrap_or(&source_dir).join(format!("prepared_ct_{}.zip", key));
+    let zip_file = source_dir.parent().unwrap_or(source_dir).join(format!("{zip_prefix}_{idempotency_key}.zip"));
     let zip_file_for_task = zip_file.clone();
-    let source_dir_for_task = source_dir.clone();
+    let source_dir_for_task = source_dir.to_path_buf();
 
     tokio::task::spawn_blocking(move || {
         create_zip_from_dir(&source_dir_for_task, &zip_file_for_task)
@@ -370,27 +419,45 @@ pub async fn nav_prepared_ct_upload(
         (StatusCode::INTERNAL_SERVER_ERROR, format!("创建 ZIP 失败: {e}"))
     })?;
 
-    let file = tokio::fs::File::open(&zip_file).await.map_err(|e| {(
-        StatusCode::BAD_REQUEST,
-        format!("打开 ZIP 文件失败: path={zip_file:?}, error={e}"),
-    )})?;
+    let file = tokio::fs::File::open(&zip_file).await.map_err(|e| {
+        (StatusCode::BAD_REQUEST, format!("打开 ZIP 文件失败: path={zip_file:?}, error={e}"))
+    })?;
 
-    let url = format!("{}{}/prepared-cts", state.nav.base().await, NAV_PATH_PREFIX);
+    let url = format!("{}{}{}", state.nav.base().await, NAV_PATH_PREFIX, remote_path);
     let zip_len = file.metadata().await.map_err(|e| {
-        (StatusCode::INTERNAL_SERVER_ERROR, 
-        format!("读取打包大小失败: {e}"))
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("读取打包大小失败: {e}"))
     })?.len();
-    let stream = ReaderStream::new(file);
-    let body = reqwest::Body::wrap_stream(stream);
-    let mut upstream = state.nav.client.post(&url)
-        .header(header::CONTENT_TYPE, "application/zip")
-        .header(header::CONTENT_LENGTH, zip_len)
-        .body(body);
+    let mut upstream = if multipart {
+        let boundary = format!("------------------------{}", &Uuid::new_v4().simple().to_string()[..22]);
+        let file_name = zip_file.file_name().and_then(|s| s.to_str()).unwrap_or("raw.zip").to_string();
+        let prefix = format!(
+            "--{boundary}\r\nContent-Disposition: attachment; name=\"file\"; filename=\"{file_name}\"\r\nContent-Type: application/octet-stream\r\n\r\n"
+        );
+        let suffix = format!("\r\n--{boundary}--\r\n");
+        let total_len = prefix.len() as u64 + zip_len + suffix.len() as u64;
+        let body_reader = std::io::Cursor::new(prefix.into_bytes())
+            .chain(file)
+            .chain(std::io::Cursor::new(suffix.into_bytes()));
+        state.nav.client
+            .post(&url)
+            .header(header::CONTENT_TYPE, format!("application/zip; boundary={boundary}"))
+            .header(header::CONTENT_LENGTH, total_len)
+            .body(reqwest::Body::wrap_stream(ReaderStream::new(body_reader)))
+    } else {
+        let stream = ReaderStream::new(file);
+        let body = reqwest::Body::wrap_stream(stream);
+        state.nav.client
+            .post(&url)
+            .header(header::CONTENT_TYPE, "application/zip")
+            .header(header::CONTENT_LENGTH, zip_len)
+            .body(body)
+    };
+
     upstream = state.nav.with_auth(upstream).await;
-    upstream = upstream.header("Idempotency-Key", key.clone());
+    upstream = upstream.header("Idempotency-Key", idempotency_key);
     log::info!(
-        "prepared-cts upload: url={}, zip_len={}, source_dir={:?}, zip_file={:?}, key={:?}",
-        url, zip_len, source_dir, zip_file, key
+        "{remote_path} upload: url={}, zip_len={}, source_dir={:?}, zip_file={:?}, key={:?}",
+        url,zip_len, source_dir, zip_file, idempotency_key
     );
     let resp = upstream.send().await.map_err(upstream_error)?;
     if let Err(e) = tokio::fs::remove_file(&zip_file).await {
@@ -401,7 +468,25 @@ pub async fn nav_prepared_ct_upload(
     }
     Ok(relay_response(resp).await)
 }
- 
+
+/// POST /api/nav/prepared-cts — 上传 ZIP 路径，带幂等键
+pub async fn nav_prepared_ct_upload(
+    State(state): State<ServerState>,
+    Query(q): Query<IdempotencyQuery>,
+) -> Result<Response, HandlerError> {
+    let source_dir = q
+        .path
+        .map(PathBuf::from)
+        .unwrap_or_else(|| state.nav.zip_path.clone());
+    if !source_dir.is_dir() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("目录不存在: {source_dir:?}"),
+        ));
+    }
+    zip_dir_and_upload(&state, &source_dir, "/prepared-cts", &q.idempotency_key, "prepared_ct", false).await
+}
+
 // 4. 设置配准（Registration）
 /// POST /api/nav/setup-registrations — multipart: payload(JSON) + fixed_mha(F1) + moving_mha(F2)
 pub async fn nav_setup_registration(
@@ -421,45 +506,69 @@ pub async fn nav_setup_registration(
         }
     }
 
-    let metadata_json = serde_json::to_string(&metadata).map_err(|e| {(
-        StatusCode::BAD_REQUEST,
-        format!("JSON 序列化失败: {e}"),
-    )})?;
+    let metadata_json = serde_json::to_string(&metadata)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("JSON 序列化失败: {e}")))?;
 
-    let projection_f1 = reqwest::multipart::Part::file(&projection_f1_path).await.map_err(|e| {(
-        StatusCode::INTERNAL_SERVER_ERROR,
-        format!("读取 projection-f1 失败: {:?}: {}", projection_f1_path, e),
-    )})?.mime_str("application/octet-stream").map_err(|e| {(
-        StatusCode::INTERNAL_SERVER_ERROR,
-        format!("设置 projection-f1 MIME 类型失败: {e}"),
-    )})?;
+    let projection_f1 = reqwest::multipart::Part::file(&projection_f1_path)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("读取 projection-f1 失败: {:?}: {}", projection_f1_path, e),
+            )
+        })?
+        .mime_str("application/octet-stream")
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("设置 projection-f1 MIME 类型失败: {e}"),
+            )
+        })?;
 
-    let projection_f2 = reqwest::multipart::Part::file(&projection_f2_path).await.map_err(|e| {(
-        StatusCode::INTERNAL_SERVER_ERROR,
-        format!("读取 projection-f2 失败: {:?}: {}", projection_f2_path, e),
-    )})?.mime_str("application/octet-stream").map_err(|e| {(
-        StatusCode::INTERNAL_SERVER_ERROR,
-        format!("设置 projection-f2 MIME 类型失败: {e}"),
-    )})?;
+    let projection_f2 = reqwest::multipart::Part::file(&projection_f2_path)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("读取 projection-f2 失败: {:?}: {}", projection_f2_path, e),
+            )
+        })?
+        .mime_str("application/octet-stream")
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("设置 projection-f2 MIME 类型失败: {e}"),
+            )
+        })?;
 
     let metadata_part = reqwest::multipart::Part::text(metadata_json.clone())
         .file_name("metadata.json")
         .mime_str("application/json")
-        .map_err(|e| {(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("设置 metadata MIME 类型失败: {e}"),
-        )})?;
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("设置 metadata MIME 类型失败: {e}"),
+            )
+        })?;
 
     let form = reqwest::multipart::Form::new()
         .part("metadata", metadata_part)
         .part("projection-f1", projection_f1)
         .part("projection-f2", projection_f2);
 
-    let url = format!("{}{}/setup-registrations", state.nav.base().await, NAV_PATH_PREFIX);
+    let url = format!(
+        "{}{}/setup-registrations",
+        state.nav.base().await,
+        NAV_PATH_PREFIX
+    );
     let mut upstream = state.nav.client.post(&url);
     upstream = state.nav.with_auth(upstream).await;
     upstream = upstream.header("Idempotency-Key", q.idempotency_key.clone());
-    let resp = upstream.multipart(form).send().await.map_err(upstream_error)?;
+    let resp = upstream
+        .multipart(form)
+        .send()
+        .await
+        .map_err(upstream_error)?;
     Ok(relay_response(resp).await)
 }
 
@@ -480,12 +589,31 @@ pub async fn nav_drr_preview_save(
     Path((id, frame)): Path<(String, String)>,
 ) -> Result<Response, HandlerError> {
     if frame != "F1" && frame != "F2" {
-        return Err((StatusCode::BAD_REQUEST, format!("frame 必须是 F1 或 F2，收到: {frame}")));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!("frame 必须是 F1 或 F2，收到: {frame}"),
+        ));
     }
     let remote_path = format!("/setup-registrations/{id}/drr-previews/{frame}");
-    let (status, ct, data) = relay_raw(&state, reqwest::Method::GET, &remote_path, Bytes::new(), None, None).await?;
+    let Relayed {
+        status,
+        content_type: ct,
+        body: data,
+        ..
+    } = relay_raw(
+        &state,
+        reqwest::Method::GET,
+        &remote_path,
+        Bytes::new(),
+        None,
+        None,
+    )
+    .await?;
     if !status.is_success() {
-        return Err((status, format!("远端 DRR 预览拉取失败（HTTP {status}），未落盘")));
+        return Err((
+            status,
+            format!("远端 DRR 预览拉取失败（HTTP {status}），未落盘"),
+        ));
     }
     let len = data.len();
     let dir = state.nav.drr_preview_dir.read().await.clone();
@@ -498,14 +626,26 @@ pub async fn nav_drr_preview_save(
         fs::write(&file_for_task, &data_for_task)
     })
     .await
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("落盘任务失败: {e}")))?
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("写入 DRR 预览失败: {file_path:?}: {e}")))?;
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("落盘任务失败: {e}"),
+        )
+    })?
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("写入 DRR 预览失败: {file_path:?}: {e}"),
+        )
+    })?;
     log::info!("DRR preview saved: {file_path:?} ({len} bytes, registration {id})");
     let mut builder = Response::builder().status(StatusCode::OK);
     if let Some(ct) = ct {
         builder = builder.header(header::CONTENT_TYPE, ct);
     }
-    Ok(builder.body(Body::from(data)).unwrap_or_else(|_| StatusCode::BAD_GATEWAY.into_response()))
+    Ok(builder
+        .body(Body::from(data))
+        .unwrap_or_else(|_| StatusCode::BAD_GATEWAY.into_response()))
 }
 
 // 6. 查询导航会话（Navigation Session）
@@ -527,21 +667,81 @@ pub async fn nav_finish_navigation_session(
     let (parts, body) = req.into_parts();
     let bytes = to_bytes(body, RAW_BODY_LIMIT).await.map_err(|e| (StatusCode::BAD_REQUEST, format!("读取请求体失败: {e}")))?;
     validate_json_body(&bytes)?;
-    let idem = parts.headers.get("Idempotency-Key")
-        .and_then(|v| v.to_str().ok())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .or_else(|| query.get("idempotency_key").map(|s| s.trim()))
-        .filter(|s| !s.is_empty());
-    if let Some(key) = idem {
+    let idem = idempotency_key_of(&parts, &query);
+    if let Some(key) = &idem {
         log::info!("completion relay: idempotency key={key}, session={id}");
     }
     let path = format!("/navigation-sessions/{id}/completion");
     let ct = content_type_of(&parts.headers).or_else(|| Some("application/json".into()));
-    relay(&state, reqwest::Method::POST, &path, bytes, ct, idem).await
+    relay(&state, reqwest::Method::POST, &path, bytes, ct, idem.as_deref()).await
 }
 
-// 7. 注册事件回调（Durable registration events，Navigation Computer → 本机）
+// 7. 3D 配准流程（mag_to_intraop_ct_3d）：原始采集 + 初始观察 + 异步 setup
+/// POST /api/nav/raw-acquisitions?path=<服务器端原始数据目录>&idempotency_key=<键>
+/// 把服务器端目录打包成 ZIP，流式上传到远端 /raw-acquisitions（同键重放远端幂等返回 200）
+#[derive(Deserialize)]
+pub struct RawAcquisitionQuery {
+    pub path: String,
+    pub idempotency_key: String,
+}
+pub async fn nav_raw_acquisition_upload(
+    State(state): State<ServerState>,
+    Query(q): Query<RawAcquisitionQuery>,
+) -> Result<Response, HandlerError> {
+    let source_dir = PathBuf::from(&q.path);
+    if !source_dir.is_dir() {
+        return Err((StatusCode::BAD_REQUEST, format!("目录不存在: {source_dir:?}")));
+    }
+    zip_dir_and_upload(&state, &source_dir, "/raw-acquisitions", &q.idempotency_key, "raw_acq", true).await
+}
+
+/// POST /api/nav/initial-observations — JSON 直通转发（幂等键：Idempotency-Key 头或 ?idempotency_key=）
+pub async fn nav_initial_observations(
+    State(state): State<ServerState>,
+    Query(query): Query<HashMap<String, String>>,
+    req: Request,
+) -> Result<Response, HandlerError> {
+    let (parts, body) = req.into_parts();
+    let bytes = to_bytes(body, RAW_BODY_LIMIT).await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("读取请求体失败: {e}")))?;
+    validate_json_body(&bytes)?;
+    let idem = idempotency_key_of(&parts, &query);
+    relay(&state, reqwest::Method::POST, "/initial-observations", bytes,
+        content_type_of(&parts.headers),
+        idem.as_deref(),
+    ).await
+}
+
+/// POST /api/nav/setup-registrations-3d — JSON 直通转发（method=mag_to_intraop_ct_3d，
+/// 引用 prepared_ct_id / raw_acquisition_id / initial_observations_id），透传 202 与 Location 头
+pub async fn nav_setup_registration_3d(
+    State(state): State<ServerState>,
+    Query(query): Query<HashMap<String, String>>,
+    req: Request,
+) -> Result<Response, HandlerError> {
+    let (parts, body) = req.into_parts();
+    let bytes = to_bytes(body, RAW_BODY_LIMIT)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("读取请求体失败: {e}")))?;
+    validate_json_body(&bytes)?;
+    let idem = idempotency_key_of(&parts, &query);
+    relay(&state, reqwest::Method::POST, "/setup-registrations-3d", bytes,
+        content_type_of(&parts.headers).or_else(|| Some("application/json".into())),
+        idem.as_deref(),
+    ).await
+}
+
+/// GET /api/nav/setup-registrations-3d/{id} → 远端 GET /setup-registrations-3d/{id}
+/// 轮询异步状态机：accepted → running/failed → succeeded（含 result 或 failure）
+pub async fn nav_setup_registration_3d_status(
+    State(state): State<ServerState>,
+    Path(id): Path<String>,
+) -> Result<Response, HandlerError> {
+    let path = format!("/setup-registrations-3d/{id}");
+    relay(&state, reqwest::Method::GET, &path, Bytes::new(), None, None).await
+}
+
+// 8. 注册事件回调（Durable registration events，Navigation Computer → 本机）
 /// PUT /callbacks/{session}/events/{sequence} — 有序、幂等接收，204 确认
 pub async fn nav_callback_event(
     State(state): State<ServerState>,

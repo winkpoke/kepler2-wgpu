@@ -370,7 +370,7 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
                     is_ball = true;
                     n = normalize(to_center + vec3<f32>(1e-6));
                     let vdir = normalize(-ray_dir);
-                    let base_color = vec3<f32>(0.9, 0.2, 0.2);
+                    let base_color = vec3<f32>(1.0, 0.31, 0.0);
                     let lit_color = compute_lighting(n, vdir, base_color);
                     let alpha = 1.0 - exp(-4.0 * step_len);
                     tf = vec4<f32>(lit_color, alpha);

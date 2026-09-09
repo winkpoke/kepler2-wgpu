@@ -189,6 +189,60 @@
   <div class="row"><button id="btnFinSession">结束导航会话</button></div>
 </div>
 
+<!-- 8. 上传原始磁采集（3D 流程） -->
+<div class="card">
+  <h2>8 · 上传原始采集 <span class="badge">POST /raw-acquisitions</span></h2>
+  <div class="hint">把服务器端原始数据目录打包 ZIP 上传（同幂等键重放，远端幂等返回 200）。</div>
+  <div class="row">
+    <label>服务器目录</label>
+    <input type="text" id="rawPath" placeholder="C:/data/spine_4BBs">
+    <label>幂等键</label>
+    <input type="text" id="rawIdemKey" value="raw-demo-001">
+  </div>
+  <div class="row"><button id="btnUploadRaw">上传原始采集</button></div>
+</div>
+
+<!-- 9. 上传初始观察（3D 流程） -->
+<div class="card">
+  <h2>9 · 上传初始观察 <span class="badge">POST /initial-observations</span></h2>
+  <div class="row">
+    <label>幂等键</label>
+    <input type="text" id="obsIdemKey" value="obs-demo-001">
+  </div>
+  <textarea id="obsBody">{
+  "schema_version": 1
+}</textarea>
+  <div class="row"><button id="btnUploadObs">上传初始观察</button></div>
+</div>
+
+<!-- 10. 3D 配准（mag_to_intraop_ct_3d） -->
+<div class="card">
+  <h2>10 · 3D 配准 <span class="badge">POST /setup-registrations-3d</span></h2>
+  <div class="hint">202 + Location 异步任务，状态用第 11 块轮询。</div>
+  <div class="row">
+    <label>幂等键</label>
+    <input type="text" id="reg3dIdemKey" value="setup-3d-demo-001">
+  </div>
+  <textarea id="reg3dBody">{
+  "schema_version": 1,
+  "method": "mag_to_intraop_ct_3d",
+  "prepared_ct_id": "prepared-ct-…",
+  "raw_acquisition_id": "raw-acq-…",
+  "initial_observations_id": "initial-obs-…"
+}</textarea>
+  <div class="row"><button id="btnSetup3d">提交 3D 配准</button></div>
+</div>
+
+<!-- 11. 轮询 3D 配准状态 -->
+<div class="card">
+  <h2>11 · 3D 配准状态 <span class="badge">GET /setup-registrations-3d/{id}</span></h2>
+  <div class="row">
+    <label>setup ID</label>
+    <input type="text" id="reg3dId" placeholder="setup-3d-…">
+    <button id="btnSetup3dStatus">查询状态</button>
+  </div>
+</div>
+
 <!-- 响应日志 -->
 <div class="card">
   <h2>响应日志</h2>
@@ -328,6 +382,37 @@ document.getElementById("btnSetupReg").onclick = async () => {
     console.error("设置配准失败:", error);
     alert(`设置配准失败: ${error.message}`);
   }
+};
+
+// ---------- 8-11. 3D 配准流程（raw-acquisitions / initial-observations / setup-registrations-3d） ----------
+const idemHdr = (id) => {
+  const k = document.getElementById(id).value.trim();
+  return k ? { "Idempotency-Key": k } : {};
+};
+
+document.getElementById("btnUploadRaw").onclick = () => {
+  const params = new URLSearchParams({
+    path: document.getElementById("rawPath").value.trim(),
+    idempotency_key: document.getElementById("rawIdemKey").value.trim(),
+  });
+  send("上传原始采集", "POST", `${ORIGIN}/api/nav/raw-acquisitions?${params}`);
+};
+
+document.getElementById("btnUploadObs").onclick = () =>
+  send("上传初始观察", "POST", `${ORIGIN}/api/nav/initial-observations`, {
+    headers: { ...JSON_HDR, ...idemHdr("obsIdemKey") },
+    body: document.getElementById("obsBody").value,
+  });
+
+document.getElementById("btnSetup3d").onclick = () =>
+  send("3D 配准", "POST", `${ORIGIN}/api/nav/setup-registrations-3d`, {
+    headers: { ...JSON_HDR, ...idemHdr("reg3dIdemKey") },
+    body: document.getElementById("reg3dBody").value,
+  });
+
+document.getElementById("btnSetup3dStatus").onclick = () => {
+  const id = encodeURIComponent(document.getElementById("reg3dId").value.trim());
+  if (id) send("3D 配准状态", "GET", `${ORIGIN}/api/nav/setup-registrations-3d/${id}`);
 };
 
 function rowMajorMatrixToPTM(matrix) {

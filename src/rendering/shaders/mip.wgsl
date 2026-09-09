@@ -144,7 +144,7 @@ fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end:
                 let radius = ball.w;
                 let to_center = sample_pos - center;
                 if (dot(to_center, to_center) <= radius * radius) {
-                    needle_color = vec3<f32>(0.9, 0.2, 0.2);
+                    needle_color = vec3<f32>(1.0, 0.31, 0.0);
                     break;
                 }
             }

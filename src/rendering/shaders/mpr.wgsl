@@ -260,7 +260,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             let d = distance(tex_coords_3d, ball.xyz);
             if (d < ball.w && d < best_ball_dist) {
                 best_ball_dist = d;
-                ball_color = vec3<f32>(0.9, 0.2, 0.2);
+                ball_color = vec3<f32>(1.0, 0.31, 0.0);
                 // Soft edge falloff for anti-aliased look
                 let edge = clamp((ball.w - d) / max(ball.w, 1e-6), 0.0, 1.0);
                 ball_alpha = 0.55 + 0.45 * edge;
