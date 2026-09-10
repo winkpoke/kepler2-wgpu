@@ -320,7 +320,7 @@ impl MeshView {
     /// Function-level comment: Reset the rotation angle to zero.
     /// Useful for returning to a known orientation or synchronizing multiple objects.
     pub fn reset_rotation(&mut self) {
-        self.camera.set_model_rotation_quat(Quat::IDENTITY);
+        self.camera.set_model_rotation_quat(Quat::from_xyzw(0.0, 0.0, 1.0, 0.0),);
         self.last_frame_time = Instant::now();
         log::debug!("Mesh rotation reset to identity");
     }
@@ -563,9 +563,9 @@ impl MeshView {
         Ok(())
     }
 
-    /// Mesh-only view projection that matches the DVR volume's screen mapping.
+    /// Mesh-only view projection using correct camera matrix (fixed X-axis mirror)
     fn mesh_view_projection(&self, aspect_ratio: f32) -> Mat4 {
-        Mat4::from_scale(Vec3::new(1.0, -1.0, 1.0)) * self.camera.view_projection_matrix(aspect_ratio)
+        self.camera.view_projection_matrix(aspect_ratio)
     }
 
     /// Function-level comment: Update GPU uniforms for basic mesh rendering with combined MVP matrix

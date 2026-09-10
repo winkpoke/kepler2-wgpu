@@ -184,8 +184,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 
     // Establish orthographic ray along +Z (texture coords space)
     let center = vec3<f32>(0.5, 0.5, 0.5);
-    // Note the flip in y to match screen->texture coord mapping
-    let base_ray_origin = vec3<f32>(uv.x, 1.0 - uv.y, -0.5);
+    // Remove Y flip to fix X-axis mirror; texture coords already match screen
+    let base_ray_origin = vec3<f32>(uv.x, uv.y, -0.5);
 
     let volume_ray_origin = (u_mip.rotation * vec4<f32>(base_ray_origin - center, 1.0)).xyz + center;
     let volume_ray_dir = normalize((u_mip.rotation * vec4<f32>(0.0, 0.0, 1.0, 0.0)).xyz);

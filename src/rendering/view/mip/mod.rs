@@ -274,7 +274,7 @@ impl MipView {
             dimensions: (800, 600),
             scale: 1.0,
             pan: [0.0, 0.0, 0.0],
-            rotation_quat: Quat::IDENTITY,
+            rotation_quat: Quat::from_xyzw(1.0, 0.0, 0.0, 0.0),
             content_dimensions: (1.0, 1.0),
             window_level: WindowLevel::new(),
             needle_enabled: 0.0,
@@ -294,10 +294,6 @@ impl MipView {
 
     pub fn config_mut(&mut self) -> &mut MipConfig {
         &mut self.config
-    }
-
-    pub fn build_rotation_matrix(roll: f32, yaw: f32, pitch: f32) -> Mat4 {
-        Mat4::from_rotation_z(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_x(pitch)
     }
 
     /// Set scale factor.
@@ -593,28 +589,12 @@ impl View for MipView {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::f32::consts::FRAC_PI_2;
 
     #[test]
     fn test_mip_uniforms_size() {
         let size = std::mem::size_of::<MipUniforms>();
         assert_eq!(size % 16, 0);
         assert_eq!(size, 1664);
-    }
-
-    #[test]
-    fn test_build_rotation_matrix_identity() {
-        let m = MipView::build_rotation_matrix(0.0, 0.0, 0.0);
-        assert_eq!(m, Mat4::IDENTITY);
-    }
-
-    #[test]
-    fn test_build_rotation_matrix_roll_90() {
-        let m = MipView::build_rotation_matrix(FRAC_PI_2, 0.0, 0.0);
-        let v = (m * glam::Vec4::new(1.0, 0.0, 0.0, 0.0)).truncate();
-        assert!((v.x - 0.0).abs() < 1e-5);
-        assert!((v.y - 1.0).abs() < 1e-5);
-        assert!(v.z.abs() < 1e-5);
     }
 
     #[test]

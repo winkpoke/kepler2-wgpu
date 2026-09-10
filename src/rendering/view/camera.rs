@@ -51,9 +51,9 @@ impl Camera {
 
     pub fn new() -> Self {
         let mut cam = Self {
-            position: Vec3::new(0.5, 0.5, 0.5 + Self::DEFAULT_DISTANCE),
+            position: Vec3::new(0.5, 0.5, 0.5 - Self::DEFAULT_DISTANCE),  // -Z side (foot view)
             focal_point: Vec3::new(0.5, 0.5, 0.5),
-            view_up: Vec3::Y,
+            view_up: Vec3::NEG_Y,  // +Y down = ventral up for foot view consistency
             parallel_scale: 1.0,
             fov_y: 45.0_f32.to_radians(),
             near: 0.1,
@@ -61,7 +61,7 @@ impl Camera {
             projection: ProjectionType::Orthogonal,
             zoom: 1.0,
             pan_offset: Vec2::ZERO,
-            rotation: Quat::IDENTITY,
+            rotation: Quat::from_xyzw(0.0, 0.0, 1.0, 0.0),
         };
         cam.sync_pose_from_rotation();
         cam
