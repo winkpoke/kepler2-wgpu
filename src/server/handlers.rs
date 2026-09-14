@@ -282,7 +282,7 @@ pub async fn upload_needle_params(
     log::info!("upload_needle_params: using ptm_cols={:?}", ptm.to_cols_array());
 
     let axis_transform  = Mat4::from_cols(
-        Vec4::new(1.0, 0.0, 0.0, 0.0),
+        Vec4::new(-1.0, 0.0, 0.0, 0.0),
         Vec4::new(0.0, 0.0, 1.0, 0.0),
         Vec4::new(0.0, 1.0, 0.0, 0.0),
         Vec4::new(0.0, 0.0, 0.0, 1.0),

@@ -10,57 +10,14 @@ use chrono::Local;
 use dicom_core::{value::PrimitiveValue, DataElement, VR};
 use dicom_dictionary_std::tags;
 use dicom_object::{DefaultDicomObject, FileMetaTableBuilder, InMemDicomObject};
-use sha1::{Digest, Sha1};
 use std::path::PathBuf;
 use uuid::Uuid;
 
 /// generate dicom uid
 pub fn generate_uid() -> String {
     let uuid = Uuid::new_v4();
-    let mut hasher = Sha1::new();
-    hasher.update(uuid.as_bytes());
-    let hash = hasher.finalize();
-    let hash_num = u128::from_be_bytes([
-        hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7], hash[8], hash[9],
-        hash[10], hash[11], hash[12], hash[13], hash[14], hash[15],
-    ]);
-    format!(
-        "{}.{:03}.{:06}.{:04}.{:01}.{:01}.{:01}.{:03}.{:10}.{:10}.{:06}",
-        "1.2",
-        hash_num >> 112 & 0xFFF,
-        hash_num >> 96 & 0xFF_FF_FF,
-        hash_num >> 80 & 0xFFFF,
-        hash_num >> 64 & 0xF,
-        hash_num >> 48 & 0xF, 
-        hash_num >> 32 & 0xF,
-        hash_num >> 16 & 0xFFF,
-        hash_num & 0xFF_FF_FF_FF_FF,
-        (hash_num >> 8) & 0xFF_FF_FF_FF_FF,
-        hash_num & 0xFF_FF_FF
-    )
-}
-
-/// Change DICOM UID based on a root UID
-pub fn change_dicom_uid(root: &str, twice: bool) -> String {
-    // Generate a new UUID and split the root into parts
-    let uuid = Uuid::new_v4();
     let uuid_num = uuid.as_u128();
-    let parts_root: Vec<&str> = root.split('.').collect();
-
-    let ten_digit_num = (uuid_num / 1_000_000) % 10_000_000_000;
-    let six_digit_num = uuid_num % 1_000_000;
-
-    // Combine all parts into final DICOM UID
-    if twice {
-        format!(
-            "{}.{}.{}",
-            &parts_root[0..10].join("."),
-            ten_digit_num,
-            six_digit_num
-        )
-    } else {
-        format!("{}.{}", &parts_root[0..11].join("."), six_digit_num)
-    }
+    format!("2.25.{}", uuid_num)
 }
 
 /// generate ct dicom
@@ -78,9 +35,10 @@ pub fn build_ct_dicom<S: DicomSink>(
     sink: &mut S,
 ) -> Result<String> {
     // generate series uid
-    let series_uid = change_dicom_uid(&study.uid, true);
+    let series_uid = generate_uid();
+    let frame_uid = generate_uid();
     let sop_class_uid = "1.2.840.10008.5.1.4.1.1.2"; // CT Image Storage
-    let sop_instance_uid = change_dicom_uid(&series_uid, false);
+    let sop_instance_uid = generate_uid();
 
     // generate meta
     let mut meta = FileMetaTableBuilder::new()
@@ -127,8 +85,9 @@ pub fn build_ct_dicom<S: DicomSink>(
     obj.put(DataElement::new(tags::SERIES_TIME, VR::TM, PrimitiveValue::from(now.format("%H%M%S").to_string())));
 
     // generate image info
+    obj.put(DataElement::new(tags::FRAME_OF_REFERENCE_UID, VR::UI, PrimitiveValue::from(frame_uid.clone())));
     obj.put(DataElement::new(tags::PATIENT_POSITION, VR::CS, PrimitiveValue::from(patient_position.clone())));
-    inject_image(&mut obj, &mut meta, series_uid.clone(), mha_path, data_path,slope, intercept, sink)?;
+    inject_image(&mut obj, &mut meta, mha_path, data_path,slope, intercept, sink)?;
     
     Ok(series_uid)
 }
@@ -137,7 +96,6 @@ pub fn build_ct_dicom<S: DicomSink>(
 fn inject_image<S: DicomSink>(
     obj: &mut DefaultDicomObject,
     meta: &mut FileMetaTableBuilder,
-    series_uid: String,
     mha_path: &[u8], 
     data_path: Option<&[u8]>,
     slope: f32,
@@ -179,7 +137,7 @@ fn inject_image<S: DicomSink>(
         let buf_vec: Vec<u8> = buf.to_vec();
 
         // generate sop instance uid
-        let sop_instance_uid = change_dicom_uid(&series_uid,false);
+        let sop_instance_uid = generate_uid();
 
         // calculate slice location and direction
         let dz = *spacing.get(2).unwrap_or(&1.0);

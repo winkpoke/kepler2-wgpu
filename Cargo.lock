@@ -2242,7 +2242,6 @@ dependencies = [
  "serde-wasm-bindgen",
  "serde_json",
  "serialport",
- "sha1",
  "thiserror 1.0.69",
  "tobj",
  "tokio",

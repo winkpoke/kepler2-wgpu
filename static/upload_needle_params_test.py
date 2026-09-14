@@ -41,9 +41,9 @@ def _default_port() -> int:
 
 
 PORT = _default_port()
-BASE_URL = f"http://172.18.3.30:3000"
+BASE_URL = f"http://172.18.3.27:3000"
 URL = f"{BASE_URL}/api/upload_needle_params"
-WS_URL = f"ws://172.18.3.30:3000/ws"
+WS_URL = f"ws://172.18.3.27:3000/ws"
 
 LEN_MM = 120.0            # 服务器固定针长
 TOL = 0.05                # f32 容差（坐标比对用）
@@ -229,14 +229,8 @@ def scenario1_stream(rate_hz: float = 40.0):
 def scenario1_full() -> None:
     """完整参数：全部字段 → 200，且 len_mm==120、id 回显、坐标与本地复算一致。"""
     frame_seq = 3
-    pos = (0.0, 0.0, 0.0)
-    ori = (0.0,45.0, 0.0)
-    # pos = (0.0, 0.0, -60.0)
-    # pos = (0.0, 0.0, -124.0)
-    # pos = (0.0, 0.0, -97.0)
-    # ori = (45.0, 0.0, 0.0)
-    # pos = (0.0, 0.0, -124.0)
-    # ori = (90.0, 0.0, 0.0)
+    pos = (100.0, 0.0, 0.0)
+    ori = (0.0, 0.0, 0.0)
     payload = {
         "frame_sequence": frame_seq,
         "position": {"x": pos[0], "y": pos[1], "z": pos[2], "unit": "mm"},
@@ -261,8 +255,8 @@ def scenario1_full() -> None:
     check_coord(body.get("tip"), exp_tip, "tip")
 
 if __name__ == "__main__":
-    scenario1_stream(5.0)
-    # scenario1_full()
+    # scenario1_stream(5.0)
+    scenario1_full()
     print("\n" + "=" * 64)
     print(f"汇总: PASS={_PASS}  FAIL={_FAIL}")
     print("=" * 64)
