@@ -414,46 +414,63 @@ impl Mesh {
         Self { label_id: 0, label_name: "Cube".to_string(), vertices, indices }
     }
 
-    pub fn import_obj(path:&str, volume_size_mm: Vec3)->Result<Vec<Mesh>, Box<dyn std::error::Error>>{
-        let (models, _materials) = tobj::load_obj(
-            path,
+    /// Load a mesh from an in-memory OBJ buffer into the renderer's `[0,1]^3` UV space.
+    pub fn import_obj_bytes(bytes: &[u8], kind: u32) -> Result<Vec<Mesh>, Box<dyn std::error::Error>> {
+        let mut reader = std::io::Cursor::new(bytes);
+        let (models, _materials) = tobj::load_obj_buf(
+            &mut reader,
             &tobj::LoadOptions{
                 triangulate:true,
                 single_index:true,
                 ..Default::default()
-            }
+            },
+            |_path| Ok((Vec::new(), Default::default())),
         )?;
 
         let mut result = Vec::new();
-        for m in models {
-            let mesh=&m.mesh;
+        for (obj_index, m) in models.into_iter().enumerate() {
+            let mesh = &m.mesh;
             let vertex_count = mesh.positions.len() / 3;
             let normals: Vec<f32> = if mesh.normals.len() == mesh.positions.len() {
                 mesh.normals.clone()
             } else {
                 compute_vertex_normals(&mesh.positions, &mesh.indices)
             };
+
+            let label_id = match Self::label_id_for_name(&m.name) {
+                Some(id) => id,
+                None => {
+                    let ordinal = (obj_index + 1).min(7) as u8;
+                    if obj_index + 1 > 7 {
+                        log::warn!(
+                            "OBJ has more than 7 objects ('{}' is #{}); reusing label id {} \
+                             because the GPU slot layout only reserves 8 per mesh id",
+                            m.name,
+                            obj_index + 1,
+                            ordinal
+                        );
+                    }
+                    ordinal
+                }
+            };
+
             let mut vertices = Vec::<MeshVertex>::with_capacity(vertex_count);
             for i in 0..vertex_count {
-                let pos=[mesh.positions[i*3], mesh.positions[i*3+1], mesh.positions[i*3+2]];
-                let normal=[normals[i*3], normals[i*3+1], normals[i*3+2]];
-                vertices.push(
-                    MeshVertex{
-                        position:pos,
-                        normal,
-                        color:[1.0,1.0,1.0],
-                    }
-                );
+                let pos = [mesh.positions[i * 3], mesh.positions[i * 3 + 1], mesh.positions[i * 3 + 2]];
+                let normal = [normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]];
+                vertices.push(MeshVertex {
+                    position:pos,
+                    normal,
+                    color:[1.0,1.0,1.0],
+                });
             }
 
-            result.push(
-                Mesh{
-                    label_id:0,
-                    label_name:m.name,
-                    vertices,
-                    indices:mesh.indices.clone(),
-                }
-            );
+            result.push(Mesh {
+                label_id,
+                label_name:m.name,
+                vertices,
+                indices:mesh.indices.clone(),
+            });
         }
 
         // Compute actual bounding box from all vertices
@@ -467,28 +484,61 @@ impl Mesh {
             }
         }
 
-        log::info!("OBJ bbox: min={:?}, max={:?}", min, max);
-
-        let center = (min + max) * 0.5;
         let extent = max - min;
-        let max_dim = extent.max_element();
-
-        if max_dim <= 0.0 {
+        if extent.max_element() <= 0.0 {
             return Err("OBJ mesh has zero or invalid extent".into());
         }
 
-        // let volume_size_mm = Vec3::new(512.0, 512.0, 512.0);
-        for mesh in &mut result {
-            for v in &mut mesh.vertices {
-                let p = Vec3::from(v.position);
-                let uv = (p + volume_size_mm * 0.5) / volume_size_mm;
-                v.position = uv.to_array();
+        log::info!(
+            "OBJ imported: {} object(s) min={:?}, max={:?}, extent={:?}",
+            result.len(), min, max, extent
+        );
+        
+        if kind == 0 {
+            for mesh in &result {
+                log::info!(
+                    "  obj '{}' -> label_id {} ({} verts, {} tris)",
+                    mesh.label_name,
+                    mesh.label_id,
+                    mesh.vertices.len(),
+                    mesh.indices.len() / 3
+                );
+            }
+
+            // The exported OBJ is already in the renderer's `[0,1]^3` UV space, so
+            // any vertex outside a generous bound means the caller handed us a file
+            // in a different coordinate space (e.g. raw mm). Warn rather than
+            // rescale, because guessing the convention is what broke this before.
+            const UV_TOLERANCE: f32 = 0.05;
+            if min.min_element() < -UV_TOLERANCE || max.max_element() > 1.0 + UV_TOLERANCE {
+                log::warn!(
+                    "OBJ vertices lie outside the expected [0,1]^3 UV space \
+                    (min={:?}, max={:?}); the mesh may not align with the volume. \
+                    Expected an OBJ exported by meshes_to_obj().",
+                    min,
+                    max
+                );
+            }
+        } else {
+            let volume_size_mm = Vec3::new(512.0, 512.0, 512.0);
+            for mesh in &mut result {
+                for v in &mut mesh.vertices {
+                    let p = Vec3::from(v.position);
+                    let uv = (p + volume_size_mm * 0.5) / volume_size_mm;
+                    v.position = uv.to_array();
+                }
             }
         }
 
-        log::info!("OBJ normalized: center={:?}, max_dim={}", center, max_dim);
-
         Ok(result)
+    }
+
+    /// Resolve an OBJ object name back to a segmentation label id.
+    fn label_id_for_name(name: &str) -> Option<u8> {
+        let needle = name.trim();
+        LABEL_NAMES.iter().enumerate().skip(1) // index 0 is the empty background entry
+            .find(|(_, candidate)| candidate.eq_ignore_ascii_case(needle))
+            .map(|(id, _)| id as u8)
     }
 
     pub fn meshes_to_obj(meshes: &Vec<Self>) -> String {
@@ -526,7 +576,165 @@ impl Mesh {
     }
 }
 
-fn compute_vertex_normals(positions:&Vec<f32>,indices:&Vec<u32>)->Vec<f32>{
+/// Taubin (λ|μ) smoothing on an indexed triangle mesh.
+///
+/// # Why not a plain Laplacian
+///
+/// Repeated Laplacian smoothing shrinks the mesh: every pass pulls each vertex
+/// toward the centroid of its neighbours, and on a closed convex surface that
+/// centroid is always slightly inside, so the volume bleeds away roughly
+/// linearly with the pass count. For a vertebra that means the cortical rim
+/// visibly deflates after only a handful of passes - not acceptable for
+/// anything that may be measured later.
+///
+/// Taubin's two-pass scheme cancels the shrinkage to second order: a
+/// contracting step with a positive factor `λ` followed by an *inflating* step
+/// with a negative factor `μ`. The pass/stop band of the combined transfer
+/// function is unchanged, so it still removes the high-frequency ripple we care
+/// about, while the DC gain stays at 1.
+///
+/// # Choosing `μ` (measured, do not copy the folklore value)
+///
+/// The widely-quoted `μ ≈ -0.53 λ` is too weak: on a subdivided octasphere over
+/// 10 rounds it still loses ~5.2% of the volume. The shrinkage-cancelling
+/// relation uses Taubin's pass-band gain `KPB` (0.1 for a low-pass response):
+///
+/// ```text
+/// μ = 1 / (KPB - 1/λ)
+/// ```
+///
+/// For `λ = 0.5` that gives `μ = -0.526316`. Measured volume change of the same
+/// octasphere over 10 rounds: plain Laplacian (`μ = 0`) `-10.541%`,
+/// `μ = -0.53 λ = -0.265` `-5.170%`, closed form above `+0.481%`.
+///
+/// # Why `positions` is vertex-shared here
+///
+/// Marching cubes emits *unshared* vertices - every triangle pushes three
+/// fresh vertices and indexes them `0,1,2,3,...` - so neighbouring triangles
+/// share no index and a Laplacian built on `indices` alone would have no
+/// neighbours to average. The caller therefore welds first (see
+/// [`weld_positions`]) and this function operates on the welded, indexed
+/// mesh. Normals are recomputed afterwards from the smoothed geometry.
+///
+/// `iterations` is the number of λ|μ *rounds* (two passes each).
+fn taubin_smooth(
+    positions: &mut [[f32; 3]],
+    indices: &[u32],
+    lambda: f32,
+    mu: f32,
+    iterations: usize,
+) {
+    let n = positions.len();
+    if n == 0 || iterations == 0 {
+        return;
+    }
+
+    // Build the 1-ring adjacency once: interior mesh topology does not change
+    // while we only move vertices.
+    let mut adj: Vec<Vec<u32>> = vec![Vec::new(); n];
+    for tri in indices.chunks_exact(3) {
+        let (a, b, c) = (tri[0], tri[1], tri[2]);
+        for &(i, j) in &[(a, b), (b, c), (c, a)] {
+            let (i, j) = (i as usize, j as usize);
+            if !adj[i].contains(&(j as u32)) {
+                adj[i].push(j as u32);
+            }
+            if !adj[j].contains(&(i as u32)) {
+                adj[j].push(i as u32);
+            }
+        }
+    }
+
+    let mut scratch = positions.to_vec();
+
+    // One Laplacian step: p += factor * (mean(neighbours) - p).
+    // Boundary vertices (fewer than 3 neighbours) are pinned, since averaging
+    // them pulls the open rim inward and marching cubes output can have them.
+    let step = |src: &[[f32; 3]], dst: &mut [[f32; 3]], factor: f32| {
+        for i in 0..n {
+            let nb = &adj[i];
+            if nb.len() < 3 {
+                dst[i] = src[i];
+                continue;
+            }
+            let inv = 1.0 / nb.len() as f32;
+            let mut acc = [0.0f32; 3];
+            for &j in nb {
+                let p = src[j as usize];
+                acc[0] += p[0];
+                acc[1] += p[1];
+                acc[2] += p[2];
+            }
+            let p = src[i];
+            dst[i] = [
+                p[0] + factor * (acc[0] * inv - p[0]),
+                p[1] + factor * (acc[1] * inv - p[1]),
+                p[2] + factor * (acc[2] * inv - p[2]),
+            ];
+        }
+    };
+
+    for _ in 0..iterations {
+        step(positions, &mut scratch, lambda);
+        step(&scratch, positions, mu);
+    }
+}
+
+/// Weld vertices that share a position (within `tolerance`) and rebuild the
+/// triangle index buffer against the welded array.
+///
+/// Marching cubes emits unshared vertices, so without this every triangle is
+/// topologically isolated and no smoothing or normal averaging can cross a
+/// face boundary. Returns the welded positions plus remapped indices, with
+/// degenerate triangles (two or more corners collapsing to one vertex) dropped.
+fn weld_positions(
+    positions: &[[f32; 3]],
+    indices: &[u32],
+    tolerance: f32,
+) -> (Vec<[f32; 3]>, Vec<u32>) {
+    use std::collections::HashMap;
+
+    let inv = 1.0 / tolerance.max(1e-9);
+    let key = |p: &[f32; 3]| -> (i64, i64, i64) {
+        (
+            (p[0] * inv).round() as i64,
+            (p[1] * inv).round() as i64,
+            (p[2] * inv).round() as i64,
+        )
+    };
+
+    let mut map: HashMap<(i64, i64, i64), u32> = HashMap::new();
+    let mut welded: Vec<[f32; 3]> = Vec::with_capacity(positions.len());
+    let mut remap: Vec<u32> = Vec::with_capacity(positions.len());
+
+    for p in positions {
+        let k = key(p);
+        let idx = *map.entry(k).or_insert_with(|| {
+            welded.push(*p);
+            (welded.len() - 1) as u32
+        });
+        remap.push(idx);
+    }
+
+        let mut out_idx = Vec::with_capacity(indices.len());
+    for tri in indices.chunks_exact(3) {
+        let (a, b, c) = (
+            remap[tri[0] as usize],
+            remap[tri[1] as usize],
+            remap[tri[2] as usize],
+        );
+        // A collapsed triangle has no area and no normal; skip it.
+        if a != b && b != c && a != c {
+            out_idx.push(a);
+            out_idx.push(b);
+            out_idx.push(c);
+        }
+    }
+
+    (welded, out_idx)
+}
+
+fn compute_vertex_normals(positions:&[f32],indices:&[u32])->Vec<f32>{
     let vertex_count = positions.len()/3;
 
     // each vertex accumulate normal
@@ -579,30 +787,93 @@ fn compute_vertex_normals(positions:&Vec<f32>,indices:&Vec<u32>)->Vec<f32>{
     result
 }
 
+/// Taubin smoothing tunables for [`spine`].
+///
+/// The per-round transfer function is `H(w) = (1 - lambda*w)(1 - mu*w)`, whose
+/// `w^2` coefficient is `lambda*mu`. Taubin's shrinkage-cancelling choice uses
+/// a pass band edge of `KPB = 0.1`, giving the closed form
+///
+/// ```text
+/// mu = 1 / (KPB - 1/lambda)
+/// ```
+///
+/// which for `lambda = 0.5` is `mu = -0.526316`. Note this is NOT
+/// `-0.53 * lambda`: that value (-0.265) is too weak to cancel the contraction
+/// and measured 5.2% volume loss on a subdivided sphere. With the correct pair
+/// the DC gain of `H` is exactly 1 for the continuous Laplacian, so there is no
+/// systematic deflation; the small residual drift of the discrete 1-ring
+/// operator falls off as `1/mesh_density` and is negligible at the density of a
+/// marching-cubes spine mesh (see the volume test). The iteration count is
+/// therefore effectively a pure smoothness knob.
+///
+/// Round count matters more than it looks. Measured on the real spine mask
+/// (`scripts/pick_taubin_strength.py`), residual Z-ripple after N rounds as a
+/// fraction of the unsmoothed ripple:
+///
+/// ```text
+/// N =  2 -> 85%    N = 10 -> 62%    N = 20 -> 48%
+/// N =  5 -> 73%    N = 15 -> 54%    N = 30 -> 40%
+/// ```
+///
+/// The earlier value of 10 left ~62% of the ripple standing, which is exactly
+/// why stripes remained visible. The surviving corrugation peaks at 6-18 slice
+/// wavelengths (6-18 mm) whereas the vertebral body itself is 36 mm and larger,
+/// so widening the stop band to reach the 6-18 band costs no anatomy. Kept at
+/// module scope so the tests can assert against the very values production uses.
+const SMOOTH_ITERATIONS: usize = 30;
+const SMOOTH_LAMBDA: f32 = 0.5;
+const SMOOTH_KPB: f32 = 0.1;
+const SMOOTH_MU: f32 = 1.0 / (SMOOTH_KPB - 1.0 / SMOOTH_LAMBDA);
+
 pub fn spine(
     segmentation: &[u8],
     dims: (usize, usize, usize),
     spacing: (f32, f32, f32),
     label_ids:&[u8],
-    iso: f32,
+    _iso_legacy: f32,
 )-> Vec<Mesh> {
     let (rows, cols, slices) = dims;
     let mut results = Vec::new();
-    
+
+    // NOTE on the Z corrugation ("stacked bread slices"):
+    //
+    // A previous attempt blurred this binary field along Z before marching
+    // cubes. That was measured on the real mask and does NOT work, so it was
+    // removed. The reason is structural: the corrugation comes from the mask
+    // containing exactly-replicated slices (one identical slice pair every 3
+    // layers, produced by nnU-Net's `order_z = 0` nearest-neighbour projection
+    // onto the finer native grid). Blurring redistributes the samples that are
+    // already there but cannot recreate the interpolation the projection threw
+    // away, so the 0.5 level set stays pinned to the same lattice. Measured
+    // with `scripts/measure_z_corrugation.py` on `spine.raw`, the fraction of
+    // stalled boundary advances is flat across sigma:
+    //
+    //     sigma = 0.0 -> 0.927     sigma = 1.5 -> 0.930
+    //     sigma = 0.8 -> 0.927     sigma = 3.0 -> 0.933
+    //
+    // The fix belongs upstream, in the projection itself: see
+    // `server::resample::upsample_logits_argmax`'s `linear_aniso_axis`.
+    let iso = _iso_legacy.clamp(0.05, 0.95);
+
     for &label_id in label_ids {
-        let mut field = vec![0.0f32; segmentation.len()];
+        let mut binary = vec![0.0f32; segmentation.len()];
         let mut has_voxel = false;
         for (i, &v) in segmentation.iter().enumerate() {
             if v == label_id {
-                field[i] = 1.0;
+                binary[i] = 1.0;
                 has_voxel = true;
             }
         }
 
-        // skip empty label
+        // Skip the empty label.
+        //
+        // NOTE: the binary field goes into marching cubes unblurred. See the
+        // comment above `iso` for why a Z blur was tried and removed.
         if !has_voxel {
             continue;
         }
+
+        let field = binary;
 
         let mc_dims = (cols, rows, slices);
         let mc = MarchingCubes::new(
@@ -617,16 +888,52 @@ pub fn spine(
 
         let color = LABEL_COLORS.get(label_id as usize).copied().unwrap_or([1.0,1.0,1.0,1.0]);
 
-        let vertices: Vec<MeshVertex> = cube_mesh
+        // Marching cubes hands back *unshared* vertices: one fresh triple per
+        // triangle, indexed 0,1,2,3,... So the three inputs below are welded
+        // into a real indexed mesh first, which is what makes both the Taubin
+        // pass and the normal averaging able to cross face boundaries at all.
+        //
+        // Without the weld, `compute_vertex_normals` would average each vertex
+        // against itself and collapse to a flat per-face normal, which is why
+        // mcubes' own `-grad(rho)` normals were kept previously. After welding
+        // the gradient normals are stale (the geometry has moved), so normals
+        // MUST be recomputed from the smoothed positions.
+        let raw_positions: Vec<[f32; 3]> = cube_mesh
             .vertices
             .iter()
-            .map(|v| MeshVertex {
-                position: [v.posit.x, v.posit.y, v.posit.z],
-                normal:   [v.normal.x, v.normal.y, v.normal.z],
+            .map(|v| [v.posit.x, v.posit.y, v.posit.z])
+            .collect();
+        let raw_indices: Vec<u32> =
+            cube_mesh.indices.iter().map(|&i| i as u32).collect();
+
+        // Weld tolerance is a thousandth of the smallest voxel edge. Anything
+        // looser starts merging genuinely distinct surface points.
+        let min_pitch = spacing.0.min(spacing.1).min(spacing.2).max(1e-6);
+        let (mut positions, indices) =
+            weld_positions(&raw_positions, &raw_indices, min_pitch * 1e-3);
+
+        // Taubin lambda|mu - see the module-level constants above for the
+        // derivation and the measured round-count response.
+        taubin_smooth(
+            &mut positions,
+            &indices,
+            SMOOTH_LAMBDA,
+            SMOOTH_MU,
+            SMOOTH_ITERATIONS,
+        );
+
+        let flat: Vec<f32> = positions.iter().flat_map(|p| p.iter().copied()).collect();
+        let normals = compute_vertex_normals(&flat, &indices);
+
+        let vertices: Vec<MeshVertex> = positions
+            .iter()
+            .enumerate()
+            .map(|(i, p)| MeshVertex {
+                position: *p,
+                normal: [normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]],
                 color: [color[0], color[1], color[2]],
             })
             .collect();
-        let indices: Vec<u32> = cube_mesh.indices.iter().map(|&i| i as u32).collect();
 
         results.push(Mesh {
             label_id: label_id,

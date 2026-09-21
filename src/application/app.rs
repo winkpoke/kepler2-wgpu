@@ -1186,27 +1186,40 @@ impl App {
         }
     }
 
-    pub fn set_obj_mesh(&mut self, raw: Vec<u8>, id: u32, kind: u32) {
-        let device = &self.graphics_context.graphics.device;
-        let queue = self.graphics_context.graphics.queue.clone();
-        let meshes: Vec<Mesh> = bincode::deserialize(&raw).unwrap();
-        self.current_meshes = Arc::new(meshes);
-        for view in self.app_view.layout.views_mut().iter_mut() {
-            if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
-                mesh_view.set_meshes(id, kind, device, self.current_meshes.clone());
-            }
-        }
+    pub fn set_obj_mesh(&mut self, bytes: Vec<u8>, id: u32, kind: u32) {
+        match Mesh::import_obj_bytes(&bytes, kind) {
+            Ok(meshes) => {
+                log::info!(
+                    "OBJ parsed locally: {} object(s), {} bytes",
+                    meshes.len(),
+                    bytes.len()
+                );
+                let device = &self.graphics_context.graphics.device;
+                let queue = self.graphics_context.graphics.queue.clone();
+                self.current_meshes = Arc::new(meshes);
+                for view in self.app_view.layout.views_mut().iter_mut() {
+                    if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                        mesh_view.set_meshes(id, kind, device, self.current_meshes.clone());
+                    }
+                }
 
-        for view in self.app_view.layout.views_mut().iter_mut() {
-            let (normal, d) = if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                mpr_view.set_mesh(id, kind, device, &queue, self.current_meshes.clone());
-                mpr_view.set_mesh_overlay(true, 1.0);
-                mpr_view.get_slice_plane_uv()
-            } else {
-                continue;
-            };
-            if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
-                mesh_view.set_slice_clip(&queue, normal.to_array(), d, true);
+                if kind == 1{
+                    for view in self.app_view.layout.views_mut().iter_mut() {
+                        let (normal, d) = if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                            mpr_view.set_mesh(id, kind, device, &queue, self.current_meshes.clone());
+                            mpr_view.set_mesh_overlay(true, 1.0);
+                            mpr_view.get_slice_plane_uv()
+                        } else {
+                            continue;
+                        };
+                        if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                            mesh_view.set_slice_clip(&queue, normal.to_array(), d, true);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                log::error!("Local OBJ import failed: {}", e);
             }
         }
     }

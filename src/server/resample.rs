@@ -488,12 +488,46 @@ impl AxisMap {
 /// map at `(td, th, tw)` in the same row-major order, holding the raw channel
 /// index of the winner (the caller collapses the background / "rest"
 /// channels).
+///
+/// # `linear_aniso_axis`
+///
+/// nnU-Net's `order_z = 0` exists because its own inference grid *is* the
+/// coarse grid: the network output is already at the target resolution along
+/// the anisotropic axis, so there is nothing to interpolate and nearest
+/// neighbour is a no-op. That reasoning does **not** transfer to this
+/// reprojection, where the 1.5 mm prediction is mapped onto the finer native
+/// grid (1.0 mm here). There, `order_z = 0` *generates* data by replication:
+/// the ratio `1.5/1.0 = 1.5` makes one coarse slice cover three native ones,
+/// so the mask ends up with one exactly-duplicated slice pair every three
+/// layers. Measured on the real mask (`spine.raw`, 240x512x512):
+///
+/// ```text
+/// identical slice pairs at z = 1, 4, 7, 10, 13, 16, ...   period = 3
+/// top-boundary z mod 3 histogram: {0: 400, 1: 394}
+/// ```
+///
+/// Every boundary therefore sits on a lattice of period 3, and the marching
+/// cubes surface inherits a matching Z corrugation - the "stacked bread
+/// slices" look. Gaussian-blurring the *result* cannot undo it: measured on
+/// the same mask, raising the Z blur from sigma 0 to 3.0 leaves the
+/// corrugation score unchanged (0.927 -> 0.933), because a blur redistributes
+/// existing samples but cannot recreate the interpolation the projection threw
+/// away.
+///
+/// Passing `linear_aniso_axis = true` drops the `order_z = 0` special case and
+/// interpolates that axis linearly too, which is what actually restores the
+/// sub-slice boundary position. The trade-off is deliberate and is a
+/// *rendering-quality* choice, not a segmentation-accuracy one: the argmax is
+/// still taken at the native resolution, so no extra label is invented, but a
+/// boundary that was continuous in the logits is no longer forced onto the
+/// 1.5 mm lattice.
 pub fn upsample_logits_argmax(
     logits: &[f32],
     num_classes: usize,
     (sd, sh, sw): (usize, usize, usize),
     (td, th, tw): (usize, usize, usize),
     aniso_axis: Option<usize>,
+    linear_aniso_axis: bool,
 ) -> Vec<u8> {
     assert_eq!(
         logits.len(),
@@ -505,12 +539,16 @@ pub fn upsample_logits_argmax(
     assert!(num_classes > 0 && sd > 0 && sh > 0 && sw > 0);
     assert!(td > 0 && th > 0 && tw > 0);
 
-    let zmap = AxisMap::new(sd, td, aniso_axis == Some(0));
-    let ymap = AxisMap::new(sh, th, aniso_axis == Some(1));
-    let xmap = AxisMap::new(sw, tw, aniso_axis == Some(2));
+    let nearest = |axis: usize| -> bool {
+        !linear_aniso_axis && aniso_axis == Some(axis)
+    };
+
+    let zmap = AxisMap::new(sd, td, nearest(0));
+    let ymap = AxisMap::new(sh, th, nearest(1));
+    let xmap = AxisMap::new(sw, tw, nearest(2));
     // When the axis-0 map is order-0 (or the depth is unchanged) the two
     // z-taps are the same sample, so the second set of reads is redundant.
-    let z_is_nearest = aniso_axis == Some(0) || sd == td;
+    let z_is_nearest = nearest(0) || sd == td;
 
     // In-plane bilinear weights are identical for every slice; hoist them.
     let mut w_tab = Vec::with_capacity(th * tw);
@@ -531,8 +569,9 @@ pub fn upsample_logits_argmax(
     let plane = th * tw;
 
     log::info!(
-        "[AI/Resample] logits projection {:?} -> {:?} (C={}, aniso_axis={:?})",
-        (sd, sh, sw), (td, th, tw), num_classes, aniso_axis
+        "[AI/Resample] logits projection {:?} -> {:?} (C={}, aniso_axis={:?}, \
+         aniso_overridden_to_linear={})",
+        (sd, sh, sw), (td, th, tw), num_classes, aniso_axis, linear_aniso_axis
     );
 
     let rows: Vec<Vec<u8>> = (0..td)
@@ -627,7 +666,7 @@ mod tests {
     #[test]
     fn upsample_is_identity_when_grids_match() {
         let src: Vec<f32> = (0..8).map(|v| v as f32).collect(); // (1,2,2,2)
-        let out = upsample_logits_argmax(&src, 1, (2, 2, 2), (2, 2, 2), None);
+        let out = upsample_logits_argmax(&src, 1, (2, 2, 2), (2, 2, 2), None, false);
         assert_eq!(out, vec![0u8; 8]);
     }
 
@@ -645,10 +684,86 @@ mod tests {
     #[test]
     fn upsample_linear_vs_nearest_differs() {
         let logits = vec![0.0, 1.0, 2.0, 3.0, /* ch1 */ 1.1, 1.1, 1.1, 1.1];
-        let linear = upsample_logits_argmax(&logits, 2, (1, 1, 4), (1, 1, 8), None);
-        let nearest = upsample_logits_argmax(&logits, 2, (1, 1, 4), (1, 1, 8), Some(2));
+        let linear =
+            upsample_logits_argmax(&logits, 2, (1, 1, 4), (1, 1, 8), None, false);
+        let nearest =
+            upsample_logits_argmax(&logits, 2, (1, 1, 4), (1, 1, 8), Some(2), false);
         assert_eq!(linear, vec![1, 1, 1, 0, 0, 0, 0, 0]);
         assert_eq!(nearest, vec![1, 1, 1, 1, 0, 0, 0, 0]);
+    }
+
+    /// `linear_aniso_axis = true` must override the `order_z = 0` special
+    /// case, i.e. produce the same result as if the axis were not flagged
+    /// anisotropic at all.
+    #[test]
+    fn linear_aniso_axis_override_matches_isotropic() {
+        let logits = vec![0.0, 1.0, 2.0, 3.0, /* ch1 */ 1.1, 1.1, 1.1, 1.1];
+        let overridden =
+            upsample_logits_argmax(&logits, 2, (1, 1, 4), (1, 1, 8), Some(2), true);
+        let isotropic =
+            upsample_logits_argmax(&logits, 2, (1, 1, 4), (1, 1, 8), None, false);
+        assert_eq!(overridden, isotropic);
+        // ...and it must differ from the un-overridden anisotropic path,
+        // otherwise the test would not be pinning anything.
+        let anisotropic =
+            upsample_logits_argmax(&logits, 2, (1, 1, 4), (1, 1, 8), Some(2), false);
+        assert_ne!(overridden, anisotropic);
+    }
+
+    /// Regression test for the visible Z corrugation.
+    ///
+    /// Reproduces the real geometry: a 1.5 mm coarse grid projected onto a
+    /// 1.0 mm native grid in Z (160 -> 240 output slices, ratio 1.5), with the
+    /// anisotropic axis flagged exactly as `nnunet_aniso_axis` does for the
+    /// real spine CT.
+    ///
+    /// The defect is not in the label values but in the *sampling plan*:
+    /// `order_z = 0` picks one coarse tap and reuses it across a run of output
+    /// slices, so the mask contains exactly-replicated slices. Measured on the
+    /// real mask that shows up as one identical slice pair every 3 layers
+    /// (`identical slice pairs at z = 1, 4, 7, 10, ...`), and it is what the
+    /// marching-cubes surface turns into a Z corrugation.
+    ///
+    /// We therefore assert on the tap pattern itself, which is unambiguous:
+    /// for 160 -> 240, 80 of 239 consecutive output slices must reuse their
+    /// predecessor's `(i0, i1, f)` under `order_z = 0`, and exactly zero must
+    /// under the linear override. Counting label differences instead would be
+    /// defeated by argmax quantisation and would not pin this behaviour.
+    #[test]
+    fn anisotropic_z_projection_does_not_replicate_slices() {
+        let (sd, td) = (160usize, 240usize);
+        let zmap_nearest = AxisMap::new(sd, td, true);
+        let zmap_linear = AxisMap::new(sd, td, false);
+
+        let repeated = |m: &AxisMap| -> usize {
+            (1..td)
+                .filter(|&o| {
+                    m.i0[o] == m.i0[o - 1]
+                        && m.i1[o] == m.i1[o - 1]
+                        && m.f[o] == m.f[o - 1]
+                })
+                .count()
+        };
+
+        let rep_nearest = repeated(&zmap_nearest);
+        let rep_linear = repeated(&zmap_linear);
+        eprintln!(
+            "repeated Z taps: order_z=0 -> {rep_nearest}/{}, linear -> {rep_linear}/{}",
+            td - 1,
+            td - 1
+        );
+
+        // Nearest neighbour must replicate: that is precisely the defect.
+        assert!(
+            rep_nearest > 0,
+            "order_z = 0 should replicate Z taps (the defect being fixed)"
+        );
+
+        // Linear must never reuse a tap, otherwise the override is a no-op.
+        assert_eq!(
+            rep_linear, 0,
+            "linear anisotropic Z must not reuse any source tap"
+        );
     }
 
     #[test]
@@ -659,7 +774,7 @@ mod tests {
             two[i] = -1.0;
             two[8 + i] = 1.0;
         }
-        let out = upsample_logits_argmax(&two, 2, (2, 2, 2), (4, 4, 4), None);
+        let out = upsample_logits_argmax(&two, 2, (2, 2, 2), (4, 4, 4), None, false);
         assert_eq!(out.len(), 64);
         assert!(out.iter().all(|&v| v == 1));
     }
@@ -698,8 +813,9 @@ mod tests {
         let expected = std::fs::read(&ref_path).expect("read reference fixture");
 
         // 9 channels: 0 = background, 1..7 = spine, 8 = "rest".
-        let mut got =
-            upsample_logits_argmax(&logits, 9, (160, 107, 107), (240, 512, 512), Some(0));
+        let mut got = upsample_logits_argmax(
+            &logits, 9, (160, 107, 107), (240, 512, 512), Some(0), false,
+        );
         for v in got.iter_mut() {
             if *v == 8 {
                 *v = 0;

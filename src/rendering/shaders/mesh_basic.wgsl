@@ -85,8 +85,9 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
 
     let n = normalize(in.v_normal);
     let l = normalize(-lighting.light_direction);
-    let d = abs(dot(n, l));
-    let factor = clamp(0.8 + 0.2 * d, 0.0, 1.0);
+    let d = dot(n, l);
+    let wrapped = clamp((d + 0.4) / 1.4, 0.0, 1.0);
+    let factor = clamp(0.35 + 0.65 * wrapped, 0.0, 1.0);
     let c = in.v_color * factor;
     let ndc_z = in.position.z / in.position.w;
     let depth = ndc_z * 0.5 + 0.5;

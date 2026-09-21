@@ -247,7 +247,7 @@ pub fn create_basic_mesh_pipeline_with_lighting(
             topology: PrimitiveTopology::TriangleList,
             strip_index_format: None,
             front_face: FrontFace::Ccw,
-            cull_mode: None, // Temporarily disable culling to test visibility
+            cull_mode: Some(Face::Back),
             unclipped_depth: false,
             polygon_mode: PolygonMode::Fill,
             conservative: false,

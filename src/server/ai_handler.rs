@@ -129,14 +129,14 @@ async fn run_segmentation(state: ServerState, task_id: String, req: ApiSegmentRe
                 // instead can only place boundaries on the 1.5 mm grid and
                 // costs ~0.94 Dice per foreground label on real data.
                 let mask_net = if result.num_classes > 0 && !result.logits.is_empty() {
-                    let aniso =
-                        crate::server::resample::nnunet_aniso_axis(target, spacing_zyx);
+                    let aniso = crate::server::resample::nnunet_aniso_axis(target, spacing_zyx);
                     let mut m = crate::server::resample::upsample_logits_argmax(
                         &result.logits,
                         result.num_classes,
                         rshape,
                         shape,
                         aniso,
+                        true,
                     );
                     // The ONNX export puts background in channel 0 and the
                     // collapsed "rest" class in the LAST channel; both mean

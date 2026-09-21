@@ -2551,47 +2551,27 @@
         });
 
         document.querySelector('#obj_file').addEventListener('change', async () => {
-            if (!serverConnected) {
-                alert('Import OBJ requires server connection');
-                return;
-            }
             const file = document.querySelector('#obj_file').files[0];
             if (!file) {
                 alert('Please select a OBJ file first!');
                 return;
             }
-            const x = 512.0;
-            const y = 512.0;
-            const z = 240.0;
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('x', x.toString());
-            formData.append('y', y.toString());
-            formData.append('z', z.toString());
+            if (!gl_canvas) {
+                log('GL canvas not ready; cannot import OBJ yet', 'error');
+                alert('GL canvas not ready; cannot import OBJ yet');
+                return;
+            }
+            const kind = parseInt(byId('mesh-kind').value);
+            const meshId = parseInt(byId('mesh-id').value);
             try {
-                const url = `${SERVER_URL}/api/upload_obj`;
-                const resp = await fetch(url, {
-                    method: 'POST',
-                    body:formData
-                });
-                if (!resp.ok) {
-                    throw new Error(`HTTP error! status: ${resp.status}`);
+                const wasm = await ensureWasm();
+                if (typeof wasm.read_file_as_bytes !== 'function') {
+                    throw new Error('read_file_as_bytes missing from wasm build; rebuild with wasm-pack');
                 }
-                const buffer = await resp.arrayBuffer();
-                const data = new Uint8Array(buffer);
-                log(`Import OBJ successfully`, 'success');
-                if (!gl_canvas) {
-                    log('GL canvas not ready; cannot overlay segmentation yet', 'warn');
-                    return;
-                }
-                if (!state.volume) {
-                    log('No volume on client; cannot derive mask dimensions', 'error');
-                    return;
-                }
-                const meshId = parseInt(byId('mesh-id').value);
-                const kind = parseInt(byId('mesh-kind').value);
-                gl_canvas.set_obj_mesh(data, meshId, kind);
-                log(`OBJ uploaded to GPU`, 'success');
+                const bytes = await wasm.read_file_as_bytes(file);
+                log(`OBJ read locally: ${(bytes.length / 1048576).toFixed(1)} MB`, 'info');
+                gl_canvas.set_obj_mesh(bytes, meshId, kind);
+                log('OBJ sent to GPU (parsed in wasm)', 'success');
             } catch (e) {
                 log(`Import OBJ error: ${e.message}`, 'error');
                 alert('Import OBJ error: ' + e.message);

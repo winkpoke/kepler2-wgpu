@@ -4,19 +4,16 @@ use axum::{
     http::StatusCode,
     response::IntoResponse,
     Json,
-    body::{Body, Bytes},
-    response::Response,
+    body::Bytes,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
-use bincode;
 
 use crate::server::ai_handler;
 use crate::server::ai_model::{CancelRequest, SegmentRequest, SegmentResponse};
 use crate::data::dicom::{build_ct_dicom, FsSink, generate_uid, Patient, StudySet};
 use crate::server::state::{ServerState, StoredVolume};
 use crate::server::ws::{WsMessage, WsClientCommand};
-use crate::rendering::view::mesh::Mesh;
 use glam::{Vec3, Vec4, Mat4, Mat3};
 
 /// Client WebSocket message
@@ -524,81 +521,6 @@ pub async fn build_ct_dicom_axum(
     ).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to build DICOM: {}", e)))?;
     log::info!("DICOM exported to {:?}", temp_dir);
     Ok(Json(stored))
-}
-
-pub async fn upload_obj(mut multipart: Multipart) -> Result<Response<Body>, StatusCode> {
-    let mut file_bytes = None;
-    let mut x = None;
-    let mut y = None;
-    let mut z = None;
-
-    while let Some(field) = multipart.next_field().await.map_err(|e| {
-        eprintln!("multipart error: {:?}", e);
-        StatusCode::BAD_REQUEST
-    })?{
-        let name = field.name().unwrap_or("");
-        match name {
-            "file" => {
-                file_bytes  = Some(field.bytes().await.map_err(|e| {
-                    eprintln!("read upload error: {:?}", e);
-                    StatusCode::BAD_REQUEST
-                })?);
-            }
-            "x" => {
-                let text = field.text().await.map_err(|e| {
-                    eprintln!("read field error: {:?}", e);
-                    StatusCode::BAD_REQUEST
-                })?;
-                x = Some(text.parse::<f32>().map_err(|_| StatusCode::BAD_REQUEST)?);
-            }
-            "y" => {
-                let text = field.text().await.map_err(|e| {
-                    eprintln!("read field error: {:?}", e);
-                    StatusCode::BAD_REQUEST
-                })?;
-                y = Some(text.parse::<f32>().map_err(|_| StatusCode::BAD_REQUEST)?);
-            }
-            "z" => {
-                let text = field.text().await.map_err(|e| {
-                    eprintln!("read field error: {:?}", e);
-                    StatusCode::BAD_REQUEST
-                })?;
-                z = Some(text.parse::<f32>().map_err(|_| StatusCode::BAD_REQUEST)?);
-            }
-            _ => {
-                eprintln!("Unknown field: {}", name);
-                continue;
-            }
-        }
-    }
-
-    let bytes = file_bytes.ok_or(StatusCode::BAD_REQUEST)?;
-    let volume_size_mm = Vec3::new(
-        x.ok_or(StatusCode::BAD_REQUEST)?,
-        y.ok_or(StatusCode::BAD_REQUEST)?,
-        z.ok_or(StatusCode::BAD_REQUEST)?,
-    );
-
-    let path = std::env::temp_dir().join(format!("{}.obj", uuid::Uuid::new_v4()));
-    tokio::fs::write(&path, &bytes).await.map_err(|e| {
-        eprintln!("write failed: {:?}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    let meshes = Mesh::import_obj(path.to_str().unwrap(), volume_size_mm).map_err(|e| {
-        eprintln!("OBJ import failed: {:?}", e);
-        StatusCode::BAD_REQUEST
-    })?;
-
-    let bin = bincode::serialize(&meshes).map_err(|e| {
-        eprintln!("serialize failed: {:?}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    Ok(Response::builder()
-        .header("Content-Type", "application/octet-stream")
-        .body(Body::from(bin))
-        .unwrap())
 }
 
 pub async fn start_segmentation(
