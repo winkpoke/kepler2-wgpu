@@ -28,6 +28,19 @@ async fn main() {
 async fn start_server(port: u16) {
     use kepler_wgpu::server::{create_router, ServerState};
     let state = ServerState::new();
+
+    match kepler_wgpu::server::model_manager::initialize_ai_services().await {
+        Ok(manager) => {
+            state.onnx_models.lock().replace(manager);
+            log::info!("ONNX model manager initialized");
+        }
+        Err(e) => {
+            log::warn!(
+                "ONNX model manager init failed: {e}; falling back to Python proxy only"
+            );
+        }
+    }
+
     let app = create_router(state);
     let addr = format!("0.0.0.0:{port}");
     log::info!("Starting Kepler2-WGPU in server mode");

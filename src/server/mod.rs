@@ -6,6 +6,11 @@ pub mod ai;
 pub mod ai_task;
 pub mod ai_model;
 pub mod ai_handler;
+pub mod segment_engine;
+pub mod model_manager;
+pub mod backend;
+pub mod resample;
+pub mod orientation;
 mod ws;
 
 pub use routes::create_router;

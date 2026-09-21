@@ -304,7 +304,7 @@ fn dvr_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t0: f32, t1: f32) ->
     let step_len = step_vox; 
     let max_steps = u32(max(u_vol.max_steps, 1.0));
 
-    let mapped_opacity = pow(u_vol.opacity, 6.0);
+    let mapped_opacity = pow(clamp(u_vol.opacity, 0.0, 1.0), 2.0);
 
     var accum_rgb = vec3<f32>(0.0);
     var accum_a = 0.0;

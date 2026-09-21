@@ -276,7 +276,11 @@ impl MipView {
             pan: [0.0, 0.0, 0.0],
             rotation_quat: Quat::from_xyzw(1.0, 0.0, 0.0, 0.0),
             content_dimensions: (1.0, 1.0),
-            window_level: WindowLevel::new(),
+            window_level: WindowLevel {
+                window_level: 0.0,
+                window_width: 1500.0,
+                ..Default::default()
+            },
             needle_enabled: 0.0,
             needles: Vec::new(),
             ball_enabled: false,

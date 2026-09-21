@@ -17,6 +17,9 @@ pub mod acquisition;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod server;
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod gpu;
+
 // All modules now properly organized according to the new architecture
 
 // Re-export commonly used types for backward compatibility

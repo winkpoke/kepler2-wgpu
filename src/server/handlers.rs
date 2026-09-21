@@ -42,6 +42,74 @@ pub async fn health_check(State(state): State<ServerState>) -> Json<HealthRespon
     })
 }
 
+/// Request/response for the native GPU compute smoke test.
+#[derive(serde::Deserialize)]
+pub struct GpuTestRequest {
+    pub data: Vec<f32>,
+}
+
+#[derive(serde::Serialize)]
+pub struct GpuTestResponse {
+    pub data: Vec<f32>,
+}
+
+/// POST /api/gpu/test
+///
+/// Native-only smoke test for the future `wgpu` 30 compute backend. Multiplies
+/// every input value by `2.0` on the GPU and returns the result. Returns 503 if
+/// no usable GPU / `wgpu` 30 backend is available on this host.
+pub async fn gpu_test(
+    State(state): State<ServerState>,
+    Json(req): Json<GpuTestRequest>,
+) -> Result<Json<GpuTestResponse>, (StatusCode, String)> {
+    let ctx = state.gpu.context().await
+        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, format!("GPU unavailable: {e}")))?;
+    let result = crate::gpu::run_double(&*ctx, &req.data).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("GPU compute failed: {e}")))?;
+    Ok(Json(GpuTestResponse { data: result }))
+}
+
+/// Response for the native GPU volume smoke test.
+#[derive(serde::Serialize)]
+pub struct GpuVolumeTestResponse {
+    pub voxel_count: usize,
+    pub sample: Vec<i16>,
+}
+
+/// POST /api/gpu/volume/test
+///
+/// Native-only smoke test that pushes an already-loaded `CTVolume`'s voxel data
+/// to the `wgpu` 30 compute backend **without cloning the voxel buffer** — the
+/// slice is borrowed straight out of `ServerState::ct_volume`. The bytes run
+/// through a pass-through compute shader and a small prefix is read back to prove
+/// the upload/compute/readback path. Returns 404 if no volume is loaded.
+pub async fn gpu_volume_test(
+    State(state): State<ServerState>,
+) -> Result<Json<GpuVolumeTestResponse>, (StatusCode, String)> {
+    let ctx = state.gpu.context().await
+        .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, format!("GPU unavailable: {e}")))?;
+
+    // Borrow the volume in place and upload synchronously. The `MutexGuard` is held
+    // only for the sync `prepare_volume_upload` call — never across an `.await` — so
+    // the handler future stays `Send`. The voxels are never cloned (zero-copy view).
+    let handle = {
+        let guard = state.ct_volume.lock();
+        let Some(ct) = guard.as_ref() else {
+            return Err((StatusCode::NOT_FOUND, "no CTVolume loaded".to_string()));
+        };
+        crate::gpu::prepare_volume_upload(&*ctx, ct.voxel_data())
+            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("GPU volume upload failed: {e}")))?
+    };
+
+    let result = crate::gpu::run_volume_compute(&*ctx, handle).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("GPU volume compute failed: {e}")))?;
+
+    Ok(Json(GpuVolumeTestResponse {
+        voxel_count: result.voxel_count,
+        sample: result.sample,
+    }))
+}
+
 /// WebSocket handler for real-time events
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
@@ -82,9 +150,14 @@ async fn handle_socket(mut socket: WebSocket, state: ServerState) {
                         Message::Text(text) => {
                             if let Ok(cmd) = serde_json::from_str::<WsClientCommand>(&text) {
                                 match cmd {
-                                    WsClientCommand::Segment { model, series } => {
-                                        log::info!("WS: start segment model={} series={}", model, series);
-                                        if let Err(e) = ai_handler::handle_segment(state.clone(), model, series).await {
+                                    WsClientCommand::Segment { model, series, backend } => {
+                                        log::info!("WS: start segment model={} series={} backend={:?}", model, series, backend);
+                                        let req = SegmentRequest {
+                                            series_id: series,
+                                            model,
+                                            backend,
+                                        };
+                                        if let Err(e) = ai_handler::handle_segment(state.clone(), req).await {
                                             log::error!("WS segment dispatch failed: {e}");
                                         }
                                     }
@@ -113,9 +186,6 @@ async fn handle_socket(mut socket: WebSocket, state: ServerState) {
                                     }
                                     WsClientCommand::RunCalibration => {
                                         handle_run_calibration(&mut socket, &state).await;
-                                    }
-                                    WsClientCommand::EccCancel => {
-                                        // 后面可以实现 cancellation token
                                     }
                                 }
                             } else if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
@@ -406,9 +476,6 @@ pub async fn upload_volume(
     };
 
     let count_before = state.volume_count().await;
-    // Move `stored` directly into the store instead of cloning. After this call
-    // we never read `stored` again, so a full deep clone (which would copy
-    // every byte of the MHA payload) is unnecessary.
     let series_uid = state.store_raw_volume(stored).await;
     let count_after = state.volume_count().await;
     broadcast_message(&state, WsMessage::ServerStatus {
@@ -538,9 +605,8 @@ pub async fn start_segmentation(
     State(state): State<ServerState>,
     Json(req): Json<SegmentRequest>,
 ) -> Result<Json<SegmentResponse>, (StatusCode, String)> {
-    let series = req.series_id.clone();
-    let model = req.model.clone();
-    match ai_handler::handle_segment(state.clone(), model, series).await {
+    let req_clone = req.clone();
+    match ai_handler::handle_segment(state.clone(), req_clone).await {
         Ok(resp) => Ok(Json(resp)),
         Err(e) => {
             log::error!("start_segmentation failed: {e}");

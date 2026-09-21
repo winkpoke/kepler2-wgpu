@@ -97,8 +97,9 @@ pub struct MeshView {
     /// Last frame time for rotation calculation
     last_frame_time: Instant,
     opacity: f32,
-    /// Spine mesh lighting uniforms (controls direction, color, opacity)
+    /// Spine mesh lighting uniforms (controls direction and color).
     spine_lighting: BasicLightingUniforms,
+    needle_lighting: BasicLightingUniforms,
     roi_min: [f32; 3],
     roi_max: [f32; 3],
     window_level: WindowLevel,
@@ -134,6 +135,7 @@ impl MeshView {
             last_frame_time: Instant::now(),
             opacity: 1.0,
             spine_lighting: BasicLightingUniforms::default(),
+            needle_lighting: BasicLightingUniforms::default(),
             roi_min: [0.0, 0.0, 0.0],
             roi_max: [1.0, 1.0, 1.0],
             window_level: WindowLevel {
@@ -657,10 +659,13 @@ impl MeshView {
 
         // Spine mesh uniforms and lighting. The mesh MVP carries the clip-space
         // Y flip so meshes track the DVR volume's mirrored screen mapping.
-        let mesh_vp = self.mesh_view_projection(aspect_ratio);
+        let remap = Mat4::from_translation(Vec3::splat(0.5))
+            * Mat4::from_scale(Vec3::from(volume_scale))
+            * Mat4::from_translation(Vec3::splat(-0.5));
+        let mesh_mvp = self.mesh_view_projection(aspect_ratio) * remap;
         if let Some(spine_ctx) = &self.spine_ctx {
             if let Ok(mut guard) = spine_ctx.lock() {
-                guard.update_uniforms(queue, &mesh_vp.to_cols_array_2d());
+                guard.update_uniforms(queue, &mesh_mvp.to_cols_array_2d());
                 self.spine_lighting.opacity = 0.5;
                 guard.update_lighting(queue, self.spine_lighting);
             }
@@ -669,9 +674,9 @@ impl MeshView {
         // Needle mesh uniforms and lighting (same flipped MVP as the spine)
         if let Some(needle_ctx) = &self.needle_ctx {
             if let Ok(mut guard) = needle_ctx.lock() {
-                guard.update_uniforms(queue, &mesh_vp.to_cols_array_2d());
-                self.spine_lighting.opacity = 1.0;
-                guard.update_lighting(queue, self.spine_lighting);
+                guard.update_uniforms(queue, &mesh_mvp.to_cols_array_2d());
+                self.needle_lighting.opacity = 1.0;
+                guard.update_lighting(queue, self.needle_lighting);
             }
         }
     }

@@ -9,10 +9,12 @@ use crate::server::ai::AiService;
 use crate::server::ai_task::TaskManager;
 use crate::server::handlers::{Circle, MaskData};
 use crate::server::navcomputer::NavState;
+use crate::server::segment_engine::ModelManager;
 use crate::server::ws::WsMessage;
 use crate::data::dicom::Patient;
 use crate::data::dicom::StudySet;
 use crate::data::ct_volume::CTVolume;
+use crate::gpu::GpuState;
 
 /// Represents a stored volume in server memory
 #[derive(Clone, Serialize)]
@@ -53,6 +55,7 @@ pub struct ServerState {
     pub ws_tx: broadcast::Sender<WsMessage>,
     /// Directory where uploaded MHA files 
     pub series_dir: PathBuf,
+    pub output_root: PathBuf,
     /// offset for the entry and tip points in the patient coordinate system
     pub offset: Arc<Mutex<[f32; 3]>>,
     pub ptm: Arc<Mutex<glam::Mat4>>,
@@ -64,6 +67,10 @@ pub struct ServerState {
     pub mask_data: Arc<Mutex<Option<MaskData>>>,
     /// Navigation Computer 桥接状态（基地址 + 已接收回调）
     pub nav: Arc<NavState>,
+    /// ONNX model registry
+    pub onnx_models: Arc<Mutex<Option<Arc<ModelManager>>>>,
+    /// Native GPU backend (wgpu 30) for future compute workloads. Lazily initialized.
+    pub gpu: Arc<GpuState>,
 }
 
 impl ServerState {
@@ -81,6 +88,11 @@ impl ServerState {
             log::error!("failed to create series dir {:?}: {}", series_dir, e);
         }
 
+        let output_root = PathBuf::from("C:/user/kepler_ai_output");
+        if let Err(e) = std::fs::create_dir_all(&output_root) {
+            log::error!("failed to create output root {:?}: {}", output_root, e);
+        }
+        
         Self {
             ai: Arc::new(AiService::new()),
             tasks: TaskManager::new(),
@@ -88,12 +100,15 @@ impl ServerState {
             start_time: chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
             ws_tx,
             series_dir,
+            output_root,
             offset: Arc::new(Mutex::new([0.0, 0.0, 0.0])),
             ptm: Arc::new(Mutex::new(glam::Mat4::IDENTITY)),
             ct_volume: Arc::new(Mutex::new(None)),
             mask_circle: Arc::new(Mutex::new(None)),
             mask_data: Arc::new(Mutex::new(None)),
             nav: Arc::new(NavState::new()),
+            onnx_models: Arc::new(Mutex::new(None)),
+            gpu: Arc::new(GpuState::new()),
         }
     }
 

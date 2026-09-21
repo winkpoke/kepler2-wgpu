@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use crate::server::handlers::{Circle, CalibrationResult};
+use crate::server::ai_model::BackendPreference;
 
 /// WebSocket message types sent from server to client.
 /// 服务器返回 / 推送给客户端的消息
@@ -112,6 +113,8 @@ pub enum WsClientCommand {
     Segment {
         model: String,
         series: String,
+        #[serde(default)]
+        backend: BackendPreference,
     },
     /// Cancel an in-flight segmentation task.
     #[serde(rename = "segment_cancel")]
@@ -134,5 +137,4 @@ pub enum WsClientCommand {
         circle: Circle,
     },
     RunCalibration,
-    EccCancel,
 }

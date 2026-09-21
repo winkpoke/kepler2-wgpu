@@ -36,3 +36,12 @@ yarn-debug.log*
 yarn-error.log*
 
 coverage/
+
+# AI agent workspace (memory notes, verify scripts, fixtures).
+# Keep this ignored so `git clean -fd` cannot wipe it.
+.workbuddy/
+
+# Local .git backups created during repository recovery. Never commit these.
+.git.bak-*/
+.git.bak*/
+models/totalsegmentator.onnx

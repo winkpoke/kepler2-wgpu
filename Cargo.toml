@@ -1,6 +1,6 @@
 [package]
 name = "kepler-wgpu"
-version = "0.16.0"
+version = "0.17.0"
 edition = "2021"
 
 [package.metadata.wasm-pack.profile.release]
@@ -10,75 +10,91 @@ wasm-opt = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-winit = { version = "0.29.15", features = ["rwh_05"] }
-env_logger = "0.11.5"
+# Runtime / utility
 log = "0.4"
-wgpu = "23.0.0"
-pollster = "0.4.0"
-bytemuck = { version = "1.16", features = [ "derive" ] }
+env_logger = "0.11"
 cfg-if = "1"
+anyhow = "1"
+thiserror = "1"
 num = "0.4"
+num-traits = "0.2"
+byteorder = "1"
+hex = "0.4"
+paste = "1"
+once_cell = "1"
+async-lock = "3"
+async-trait = "0.1"
+futures = "0.3"
+# Math / memory
 glam = { version = "0.30", features = ["bytemuck"] }
-anyhow = "1.0"
+bytemuck = { version = "1.16", features = ["derive"] }
+half = "2"
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+bincode = "1.3"
+# Time / ID
+chrono = "0.4"
+uuid = { version = "1.18", default-features = false, features = ["v4"] }
+# DICOM
 dicom-object = "0.8.2"
 dicom-core = "0.8.2"
 dicom-dictionary-std = "0.8"
+# Array / image
 ndarray = "0.15"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-uuid = { version = "1.18", default-features = false, features = ["v4"] }
-chrono = "0.4"
-byteorder = "1"
-futures = "0.3"
-wasm-bindgen-futures = "0.4.30"
-paste = "1.0"
-once_cell = "1.7"    # used for singleton pattern
-async-lock = "3.4.1"
-num-traits = "0.2.19"
-half = "2"
-thiserror = "1.0"
-async-trait = "0.1"
-crossbeam-channel = "0.5"
-hex = "0.4"
+# Window / input abstraction
+winit = { version = "0.29.15", features = ["rwh_05"] }
+# Data / geometry / mesh
 mcubes = "0.1"
 lin_alg = "1.3"
 tobj = "4"
-bincode = "1.3"
-
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-axum = { version = "0.7", features = ["ws", "multipart"] }
-http-body-util = "0.1.3"
-tower = { version = "0.4", features = ["util"] }
-tower-http = { version = "0.5", features = ["fs", "trace", "cors"] }
-serialport = "4.3"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["fmt"] }
-uuid = { version = "1.18.1", features = ["rng-getrandom"] }
-tokio = { version = "1.47.1", features = ["full"] }
-tokio-serial = "5"
-rayon = "1.11.0"
-parking_lot = "0.12"
-zip = "4"
-reqwest = { version = "0.12", features = ["json", "rustls-tls", "multipart", "stream"] }
-base64 = "0.22"
-tokio-util = { version = "0.7", features = ["io"] }
-walkdir = "2"
+# GPU
+wgpu = "23.0.0"
 
 [dependencies.image]
 version = "0.25.2"
 default-features = false
 features = ["png", "jpeg"]
 
-# support the web
-# the other regular dependencies...
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+# Async runtime / server
+tokio = { version = "1.47.1", features = ["full", "process"] }
+axum = { version = "0.7", features = ["ws", "multipart"] }
+# HTTP
+http-body-util = "0.1.3"
+tower = { version = "0.4", features = ["util"] }
+tower-http = { version = "0.5", features = ["fs", "trace", "cors"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "multipart", "stream"] }
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt"] }
+# Serial / device
+serialport = "4.3"
+tokio-serial = "5"
+# Parallel / synchronization
+rayon = "1.11.0"
+parking_lot = "0.12"
+crossbeam-channel = "0.5"
+# File / archive
+zip = "4"
+walkdir = "2"
+tokio-util = { version = "0.7", features = ["io"] }
+# Native-only utilities
+base64 = "0.22"
+ort = { version = "2.0.0-rc.4", features = ["ndarray", "download-binaries", "directml"] }
+wgpu30 = { package = "wgpu", version = "30", default-features = false, features = ["vulkan", "metal", "gles", "wgsl"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+# GPU
+wgpu = { version = "23.0", features = ["webgl"] }
+# WASM bindings
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4.30"
+serde-wasm-bindgen = "0.6"
+# WASM logging / panic
 console_error_panic_hook = "0.1.6"
 console_log = "1.0"
-wgpu = { version = "23.0", features = ["webgl"]}
-wasm-bindgen = "0.2"
-serde-wasm-bindgen = "0.6"
-wasm-bindgen-futures = "0.4.30"
+# Browser
 web-sys = { version = "0.3", features = [
     "Document",
     "Window",
@@ -89,8 +105,7 @@ web-sys = { version = "0.3", features = [
     "console"
  ]}
 js-sys = "0.3.22"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1.0"
+# WASM UUID / random
 uuid = { version = "1.18.1", features = ["js"] }
 getrandom = { version = "0.2", features = ["js"] }
 
@@ -102,7 +117,6 @@ naga = { version = "22", features = ["wgsl-in"] }
 quickcheck = "1.0"
 
 [features]
-# Default features remain empty
 default = []
 trace-logging = []
 

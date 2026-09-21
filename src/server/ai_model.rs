@@ -4,11 +4,36 @@ use std::collections::HashMap;
 /// Body for `POST /api/segment`.
 ///
 /// `series_id` is the volume id uploaded via `/api/volumes/upload`; `model`
-/// is the AI model name (e.g. `totalsegmentator`).
+/// is the AI model name (e.g. `totalsegmentator`). `backend` is an optional
+/// pin so ONNX and the embedded Python nnU-Net reference can be compared
+/// head-to-head on the same CT volume. It defaults to `Auto`, which keeps
+/// the historical behaviour (ONNX when a local `.onnx` exists, otherwise
+/// the embedded Python backend).
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SegmentRequest {
     pub series_id: String,
     pub model: String,
+    /// Explicit backend pin. Defaults to `Auto` (see [`BackendPreference`]).
+    #[serde(default)]
+    pub backend: BackendPreference,
+}
+
+/// Which inference backend should handle a `/api/segment` request.
+///
+/// * `Auto`   — historical behaviour: ONNX if `models/{model}.onnx` exists,
+///   otherwise the embedded Python nnU-Net reference.
+/// * `Onnx`   — force the ONNX path (errors if no local `.onnx`).
+/// * `Python` — force the embedded Python nnU-Net reference
+///
+/// The three values serialize as the lowercase strings `auto` / `onnx` /
+/// `python`, so they can be sent directly from a JSON body or a curl call.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum BackendPreference {
+    #[default]
+    Auto,
+    Onnx,
+    Python,
 }
 
 /// Response for `POST /api/segment`. Returned synchronously after the task

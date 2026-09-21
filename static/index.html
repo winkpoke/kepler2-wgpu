@@ -885,6 +885,12 @@
                             <option value="totalsegmentator">TotalSegmentator</option>
                         </select>
                         <span id="seg-series" style="color:#666;font-size:11px">no series</span>
+                        <span class="needle-label" style="margin-left:8px">Backend</span>
+                        <select id="seg-backend" title="Inference backend">
+                            <option value="auto" selected>auto</option>
+                            <option value="onnx">onnx</option>
+                            <option value="python">python</option>
+                        </select>
                         <button id="seg-run" class="btn btn-primary">Segment</button>
                     </div>
                 </div>
@@ -2202,6 +2208,7 @@
         const segEls = {
             run:        byId('seg-run'),
             model:      byId('seg-model'),
+            backend:    byId('seg-backend'),
             series:     byId('seg-series'),
             status:     byId('seg-status'),
             progressFill: byId('seg-progress-fill'),
@@ -2449,9 +2456,6 @@
             log(`Segmentation failed: ${msg.message}`, 'error');
         }
 
-        // Fetch the raw mask bytes for a completed task via HTTP.
-        // The bytes are stored in `seg.raw`; the actual GPU upload is the
-        // responsibility of the (future) shader-overlay step.
         async function downloadSegmentationMask(taskId) {
             try {
                 const resp = await fetch(`${SERVER_URL}/api/segment/result/${taskId}/raw`);
@@ -2487,10 +2491,10 @@
                 return;
             }
             const model = segEls.model.value;
-            // Optimistic UI: flip to running before the server round-trips.
+            const backend = segEls.backend.value;
             setSegStatus('starting…', 'running');
             setSegRunEnabled(false);
-            const ok = sendWs({ type: 'segment', model, series });
+            const ok = sendWs({ type: 'segment', model, series, backend });
             if (!ok) {
                 setSegStatus('idle', '');
                 setSegRunEnabled(true);
@@ -3279,6 +3283,8 @@
                     series_id = item.label;
                     let vol = repo.generate_ct_volume(series_id);
                     state.volume = vol;
+                    const mhaBytes = vol.export_mha();
+                    state.mhx = new File([mhaBytes], `${series_id}.mha`);
                     uploadToServer({
                         slope: 1.0,
                         intercept: 0.0,

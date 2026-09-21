@@ -178,14 +178,12 @@ fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end:
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    // pan/scale centered at 0.5
-    let scale = max(u_mip.scale * 1.5, 0.0001);
+    let scale = max(u_mip.scale * 1.0, 0.0001);
     let uv = (in.tex_coords - vec2<f32>(0.5)) * scale + vec2<f32>(0.5) + vec2<f32>(u_mip.pan_x, u_mip.pan_y);
 
     // Establish orthographic ray along +Z (texture coords space)
     let center = vec3<f32>(0.5, 0.5, 0.5);
-    // Remove Y flip to fix X-axis mirror; texture coords already match screen
-    let base_ray_origin = vec3<f32>(uv.x, uv.y, -0.5);
+    let base_ray_origin = vec3<f32>(uv.x, uv.y, 0.5);
 
     let volume_ray_origin = (u_mip.rotation * vec4<f32>(base_ray_origin - center, 1.0)).xyz + center;
     let volume_ray_dir = normalize((u_mip.rotation * vec4<f32>(0.0, 0.0, 1.0, 0.0)).xyz);
