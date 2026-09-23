@@ -1,5 +1,11 @@
 # Regression Testing Guide
 
+> ⚠️ **Status check (2026-09-23)**: this guide references `tests/regression_tests.md` and
+> `scripts/update_regression_tests.sh`, **neither of which exists**. The real suite is
+> `tests/regression_tests.rs`, and `scripts/` currently holds only
+> `check_doc_code_sync.py` and `export_totalsegmentator_onnx.py`. Run `ls tests/ scripts/`
+> before trusting a path in this document.
+
 ## Overview
 
 Regression tests prevent bug recurrence by adding a test case for each bug fix. This guide defines the process for creating, naming, and maintaining regression tests in the Kepler2-WGPU medical imaging codebase.

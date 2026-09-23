@@ -1,5 +1,10 @@
 # GPU Testing Strategy
 
+> ⚠️ **Status check (2026-09-23)**: some test files named below are **planned, not created** —
+> `tests/gpu_offline_tests.rs` and `tests/gpu_native_tests.rs` do not exist. The GPU test that
+> does exist is `tests/gpu_safety_tests.rs` (plus `tests/gpu_safety_tests.rs.skip`). Run
+> `ls tests/` before trusting any path in this document.
+
 ## Overview
 
 GPU code in Kepler2-WGPU (WebGPU/wgpu-native) presents unique testing challenges due to:

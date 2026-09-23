@@ -12,18 +12,30 @@ Scope: `src/rendering/view/mesh/*`, `src/rendering/view/mip/*`, `src/rendering/v
 
 Today, every needle in the project is rendered as a **procedural cylinder**:
 
-- `MeshUniforms.needles[i] = { entry, tip, radius, id, color }` ([mesh.rs:14-32](file:///c:/Users/admin/Documents/GIT/me/dev/kepler2-wgpu/src/rendering/view/mesh/mesh.rs#L14-L32))
-- `mesh.wgsl::point_inside_needle` raymarches a finite cylinder along `entry→tip` ([mesh.wgsl:121-136](file:///c:/Users/admin/Documents/GIT/me/dev/kepler2-wgpu/src/rendering/shaders/mesh.wgsl#L121-L136))
-- `mip.wgsl::point_inside_needle` does the same for MIP ([mip.wgsl:104-118](file:///c:/Users/admin/Documents/GIT/me/dev/kepler2-wgpu/src/rendering/shaders/mip.wgsl#L104-L118))
-- `mpr.wgsl` projects the segment orthogonally to the slice plane with `distance_point_to_segment_3d` ([mpr.wgsl:179-194](file:///c:/Users/admin/Documents/GIT/me/dev/kepler2-wgpu/src/rendering/shaders/mpr.wgsl#L179-L194))
+- `MeshUniforms.needles[i] = { entry, tip, radius, id, color }` ([mesh.rs:14-32](../../src/rendering/view/mesh/mesh.rs#L14-L32))
+- `mesh_basic.wgsl::point_inside_needle` raymarches a finite cylinder along `entry→tip` ([mesh_basic.wgsl](../../src/rendering/shaders/mesh_basic.wgsl))
+- `mip.wgsl::point_inside_needle` does the same for MIP ([mip.wgsl:104-118](../../src/rendering/shaders/mip.wgsl#L104-L118))
+- `mpr.wgsl` projects the segment orthogonally to the slice plane with `distance_point_to_segment_3d` ([mpr.wgsl:179-194](../../src/rendering/shaders/mpr.wgsl#L179-L194))
 
 This is fast and deterministic, but the **shape is fixed**: any variation (bevelled tip, curved shaft, trocar pattern, asymmetric hub, multi-lumen cannula) is impossible to express. The team needs users to be able to import an OBJ of a real instrument (e.g. a specific biopsy needle model) and have that geometry drive the visual.
 
 A high-level architecture for OBJ loading is already written down in
-[obj-loading-and-rendering-architecture.md](file:///c:/Users/admin/Documents/GIT/me/dev/kepler2-wgpu/doc/rendering/obj-loading-and-rendering-architecture.md),
+[obj-loading-and-rendering-architecture.md](obj-loading-and-rendering-architecture.md),
 but **no parser/loader is implemented** in the tree yet (no `tobj` crate in `Cargo.toml`,
 no `src/rendering/mesh/obj_*.rs`). This proposal adopts that design and extends it specifically
 for the needle use case.
+
+> ⚠️ **Implementation status (2026-09-23)**: the OBJ path has since **landed**, so the
+> "current state" described below is historical.
+> - `tobj = "4"` is now in `Cargo.toml`; `mesh.rs` provides `import_obj`, `import_obj_bytes`,
+>   `meshes_to_obj`, `meshes_to_obj_split`, `write_obj_body`.
+> - `MeshUniforms` was renamed; the live type is **`NeedleUniform`** (`src/rendering/view/mod.rs`),
+>   and its `tip` field is now **`dir`** (normalized direction).
+> - The mesh shader is `src/rendering/shaders/mesh_basic.wgsl` (there is no `mesh.wgsl`).
+> - `SetMeshNeedleShape` still does **not** exist — the real `UserEvent` variants are
+>   `SetMeshNeedleAngle` / `Position` / `Radius` / `Trajectory` / `Enabled`.
+> - The proposed `src/rendering/mesh/obj_*.rs` layout was not used; code lives under
+>   `src/rendering/view/mesh/`.
 
 ## 2. Goals & Non-Goals
 
@@ -187,7 +199,7 @@ The `mesh.wgsl` fullscreen-quad raymarcher cannot rasterize arbitrary triangles.
 
 - New pipeline: `create_needle_mesh_pipeline(device, ...)` (depth = `CompareFunction::Less`).
 - One `MultiMeshContext` per needle, or a single batched context (one slot per active needle).
-  Re-use the pattern already proven by spine meshes ([basic_mesh_context.rs:221-348](file:///c:/Users/admin/Documents/GIT/me/dev/kepler2-wgpu/src/rendering/view/mesh/basic_mesh_context.rs#L221-L348)).
+  Re-use the pattern already proven by spine meshes ([basic_mesh_context.rs:221-348](../../src/rendering/view/mesh/basic_mesh_context.rs#L221-L348)).
 - Each frame, for each active needle, update MVP = `view_proj * needle_model(id)`.
 - Vertex shader: apply the model matrix; pass UV-space position to fragment.
 - Fragment shader: shade with the existing `compute_lighting` helper; tint by `NeedleUniform.color`.

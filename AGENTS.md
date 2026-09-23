@@ -64,7 +64,10 @@ cargo check                                   # Type check
 - Never use `tokio` in WASM modules
 - Use `KeplerResult<T>` for error handling
 - Use crate-level `log` macros (info/warn/error/debug)
-- Coordinate systems: World, Screen, Voxel, Base (use `glam` for math)
+- Coordinate systems: World / Screen / Voxel / Base. **Only `Base` is a real type**
+  (`src/core/coord/base.rs`: `{ label: String, matrix: Mat4 }`); World/Screen/Voxel are
+  conceptual spaces carried by `glam` matrices, there are no `WorldCoord`/`ScreenCoord`/
+  `VoxelCoord` wrapper types. Use `glam` for all math.
 - Recreate pipelines when surface format changes
 - MIP supports MIP/MinIP/AvgIP projection modes (GPU `mode` uniform)
 
@@ -73,9 +76,12 @@ cargo check                                   # Type check
 - Error types: `src/core/error.rs`
 - CT volumes: `src/data/ct_volume.rs`
 - App state: `src/application/app.rs`
-- GPU init: `src/rendering/core/graphics.rs`
+- GPU init (renderer, wgpu 23): `src/rendering/core/graphics.rs`
+- GPU compute backend (native-only, wgpu 30 `wgpu30` alias): `src/gpu/` — mounted on
+  `ServerState.gpu`, NOT part of the render stack. See `src/gpu/mod.rs` header.
+- HTTP server (native-only): `src/server/` (axum, `routes.rs` + `handlers.rs`)
 - Acquisition: `src/acquisition/remedy.rs` (protocol + WASM bindings)
-- Web UI: `static/remedy.html` (Web Serial interface)
+- Web UI: `static/index.html` (main), `static/remedy.html` (Web Serial interface)
 
 ## Getting Started
 

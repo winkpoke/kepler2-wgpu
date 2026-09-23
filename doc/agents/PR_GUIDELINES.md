@@ -144,24 +144,30 @@ Closes #123
 ### Feature PR
 
 ```
-feat(rendering): add isosurface extraction for mesh views
+feat(rendering): add <capability> for mesh views
 
 ## Summary
-Added isosurface extraction capability for 3D mesh rendering of CT volumes.
+One or two sentences on what changed and why.
 
 ## Changes
-- Implemented Marching Cubes algorithm in `src/rendering/mesh/isosurface.rs`
-- Added `MeshView::set_isovalue()` method
-- Added UI controls for isovalue adjustment
-- Performance: optimized with lookup tables
+- Implemented `<algorithm>` in `<path/under/src>`
+- Added `<public method>` on `<type>`
+- Added UI controls for `<parameter>`
+- Performance: `<measured impact>`
+
+> Formatting note: keep the section order `Summary → Changes → Type → Testing` and keep paths
+> relative to the repo root. Use placeholders rather than inventing paths — a stale path in an
+> example still gets copy-pasted. (For reference, marching-cubes extraction lives in
+> `src/rendering/view/mesh/mesh.rs` via the `mcubes` crate; there is no
+> `src/rendering/mesh/isosurface.rs`.)
 
 ## Type
 - [x] New feature
 
 ## Testing
-- Unit tests for isosurface extraction
+- Unit tests for `<new logic>`
 - Visual verification with sample DICOM datasets
-- Performance profiling: < 100ms for 512^3 volumes
+- Performance profiling: `<target>`
 
 ## Checklist
 - [x] Tests pass locally
