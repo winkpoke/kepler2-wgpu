@@ -443,11 +443,8 @@ impl Mesh {
                     let ordinal = (obj_index + 1).min(7) as u8;
                     if obj_index + 1 > 7 {
                         log::warn!(
-                            "OBJ has more than 7 objects ('{}' is #{}); reusing label id {} \
-                             because the GPU slot layout only reserves 8 per mesh id",
-                            m.name,
-                            obj_index + 1,
-                            ordinal
+                            "OBJ has more than 7 objects ('{}' is #{}); reusing label id {} because the GPU slot layout only reserves 8 per mesh id",
+                            m.name, obj_index + 1, ordinal
                         );
                     }
                     ordinal
@@ -505,10 +502,6 @@ impl Mesh {
                 );
             }
 
-            // The exported OBJ is already in the renderer's `[0,1]^3` UV space, so
-            // any vertex outside a generous bound means the caller handed us a file
-            // in a different coordinate space (e.g. raw mm). Warn rather than
-            // rescale, because guessing the convention is what broke this before.
             const UV_TOLERANCE: f32 = 0.05;
             if min.min_element() < -UV_TOLERANCE || max.max_element() > 1.0 + UV_TOLERANCE {
                 log::warn!(
@@ -541,35 +534,65 @@ impl Mesh {
             .map(|(id, _)| id as u8)
     }
 
+    /// Serialize a single mesh as a standalone OBJ body (no `o` header).
+    fn write_obj_body(obj: &mut String, mesh: &Self, offset: u32) {
+        for v in &mesh.vertices {
+            obj.push_str(&format!(
+                "v {} {} {}\n",
+                v.position[0], v.position[1], v.position[2]
+            ));
+        }
+        for v in &mesh.vertices {
+            obj.push_str(&format!(
+                "vn {} {} {}\n",
+                v.normal[0], v.normal[1], v.normal[2]
+            ));
+        }
+        for tri in mesh.indices.chunks(3) {
+            if tri.len() < 3 {
+                continue;
+            }
+            obj.push_str(&format!(
+                "f {}//{} {}//{} {}//{}\n",
+                tri[0] + 1 + offset, tri[0] + 1 + offset,
+                tri[1] + 1 + offset, tri[1] + 1 + offset,
+                tri[2] + 1 + offset, tri[2] + 1 + offset,
+            ));
+        }
+    }
+
+    /// Serialize one mesh as a **complete, standalone** OBJ document.
+    ///
+    /// Used by the per-label ("split") export: each vertebra gets its own file
+    /// whose vertex indices start at 1, so the file opens correctly in any
+    /// viewer that assumes a single object. The `o` line is still written so
+    /// the name survives a round trip through [`Self::import_obj`].
+    pub fn mesh_to_obj_single(mesh: &Self) -> String {
+        let mut obj = format!("o {}\n", mesh.label_name);
+        Self::write_obj_body(&mut obj, mesh, 0);
+        obj
+    }
+
+    /// Split a mesh list into one standalone OBJ document per object.
+    pub fn meshes_to_obj_split(meshes: &Vec<Self>) -> Vec<(String, String)> {
+        meshes.iter()
+            .filter(|m| !m.indices.is_empty() && !m.vertices.is_empty())
+            .map(|m| {
+                let stem = if m.label_name.trim().is_empty() {
+                    format!("label_{}", m.label_id)
+                } else {
+                    m.label_name.trim().to_string()
+                };
+                (stem, Self::mesh_to_obj_single(m))
+            }).collect()
+    }
+
     pub fn meshes_to_obj(meshes: &Vec<Self>) -> String {
         let mut obj = String::new();
         let mut offset = 0;
         for mesh in meshes {
             obj.push_str(&format!("o {}\n", mesh.label_name));
-            for v in &mesh.vertices {
-                obj.push_str(&format!(
-                    "v {} {} {}\n",
-                    v.position[0],
-                    v.position[1],
-                    v.position[2],
-                ));
-            }
-            for v in &mesh.vertices {
-                obj.push_str(&format!(
-                    "vn {} {} {}\n",
-                    v.normal[0],
-                    v.normal[1],
-                    v.normal[2],
-                ));
-            }
-            for tri in mesh.indices.chunks(3) {
-                obj.push_str(&format!(
-                    "f {}//{} {}//{} {}//{}\n",
-                    tri[0]+1+offset, tri[0]+1+offset,
-                    tri[1]+1+offset, tri[1]+1+offset,
-                    tri[2]+1+offset, tri[2]+1+offset,
-                ));
-            }
+            Self::write_obj_body(&mut obj, mesh, offset);
             offset += mesh.vertices.len() as u32;
         }
         obj
@@ -687,11 +710,7 @@ fn taubin_smooth(
 /// topologically isolated and no smoothing or normal averaging can cross a
 /// face boundary. Returns the welded positions plus remapped indices, with
 /// degenerate triangles (two or more corners collapsing to one vertex) dropped.
-fn weld_positions(
-    positions: &[[f32; 3]],
-    indices: &[u32],
-    tolerance: f32,
-) -> (Vec<[f32; 3]>, Vec<u32>) {
+fn weld_positions(positions: &[[f32; 3]], indices: &[u32], tolerance: f32) -> (Vec<[f32; 3]>, Vec<u32>) {
     use std::collections::HashMap;
 
     let inv = 1.0 / tolerance.max(1e-9);
@@ -716,7 +735,7 @@ fn weld_positions(
         remap.push(idx);
     }
 
-        let mut out_idx = Vec::with_capacity(indices.len());
+    let mut out_idx = Vec::with_capacity(indices.len());
     for tri in indices.chunks_exact(3) {
         let (a, b, c) = (
             remap[tri[0] as usize],
@@ -820,7 +839,7 @@ fn compute_vertex_normals(positions:&[f32],indices:&[u32])->Vec<f32>{
 /// wavelengths (6-18 mm) whereas the vertebral body itself is 36 mm and larger,
 /// so widening the stop band to reach the 6-18 band costs no anatomy. Kept at
 /// module scope so the tests can assert against the very values production uses.
-const SMOOTH_ITERATIONS: usize = 30;
+const SMOOTH_ITERATIONS: usize = 40;
 const SMOOTH_LAMBDA: f32 = 0.5;
 const SMOOTH_KPB: f32 = 0.1;
 const SMOOTH_MU: f32 = 1.0 / (SMOOTH_KPB - 1.0 / SMOOTH_LAMBDA);
@@ -909,8 +928,7 @@ pub fn spine(
         // Weld tolerance is a thousandth of the smallest voxel edge. Anything
         // looser starts merging genuinely distinct surface points.
         let min_pitch = spacing.0.min(spacing.1).min(spacing.2).max(1e-6);
-        let (mut positions, indices) =
-            weld_positions(&raw_positions, &raw_indices, min_pitch * 1e-3);
+        let (mut positions, indices) = weld_positions(&raw_positions, &raw_indices, min_pitch * 1e-3);
 
         // Taubin lambda|mu - see the module-level constants above for the
         // derivation and the measured round-count response.

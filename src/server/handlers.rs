@@ -716,20 +716,12 @@ pub async fn handle_confirm_circle(
     slice: usize,
     circle: Circle,
 ) {
-    // Build a mask from the confirmed circle. We use the circle's own
-    // (width, height) for the working buffer; the slice index is just
-    // metadata carried over from the client.
     let width = circle.width as usize;
     let height = circle.height as usize;
     let mask = build_circle_mask(width, height, circle);
     state.set_mask_data(Some(mask));
     state.set_mask_circle(Some(circle));
-
-    send_json(
-        socket,
-        &WsMessage::CircleAccepted { slice, circle },
-    )
-    .await;
+    send_json(socket, &WsMessage::CircleAccepted { slice, circle }).await;
 }
 
 /// Handle `RunCalibration` from the client. The actual computation is

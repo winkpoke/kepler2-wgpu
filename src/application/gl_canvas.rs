@@ -32,7 +32,6 @@ pub enum UserEvent {
     InvalidatePipelines,
     SetRenderMode(usize,Option<usize>,Option<usize>,Option<usize>,usize),
     SetMipMode(usize, u32),
-    SetOneCellLayout(usize, usize),
     #[cfg(target_arch = "wasm32")]
     GetRotation(usize, oneshot::Sender<[f32; 4]>),
     #[cfg(target_arch = "wasm32")]
@@ -63,7 +62,6 @@ pub enum UserEvent {
     SetMeshOpacity(usize, f32),
     ResetMesh(usize),
     SetRotationDeg(usize, f32, f32),
-    SetMeshRotation(usize, [f32; 16]),
     SetMeshRoi(usize, f32, f32, f32, f32, f32, f32),
     SetMeshMode(usize, usize),
     SetMeshBallEnabled(usize, bool),
@@ -78,6 +76,8 @@ pub enum UserEvent {
     SetOBJMesh(Vec<u8>, u32, u32),
     #[cfg(target_arch = "wasm32")]
     ExportCurrentObj(oneshot::Sender<String>),
+    #[cfg(target_arch = "wasm32")]
+    ExportSplitObj(oneshot::Sender<Vec<(String, String)>>),
 }
 
 #[macro_export]
@@ -259,21 +259,6 @@ impl GLCanvas {
         }
     }
 
-    pub fn set_one_cell_layout(&self, mode: usize, orientation_index: usize) {
-        if let Err(e) = self
-            .proxy
-            .send_event(UserEvent::SetOneCellLayout(mode, orientation_index))
-        {
-            log::error!("Failed to send SetOneCellLayout event: {:?}", e);
-        } else {
-            log::info!(
-                "Sent SetOneCellLayout event: mode={}, orientation_index={}",
-                mode,
-                orientation_index
-            );
-        }
-    }
-
     #[cfg(target_arch = "wasm32")]
     pub async fn export_current_obj(&self) -> Result<String, String> {
         let (tx, rx) = oneshot::channel();
@@ -286,6 +271,36 @@ impl GLCanvas {
             Ok(result) => Ok(result),
             Err(e) => Err(format!("Failed to receive result: {:?}", e)),
         }
+    }
+
+    /// Export one standalone OBJ per loaded label.
+    #[cfg(target_arch = "wasm32")]
+    pub async fn export_split_obj(&self) -> Result<js_sys::Array, String> {
+        let (tx, rx) = oneshot::channel();
+        if let Err(e) = self.proxy.send_event(UserEvent::ExportSplitObj(tx)) {
+            log::error!("Failed to send ExportSplitObj event: {:?}", e);
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+        log::info!("Sent ExportSplitObj event");
+
+        let pairs = match rx.await {
+            Ok(result) => result,
+            Err(e) => return Err(format!("Failed to receive result: {:?}", e)),
+        };
+
+        // [names, bodies] — two parallel arrays packed into one JS value so the
+        // async signature stays a single return.
+        let names = js_sys::Array::new();
+        let bodies = js_sys::Array::new();
+        for (stem, body) in &pairs {
+            names.push(&wasm_bindgen::JsValue::from_str(stem));
+            bodies.push(&wasm_bindgen::JsValue::from_str(body));
+        }
+        let out = js_sys::Array::new();
+        out.push(&names);
+        out.push(&bodies);
+        log::info!("ExportSplitObj: {} file(s)", pairs.len());
+        Ok(out)
     }
 
     #[cfg(target_arch = "wasm32")]

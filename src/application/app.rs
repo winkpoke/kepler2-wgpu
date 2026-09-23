@@ -602,6 +602,11 @@ impl App {
         Mesh::meshes_to_obj(&self.current_meshes.clone())
     }
 
+    /// Export every loaded vertebra as its own standalone OBJ document.
+    pub fn export_current_obj_split(&self) -> Vec<(String, String)> {
+        Mesh::meshes_to_obj_split(&self.current_meshes.clone())
+    }
+
     pub fn set_ai_segmentation(&mut self, raw: Vec<u8>) {
         if raw.is_empty() {
             let device = &self.graphics_context.graphics.device;

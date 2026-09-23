@@ -774,7 +774,8 @@
                    <span class="row-label">Export</span>
                    <button id="convertBtn_dicom">DICOM</button>
                    <button id="convertBtn_mhx">MHA</button>
-                   <button id="convertBtn_obj">OBJ</button>
+                   <button id="convertBtn_obj" title="整条脊柱：单文件，含 L1-L5/S1/Sacrum 七个分组">OBJ</button>
+                   <button id="convertBtn_obj_split" title="按标签分离：每个椎体一个独立 OBJ 文件">OBJ 分离</button>
                 </div>
             </div>
             <div id="tab-needle" class="tab-content">
@@ -2515,10 +2516,40 @@
                 const spine_obj = await gl_canvas.export_current_obj();
                 const blob = new Blob([spine_obj],{type:"text/plain"});
                 downloadBlob(blob, "segmentation.obj");
-                log("✅ OBJ 导出成功！");
+                log("✅ OBJ 导出成功！（单文件，含 7 个分组，合并为整条脊柱）");
             }catch (e) {
                 console.error(e);
                 log("OBJ 导出失败：" + e, "error");
+            }
+        });
+
+        // ========= OBJ Split Export (one file per label) =========
+        byId('convertBtn_obj_split').addEventListener('click', async () => {
+            if (!gl_canvas) {
+                log('GL canvas not ready; cannot overlay segmentation yet', 'warn');
+                return;
+            }
+            if (!state.volume) {
+                log('No volume on client; cannot derive mask dimensions', 'error');
+                return;
+            }
+            try {
+                const packed = await gl_canvas.export_split_obj();
+                const names = packed[0] || [];
+                const bodies = packed[1] || [];
+                if (names.length === 0) {
+                    log('没有可导出的网格（请先完成分割）', 'warn');
+                    return;
+                }
+                for (let i = 0; i < names.length; i++) {
+                    const blob = new Blob([bodies[i]], {type:"text/plain"});
+                    downloadBlob(blob, `${names[i]}.obj`);
+                    await new Promise(r => setTimeout(r, 350));
+                }
+                log(`✅ 已导出 ${names.length} 个独立 OBJ：${names.join(', ')}`);
+            }catch (e) {
+                console.error(e);
+                log("OBJ 分离导出失败：" + e, "error");
             }
         });
 

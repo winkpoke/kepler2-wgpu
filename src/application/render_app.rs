@@ -293,6 +293,13 @@ impl RenderApp {
                     }
                 }
                 #[cfg(target_arch = "wasm32")]
+                Event::UserEvent(UserEvent::ExportSplitObj(sender)) => {
+                    let result = state.export_current_obj_split();
+                    if let Err(_) = sender.send(result) {
+                        log::error!("Failed to send ExportSplitObj result");
+                    }
+                }
+                #[cfg(target_arch = "wasm32")]
                 Event::UserEvent(UserEvent::ViewClickGet(view_index, screen_x, screen_y, screen_z, sender)) => {
                     // Function-level comment: Compute view click result and send it back to JS via oneshot channel.
                     let result = state.handle_view_click(view_index, screen_x, screen_y, screen_z);
