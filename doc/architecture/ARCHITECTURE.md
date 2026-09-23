@@ -1,8 +1,9 @@
 # Kepler WGPU Architecture
 
-**Last Updated:** 2026-09-14
-**Version:** 2.1
+**Last Updated:** 2026-09-23
+**Version:** 2.2
 **Status:** Active
+**Verified against code:** `src/` @ dev_fu (2026-09-23) — see `doc/DOC_CODE_SYNC_AUDIT_2026-09-23.md`
 
 ## 1. Overview
 
@@ -25,9 +26,14 @@ src/
 ├── data/           # Domain models, DICOM parsing, Volume data (Depends on Core)
 ├── rendering/      # WGPU rendering engine, Views, Shaders (Depends on Core, Data)
 ├── acquisition/    # Medical data acquisition and processing (Depends on Core, Data)
-└── application/    # UI orchestration, Event handling, App lifecycle (Depends on all)
-├── server/         # Native-only server components (Not available in WASM) (Depends on Core, Data, Acquisition)
+├── application/    # UI orchestration, Event handling, App lifecycle (Depends on all)
+├── gpu/            # Native-only GPU compute backend, wgpu 30 as `wgpu30` (Native only)
+└── server/         # Native-only server components (Not available in WASM)
 ```
+
+`gpu/` and `server/` carry `#[cfg(not(target_arch = "wasm32"))]` and are excluded from the
+WASM build. `gpu/` is a **second, headless wgpu stack (v30)** used only by the server — it
+shares no GPU objects with `rendering/` (which stays on **wgpu 23**).
 
 ### 2.1 Core Layer (`src/core/`)
 Provides foundational utilities used across the entire application.
@@ -59,7 +65,8 @@ The heart of the visualization engine, built on top of `wgpu`.
 - **`mesh/`**: 3D Mesh rendering subsystem (feature-gated logic)
 
 #### Shaders (`rendering/shaders/`)
-- WGSL and GLSL shaders for volume casting, MIP, and mesh rendering
+WGSL only (`common.wgsl`, `volume.wgsl`, `mpr.wgsl`, `mip.wgsl`, `mesh_basic.wgsl`).
+There is no GLSL and no `rendering/shaders/mesh.wgsl` (mesh shading uses `mesh_basic.wgsl`).
 
 ### 2.4 Acquisition Layer (`src/acquisition/`)
 Handles medical data acquisition, processing, and specialized workflows.
@@ -85,6 +92,18 @@ Native-only server components for advanced workflows and AI integration (Not ava
 - **`navcomputer.rs`**: Navigation and guidance system
 - **`ws.rs`**: WebSocket support for real-time communication
 - **`routes.rs`**: REST API routes for medical imaging endpoints
+
+### 2.7 GPU Compute Layer (`src/gpu/`) — native only
+A headless wgpu **30** compute backend (aliased `wgpu30` in `Cargo.toml`), deliberately
+isolated from the wgpu 23 render stack.
+- **`native.rs`**: `GpuState` (a lazily-initialized `Mutex<Option<Arc<GpuContext>>>`) and `GpuContext`
+- **`compute.rs`**: `run_double` smoke test; `prepare_volume_upload` (sync) +
+  `run_volume_compute` (async) for the pass-through volume kernel
+- Mounted on `ServerState.gpu`; reached only via `POST /api/gpu/test` and
+  `POST /api/gpu/volume/test`. No surface, no render pipeline, no `MprView`.
+
+**Invariant**: never pass a `wgpu30` device/buffer into the wgpu 23 render stack
+(and vice versa) — the two versions are not type-compatible.
 
 ## 3. Application Model
 
@@ -132,10 +151,14 @@ The application follows a Model-View-Controller (MVC) inspired pattern:
 - Quality control and validation
 
 ### AI/ML Integration (Native-only)
-- **`server/ai_handler.rs`**: AI model inference and processing
-- **`server/navcomputer.rs`**: Advanced medical image analysis
-- **Python Integration**: Seamless integration with Python ML libraries
-- **WebSocket Support**: Real-time AI processing results
+- **`server/ai_handler.rs`**: AI model inference orchestration and result rendering
+- **`server/segment_engine.rs`**: segmentation backends (ONNX primary via `ort`)
+- **`server/navcomputer.rs`**: navigation / trajectory computing
+- **Python Integration**: **optional HTTP fallback only** — a standalone Python
+  TotalSegmentator service reached through `KEPLER_AI_URL` (default
+  `http://localhost:8001`). The embedded PyO3 path (`python_runtime.rs`, `.pyembed/`) is
+  **deprecated — do not revive it**.
+- **WebSocket Support**: real-time AI processing results (`server/ws.rs`)
 
 ## 6. Cross-Platform Architecture
 
@@ -156,18 +179,26 @@ The application follows a Model-View-Controller (MVC) inspired pattern:
 #[cfg(not(target_arch = "wasm32"))]
 pub mod server;  // Native-only components
 
-#[cfg(feature = "mesh")]
-pub mod mesh;     // Optional 3D mesh capabilities
+#[cfg(not(target_arch = "wasm32"))]
+pub mod gpu;     // Native-only GPU compute (wgpu30)
 ```
+
+Cargo features actually declared: `default = []`, `trace-logging = []`
+(`Cargo.toml [features]`). There is **no** `mesh` feature — mesh rendering is always compiled.
 
 ## 7. Roadmap & Future Architecture
 
-### 7.1 WGPU 27 & Winit 0.30 Upgrade (Pending)
-The system is currently on `wgpu 23.0` and `winit 0.29`. A migration is planned to:
-- Upgrade to **wgpu 27.0+** and **winit 0.30+**
+### 7.1 WGPU / Winit Upgrade (Pending)
+The **render stack** is currently on `wgpu 23.0` and `winit 0.29`. A migration is planned to:
+- Upgrade the renderer to a newer `wgpu` and `winit 0.30+`
 - Adopt `raw-window-handle` 0.6
 - Refactor the event loop to use the new `winit` trait-based API
 - Update surface creation to use `wgpu::SurfaceTarget`
+
+> **Current state of the wgpu 30 experiment**: `wgpu 30` is *already* in `Cargo.toml` as the
+> native-only alias `wgpu30`, used **only** by `src/gpu/` (server compute). It is **not** the
+> render stack. Unifying both onto one version is a separate, larger milestone — see
+> `doc/DOC_CODE_SYNC_AUDIT_2026-09-23.md` and `doc/rendering/` upgrade notes.
 
 ### 7.2 Enhanced AI Integration
 - **Model Management**: Advanced AI model lifecycle management

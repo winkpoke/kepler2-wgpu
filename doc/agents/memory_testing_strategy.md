@@ -1,5 +1,8 @@
 # Memory Testing Strategy
 
+> ⚠️ **Status check (2026-09-23)**: `tests/memory_leak_tests.rs` named below does **not** exist
+> yet — treat it as a plan, not a description of the current suite. Run `ls tests/` to verify.
+
 ## Overview
 
 Memory leak detection ensures long-running medical imaging applications don't accumulate memory, which could lead to crashes or degraded performance during extended use cases (e.g., viewing multiple patient scans).

@@ -6,6 +6,16 @@
 **Date:**    2026-09-17
 **Version:** 2.0
 
+> ⚠️ **状态核对 (2026-09-23)**
+> - 文中出现的 `PythonRuntime`、`scripts/deploy_python_runtime.ps1` 属于**已废弃的嵌入式
+>   PyO3 路径**（`python_runtime.rs` / `.pyembed/`），**勿据此实现**。现行为：AI 推理以
+>   **ONNX 为主**（`ort` + `directml`），Python 仅作**可选 HTTP fallback**
+>   （`KEPLER_AI_URL`，默认 `http://localhost:8001`），走 `src/server/python/`。
+> - `NnUNetBackend` / `RawMask` 等为**设计层概念名**，代码中没有同名类型。
+>   实际分割入口见 `src/server/segment_engine.rs`、`ai_handler.rs`、`ai_task.rs`。
+> - 数值链路的硬约束（重排 / LPS↔RAS / 重采样 / logits 投影）见
+>   `doc/agents/PITFALLS.md` 与 `src/server/resample.rs`、`orientation.rs`。
+
 ---
 
 # 1. Overview

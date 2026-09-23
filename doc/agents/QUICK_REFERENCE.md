@@ -1,6 +1,7 @@
 # Quick Reference
 
-**Last Updated**: 2025-01-15
+**Last Updated**: 2026-09-23
+**Verified against code**: `src/` @ dev_fu (2026-09-23)
 
 ## Common Commands
 
@@ -62,9 +63,14 @@ KEPLER_WGPU_VALIDATION=true
 src/
 ├── core/           # Utilities, errors, types (no dependencies)
 ├── data/           # DICOM, CT volumes (depends on core)
-├── rendering/      # WGPU, views, shaders (depends on core, data)
-└── application/    # UI, events (depends on all)
+├── rendering/      # WGPU 23 renderer, views, shaders (depends on core, data)
+├── acquisition/    # REMEDY serial device protocol
+├── application/    # UI, events (depends on all)
+├── gpu/            # native-only GPU compute (wgpu 30 as `wgpu30`)
+└── server/         # native-only axum HTTP server
 ```
+
+`gpu/` and `server/` are `#[cfg(not(target_arch = "wasm32"))]` — not in the WASM build.
 
 ## Key Files
 
@@ -122,13 +128,19 @@ error!("Failed: {}", e);
 
 ## Coordinate Systems
 
+Four conceptual spaces (only **Base** is a concrete type):
+
 - **World**: 3D world coordinates (mm from volume origin)
 - **Screen**: 2D screen coordinates (pixels, top-left origin)
 - **Voxel**: 3D voxel indices (integer indices)
-- **Base**: Base coordinate type (`glam::Vec3`)
+- **Base**: `struct Base { label: String, matrix: Mat4 }` — a named frame
+  (`src/core/coord/base.rs`). It is **not** a `glam::Vec3`.
+
+There are no `WorldCoord` / `ScreenCoord` / `VoxelCoord` wrapper types — those spaces are
+carried by `glam` matrices.
 
 ```rust
-use glam::Mat4, Vec3;
+use glam::{Mat4, Vec3};
 let transform = Mat4::from_translation(Vec3::new(x, y, z));
 ```
 
@@ -136,8 +148,9 @@ let transform = Mat4::from_translation(Vec3::new(x, y, z));
 
 ❌ Don't use `tokio` in WASM modules
 ❌ Don't clone `wgpu::Surface` or `TextureView`
-❌ Don't suppress type errors with `as any`
 ❌ Don't mix OpenGL/WebGL with WebGPU
+❌ Don't import `crate::gpu::*` or `crate::server::*` outside a native (`not(wasm32)`) gate
+❌ Don't mix the two wgpu versions — renderer is wgpu **23**, `src/gpu/` compute is wgpu **30**
 
 ✅ Check GPU capabilities before using R16Float textures
 ✅ Recreate pipelines after surface format changes
@@ -264,6 +277,7 @@ Check browser console (F12)
 
 ## Quick Links
 
+- **Master doc index**: `doc/README.md`
 - **Architecture**: `doc/agents/ARCHITECTURE.md`
 - **Conventions**: `doc/agents/CONVENTIONS.md`
 - **Build & Test**: `doc/agents/BUILD.md`
@@ -271,3 +285,4 @@ Check browser console (F12)
 - **Pitfalls**: `doc/agents/PITFALLS.md`
 - **PR Guidelines**: `doc/agents/PR_GUIDELINES.md`
 - **OpenSpec**: `doc/agents/OPENSPEC.md`
+- **Test strategy**: `doc/agents/test_strategy_comprehensive.md`

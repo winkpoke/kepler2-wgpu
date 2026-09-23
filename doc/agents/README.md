@@ -32,6 +32,31 @@ Welcome! This is the central hub for AI agents working on Kepler2-WGPU.
 | `PR_GUIDELINES.md` | Contribution workflow | Creating PRs |
 | `OPENSPEC.md` | Spec-driven development | Proposing changes |
 
+### Test Strategy Documentation
+
+These live in the same directory but are **not** linked from `AGENTS.md` — read them when
+working on test coverage.
+
+| File | Purpose |
+|------|---------|
+| `test_strategy_comprehensive.md` | Overall medical-software test strategy and coverage targets |
+| `test_implementation_plan.md` | Concrete task list (planned test files, counts, effort) |
+| `coverage_methodology.md` | How coverage is measured and reported |
+| `test_fixture_architecture.md` | Fixture design (`tests/common/`, `tests/fixtures/manifest.toml`) |
+| `property_testing_strategy.md` | Property-based testing for numeric/medical algorithms |
+| `regression_testing_guide.md` | Regression suite and how to extend it |
+| `gpu_testing_strategy.md` | GPU/rendering test approach (offline vs native) |
+| `memory_testing_strategy.md` | Memory-leak and resource-lifetime testing |
+| `wasm_testing_strategy.md` | WASM-target test approach |
+
+> ⚠️ `test_implementation_plan.md` and `gpu_testing_strategy.md` reference test files that are
+> **planned but not yet created**. Verify with `ls tests/` before treating a path as real.
+
+### Full Documentation Index
+
+For every document in `doc/` (including design proposals and historical snapshots), see
+**`doc/README.md`** — the master index with a status label per document.
+
 ### When to Use Each Guide
 
 #### Getting Started

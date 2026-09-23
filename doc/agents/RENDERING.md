@@ -1,6 +1,7 @@
 # Rendering & GPU Patterns
 
-**Last Updated**: 2025-01-15
+**Last Updated**: 2026-09-23
+**Verified against code**: `src/rendering/` @ dev_fu (2026-09-23)
 
 ## GPU Resource Management
 
@@ -23,8 +24,15 @@ Drop order matters:
 
 ### Pipeline Management
 
-- Pipelines are cached in render contexts
-- Use `PipelineManager` in `rendering/core/pipeline.rs` for pipeline lifecycle
+- Pipelines are cached per render context (`MprRenderContext`, `MipRenderContext`,
+  `BasicMeshContext`)
+- `src/rendering/core/pipeline.rs` exposes `VolumePipelines` — a struct of free pipeline
+  factory functions, **not** a `PipelineManager` type:
+  `create_volume_pipeline`, `create_mip_pipeline`, `create_texture_quad_pipeline`,
+  `create_basic_mesh_pipeline_with_lighting`, `select_pipeline`,
+  plus bind-group-layout factories
+- Swapchain format is cached here (`set_swapchain_format` / `get_swapchain_format`) —
+  see PITFALLS.md for the `OnceCell` staleness pitfall
 - Always check device capabilities before creating pipelines
 - Use `pollster` to block on async operations in native code
 
@@ -45,19 +53,21 @@ view_factory = DefaultViewFactory::new(graphics.clone());
 
 ## Coordinate Systems
 
-### Four Coordinate Systems
+### Four Conceptual Spaces
 
 1. **World**: 3D world coordinates (millimeters from volume origin)
 2. **Screen**: 2D screen coordinates (pixels, origin at top-left)
 3. **Voxel**: 3D voxel indices (integer indices into volume array)
-4. **Base**: Base coordinate type (uses `glam::Vec3`)
+4. **Base**: `struct Base { label: String, matrix: Mat4 }` — a named coordinate frame
+   (`src/core/coord/base.rs`). There are **no** `WorldCoord`/`ScreenCoord`/`VoxelCoord`
+   wrapper types; only `Base` is concrete.
 
 ### Transformations
 
 Use `glam::Mat4` (column-major) for all 3D transformations:
 
 ```rust
-use glam::Mat4, Vec3;
+use glam::{Mat4, Vec3};
 
 // Translation
 let translate = Mat4::from_translation(Vec3::new(x, y, z));
@@ -74,7 +84,8 @@ let transform = translate * scale * rotate;
 
 ### Coordinate Transformations
 
-Transformations between coordinate systems are managed in `src/core/coord/`:
+Transformations between coordinate spaces are handled with `glam` matrices plus the
+`Base` frame in `src/core/coord/`:
 - World ↔ Screen: View/projection matrices
 - World ↔ Voxel: Volume spacing and dimensions
 - Voxel ↔ Base: Direct mapping (1:1 for CT volumes)
@@ -117,14 +128,25 @@ See `src/data/volume_encoding.rs` for format selection logic:
 
 ### View Trait
 
-All renderable views implement the `View` trait:
+Geometry/layout is separated from drawing. `View` (`src/rendering/view/view.rs`) covers
+placement only; actual rendering comes from the `Renderable` supertrait.
 
 ```rust
-pub trait View {
-    fn render(&self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView);
-    fn resize(&mut self, width: u32, height: u32);
+pub trait View: Renderable + Any {
+    fn position(&self) -> (i32, i32);
+    fn dimensions(&self) -> (u32, u32);
+    fn move_to(&mut self, pos: (i32, i32));
+    fn resize(&mut self, dim: (u32, u32));
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 ```
+
+Optional state snapshot/restore lives in `StatefulView: View`
+(`save_state` / `restore_state`). Implementations: `MprView`, `MipView`, `MeshView`.
+
+> The `PassExecutor` drives frames; a `View` does **not** receive a
+> `wgpu::CommandEncoder` — it goes through `Renderable` + render contexts instead.
 
 ### View Types
 
@@ -180,7 +202,8 @@ Use per-frame texture pools to avoid fragmentation:
 
 - Explicitly drop unused GPU resources
 - Use weak references where circular dependencies exist
-- Profile GPU memory usage with tools like `wgpu-profiler`
+- Profile GPU memory usage with platform tools (see Profiling below) — `wgpu-profiler` is
+  **not** a dependency of this crate
 
 ## Rendering Pipeline
 
@@ -217,7 +240,7 @@ The system uses multiple render passes for different view types:
 
 - Minimize CPU-GPU synchronization points
 - Use asynchronous operations where possible
-- Profile with `wgpu-profiler` to identify bottlenecks
+- Profile to identify bottlenecks — see Profiling below
 
 ### Texture Filtering
 
@@ -228,8 +251,10 @@ The system uses multiple render passes for different view types:
 ### Vertex Buffer Optimization
 
 - Use `BufferUsages::VERTEX | BufferUsages::COPY_DST` for dynamic meshes
-- Consider using `StorageBuffer` for large dynamic data
-- Use `InstanceBuffer` pattern for repeated geometry
+- Consider a storage buffer (`BufferUsages::STORAGE`) for large dynamic data
+  (no `StorageBuffer` wrapper type exists in this crate — use `wgpu::Buffer` directly)
+- Use an instanced draw (`BufferUsages::VERTEX` + `@builtin(instance_index)`) for
+  repeated geometry (no `InstanceBuffer` type exists either)
 
 ## Canvas and Window Handling
 
@@ -294,8 +319,14 @@ Use `wgpu-profiler` or platform-specific tools:
 
 ## Related Documentation
 
+- **Master doc index**: `doc/README.md`
 - **Quick Reference**: `QUICK_REFERENCE.md` - Common rendering tasks
 - **Architecture**: `ARCHITECTURE.md` - View system and modules
 - **Conventions**: `CONVENTIONS.md` - Coding patterns
 - **Pitfalls**: `PITFALLS.md` - Common rendering mistakes
-- **Render Architecture**: `doc/rendering/unified-render-architecture.md` - Deep dive
+- **View design notes**: `doc/views/mpr-view-design.md`, `doc/views/mip-view-design.md`,
+  `doc/views/mesh-view-design.md`
+- **Unified architecture**: `doc/rendering/unified-render-architecture.md` —
+  ⚠️ **Status: Proposed, only partially implemented.** `VolumeUniforms` was created but lives
+  in `view/mesh/mesh.rs` (not `core/volume_uniforms.rs`); `RenderBackend` / `VolumeView` /
+  `VolumeRenderContext` do **not** exist. Do not treat it as current-state documentation.

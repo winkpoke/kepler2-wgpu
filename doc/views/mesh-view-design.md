@@ -191,10 +191,14 @@ Two resilience mechanisms exist:
 
 | Layer | Holds | Purpose |
 |--------|--------|----------|
-| `MeshRenderContext` | Pipelines + Layouts | Defines shader bindings |
+| `MeshRenderContext` | Pipelines + Layouts | Defines shader bindings (`view/mesh/mesh.rs`) |
 | `RenderContent` | Texture + View + Sampler | Holds GPU data |
-| `MeshViewWgpuImpl` | Uniforms + BindGroups | Manages GPU bindings per view |
-| `MeshView` | Position + State + Arc<MeshViewWgpuImpl> | UI and draw orchestration |
+| `MultiMeshContext` (+ `BasicUniforms` / `MeshSlot` / `MeshUpload`) | Uniforms + BindGroups | Manages GPU bindings per view (`view/mesh/basic_mesh_context.rs`) |
+| `MeshView` | Position + State + mesh contexts | UI and draw orchestration (`view/mesh/mesh_view.rs`) |
+
+> ⚠️ There is **no** `MeshViewWgpuImpl` type. The mesh view has no single "`*WgpuImpl`" struct —
+> its GPU side is split across `MeshRenderContext`, `MultiMeshContext` and
+> `BasicLightingUniforms`. (MPR and MIP *do* have `MprViewWgpuImpl` / `MipViewWgpuImpl`.)
 
 ---
 

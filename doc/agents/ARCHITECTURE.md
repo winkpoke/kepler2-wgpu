@@ -1,20 +1,27 @@
 # Project Architecture
 
-**Last Updated**: 2025-01-15
+**Last Updated**: 2026-09-23
+**Verified against code**: `src/` @ dev_fu (2026-09-23)
 
 ## Overview
 
 Kepler2-WGPU is a Rust-based medical imaging application for processing and visualizing DICOM data using WebGPU. It provides cross-platform support (native + WASM) with high-performance CT volume rendering.
 
-## Four-Layer Architecture
+## Module Layout
 
 ```
 src/
 ├── core/           # Platform-independent utilities and types
 ├── data/           # Medical imaging data structures and parsing
-├── rendering/      # WebGPU rendering system
-└── application/    # UI orchestration and app lifecycle
+├── rendering/      # WGPU rendering system (wgpu 23: native + wasm32)
+├── acquisition/    # Device acquisition (REMEDY serial protocol)
+├── application/    # UI orchestration and app lifecycle
+├── gpu/            # Native-only GPU compute backend (wgpu 30, aliased `wgpu30`)
+└── server/         # Native-only HTTP server (axum)
 ```
+
+`gpu/` and `server/` are gated with `#[cfg(not(target_arch = "wasm32"))]` and are **not**
+compiled into the WASM target.
 
 ### Module Dependencies (Bottom-Up)
 
@@ -22,7 +29,9 @@ src/
 **Purpose**: Foundational utilities with no external dependencies
 
 **Modules**:
-- **`coord/`**: Coordinate systems (Base, World, Screen, Voxel)
+- **`coord/`**: Coordinate systems. Only `Base` is a concrete type
+  (`{ label: String, matrix: Mat4 }`, see `coord/base.rs`); World/Screen/Voxel are
+  conceptual spaces expressed via `glam` matrices — there are no `*Coord` wrapper types
 - **`error.rs`**: `KeplerError` and `MprError` types
 - **`geometry.rs`**: Geometric primitives and transformations (uses `glam`)
 - **`timing.rs`**: Performance measurement utilities
@@ -31,7 +40,7 @@ src/
 **Key Types**:
 - `KeplerError`: Centralized error handling
 - `KeplerResult<T>`: Type alias for `Result<T, KeplerError>`
-- Coordinate types: `WorldCoord`, `ScreenCoord`, `VoxelCoord`, `BaseCoord`
+- `Base`: the only coordinate type defined in `coord/`
 
 ---
 
@@ -57,15 +66,23 @@ src/
 
 **Submodules**:
 - **`core/`**: Graphics initialization, pipeline management, render passes
+  (`graphics.rs`, `pipeline.rs` → `VolumePipelines`, `render_pass.rs` → `PassExecutor`, `texture.rs`)
 - **`view/`**: View system (View trait, MprView, MipView, MeshView)
 - **`shaders/`**: WGSL shader code (embedded as strings)
-- **`mesh/`**: 3D mesh loading, processing, and rendering
+- **`view/mesh/`**: 3D mesh loading, processing, and rendering
+  (`mesh.rs`, `basic_mesh_context.rs`, `mesh_view.rs`, `mesh_texture_pool.rs`)
+  — note: lives under `view/`, **not** a top-level `rendering/mesh/` directory
 
 **Key Types**:
-- `Graphics`: GPU context wrapper (Device, Queue, Surface)
-- `View`: Trait for renderable components
+- `Graphics` / `GraphicsContext`: GPU context wrapper (Device, Queue, Surface)
+- `View`: Trait for renderable components (`view/view.rs`; also `StatefulView`)
 - `RenderContent`: GPU resources for a specific view (buffers, bind groups, textures)
-- `PipelineManager`: Caching and lifecycle management for GPU pipelines
+- `VolumePipelines`: pipeline factory + swapchain-format cache (`core/pipeline.rs`)
+- `PassExecutor`: frame execution / render pass orchestration (`core/render_pass.rs`)
+
+**Note**: `PipelineManager` no longer exists — pipeline lifecycle is now free functions on
+`VolumePipelines` (`create_volume_pipelines`, `select_pipeline`, `set_swapchain_format`) plus
+per-view render contexts (`MprRenderContext`, `MipRenderContext`, `BasicMeshContext`).
 
 ---
 
@@ -84,6 +101,33 @@ src/
 - `RenderApp`: Entry point for native and WASM
 - `AppModel`: Single source of truth for application data
 - `GLCanvas`: External API for controlling the rendering canvas
+
+---
+
+#### 5. Acquisition Layer (`src/acquisition/`)
+Device acquisition and processing. `remedy.rs` implements the REMEDY serial protocol and
+exposes WASM bindings; `process.rs` holds the processing pipeline; `error.rs` its errors.
+
+---
+
+#### 6. GPU Compute Layer (`src/gpu/`) — native only
+A **separate, headless wgpu 30 stack** used by the server. It does not touch the render
+stack and shares no GPU objects with it.
+- `native.rs`: `GpuState` (`Mutex<Option<Arc<GpuContext>>>`, lazily initialized) + `GpuContext`
+- `compute.rs`: `run_double`, `prepare_volume_upload` / `run_volume_compute`
+
+Mounted on `ServerState.gpu`; consumed only by the `/api/gpu/*` handlers.
+
+---
+
+#### 7. Server Layer (`src/server/`) — native only
+Axum HTTP server bound to `0.0.0.0:3000` by default.
+- `routes.rs`: router definition; `handlers.rs`: endpoint handlers
+- `state.rs`: `ServerState` (holds `ct_volume`, `ai`, `gpu`, task registry)
+- `segment_engine.rs` / `ai_handler.rs` / `ai_task.rs`: segmentation orchestration
+  (ONNX primary via `ort`; optional Python HTTP fallback via `KEPLER_AI_URL`)
+- `resample.rs` / `orientation.rs`: nnU-Net-compatible preprocessing (see PITFALLS.md)
+- `navcomputer.rs`, `ws.rs`, `model_manager.rs`
 
 ---
 

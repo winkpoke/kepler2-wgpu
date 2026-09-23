@@ -39,10 +39,12 @@ Multiple views can share the same `RenderContent`.
 
 ---
 
-### 3. `MipViewWgpuImpl` (ViewImpl)
+### 3. `MipViewWgpuImpl`
 - **Lifetime:** View-level (per rendering instance)
 - **Responsibility:** Centralizes GPU resources and bindings for a single view.
-- **Implementation Note:** This is the concrete implementation of the `ViewImpl` concept in the design.
+- **Implementation Note:** This is the GPU-side companion to `MipView`, which implements the
+  `View` trait (`src/rendering/view/view.rs`). "`ViewImpl`" is only a document-level label for
+  the optional GPU-implementation layer — **no type of that name exists**.
 
 #### Contents
 - Reference to `RenderContent` (as `Arc<RenderContent>`)

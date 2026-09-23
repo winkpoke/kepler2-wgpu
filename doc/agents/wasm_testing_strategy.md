@@ -1,5 +1,8 @@
 # WASM Testing Strategy
 
+> ⚠️ **Status check (2026-09-23)**: `tests/wasm_integration_tests.rs` named below does **not**
+> exist yet. The WASM test that does exist is `tests/wasm_unit_tests.rs`. Run `ls tests/` to verify.
+
 ## Overview
 
 Kepler2-WGPU supports both native and WebAssembly (WASM) targets. WASM testing requires distinct approaches due to browser environment constraints, lack of tokio, and DOM interaction requirements.
