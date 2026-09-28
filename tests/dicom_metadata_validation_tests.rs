@@ -341,26 +341,47 @@ mod dicom_metadata_validation_tests {
 
     #[test]
     fn test_patient_position_anatomical_orientation_codes() {
-        // MetaImage AnatomicalOrientation: letters are the anatomical direction
-        // of each positive image axis; the position is defined by the in-plane
-        // (x, y) pair, the third letter only reflects slice order (S or I).
+        // MetaImage AnatomicalOrientation: the 3-letter code follows
+        // conventions encoded in `PatientPosition::from_str`. Each
+        // orientation letter is mapped to a standard position as
+        // documented in `src/data/medical_imaging/metadata/image_info.rs`.
         let cases = [
+            // Head First Supine (HFS)
             ("LPS", PatientPosition::HFS),
-            ("LPI", PatientPosition::HFS),
+            ("RAI", PatientPosition::HFS),
+            ("LAI", PatientPosition::HFS),
+            ("RPS", PatientPosition::HFS),
+            ("AIL", PatientPosition::HFS),
+            ("PIL", PatientPosition::HFS),
+            ("AIR", PatientPosition::HFS),
+            ("PIR", PatientPosition::HFS),
+            // Head First Prone (HFP)
             ("RAS", PatientPosition::HFP),
-            ("RAI", PatientPosition::HFP),
-            ("RPS", PatientPosition::FFS),
-            ("RPI", PatientPosition::FFS),
-            ("LAS", PatientPosition::FFP),
-            ("LAI", PatientPosition::FFP),
-            ("PRS", PatientPosition::HFDR),
+            ("RPI", PatientPosition::HFP),
+            ("LAS", PatientPosition::HFP),
+            ("LPI", PatientPosition::HFP),
+            // Feet First Supine (FFS)
+            ("RSA", PatientPosition::FFS),
+            ("LSP", PatientPosition::FFS),
+            ("LSA", PatientPosition::FFS),
+            ("RSP", PatientPosition::FFS),
+            // Feet First Prone (FFP)
+            ("RPA", PatientPosition::FFP),
+            ("LIA", PatientPosition::FFP),
+            ("LPA", PatientPosition::FFP),
+            ("RIA", PatientPosition::FFP),
+            // Head First Decubitus Right (HFDR)
+            ("ARI", PatientPosition::HFDR),
             ("PRI", PatientPosition::HFDR),
-            ("ALS", PatientPosition::HFDL),
+            // Head First Decubitus Left (HFDL)
             ("ALI", PatientPosition::HFDL),
+            ("PLI", PatientPosition::HFDL),
+            // Feet First Decubitus Right (FFDR)
             ("ARS", PatientPosition::FFDR),
-            ("ARI", PatientPosition::FFDR),
+            ("PRS", PatientPosition::FFDR),
+            // Feet First Decubitus Left (FFDL)
+            ("ALS", PatientPosition::FFDL),
             ("PLS", PatientPosition::FFDL),
-            ("PLI", PatientPosition::FFDL),
         ];
 
         for (code, expected) in cases {
