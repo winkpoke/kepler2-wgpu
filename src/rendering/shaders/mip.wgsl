@@ -66,17 +66,7 @@ fn sample_volume(coords: vec3<f32>) -> f32 {
         return -1024.0;
     }
     let sampled_value = textureSample(t_volume, s_volume, coords);
-    var value: f32;
-    if (u_mip.is_packed_rg8 > 0.5) {
-        // decode RG8 -> u16 -> HU
-        let low = sampled_value.r * 255.0;
-        let high = sampled_value.g * 255.0;
-        let u16_val = low + high * 256.0;
-        value = u16_val - u_mip.bias;
-    } else {
-        value = sampled_value.r;
-    }
-    return value;
+    return decode_volume_sample(sampled_value, u_mip.is_packed_rg8, u_mip.bias);
 }
 
 // DICOM-style window/level mapping (0..1)

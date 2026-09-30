@@ -57,7 +57,15 @@ pub fn create_texture_quad_pipeline(
     target_format: wgpu::TextureFormat,
 ) -> wgpu::RenderPipeline {
     // Single shader module with both vertex and fragment entry points.
-    let shader = device.create_shader_module(wgpu::include_wgsl!("../../shaders/shader_tex.wgsl"));
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("MPR Shader"),
+        source: wgpu::ShaderSource::Wgsl(
+            crate::rendering::shaders::volume_shader_source(include_str!(
+                "../../shaders/shader_tex.wgsl"
+            ))
+            .into(),
+        ),
+    });
     // Pipeline layout defines bind group layout order; must match shader binding expectations.
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Render Pipeline Layout"),

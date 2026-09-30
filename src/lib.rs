@@ -19,6 +19,7 @@ pub mod acquisition;
 // Re-export commonly used types for backward compatibility
 pub use application::{gl_canvas::GLCanvas, render_app::RenderApp, App};
 pub use core::{coord, error::KeplerError, timing};
+pub use data::volume_encoding::{pack_i16_rg8, unpack_rg8_i16, VolumeEncoding};
 pub use data::{ct_volume, dicom};
 pub use rendering::view::{Renderable, StaticLayout, View};
 

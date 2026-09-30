@@ -60,7 +60,7 @@ pub struct MipUniforms {
 
     // Texture format parameters
     pub is_packed_rg8: f32,
-    /// Bias used to decode packed RG8 back to raw HU
+    /// Storage offset supplied by VolumeEncoding, independent of window/level.
     pub bias: f32,
 
     // Window/Level for medical imaging
@@ -81,7 +81,7 @@ impl Default for MipUniforms {
             ray_step_size: 0.01,
             max_steps: 512.0,
             is_packed_rg8: 1.0, // Default to packed format
-            bias: VolumeEncoding::DEFAULT_HU_OFFSET,
+            bias: VolumeEncoding::PackedI16Rg8.decode_bias(),
             window: 1500.0,
             level: 400.0,
             pan_x: 0.0,
@@ -155,7 +155,12 @@ impl MipRenderContext {
         // Load MIP shader
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("MIP Shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../../shaders/mip.wgsl").into()),
+            source: wgpu::ShaderSource::Wgsl(
+                crate::rendering::shaders::volume_shader_source(include_str!(
+                    "../../shaders/mip.wgsl"
+                ))
+                .into(),
+            ),
         });
 
         // Create render pipeline layout

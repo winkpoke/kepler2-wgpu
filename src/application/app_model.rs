@@ -34,27 +34,8 @@ impl AppModel {
     pub fn get_volume_render_data(&self) -> Result<(Vec<u8>, VolumeEncoding), KeplerError> {
         let vol = self.volume()?;
 
-        if self.enable_float_volume_texture {
-            // Convert voxel i16 values to half-float bytes
-            let bytes: Vec<u8> = {
-                let voxels_f16_bits: Vec<u16> = vol
-                    .voxel_data
-                    .iter()
-                    .map(|&x| half::f16::from_f32(x as f32).to_bits())
-                    .collect();
-                bytemuck::cast_slice(&voxels_f16_bits).to_vec()
-            };
-            Ok((bytes, VolumeEncoding::HuFloat))
-        } else {
-            let offset = VolumeEncoding::DEFAULT_HU_OFFSET;
-            let voxel_data: Vec<u16> = vol
-                .voxel_data
-                .iter()
-                .map(|x| (*x + offset as i16) as u16)
-                .collect();
-            let bytes: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
-            Ok((bytes, VolumeEncoding::HuPackedRg8 { offset }))
-        }
+        let encoding = VolumeEncoding::for_float_support(self.enable_float_volume_texture);
+        Ok((encoding.encode_volume(vol.voxel_data()), encoding))
     }
 
     /// Load a CTVolume into the model, replacing any previously loaded volume.

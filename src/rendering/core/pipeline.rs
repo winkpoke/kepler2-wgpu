@@ -115,7 +115,13 @@ pub fn create_mip_pipeline_(
     target_format: wgpu::TextureFormat,
 ) -> wgpu::RenderPipeline {
     // Load MIP shader with vertex and fragment entry points
-    let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/mip.wgsl"));
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("MIP Shader"),
+        source: wgpu::ShaderSource::Wgsl(
+            crate::rendering::shaders::volume_shader_source(include_str!("../shaders/mip.wgsl"))
+                .into(),
+        ),
+    });
 
     // Create pipeline layout with MIP bind group
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {

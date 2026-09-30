@@ -14,9 +14,8 @@ use async_lock::Mutex;
 
 use winit::{event::*, window::Window};
 
-use crate::core::{error::KeplerError, WindowLevel};
+use crate::core::error::KeplerError;
 use crate::data::dicom::*;
-use crate::data::volume_encoding::VolumeEncoding;
 use crate::data::{ct_volume::*, AppModel};
 use crate::rendering::view::mesh::mesh_texture_pool::MeshTexturePool;
 use crate::rendering::view::render_content::RenderContent;
@@ -364,52 +363,20 @@ impl App {
     /// Internal helper to load volume and create RenderContent without modifying layout
     fn load_render_content(&mut self, vol: &CTVolume) -> Result<Arc<RenderContent>, KeplerError> {
         let _ = self.app_model.load_volume(vol.clone());
-        let mut winlev;
-
         // Delegate data preparation to AppModel
         let (bytes, encoding) = self.app_model.get_volume_render_data()?;
 
-        match encoding {
-            VolumeEncoding::HuFloat => {
-                winlev = WindowLevel::new();
-                if let Err(e) = winlev.apply_bone_preset() {
-                    log::warn!("apply_bone_preset (float path) failed: {}", e);
-                }
-                info!("Using R16Float volume texture path");
-
-                Ok(Arc::new(RenderContent::from_bytes_r16f(
-                    &self.graphics().device,
-                    &self.graphics().queue,
-                    &bytes,
-                    "CT Volume",
-                    vol.dimensions.0 as u32,
-                    vol.dimensions.1 as u32,
-                    vol.dimensions.2 as u32,
-                    encoding,
-                )?))
-            }
-            VolumeEncoding::HuPackedRg8 { offset } => {
-                winlev = WindowLevel::new();
-                if let Err(e) = winlev.set_bias(offset) {
-                    log::warn!("set_bias (packed RG8 path) failed: {}", e);
-                }
-                if let Err(e) = winlev.apply_bone_preset() {
-                    log::warn!("apply_bone_preset (packed RG8 path) failed: {}", e);
-                }
-                info!("Using Rg8Unorm volume texture path");
-
-                Ok(Arc::new(RenderContent::from_bytes(
-                    &self.graphics().device,
-                    &self.graphics().queue,
-                    &bytes,
-                    "CT Volume",
-                    vol.dimensions.0 as u32,
-                    vol.dimensions.1 as u32,
-                    vol.dimensions.2 as u32,
-                    encoding,
-                )?))
-            }
-        }
+        info!("Using {:?} volume texture path", encoding);
+        Ok(Arc::new(RenderContent::from_bytes(
+            &self.graphics().device,
+            &self.graphics().queue,
+            &bytes,
+            "CT Volume",
+            vol.dimensions.0 as u32,
+            vol.dimensions.1 as u32,
+            vol.dimensions.2 as u32,
+            encoding,
+        )?))
     }
 
     pub fn load_data_from_ct_volume(

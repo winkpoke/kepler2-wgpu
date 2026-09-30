@@ -97,18 +97,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Sample the texture using the 3D coordinates
     let sampled_value: vec4<f32> = textureSample(t_diffuse, s_diffuse, tex_coords_3d);
 
-    // Conditionally decode depending on texture format
-    var value: f32;
-    if (u_uniform_frag.is_packed_rg8 > 0.5) {
-        // Packed RG8 path: decode little-endian u16 and convert back to HU
-        let low = sampled_value.r * 255.0;
-        let high = sampled_value.g * 255.0;
-        let u16_val = low + high * 256.0;
-        value = u16_val - u_uniform_frag.bias;
-    } else {
-        // Native float path (R16Float/R32Float): use the red channel
-        value = sampled_value.r;
-    }
+    let value = decode_volume_sample(
+        sampled_value, u_uniform_frag.is_packed_rg8, u_uniform_frag.bias
+    );
 
     // Compute the final value with clamping based on window and level
     // let v: f32 = clamp((value - (u_uniform_frag.level - u_uniform_frag.window / 2.0)) / u_uniform_frag.window, 0.0, 1.0);
