@@ -69,6 +69,29 @@ pub struct MprView {
 }
 
 impl MprView {
+    /// Rebinds GPU resources without changing slice, oblique basis, or display state.
+    /// Supply new content on device replacement; reuse existing content on format changes.
+    pub fn rebuild_gpu_resources(
+        &mut self,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        content: Option<Arc<RenderContent>>,
+    ) {
+        let content = content.unwrap_or_else(|| self.wgpu_impl.render_content.clone());
+        let uniforms = self.wgpu_impl.uniforms;
+        self.wgpu_impl = MprViewWgpuImpl::new(
+            Arc::new(MprRenderContext::new(device, format)),
+            device,
+            content,
+            Mat4::from_cols_array(&uniforms.frag.mat),
+        );
+        // Preserve uniforms while adopting the new volume's decoding parameters.
+        let decode = self.wgpu_impl.render_content.decode_parameters();
+        self.wgpu_impl.uniforms = uniforms;
+        self.wgpu_impl.uniforms.frag.is_packed_rg8 = decode.is_packed_flag as f32;
+        self.wgpu_impl.uniforms.frag.bias = decode.bias;
+    }
+
     /// Medical imaging parameter bounds for validation
     const MIN_SCALE: f32 = 0.01; // 1% zoom minimum
     const MAX_SCALE: f32 = 100.0; // 100x zoom maximum

@@ -3,7 +3,7 @@
 //! This module provides:
 //! - A lightweight cache for `wgpu::RenderPipeline` objects keyed by `PipelineKey`.
 //! - Helpers to create common pipelines (e.g., texture-quad and mesh) and uniform bind groups.
-//! - A global swapchain/surface format accessor to ensure pipelines target the correct color format.
+//! - Explicit color attachment formats supplied by each configured surface or offscreen target.
 //!
 //! Design notes:
 //! - Pipeline creation is relatively expensive. Caching pipelines avoids redundant compilation work and
@@ -25,40 +25,8 @@
 //! - Add tests covering cache hit/miss behavior and signature correctness.
 #![allow(dead_code)]
 
-use once_cell::sync::OnceCell;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
-
-/// Global storage for the swapchain/surface color target format used by onscreen render passes.
-///
-/// Notes
-/// - Some pipelines depend on the target color format (e.g., blending and write mask behavior).
-/// - Storing it here avoids threading a format parameter throughout the call graph when a single
-///   surface is used. On multi-surface setups, prefer passing the format explicitly.
-static SWAPCHAIN_FORMAT: OnceCell<wgpu::TextureFormat> = OnceCell::new();
-
-/// Sets the global swapchain/surface color target format. Safe to call multiple times; subsequent calls will be ignored.
-///
-/// Parameters
-/// - `fmt`: The `wgpu::TextureFormat` used by the surface/swapchain color attachment.
-///
-/// Notes
-/// - Uses `OnceCell` so the first successful set wins; later attempts are no-ops.
-/// - Prefer explicit formats for multi-window/surface scenarios instead of relying on global state.
-pub fn set_swapchain_format(fmt: wgpu::TextureFormat) {
-    // No-op if already set; `OnceCell` ensures thread-safe one-time initialization.
-    let _ = SWAPCHAIN_FORMAT.set(fmt);
-}
-
-/// Gets the globally stored swapchain/surface color target format, if set.
-///
-/// Returns
-/// - `Option<wgpu::TextureFormat>`: `Some(format)` if previously set, otherwise `None`.
-pub fn get_swapchain_format() -> Option<wgpu::TextureFormat> {
-    // Surfaces may negotiate formats with the backend; ensure this is set during initialization
-    // after surface configuration. Call sites can fall back to reasonable defaults when `None`.
-    SWAPCHAIN_FORMAT.get().copied()
-}
 
 /// Returns the default depth texture format for mesh rendering across native and WebGPU.
 ///
@@ -191,7 +159,7 @@ pub fn create_mip_pipeline_(
 /// - Parameterize MSAA (`multisample.count`) and culling for performance/quality trade-offs.
 
 /// Creates a basic mesh pipeline with depth testing enabled.
-/// Uses global swapchain format if set; otherwise falls back to Rgba8Unorm.
+/// Uses the supplied surface or offscreen color attachment format.
 ///
 /// Parameters
 /// - `device`: Logical device used to build shader modules and pipelines.
@@ -202,8 +170,11 @@ pub fn create_mip_pipeline_(
 /// Notes
 /// - This pipeline has no bind groups and renders points using `MeshVertex::desc()` layout.
 /// - Uses REPLACE blending; adjust if you need alpha.
-pub fn get_or_create_mesh_pipeline(device: &wgpu::Device) -> Arc<wgpu::RenderPipeline> {
-    get_or_create_mesh_pipeline_with_depth(device, true)
+pub fn get_or_create_mesh_pipeline(
+    device: &wgpu::Device,
+    target_format: wgpu::TextureFormat,
+) -> Arc<wgpu::RenderPipeline> {
+    get_or_create_mesh_pipeline_with_depth(device, true, target_format)
 }
 
 /// Creates a basic mesh pipeline with configurable depth testing.
@@ -218,11 +189,11 @@ pub fn get_or_create_mesh_pipeline(device: &wgpu::Device) -> Arc<wgpu::RenderPip
 pub fn get_or_create_mesh_pipeline_with_depth(
     device: &wgpu::Device,
     use_depth: bool,
+    target_format: wgpu::TextureFormat,
 ) -> Arc<wgpu::RenderPipeline> {
     log::trace!("Creating mesh pipeline with depth: {}", use_depth);
 
-    // Get target format and topology
-    let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
+    // Select mesh topology.
     let topology = wgpu::PrimitiveTopology::TriangleList;
 
     // Mesh shader with both vertex and fragment stages.
@@ -548,8 +519,8 @@ pub fn create_basic_mesh_pipeline_with_lighting(
     transform_bind_group_layout: &wgpu::BindGroupLayout,
     lighting_bind_group_layout: &wgpu::BindGroupLayout,
     use_depth: bool,
+    target_format: wgpu::TextureFormat,
 ) -> wgpu::RenderPipeline {
-    let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
     create_basic_mesh_pipeline_with_lighting_and_format(
         device,
         transform_bind_group_layout,
@@ -631,6 +602,7 @@ pub fn create_simple_mesh_pipeline(
     device: &wgpu::Device,
     bind_group_layout: &wgpu::BindGroupLayout,
     use_depth: bool,
+    target_format: wgpu::TextureFormat,
 ) -> wgpu::RenderPipeline {
     // Use the basic mesh shader with minimal uniforms
     let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/mesh_basic.wgsl"));
@@ -641,9 +613,6 @@ pub fn create_simple_mesh_pipeline(
         bind_group_layouts: &[bind_group_layout],
         push_constant_ranges: &[],
     });
-
-    // Get target format
-    let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
 
     // Create the pipeline
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -699,19 +668,6 @@ pub fn create_simple_mesh_pipeline(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    /// Function-level comment: 验证全局交换链格式 set/get 的一次性设置行为
-    #[test]
-    fn test_swapchain_format_set_get() {
-        assert!(get_swapchain_format().is_none());
-        set_swapchain_format(wgpu::TextureFormat::Bgra8Unorm);
-        let fmt = get_swapchain_format().unwrap();
-        assert_eq!(fmt, wgpu::TextureFormat::Bgra8Unorm);
-        // 再次设置应被忽略
-        set_swapchain_format(wgpu::TextureFormat::Rgba8Unorm);
-        let fmt2 = get_swapchain_format().unwrap();
-        assert_eq!(fmt2, wgpu::TextureFormat::Bgra8Unorm);
-    }
 
     /// Function-level comment: 验证默认深度格式为 Depth24Plus 以跨平台兼容
     #[test]

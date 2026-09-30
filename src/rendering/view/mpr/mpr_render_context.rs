@@ -139,19 +139,15 @@ impl MprRenderContext {
     /// This initializes the global state that can be shared across multiple MPR views
     ///
     /// # Arguments
-    /// * `manager` - Pipeline manager for caching render pipelines
     /// * `device` - WGPU device for creating GPU resources
     ///
     /// # Returns
     /// A new MprRenderContext with initialized shared resources
-    pub fn new(device: &wgpu::Device) -> Self {
-        let target_format = crate::rendering::core::pipeline::get_swapchain_format()
-            .unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
+    pub fn new(device: &wgpu::Device, target_format: wgpu::TextureFormat) -> Self {
         Self::new_with_format(device, target_format)
     }
 
     /// Creates shared MPR resources for an explicit color attachment format.
-    /// Offscreen callers need not initialize the global swapchain format.
     pub fn new_with_format(device: &wgpu::Device, target_format: wgpu::TextureFormat) -> Self {
         // Create bind group layout for 3D texture and sampler
         let texture_bind_group_layout =

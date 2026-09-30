@@ -564,7 +564,7 @@ impl PassExecutor {
                 device,
                 surface_width,
                 surface_height,
-                wgpu::TextureFormat::Bgra8UnormSrgb,
+                descriptor.color_format,
                 true,
             );
             log::trace!(

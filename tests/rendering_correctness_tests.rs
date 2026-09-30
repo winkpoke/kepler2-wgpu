@@ -131,11 +131,177 @@ fn assert_gray(image: &Image, x: u32, y: u32, value: u8) {
     image.assert_pixel_near(x, y, [value, value, value, 255], 2);
 }
 
+/// Factories must target their own attachment, even when another factory was used first.
+#[test]
+fn factories_render_independent_surface_formats() {
+    use kepler_wgpu::rendering::view::{DefaultViewFactory, Orientation, ViewFactory};
+    let gpu = Gpu::new();
+    gpu.validated("Independent factory formats", || {
+        let vol = CTVolume::new((2, 2, 2), (1.0, 1.0, 1.0), vec![1000; 8], Base::default());
+        for format in [
+            wgpu::TextureFormat::Bgra8UnormSrgb,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+            FORMAT,
+        ] {
+            let factory = DefaultViewFactory::new(
+                Arc::clone(&gpu.device),
+                Arc::clone(&gpu.queue),
+                format,
+                false,
+            );
+            let mut mpr = factory
+                .create_mpr_view(&vol, Orientation::Transverse, (0, 0), (16, 16))
+                .unwrap();
+            mpr.update(&gpu.queue);
+            render_offscreen(&gpu, 16, 16, format, false, |pass| {
+                mpr.render(pass).unwrap();
+            });
+            let mut mip = factory.create_mip_view(&vol, (0, 0), (16, 16)).unwrap();
+            mip.update(&gpu.queue);
+            render_offscreen(&gpu, 16, 16, format, false, |pass| {
+                mip.render(pass).unwrap();
+            });
+            let mut mesh = factory
+                .create_mesh_view(&overlapping_triangles(), (0, 0), (16, 16))
+                .unwrap();
+            mesh.update(&gpu.queue);
+            render_offscreen(&gpu, 16, 16, format, true, |pass| {
+                mesh.render(pass).unwrap();
+            });
+        }
+    });
+}
+
+/// Existing views must remain usable after format and device replacement, with no state loss.
+#[test]
+fn existing_views_rebind_formats_and_devices_without_losing_display_state() {
+    use kepler_wgpu::rendering::view::mesh::mesh_view::MeshView;
+    use kepler_wgpu::rendering::view::{
+        DefaultViewFactory, MipView, MprView, Orientation, ViewFactory,
+    };
+    let first = Gpu::new();
+    let replacement = Gpu::new();
+    let initial_format = wgpu::TextureFormat::Bgra8UnormSrgb;
+    let next_format = wgpu::TextureFormat::Rgba8UnormSrgb;
+    first.validated("Create views on original device", || {
+        let vol = CTVolume::new(
+            (2, 2, 2),
+            (1.0, 1.0, 1.0),
+            vec![-500, 0, 500, 1000, -500, 0, 500, 1000],
+            Base::default(),
+        );
+        let content = upload_volume(
+            &first,
+            (2, 2, 2),
+            vol.voxel_data().to_vec(),
+            VolumeEncoding::PackedI16Rg8,
+        );
+        let factory = DefaultViewFactory::new(
+            first.device.clone(),
+            first.queue.clone(),
+            initial_format,
+            false,
+        );
+        let mut views = [
+            factory
+                .create_mpr_view_with_content(
+                    content.clone(),
+                    &vol,
+                    Orientation::Transverse,
+                    (0, 0),
+                    (160, 160),
+                )
+                .unwrap(),
+            factory
+                .create_mip_view_with_content(content.clone(), (0, 0), (160, 160))
+                .unwrap(),
+            factory
+                .create_mesh_view_with_content(
+                    content,
+                    &overlapping_triangles(),
+                    (0, 0),
+                    (160, 160),
+                )
+                .unwrap(),
+        ];
+        let mpr = views[0].as_any_mut().downcast_mut::<MprView>().unwrap();
+        mpr.set_scale(1.2).unwrap();
+        mpr.set_oblique_rotation_radians(0.1, 0.2, 0.3).unwrap();
+        mpr.set_window_level(100.0).unwrap();
+        let mip = views[1].as_any_mut().downcast_mut::<MipView>().unwrap();
+        mip.set_rotation_radians(0.1, 0.2, 0.3);
+        mip.config_mut().lower_threshold = -600.0;
+        mip.config_mut().upper_threshold = 800.0;
+        mip.set_scale(1.2);
+        let mesh = views[2].as_any_mut().downcast_mut::<MeshView>().unwrap();
+        mesh.set_scale_factor(0.8);
+        mesh.set_opacity(0.7);
+        let before: Vec<_> = views
+            .iter_mut()
+            .enumerate()
+            .map(|(i, view)| {
+                view.update(&first.queue);
+                render_offscreen(&first, 160, 160, initial_format, i == 2, |pass| {
+                    view.render(pass).unwrap()
+                })
+            })
+            .collect();
+        let expected_mip = views[1]
+            .as_any()
+            .downcast_ref::<MipView>()
+            .unwrap()
+            .config()
+            .clone();
+        // Same-device format change reuses volume textures. A replacement device gets new content,
+        // uploaded on that device rather than reusing textures from the original device.
+        for (gpu, content) in [
+            (&first, None),
+            (
+                &replacement,
+                Some(upload_volume(
+                    &replacement,
+                    (2, 2, 2),
+                    vol.voxel_data().to_vec(),
+                    VolumeEncoding::PackedI16Rg8,
+                )),
+            ),
+        ] {
+            gpu.validated("Rebind existing views", || {
+                for (i, view) in views.iter_mut().enumerate() {
+                    if let Some(mpr) = view.as_any_mut().downcast_mut::<MprView>() {
+                        mpr.rebuild_gpu_resources(&gpu.device, next_format, content.clone());
+                        assert_eq!(mpr.get_scale(), 1.2);
+                        assert_eq!(mpr.get_window_level(), 100.0);
+                    } else if let Some(mip) = view.as_any_mut().downcast_mut::<MipView>() {
+                        mip.rebuild_gpu_resources(&gpu.device, next_format, content.clone());
+                        assert_eq!(mip.config().lower_threshold, expected_mip.lower_threshold);
+                        assert_eq!(mip.config().upper_threshold, expected_mip.upper_threshold);
+                        assert_eq!(mip.get_rotation_radians(), [0.1, 0.2, 0.3]);
+                    } else if let Some(mesh) = view.as_any_mut().downcast_mut::<MeshView>() {
+                        mesh.rebuild_gpu_resources(&gpu.device, &gpu.queue, next_format);
+                        assert_eq!(mesh.get_opacity(), 0.7);
+                    }
+                    view.update(&gpu.queue);
+                    let after = render_offscreen(gpu, 160, 160, next_format, i == 2, |pass| {
+                        view.render(pass).unwrap()
+                    });
+                    for (a, b) in after.pixels.iter().zip(&before[i].pixels) {
+                        assert!(
+                            a.abs_diff(*b) <= 2,
+                            "View {i} changed after GPU rebinding: {a} != {b}"
+                        );
+                    }
+                }
+            });
+        }
+    });
+}
+
 #[test]
 fn mpr_production_pipeline_builds() {
     let gpu = Gpu::new();
     gpu.validated("MPR production pipeline", || {
-        let _context = MprRenderContext::new(&gpu.device);
+        let _context = MprRenderContext::new(&gpu.device, FORMAT);
     });
 }
 
@@ -152,8 +318,13 @@ fn mesh_production_pipeline_builds_with_and_without_depth() {
     let gpu = Gpu::new();
     gpu.validated("Mesh production pipelines", || {
         for use_depth in [false, true] {
-            let _context =
-                BasicMeshContext::new(&gpu.device, &gpu.queue, &overlapping_triangles(), use_depth);
+            let _context = BasicMeshContext::new(
+                &gpu.device,
+                &gpu.queue,
+                &overlapping_triangles(),
+                use_depth,
+                FORMAT,
+            );
         }
     });
 }
@@ -162,7 +333,7 @@ fn hu_render_roundtrip(encoding: VolumeEncoding) {
     const WINDOW_WIDTH: f32 = 65.0;
     let gpu = Gpu::new();
     gpu.validated("HU render roundtrip", || {
-        let context = Arc::new(MprRenderContext::new(&gpu.device));
+        let context = Arc::new(MprRenderContext::new(&gpu.device, FORMAT));
         for hu in [
             i16::MIN,
             -1200,
@@ -246,7 +417,7 @@ fn mpr_axial_coronal_sagittal_slices_and_interpolation_match_voxels() {
             Mat4::from_cols(Vec4::X, Vec4::Z, Vec4::Y, Vec4::W), // coronal
             Mat4::from_cols(Vec4::Y, Vec4::Z, Vec4::X, Vec4::W), // sagittal
         ];
-        let context = Arc::new(MprRenderContext::new(&gpu.device));
+        let context = Arc::new(MprRenderContext::new(&gpu.device, FORMAT));
         for encoding in ENCODINGS {
             let content = upload_volume(&gpu, (4, 4, 4), voxels.clone(), encoding);
             for (plane, orientation) in orientations.into_iter().enumerate() {
@@ -380,8 +551,13 @@ fn mesh_depth_occludes_later_far_triangle() {
     let gpu = Gpu::new();
     gpu.validated("Mesh depth occlusion", || {
         for use_depth in [true, false] {
-            let context =
-                BasicMeshContext::new(&gpu.device, &gpu.queue, &overlapping_triangles(), use_depth);
+            let context = BasicMeshContext::new(
+                &gpu.device,
+                &gpu.queue,
+                &overlapping_triangles(),
+                use_depth,
+                FORMAT,
+            );
             context.update_lighting(&gpu.queue, unshaded_lighting());
             let image =
                 render_offscreen(&gpu, 64, 64, FORMAT, use_depth, |pass| context.render(pass));
@@ -402,7 +578,6 @@ fn mesh_depth_occludes_later_far_triangle() {
 fn production_pipelines_render_rgba_bgra_and_srgb_targets_without_global_format_state() {
     let gpu = Gpu::new();
     gpu.validated("Output format matrix", || {
-        assert!(kepler_wgpu::rendering::core::pipeline::get_swapchain_format().is_none());
         let content = upload_volume(&gpu, (1, 1, 1), vec![0], VolumeEncoding::PackedI16Rg8);
         for format in [
             FORMAT,
@@ -451,6 +626,5 @@ fn production_pipelines_render_rgba_bgra_and_srgb_targets_without_global_format_
                 2,
             );
         }
-        assert!(kepler_wgpu::rendering::core::pipeline::get_swapchain_format().is_none());
     });
 }

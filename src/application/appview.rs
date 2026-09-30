@@ -61,6 +61,27 @@ impl AppView {
         }
     }
 
+    /// Rebinds existing views to a surface format or replacement device.
+    /// Passing content replaces volume GPU textures; `None` keeps same-device textures.
+    pub(crate) fn rebuild_gpu_resources(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
+        content: Option<Arc<RenderContent>>,
+    ) {
+        for view in self.layout.views_mut() {
+            if let Some(mpr) = view.as_any_mut().downcast_mut::<MprView>() {
+                mpr.rebuild_gpu_resources(device, format, content.clone());
+            } else if let Some(mip) = view.as_any_mut().downcast_mut::<MipView>() {
+                mip.rebuild_gpu_resources(device, format, content.clone());
+            } else if let Some(mesh) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh.rebuild_gpu_resources(device, queue, format);
+            }
+            view.update(queue);
+        }
+    }
+
     /// Capture and save the state of all compatible views (MPR, MIP, Mesh).
     ///
     /// Function-level comment: Iterates over views and updates the internal saved_states buffer.

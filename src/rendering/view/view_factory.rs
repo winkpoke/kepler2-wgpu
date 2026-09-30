@@ -210,6 +210,11 @@ pub struct DefaultViewFactory {
 }
 
 impl DefaultViewFactory {
+    /// Attachment format used when constructing views for this factory's surface.
+    pub fn surface_format(&self) -> wgpu::TextureFormat {
+        self.surface_format
+    }
+
     /// Function-level comment: Create a new DefaultViewFactory with required GPU resources and configuration
     pub fn new(
         device: Arc<wgpu::Device>,
@@ -269,6 +274,7 @@ impl ViewFactory for DefaultViewFactory {
             &self.queue,
             mesh,
             true, // Enable depth testing for proper 3D rendering
+            self.surface_format,
         );
         let ctx_arc = Arc::new(ctx);
 
@@ -289,7 +295,7 @@ impl ViewFactory for DefaultViewFactory {
         let render_content = self.build_render_content(vol)?;
 
         // Shared render context for MPR views
-        let render_context = Arc::new(MprRenderContext::new(&self.device));
+        let render_context = Arc::new(MprRenderContext::new(&self.device, self.surface_format));
 
         // Configure WindowLevel defaults; mirror State logic where appropriate
         let mut winlev = WindowLevel::new();
@@ -348,7 +354,7 @@ impl ViewFactory for DefaultViewFactory {
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
         // Shared render context for MPR views
-        let render_context = Arc::new(MprRenderContext::new(&self.device));
+        let render_context = Arc::new(MprRenderContext::new(&self.device, self.surface_format));
 
         // Configure WindowLevel defaults; mirror State logic where appropriate
         let mut winlev = WindowLevel::new();
@@ -409,7 +415,7 @@ impl ViewFactory for DefaultViewFactory {
         mesh_view.set_rotation_enabled(false);
         info!("[DefaultViewFactory] Mesh rotation disabled for consistent inspection");
 
-        let ctx = BasicMeshContext::new(&self.device, &self.queue, mesh, true);
+        let ctx = BasicMeshContext::new(&self.device, &self.queue, mesh, true, self.surface_format);
         let ctx_arc = Arc::new(ctx);
 
         mesh_view.attach_context(ctx_arc);
@@ -418,7 +424,13 @@ impl ViewFactory for DefaultViewFactory {
 
         // Initialize and attach orientation cube context (same as create_mesh_view)
         let cube_mesh = crate::rendering::mesh::mesh::Mesh::unit_cube();
-        let cube_ctx = BasicMeshContext::new(&self.device, &self.queue, &cube_mesh, true);
+        let cube_ctx = BasicMeshContext::new(
+            &self.device,
+            &self.queue,
+            &cube_mesh,
+            true,
+            self.surface_format,
+        );
         mesh_view.attach_orientation_cube_context(Arc::new(cube_ctx));
 
         info!(

@@ -137,6 +137,24 @@ impl Default for MeshView {
 }
 
 impl MeshView {
+    /// Recreates mesh and orientation gizmo GPU resources, retaining interaction state.
+    pub fn rebuild_gpu_resources(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
+    ) {
+        self.ctx = self
+            .ctx
+            .as_ref()
+            .map(|ctx| std::sync::Arc::new(ctx.rebuild(device, queue, format)));
+        self.orientation_cube_ctx = self
+            .orientation_cube_ctx
+            .as_ref()
+            .map(|ctx| std::sync::Arc::new(ctx.rebuild(device, queue, format)));
+        self.reset_error_state();
+    }
+
     pub fn new() -> Self {
         Self::default()
     }

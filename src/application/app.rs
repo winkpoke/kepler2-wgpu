@@ -77,8 +77,6 @@ impl App {
             }
         );
 
-        crate::rendering::core::pipeline::set_swapchain_format(graphics.surface_config.format);
-
         // Create GraphicsContext which encapsulates both graphics and pass_executor
         let graphics_context = GraphicsContext::from_graphics(graphics);
 
@@ -86,7 +84,7 @@ impl App {
         let factory = crate::rendering::view::DefaultViewFactory::new(
             Arc::clone(&graphics_context.graphics.device),
             Arc::clone(&graphics_context.graphics.queue),
-            graphics_context.graphics.surface_config.format,
+            graphics_context.surface_format(),
             default_float,
         );
 
@@ -99,33 +97,78 @@ impl App {
         })
     }
 
-    pub fn swap_graphics(&mut self, new_graphics: Graphics) {
-        // Function-level comment: Swap the underlying Graphics (window/surface/device/queue) safely.
-        // This replaces the graphics inside GraphicsContext and updates dependent state:
-        // - PassExecutor is recreated with the new surface format to keep pipelines targeting the correct format.
-        // - Global swapchain format is updated for modules that query it.
-        // - Mesh depth view is cleared to avoid stale references across device changes.
-
-        // Recreate GraphicsContext from new Graphics to ensure PassExecutor targets the new surface format
-        let new_gc = crate::rendering::core::graphics::GraphicsContext::from_graphics(new_graphics);
-        // Update global swapchain format for pipeline helpers
-        crate::rendering::core::pipeline::set_swapchain_format(
-            new_gc.graphics.surface_config.format,
+    /// Replaces graphics and rebinds existing views, retaining their CPU interaction state.
+    /// Volume upload failures leave the current context intact.
+    pub fn swap_graphics(&mut self, new_graphics: Graphics) -> Result<(), KeplerError> {
+        let device_changed = !Arc::ptr_eq(&self.graphics().device, &new_graphics.device);
+        let format_changed =
+            self.app_view.view_factory.surface_format() != new_graphics.surface_config.format;
+        let use_float = self.app_model.enable_float_volume_texture
+            && Self::device_supports_r16float(&new_graphics.adapter);
+        let content = if device_changed && (self.has_mpr_view() || self.has_mip_content()) {
+            let vol = self.app_model.volume()?;
+            let encoding =
+                crate::data::volume_encoding::VolumeEncoding::for_float_support(use_float);
+            let bytes = encoding.encode_volume(vol.voxel_data());
+            Some(Arc::new(RenderContent::from_bytes(
+                &new_graphics.device,
+                &new_graphics.queue,
+                &bytes,
+                "CT Volume",
+                vol.dimensions.0 as u32,
+                vol.dimensions.1 as u32,
+                vol.dimensions.2 as u32,
+                encoding,
+            )?))
+        } else {
+            None
+        };
+        if device_changed || format_changed {
+            self.app_view.rebuild_gpu_resources(
+                &new_graphics.device,
+                &new_graphics.queue,
+                new_graphics.surface_config.format,
+                content,
+            );
+        }
+        self.app_model.enable_float_volume_texture = use_float;
+        self.graphics_context = GraphicsContext::from_graphics(new_graphics);
+        self.refresh_view_factory();
+        let size = (
+            self.graphics().surface_config.width,
+            self.graphics().surface_config.height,
         );
-        // Replace the graphics_context
-        self.graphics_context = new_gc;
+        // Keep the existing layout while the replacement window is minimized.
+        if size.0 > 0 && size.1 > 0 {
+            self.app_view.resize(size);
+        }
+        Ok(())
+    }
 
-        // Function-level comment: Clear mesh resources bound to old device to prevent stale references.
-        // Texture pool is now created per-frame, so no persistent state to clear
-        // Function-level comment: Reinitialize the DefaultViewFactory with the new device/queue to avoid cross-device resource mismatches on WASM.
-        // This fixes a panic where a TextureView created on the new device was used to create a bind group on the old device.
-        self.app_view.view_factory = crate::rendering::view::DefaultViewFactory::new(
-            std::sync::Arc::clone(&self.graphics_context.graphics.device),
-            std::sync::Arc::clone(&self.graphics_context.graphics.queue),
-            self.graphics_context.graphics.surface_config.format,
+    fn refresh_view_factory(&mut self) {
+        self.app_view.view_factory = DefaultViewFactory::new(
+            Arc::clone(&self.graphics_context.graphics.device),
+            Arc::clone(&self.graphics_context.graphics.queue),
+            self.graphics_context.surface_format(),
             self.app_model.enable_float_volume_texture,
         );
-        log::info!("ViewFactory reinitialized after graphics swap.");
+    }
+
+    /// Synchronizes existing views after a surface-only format change, not an ordinary resize.
+    fn synchronize_surface_format(&mut self) {
+        let format = self.graphics_context.surface_format();
+        if self.app_view.view_factory.surface_format() != format {
+            self.app_view.rebuild_gpu_resources(
+                &self.graphics_context.graphics.device,
+                &self.graphics_context.graphics.queue,
+                format,
+                None,
+            );
+            self.refresh_view_factory();
+        }
+        self.graphics_context
+            .pass_executor
+            .update_surface_format(format);
     }
 
     /// Get a reference to the window
@@ -179,32 +222,8 @@ impl App {
                 .surface
                 .configure(&self.graphics().device, &self.graphics().surface_config);
 
-            // Update PassExecutor with new surface format
-            let surface_format = self.graphics().surface_config.format;
-            self.graphics_context
-                .pass_executor
-                .update_surface_format(surface_format);
-
-            // Recreate depth texture to match new surface size
-            let depth_format = crate::rendering::core::pipeline::get_mesh_depth_format();
-            let size = wgpu::Extent3d {
-                width: self.graphics().surface_config.width,
-                height: self.graphics().surface_config.height,
-                depth_or_array_layers: 1,
-            };
-            let desc = wgpu::TextureDescriptor {
-                label: Some("Mesh Depth Texture"),
-                size,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: depth_format,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                view_formats: &[],
-            };
-            let depth_tex = self.graphics().device.create_texture(&desc);
-            let _ = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
-            // Texture pool is now created per-frame, so no persistent depth texture to update
+            self.synchronize_surface_format();
+            // Depth and other size-dependent targets are allocated by the per-frame texture pool.
         }
     }
 
@@ -249,6 +268,7 @@ impl App {
     /// Function-level comment: Renders the frame using separate render passes for 3D mesh and 2D slice content.
     /// This architecture provides better performance and cleaner separation of concerns.
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        self.synchronize_surface_format();
         let frame = self.graphics().surface.get_current_texture()?;
         let frame_view = frame
             .texture

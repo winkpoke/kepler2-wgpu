@@ -4,8 +4,8 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 pub struct Gpu {
-    pub device: wgpu::Device,
-    pub queue: wgpu::Queue,
+    pub device: std::sync::Arc<wgpu::Device>,
+    pub queue: std::sync::Arc<wgpu::Queue>,
     pub adapter_info: wgpu::AdapterInfo,
 }
 
@@ -31,8 +31,8 @@ impl Gpu {
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
                 .unwrap_or_else(|error| panic!("Requesting device on {adapter_info:?}: {error}"));
         Self {
-            device,
-            queue,
+            device: std::sync::Arc::new(device),
+            queue: std::sync::Arc::new(queue),
             adapter_info,
         }
     }

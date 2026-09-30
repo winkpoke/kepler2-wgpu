@@ -3,7 +3,6 @@
 use super::mesh::BasicLightingUniforms;
 use crate::rendering::core::pipeline::{
     create_basic_lighting_bind_group_layout, create_basic_mesh_pipeline_with_lighting_and_format,
-    get_swapchain_format,
 };
 use wgpu::util::DeviceExt;
 use wgpu::{Device, Queue};
@@ -32,6 +31,8 @@ impl Default for BasicUniforms {
 /// Function-level comment: Basic mesh context for simplified rendering operations
 /// This struct provides a minimal interface for mesh rendering without complex features
 pub struct BasicMeshContext {
+    mesh: super::mesh::Mesh,
+    use_depth: bool,
     pub pipeline: std::sync::Arc<wgpu::RenderPipeline>,
     pub vertex_buffer: wgpu::Buffer,
     pub index_buffer: wgpu::Buffer,
@@ -47,13 +48,27 @@ pub struct BasicMeshContext {
 
 impl BasicMeshContext {
     /// Create a new basic mesh context with simplified pipeline and uniforms
-    pub fn new(device: &Device, queue: &Queue, mesh: &super::mesh::Mesh, use_depth: bool) -> Self {
-        let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
+    pub fn new(
+        device: &Device,
+        queue: &Queue,
+        mesh: &super::mesh::Mesh,
+        use_depth: bool,
+        target_format: wgpu::TextureFormat,
+    ) -> Self {
         Self::new_with_format(device, queue, mesh, use_depth, target_format)
     }
 
+    /// Recreates all mesh GPU resources while retaining the CPU geometry.
+    pub(crate) fn rebuild(
+        &self,
+        device: &Device,
+        queue: &Queue,
+        format: wgpu::TextureFormat,
+    ) -> Self {
+        Self::new(device, queue, &self.mesh, self.use_depth, format)
+    }
+
     /// Creates mesh resources for an explicit color attachment format.
-    /// Existing onscreen callers can continue to use `new`.
     pub fn new_with_format(
         device: &Device,
         queue: &Queue,
@@ -164,6 +179,8 @@ impl BasicMeshContext {
         log::info!("BasicMeshContext created successfully");
 
         Self {
+            mesh: mesh.clone(),
+            use_depth,
             pipeline,
             vertex_buffer,
             index_buffer,

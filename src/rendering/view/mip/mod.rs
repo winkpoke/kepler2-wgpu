@@ -333,6 +333,18 @@ pub struct MipView {
 }
 
 impl MipView {
+    /// Recreates GPU bindings and pipeline while preserving all CPU display parameters.
+    /// New content is required when the device changes.
+    pub fn rebuild_gpu_resources(
+        &mut self,
+        device: &Device,
+        format: wgpu::TextureFormat,
+        content: Option<Arc<RenderContent>>,
+    ) {
+        let content = content.unwrap_or_else(|| self.wgpu_impl.render_content().clone());
+        self.wgpu_impl = Arc::new(MipViewWgpuImpl::new(content, device, format));
+    }
+
     /// Create a new MIP view with the given WGPU implementation.
     pub fn new(wgpu_impl: Arc<MipViewWgpuImpl>) -> Self {
         Self {

@@ -49,10 +49,10 @@ impl RenderApp {
     pub async fn set_window(&mut self, window: Arc<Window>) {
         if let Some(state) = &mut self.state {
             match Graphics::new(window.clone()).await {
-                Ok(graphics) => {
-                    state.swap_graphics(graphics);
-                    log::info!("Graphics swapped successfully.");
-                }
+                Ok(graphics) => match state.swap_graphics(graphics) {
+                    Ok(()) => log::info!("Graphics swapped successfully."),
+                    Err(e) => log::error!("Failed to swap graphics: {}", e),
+                },
                 Err(e) => log::error!("Failed to create graphics: {}", e),
             }
         }
@@ -169,7 +169,10 @@ impl RenderApp {
                 }
                 Event::UserEvent(UserEvent::GraphicsReady(graphics, volume)) => {
                     log::info!("GraphicsReady event received.");
-                    state.swap_graphics(graphics);
+                    if let Err(e) = state.swap_graphics(graphics) {
+                        log::error!("Failed to swap graphics: {}", e);
+                        return;
+                    }
                     state.resize(PhysicalSize { width: 800, height: 800 });
                     proxy.send_event(UserEvent::LoadDataFromCTVolume(volume)).unwrap();
                     log::info!("Graphics swapped in state.");

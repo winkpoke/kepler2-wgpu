@@ -24,24 +24,29 @@ Drop order matters:
 ### Pipeline Management
 
 - Pipelines are cached in render contexts
-- Use `PipelineManager` in `rendering/core/pipeline.rs` for pipeline lifecycle
+- Pass color attachment formats explicitly to pipeline/context constructors; never use process-wide surface format state
 - Always check device capabilities before creating pipelines
 - Use `pollster` to block on async operations in native code
 
 ### Pipeline Recreation
 
-Recreate pipelines when:
-- Surface format changes (after window resize)
-- Shader code changes
-- Bind group layouts change
+`GraphicsContext::surface_format()` reads the authoritative `SurfaceConfiguration.format`.
+`DefaultViewFactory` passes that format to MPR, MIP, mesh, and orientation-cube contexts.
 
-```rust
-// Example: Update surface format after resize
-PassExecutor::update_surface_format(&new_format);
+| Event | Resources updated |
+|---|---|
+| Ordinary resize, unchanged format | Surface configuration and layout; per-frame texture pool supplies size-dependent depth targets. No pipeline rebuild. |
+| Same-device surface format change | Pass descriptors, view factory, and existing view GPU contexts; volume textures are reused. |
+| Device replacement via `App::swap_graphics` | Volume textures re-uploaded and all existing view GPU resources rebuilt, including orientation gizmos. |
 
-// Recreate DefaultViewFactory after graphics swap
-view_factory = DefaultViewFactory::new(graphics.clone());
-```
+`App` synchronizes format-dependent resources before rendering and after resize.
+`swap_graphics` returns a `Result`; upload failures leave the previous context intact.
+GPU rebinding preserves CPU view state (slice/oblique basis, window/level, pan/zoom,
+projection settings, and mesh rotation/opacity). Rebuild pipelines also when shaders
+or bind group layouts change.
+
+Headless regressions in `tests/rendering_correctness_tests.rs` validate independent
+factory formats and existing-view rebinding across BGRA/RGBA formats and two devices.
 
 ## Coordinate Systems
 
@@ -237,7 +242,7 @@ The system uses multiple render passes for different view types:
 
 - Window size controlled by Winit
 - Canvas ID: `wasm-example` (see `src/lib.rs`)
-- Resize events trigger pipeline recreation
+- Resize events reconfigure the surface; pipelines are rebuilt only if the attachment format changes
 
 ### WASM (Web)
 

@@ -51,6 +51,11 @@ impl GraphicsContext {
         }
     }
 
+    /// Color attachment format of this context's configured surface.
+    pub fn surface_format(&self) -> wgpu::TextureFormat {
+        self.graphics.surface_config.format
+    }
+
     /// Function-level comment: Get a reference to the underlying Graphics struct.
     pub fn graphics(&self) -> &Graphics {
         &self.graphics
@@ -256,7 +261,6 @@ impl Graphics {
 
         if size.width > 0 && size.height > 0 {
             surface.configure(&device, &surface_config);
-            crate::rendering::core::pipeline::set_swapchain_format(surface_config.format);
         }
 
         // Wrap device and queue in Arc to enable sharing without cloning wgpu handles
