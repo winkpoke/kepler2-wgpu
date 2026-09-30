@@ -3,26 +3,43 @@ name: Coverage Gate
 on:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   coverage_gate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # Required by the existing coverage-comment step.
 
     steps:
-      - uses: actions/checkout@v3
-
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          toolchain: stable
-          override: true
+          persist-credentials: false
+
+      - name: Install Rust (nightly)
+        uses: dtolnay/rust-toolchain@be39649afda95dbf70f87cce95f68b8d5797b296
+        with:
+          toolchain: nightly
 
       - name: Install cargo-llvm-cov
         run: |
           cargo install cargo-llvm-cov
 
+      - name: Install native dependencies and headless GPU driver
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev libxkbcommon-dev \
+            libwayland-dev libvulkan1 mesa-vulkan-drivers
+          echo "WGPU_BACKEND=vulkan" >> "$GITHUB_ENV"
+          echo "KEPLER_REQUIRE_GPU_TESTS=1" >> "$GITHUB_ENV"
+          echo "XDG_RUNTIME_DIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+
       - name: Generate coverage report
         run: |
-          cargo llvm-cov --lcov --output-dir coverage
+          mkdir -p coverage
+          cargo llvm-cov --locked --lcov --output-path coverage/lcov.info
 
       - name: Check medical path coverage
         run: |
@@ -30,7 +47,8 @@ jobs:
           echo "Medical path coverage: $COVERAGE%"
 
           if (( $(echo "$COVERAGE < 80" | bc -l) )); then
-            echo "ERROR: Medical path coverage $COVERAGE% is below 80% threshold"
+            echo "ERROR: Medical path coverage $COVERAGE%" \
+              "is below 80% threshold"
             exit 1
           fi
 
@@ -48,19 +66,22 @@ jobs:
       - name: Check coverage regression
         run: |
           CURRENT=$(cargo llvm-cov --quiet | grep -oP '\d+(?=%)' || echo "0%")
-          BASELINE=$(git show HEAD~1:coverage_report.txt 2>/dev/null || echo "0%")
+          BASELINE=$(git show HEAD~1:coverage_report.txt 2>/dev/null \
+            || echo "0%")
 
           if [ -n "$BASELINE" ]; then
             DECREASE=$(echo "$BASELINE - $CURRENT" | bc -l)
 
             if (( $(echo "$DECREASE > 5" | bc -l) )); then
-              echo "ERROR: Coverage decreased by $DECREASE% (baseline: $BASELINE%, current: $CURRENT%)"
+              echo "ERROR: Coverage decreased by $DECREASE%" \
+                "(baseline: $BASELINE%, current: $CURRENT%)"
               exit 1
             fi
           fi
 
       - name: Comment coverage in PR
-        uses: romeovs/lcov-reporter-action@v0.3.1
+        uses: >-
+          romeovs/lcov-reporter-action@dda1c9b1fa1622b225e9acd87a248751dbcc6ada
         with:
           lcov-file: ./coverage/lcov.info
           github-token: ${{ secrets.GITHUB_TOKEN }}

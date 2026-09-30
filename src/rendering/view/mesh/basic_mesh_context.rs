@@ -2,7 +2,8 @@
 
 use super::mesh::BasicLightingUniforms;
 use crate::rendering::core::pipeline::{
-    create_basic_lighting_bind_group_layout, create_basic_mesh_pipeline_with_lighting,
+    create_basic_lighting_bind_group_layout, create_basic_mesh_pipeline_with_lighting_and_format,
+    get_swapchain_format,
 };
 use wgpu::util::DeviceExt;
 use wgpu::{Device, Queue};
@@ -47,6 +48,19 @@ pub struct BasicMeshContext {
 impl BasicMeshContext {
     /// Create a new basic mesh context with simplified pipeline and uniforms
     pub fn new(device: &Device, queue: &Queue, mesh: &super::mesh::Mesh, use_depth: bool) -> Self {
+        let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
+        Self::new_with_format(device, queue, mesh, use_depth, target_format)
+    }
+
+    /// Creates mesh resources for an explicit color attachment format.
+    /// Existing onscreen callers can continue to use `new`.
+    pub fn new_with_format(
+        device: &Device,
+        queue: &Queue,
+        mesh: &super::mesh::Mesh,
+        use_depth: bool,
+        target_format: wgpu::TextureFormat,
+    ) -> Self {
         log::info!(
             "Creating BasicMeshContext with {} vertices, {} indices, depth: {}",
             mesh.vertices.len(),
@@ -119,11 +133,12 @@ impl BasicMeshContext {
         let lighting_bind_group_layout = create_basic_lighting_bind_group_layout(device);
 
         // Create lighting-enabled mesh pipeline with depth testing enabled to match render pass
-        let pipeline = std::sync::Arc::new(create_basic_mesh_pipeline_with_lighting(
+        let pipeline = std::sync::Arc::new(create_basic_mesh_pipeline_with_lighting_and_format(
             device,
             &bind_group_layout,
             &lighting_bind_group_layout,
             use_depth,
+            target_format,
         ));
 
         // Create bind group for uniforms

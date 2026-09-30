@@ -1,5 +1,18 @@
 # GPU Testing Strategy
 
+## Executable headless baseline
+
+The current production-pipeline baseline is implemented in
+`tests/rendering_correctness_tests.rs` (10 active native tests) and
+`tests/common/headless_gpu.rs`. It renders synthetic volumes and meshes without a
+window, copies padded texture rows into a mapped buffer, and checks selected
+pixels against numeric expectations. Missing adapters fail these tests.
+
+See [Headless GPU tests](../testing/headless_gpu.md) for the supported format
+matrix, tolerances, commands and software-Vulkan CI job. Pure logic tests and
+shader parsing alone do not validate pipeline compatibility or rendered output.
+The design examples below are historical guidance, not executable test APIs.
+
 ## Overview
 
 GPU code in Kepler2-WGPU (WebGPU/wgpu-native) presents unique testing challenges due to:

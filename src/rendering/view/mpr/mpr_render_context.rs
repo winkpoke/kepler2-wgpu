@@ -145,6 +145,14 @@ impl MprRenderContext {
     /// # Returns
     /// A new MprRenderContext with initialized shared resources
     pub fn new(device: &wgpu::Device) -> Self {
+        let target_format = crate::rendering::core::pipeline::get_swapchain_format()
+            .unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
+        Self::new_with_format(device, target_format)
+    }
+
+    /// Creates shared MPR resources for an explicit color attachment format.
+    /// Offscreen callers need not initialize the global swapchain format.
+    pub fn new_with_format(device: &wgpu::Device, target_format: wgpu::TextureFormat) -> Self {
         // Create bind group layout for 3D texture and sampler
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -199,10 +207,6 @@ impl MprRenderContext {
                 }],
                 label: Some("mpr_fragment_uniform_bind_group_layout"),
             });
-
-        // Get target format for pipeline creation
-        let target_format = crate::rendering::core::pipeline::get_swapchain_format()
-            .unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
 
         // Create render pipeline directly
         let bgls: [&wgpu::BindGroupLayout; 3] = [

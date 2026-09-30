@@ -549,6 +549,24 @@ pub fn create_basic_mesh_pipeline_with_lighting(
     lighting_bind_group_layout: &wgpu::BindGroupLayout,
     use_depth: bool,
 ) -> wgpu::RenderPipeline {
+    let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
+    create_basic_mesh_pipeline_with_lighting_and_format(
+        device,
+        transform_bind_group_layout,
+        lighting_bind_group_layout,
+        use_depth,
+        target_format,
+    )
+}
+
+/// Creates the production lighting-enabled mesh pipeline for an explicit target format.
+pub fn create_basic_mesh_pipeline_with_lighting_and_format(
+    device: &wgpu::Device,
+    transform_bind_group_layout: &wgpu::BindGroupLayout,
+    lighting_bind_group_layout: &wgpu::BindGroupLayout,
+    use_depth: bool,
+    target_format: wgpu::TextureFormat,
+) -> wgpu::RenderPipeline {
     // Use the basic mesh shader with lighting support
     let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/mesh_basic.wgsl"));
 
@@ -558,9 +576,6 @@ pub fn create_basic_mesh_pipeline_with_lighting(
         bind_group_layouts: &[transform_bind_group_layout, lighting_bind_group_layout],
         push_constant_ranges: &[],
     });
-
-    // Get target format
-    let target_format = get_swapchain_format().unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
 
     // Create the pipeline
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {

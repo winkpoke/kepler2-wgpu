@@ -1,0 +1,45 @@
+name: Headless GPU Baseline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  rendering:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      WGPU_BACKEND: vulkan
+      KEPLER_REQUIRE_GPU_TESTS: "1"
+      RUST_LOG: warn,rendering_correctness_tests=info
+    steps:
+      # Immutable revisions verified against the upstream v4/nightly/v2 refs.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@be39649afda95dbf70f87cce95f68b8d5797b296
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+
+      - name: Install native dependencies and software Vulkan
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev libxkbcommon-dev \
+            libwayland-dev libvulkan1 mesa-vulkan-drivers
+          icd=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
+          test -n "$icd"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+          runtime="$RUNNER_TEMP/kepler-gpu-runtime"
+          mkdir -p "$runtime"
+          chmod 700 "$runtime"
+          echo "XDG_RUNTIME_DIR=$runtime" >> "$GITHUB_ENV"
+
+      - name: Validate production pipelines and rendered pixels
+        run: |
+          cargo test --locked --test rendering_correctness_tests \
+            --test volume_encoding_tests -- --nocapture

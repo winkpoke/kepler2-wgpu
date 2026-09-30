@@ -92,6 +92,32 @@ cargo test -- --ignored
 cargo test --test dicom_tests
 ```
 
+### Headless GPU correctness baseline
+
+`cargo test` now includes **10 active native rendering tests** in
+`tests/rendering_correctness_tests.rs`. They create the production MPR, MIP and
+basic mesh pipelines, render synthetic scenes offscreen, and assert pixel values.
+A missing adapter is a failure, not a successful skip. Use nightly Rust because
+`src/lib.rs` currently requires `#![feature(duration_millis_float)]`.
+
+```bash
+KEPLER_REQUIRE_GPU_TESTS=1 cargo +nightly test --locked \
+  --test rendering_correctness_tests --test volume_encoding_tests
+```
+
+On Linux without a hardware GPU, install Mesa's software Vulkan driver:
+
+```bash
+sudo apt-get install libvulkan1 mesa-vulkan-drivers
+WGPU_BACKEND=vulkan KEPLER_REQUIRE_GPU_TESTS=1 cargo +nightly test --locked \
+  --test rendering_correctness_tests --test volume_encoding_tests
+```
+
+The existing volume compute-decoder test uses `KEPLER_REQUIRE_GPU_TESTS=1` to
+reject missing adapters too. The new rendering tests always require an adapter.
+See [Headless GPU tests](../testing/headless_gpu.md) for assertions, limitations,
+and CI configuration. These tests are a wgpu 23 baseline; no upgrade is included.
+
 ### Test Organization
 
 ```
