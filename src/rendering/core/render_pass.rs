@@ -365,7 +365,7 @@ impl PassExecutor {
         }
 
         // Re-enable mesh pass if it was disabled and we've had some successful frames
-        if self.mesh_pass_disabled && self.stats.total_frames % 300 == 0 {
+        if self.mesh_pass_disabled && self.stats.total_frames.is_multiple_of(300) {
             // Try every 5 seconds at 60fps
             log::info!("Attempting to re-enable mesh pass after recovery period");
             self.mesh_pass_disabled = false;

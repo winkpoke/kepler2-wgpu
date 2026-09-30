@@ -111,11 +111,11 @@ pub struct DataIssue {
 pub trait IntegrityChecker {
     fn check_integrity(&self, data: &[u8]) -> ValidationResult {
         if data.is_empty() {
-            return ValidationResult::failure(vec![ValidationError::InvalidInput {
+            ValidationResult::failure(vec![ValidationError::InvalidInput {
                 message: "Empty data".to_string(),
                 field: Some("data".to_string()),
                 context: HashMap::new(),
-            }]);
+            }])
         } else {
             ValidationResult::success()
         }
@@ -279,13 +279,11 @@ impl IntegrityChecker for MedicalHeaderChecker {
             });
         }
 
-        if data.len() >= self.expected_magic.len() {
-            if !data.starts_with(&self.expected_magic) {
-                errors.push(ValidationError::InvalidFormat {
-                    message: "Invalid magic number in header".to_string(),
-                    expected_format: format!("Magic bytes: {:?}", self.expected_magic),
-                });
-            }
+        if data.len() >= self.expected_magic.len() && !data.starts_with(&self.expected_magic) {
+            errors.push(ValidationError::InvalidFormat {
+                message: "Invalid magic number in header".to_string(),
+                expected_format: format!("Magic bytes: {:?}", self.expected_magic),
+            });
         }
 
         if errors.is_empty() {
@@ -326,9 +324,9 @@ impl MedicalImageValidator {
         pixel_data: &PixelData,
     ) -> ValidationResult {
         let mut results = Vec::new();
-        let metadata_validation_results = self.validate_metadata(&metadata);
+        let metadata_validation_results = self.validate_metadata(metadata);
         results.push(metadata_validation_results);
-        let pixel_data_validation_results = self.validate_pixel_data(&pixel_data, &metadata);
+        let pixel_data_validation_results = self.validate_pixel_data(pixel_data, metadata);
         results.push(pixel_data_validation_results);
         let validator = ValidationResult::combine(results);
         self.format_validators.insert(format, validator.clone());

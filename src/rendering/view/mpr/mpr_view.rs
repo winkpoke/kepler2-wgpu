@@ -1,5 +1,5 @@
-use std::sync::Arc;
-use glam::{Mat4, Quat, Vec3, Vec4};
+use super::{MprRenderContext, MprViewWgpuImpl};
+use crate::rendering::view::layout::compute_aspect_fit;
 use crate::{
     core::{
         error::{KeplerResult, MprError},
@@ -9,8 +9,8 @@ use crate::{
     rendering::{Orientation, RenderContent, StatefulView, ViewState},
     Renderable, View,
 };
-use super::{MprRenderContext, MprViewWgpuImpl};
-use crate::rendering::view::layout::compute_aspect_fit;
+use glam::{Mat4, Quat, Vec3};
+use std::sync::Arc;
 
 /// Generic Multi-Planar Reconstruction (MPR) view implementation.
 ///
@@ -41,7 +41,7 @@ pub struct MprView {
     /// Screen-space coordinate system base
     base_screen: Mat4,
     /// Original unrotated basis coordinates
-    base_screen_raw : Mat4,
+    base_screen_raw: Mat4,
     /// Oblique rotation matrix
     oblique_rotation: Quat,
     /// Oblique rotation normal
@@ -163,8 +163,9 @@ impl MprView {
         let translate_vec = Vec3::from_array(translate);
 
         // Validate and clamp all input parameters
-        let ((scale, pan), pos, dim) = Self::validate_and_clamp_params(scale, translate_vec, pos, dim);
-        
+        let ((scale, pan), pos, dim) =
+            Self::validate_and_clamp_params(scale, translate_vec, pos, dim);
+
         // Build coordinate system bases for this orientation
         let base_screen_legacy = orientation.build_base(vol);
         let base_uv_legacy = GeometryBuilder::build_uv_base(vol);
@@ -281,7 +282,9 @@ impl MprView {
 
     fn oblique_center_world(&mut self) {
         let r = Mat4::from_quat(self.oblique_rotation);
-        let center = self.base_screen_raw.transform_point3(Vec3::new(0.5, 0.5, 0.0));
+        let center = self
+            .base_screen_raw
+            .transform_point3(Vec3::new(0.5, 0.5, 0.0));
         let t1 = Mat4::from_translation(-center);
         let t2 = Mat4::from_translation(center);
         self.base_screen = t2 * r * t1 * self.base_screen_raw;

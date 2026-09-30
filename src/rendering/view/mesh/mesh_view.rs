@@ -10,7 +10,7 @@ use crate::{
     core::timing::Instant,
     rendering::view::{Renderable, View},
 };
-use glam::{Mat4, Quat, Vec2, Vec3};
+use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::{FRAC_PI_2, PI};
 
 /// Function-level comment: Error types specific to mesh rendering operations
@@ -56,9 +56,10 @@ pub struct RenderStats {
 }
 
 /// Function-level comment: Fallback rendering modes when primary rendering fails
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum FallbackMode {
     /// Normal rendering with all features
+    #[default]
     Normal,
     /// Simplified rendering without complex shaders
     Simplified,
@@ -66,12 +67,6 @@ pub enum FallbackMode {
     Wireframe,
     /// Disabled - skip rendering entirely
     Disabled,
-}
-
-impl Default for FallbackMode {
-    fn default() -> Self {
-        FallbackMode::Normal
-    }
 }
 
 pub struct MeshView {
@@ -268,19 +263,19 @@ impl MeshView {
             pitch_deg.to_radians(),
         );
 
-        let rot = Mat4::from_rotation_x(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(pitch);
+        let rot =
+            Mat4::from_rotation_x(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(pitch);
         self.rotation = rot;
         self.last_frame_time = Instant::now();
         log::info!("Mesh rotation set to {:?}°", self.rotation);
     }
-        
 
     pub fn set_rotation(&mut self, rotation: Mat4) {
         self.rotation = rotation;
         self.last_frame_time = Instant::now();
         log::info!("Mesh rotation set to {:?}", self.rotation);
     }
-    
+
     pub fn get_rotation(&self) -> Mat4 {
         self.rotation
     }
@@ -593,16 +588,15 @@ impl MeshView {
         if matches!(
             self.fallback_mode,
             FallbackMode::Simplified | FallbackMode::Wireframe
-        ) {
-            if self.stats.frame_count % 60 == 0 {
-                // Try to upgrade every 60 frames
-                self.fallback_mode = match self.fallback_mode {
-                    FallbackMode::Wireframe => FallbackMode::Simplified,
-                    FallbackMode::Simplified => FallbackMode::Normal,
-                    _ => self.fallback_mode,
-                };
-                log::info!("Upgraded to fallback mode: {:?}", self.fallback_mode);
-            }
+        ) && self.stats.frame_count.is_multiple_of(60)
+        {
+            // Try to upgrade every 60 frames
+            self.fallback_mode = match self.fallback_mode {
+                FallbackMode::Wireframe => FallbackMode::Simplified,
+                FallbackMode::Simplified => FallbackMode::Normal,
+                _ => self.fallback_mode,
+            };
+            log::info!("Upgraded to fallback mode: {:?}", self.fallback_mode);
         }
     }
 
@@ -706,7 +700,7 @@ impl Renderable for MeshView {
         self.update_uniforms(queue);
 
         // Perform periodic health checks
-        if self.stats.frame_count % 300 == 0 {
+        if self.stats.frame_count.is_multiple_of(300) {
             // Every 5 seconds at 60fps
             if !self.is_healthy() {
                 log::warn!("MeshView health check failed: consecutive_errors={}, last_success={:?}s ago, mode={:?}", 
@@ -796,10 +790,22 @@ mod tests {
         // Verify default rotation is 180 degrees around X (PI radians)
         let expected_mat = Mat4::from_rotation_x(PI);
         // Check Matrix columns
-        assert!(mesh_view.rotation.col(0).abs_diff_eq(expected_mat.col(0), 1e-6));
-        assert!(mesh_view.rotation.col(1).abs_diff_eq(expected_mat.col(1), 1e-6));
-        assert!(mesh_view.rotation.col(2).abs_diff_eq(expected_mat.col(2), 1e-6));
-        assert!(mesh_view.rotation.col(3).abs_diff_eq(expected_mat.col(3), 1e-6));
+        assert!(mesh_view
+            .rotation
+            .col(0)
+            .abs_diff_eq(expected_mat.col(0), 1e-6));
+        assert!(mesh_view
+            .rotation
+            .col(1)
+            .abs_diff_eq(expected_mat.col(1), 1e-6));
+        assert!(mesh_view
+            .rotation
+            .col(2)
+            .abs_diff_eq(expected_mat.col(2), 1e-6));
+        assert!(mesh_view
+            .rotation
+            .col(3)
+            .abs_diff_eq(expected_mat.col(3), 1e-6));
 
         // Verify default speed (90 degrees/s)
         assert!((mesh_view.rotation_speed - FRAC_PI_2).abs() < 1e-6);
@@ -813,7 +819,7 @@ mod tests {
         // Set some rotation first to ensure we aren't just testing identity or default
         // Add 45 degrees around Y to the existing default
         mesh_view.set_rotation_angle_degrees(0.0, 45.0);
-        
+
         let before_mat = mesh_view.rotation;
 
         mesh_view.set_rotation_enabled(false);
@@ -849,15 +855,24 @@ mod tests {
         mesh_view.set_rotation_angle_degrees(90.0, 45.0);
         // Verify initial state is NOT default
         assert_ne!(mesh_view.rotation, Mat4::from_rotation_x(PI));
-        
+
         // Reset
         mesh_view.reset_rotation();
 
         // Verify reset to default (PI around X)
         let expected_mat = Mat4::from_rotation_x(PI);
 
-        assert!(mesh_view.rotation.col(0).abs_diff_eq(expected_mat.col(0), 1e-6));
-        assert!(mesh_view.rotation.col(1).abs_diff_eq(expected_mat.col(1), 1e-6));
-        assert!(mesh_view.rotation.col(2).abs_diff_eq(expected_mat.col(2), 1e-6));
+        assert!(mesh_view
+            .rotation
+            .col(0)
+            .abs_diff_eq(expected_mat.col(0), 1e-6));
+        assert!(mesh_view
+            .rotation
+            .col(1)
+            .abs_diff_eq(expected_mat.col(1), 1e-6));
+        assert!(mesh_view
+            .rotation
+            .col(2)
+            .abs_diff_eq(expected_mat.col(2), 1e-6));
     }
 }

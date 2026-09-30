@@ -237,7 +237,10 @@ impl GLCanvas {
     pub async fn get_oblique_rotation(&self, index: usize) -> Result<String, String> {
         let (tx, rx) = oneshot::channel();
 
-        if let Err(e) = self.proxy.send_event(UserEvent::GetObliqueRotation(index, tx)) {
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::GetObliqueRotation(index, tx))
+        {
             log::error!(
                 "Failed to send GetObliqueRotation event for window {}: {:?}",
                 index,
@@ -249,7 +252,8 @@ impl GLCanvas {
         log::info!("Sent GetObliqueRotation event for window {}", index);
 
         match rx.await {
-            Ok(result) => serde_json::to_string(&result).map_err(|e| format!("JSON serialization error: {}", e)),
+            Ok(result) => serde_json::to_string(&result)
+                .map_err(|e| format!("JSON serialization error: {}", e)),
             Err(e) => Err(format!("Failed to receive result: {:?}", e)),
         }
     }

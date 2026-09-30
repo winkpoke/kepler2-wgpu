@@ -127,8 +127,7 @@ impl ViewFactory for MockViewFactory {
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(Box::new(std::io::Error::other(
             "Mock factory - not implemented",
         )))
     }
@@ -141,8 +140,7 @@ impl ViewFactory for MockViewFactory {
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(Box::new(std::io::Error::other(
             "Mock factory - not implemented",
         )))
     }
@@ -154,8 +152,7 @@ impl ViewFactory for MockViewFactory {
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(Box::new(std::io::Error::other(
             "Mock factory - not implemented",
         )))
     }
@@ -169,8 +166,7 @@ impl ViewFactory for MockViewFactory {
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(Box::new(std::io::Error::other(
             "Mock factory - not implemented",
         )))
     }
@@ -182,8 +178,7 @@ impl ViewFactory for MockViewFactory {
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(Box::new(std::io::Error::other(
             "Mock factory - not implemented",
         )))
     }
@@ -195,8 +190,7 @@ impl ViewFactory for MockViewFactory {
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(Box::new(std::io::Error::other(
             "Mock factory - not implemented",
         )))
     }

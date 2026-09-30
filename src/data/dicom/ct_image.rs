@@ -123,7 +123,9 @@ impl CTImage {
         {
             // No transformation is needed, return the data as borrowed
             let data: Vec<i16> = pixel_data
-                .chunks_exact(2)
+                .as_chunks::<2>()
+                .0
+                .iter()
                 .map(|chunk| {
                     if chunk.len() != 2 {
                         anyhow::bail!(
@@ -141,7 +143,9 @@ impl CTImage {
 
         // Case 2: Transformation required (rescale or pixel_representation is different)
         let transformed_data: Vec<i16> = pixel_data
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|chunk| {
                 if chunk.len() != 2 {
                     anyhow::bail!(

@@ -2,7 +2,7 @@
 
 use super::mesh_processing::*;
 use crate::data::CTVolume;
-use ndarray::{s, Array3, ArrayView3};
+use ndarray::{s, Array3};
 #[cfg(not(target_arch = "wasm32"))]
 use rayon::prelude::*;
 
@@ -688,12 +688,12 @@ impl Mesh {
             // Add indices for each face
             indices.extend_from_slice(&[
                 // Front face
-                (base_index + 0) as u32,
+                base_index as u32,
                 (base_index + 1) as u32,
                 (base_index + 2) as u32,
                 (base_index + 2) as u32,
                 (base_index + 3) as u32,
-                (base_index + 0) as u32,
+                base_index as u32,
                 // Back face
                 (base_index + 4) as u32,
                 (base_index + 5) as u32,
@@ -831,7 +831,6 @@ impl Mesh {
         let chunks: Vec<(usize, usize)> = (process_z_start..process_z_end)
             .step_by(chunk_size)
             .enumerate()
-            .map(|(i, z)| (i, z))
             .collect();
 
         // Process chunk closure
@@ -885,7 +884,7 @@ impl Mesh {
             }
 
             let (crop_x_start, crop_y_start, cropped_volume) =
-                if let (Some(world_min), Some(world_max)) = (world_min, world_max) {
+                if let (Some(_world_min), Some(_world_max)) = (world_min, world_max) {
                     // ROI logic
                     let origin_x = ctvolume.base.matrix.col(3)[0];
                     let origin_y = ctvolume.base.matrix.col(3)[1];

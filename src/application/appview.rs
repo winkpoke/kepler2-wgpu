@@ -89,15 +89,15 @@ impl AppView {
                         window: mip_view.get_window_level(),
                         rotation_radians: mip_view.get_rotation_radians(),
                     })
-                } else if let Some(mesh_view) = v.as_any().downcast_ref::<MeshView>() {
-                    Some(CapturedViewState::Mesh {
-                        rotation: mesh_view.get_rotation(),
-                        scale: mesh_view.get_scale_factor(),
-                        pan: mesh_view.get_pan(),
-                        opacity: mesh_view.get_opacity(),
-                    })
                 } else {
-                    None
+                    v.as_any()
+                        .downcast_ref::<MeshView>()
+                        .map(|mesh_view| CapturedViewState::Mesh {
+                            rotation: mesh_view.get_rotation(),
+                            scale: mesh_view.get_scale_factor(),
+                            pan: mesh_view.get_pan(),
+                            opacity: mesh_view.get_opacity(),
+                        })
                 }
             })
             .collect();
@@ -156,10 +156,7 @@ impl AppView {
         for (i, view) in self.layout.views_mut().iter_mut().enumerate() {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
                 // Match by BOTH view index and orientation
-                if let Some(CapturedViewState::Mpr {
-                    state,
-                    ..
-                }) = states.iter().find(|s| {
+                if let Some(CapturedViewState::Mpr { state, .. }) = states.iter().find(|s| {
                     matches!(s, CapturedViewState::Mpr { view_index: idx, orientation: o, .. }
                         if *idx == i && *o == *mpr_view.get_orientation())
                 }) {

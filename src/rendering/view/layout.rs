@@ -342,7 +342,7 @@ impl<T: LayoutStrategy> LayoutContainer for StaticLayout<T> {
 
             // For more robust type checking, we can also check if the type names contain
             // the expected view type (e.g., "MeshView" or "GenericMPRView")
-            actual_type.contains(&target_type.split("::").last().unwrap_or(target_type))
+            actual_type.contains(target_type.split("::").last().unwrap_or(target_type))
         } else {
             false
         }
@@ -523,7 +523,7 @@ impl LayoutContainer for DynamicLayout {
 
             // For more robust type checking, we can also check if the type names contain
             // the expected view type (e.g., "MeshView" or "GenericMPRView")
-            actual_type.contains(&target_type.split("::").last().unwrap_or(target_type))
+            actual_type.contains(target_type.split("::").last().unwrap_or(target_type))
         } else {
             false
         }

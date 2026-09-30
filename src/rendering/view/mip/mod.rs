@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 
+use crate::core::{KeplerResult, WindowLevel};
 use crate::data::volume_encoding::VolumeEncoding;
 use crate::rendering::view::layout::compute_aspect_fit;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::{Renderable, View};
-use crate::core::{WindowLevel,KeplerResult};
 use glam::{Mat4, Vec3};
 use std::{any::Any, sync::Arc};
 use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, Queue, RenderPipeline};
@@ -33,11 +33,11 @@ impl Default for MipConfig {
     /// These values provide a good balance between quality and performance for medical imaging.
     fn default() -> Self {
         Self {
-            ray_step_size: 0.005, // Default 0.005mm step size
-            max_steps: 1000.0,    // Default 1000 steps
+            ray_step_size: 0.005,     // Default 0.005mm step size
+            max_steps: 1000.0,        // Default 1000 steps
             lower_threshold: -1024.0, // Default lower threshold
             upper_threshold: 3071.0,  // Default upper threshold
-            slab_thickness: 10.0, // Default 10mm slab
+            slab_thickness: 10.0,     // Default 10mm slab
             mip_mode: 0,              // Default to Maximum Intensity Projection
         }
     }
@@ -384,7 +384,6 @@ impl MipView {
                 self.config.max_steps = 1000.0;
                 self.config.lower_threshold = -1024.0;
                 self.config.upper_threshold = 3071.0;
-
             }
         }
     }
@@ -457,7 +456,10 @@ impl MipView {
     }
 
     pub fn get_window_level(&self) -> [f32; 2] {
-        [self.window_level.window_level(), self.window_level.window_width()]
+        [
+            self.window_level.window_level(),
+            self.window_level.window_width(),
+        ]
     }
 }
 
@@ -513,8 +515,8 @@ impl Renderable for MipView {
             pan_y: self.pan[1],
             scale: self.scale,
             mip_mode: self.config.mip_mode as f32,
-            lower_threshold : self.config.lower_threshold,
-            upper_threshold : self.config.upper_threshold,
+            lower_threshold: self.config.lower_threshold,
+            upper_threshold: self.config.upper_threshold,
             rotation: final_matrix.to_cols_array(),
         };
 
@@ -523,7 +525,11 @@ impl Renderable for MipView {
 
         log::trace!(
             "[MIP_UPDATE] Uniforms set: mip_mode={}, window={}, level={}, lower={}, upper={}",
-            uniforms.mip_mode, uniforms.window, uniforms.level, uniforms.lower_threshold, uniforms.upper_threshold
+            uniforms.mip_mode,
+            uniforms.window,
+            uniforms.level,
+            uniforms.lower_threshold,
+            uniforms.upper_threshold
         );
     }
 
@@ -548,8 +554,8 @@ impl Renderable for MipView {
         }
 
         // Bind resources
-        render_pass.set_bind_group(0, &*self.wgpu_impl.bind_groups().0, &[]);
-        render_pass.set_bind_group(1, &*self.wgpu_impl.bind_groups().1, &[]);
+        render_pass.set_bind_group(0, self.wgpu_impl.bind_groups().0, &[]);
+        render_pass.set_bind_group(1, self.wgpu_impl.bind_groups().1, &[]);
 
         // Draw fullscreen quad
         render_pass.draw(0..4, 0..1);

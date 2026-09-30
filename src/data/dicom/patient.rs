@@ -68,7 +68,9 @@ impl Patient {
         // Validate birthdate format
         if let Some(date) = &self.birthdate {
             if date.len() != 8 || !date.chars().all(char::is_numeric) {
-                return Err(anyhow!("Invalid PatientBirthDate format (expected YYYYMMDD)"));
+                return Err(anyhow!(
+                    "Invalid PatientBirthDate format (expected YYYYMMDD)"
+                ));
             }
         }
 

@@ -195,7 +195,7 @@ impl DicomRepo {
             .image_orientation_patient
             .ok_or_else(|| "ImageOrientationPatient is missing in the first CTImage".to_string())?;
 
-        let patient_position = match &ct_images[0].patient_position {
+        let _patient_position = match &ct_images[0].patient_position {
             Some(pos_str) => PatientPosition::from_str(pos_str),
             None => PatientPosition::HFS, // Default to HFS if no position specified
         };
@@ -277,6 +277,12 @@ impl DicomRepo {
                 matrix: base_matrix,
             },
         })
+    }
+}
+
+impl Default for DicomRepo {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

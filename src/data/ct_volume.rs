@@ -14,9 +14,9 @@ use glam::Mat4;
 #[derive(Clone)]
 pub struct CTVolume {
     pub(crate) dimensions: (usize, usize, usize), // (rows, columns, number of slices)
-    pub(crate) voxel_spacing: (f32, f32, f32), // (spacing_x, spacing_y, spacing_z)
+    pub(crate) voxel_spacing: (f32, f32, f32),    // (spacing_x, spacing_y, spacing_z)
     // pub(crate) voxel_data: Vec<Vec<i16>>, // 3D voxel data flattened into slices
-    pub(crate) voxel_data: Vec<i16>, // 3D voxel data 
+    pub(crate) voxel_data: Vec<i16>, // 3D voxel data
     pub(crate) base: Base,
 }
 
@@ -26,7 +26,7 @@ impl fmt::Debug for CTVolume {
             .field("dimensions", &self.dimensions)
             .field("voxel_spacing", &self.voxel_spacing)
             .field("voxel_data", &format!("{} slices", self.voxel_data.len()))
-            .field("base", &format!("\n{:?}", &self.base))
+            .field("base", &format!("\n{:?}", self.base))
             .finish()
     }
 }
@@ -69,17 +69,17 @@ impl CTVolume {
     #[wasm_bindgen(js_name = export_mha)]
     pub fn export_mha(&self) -> js_sys::Uint8Array {
         let mut mha_data = Vec::new();
-        
+
         // Extract offset (translation) from base matrix
         let offset_x = self.base.matrix.w_axis.x;
         let offset_y = self.base.matrix.w_axis.y;
         let offset_z = self.base.matrix.w_axis.z;
-        
+
         // Calculate direction cosines by removing scaling
         let col0 = self.base.matrix.x_axis.truncate();
         let col1 = self.base.matrix.y_axis.truncate();
         let col2 = self.base.matrix.z_axis.truncate();
-        
+
         let dir0 = col0.normalize_or_zero();
         let dir1 = col1.normalize_or_zero();
         let dir2 = col2.normalize_or_zero();
@@ -101,27 +101,38 @@ impl CTVolume {
             DimSize = {} {} {}\n\
             ElementType = MET_SHORT\n\
             ElementDataFile = LOCAL\n",
-            dir0.x, dir1.x, dir2.x,
-            dir0.y, dir1.y, dir2.y,
-            dir0.z, dir1.z, dir2.z,
-            offset_x, offset_y, offset_z,
-            self.voxel_spacing.0, self.voxel_spacing.1, self.voxel_spacing.2,
-            self.dimensions.0, self.dimensions.1, self.dimensions.2
+            dir0.x,
+            dir1.x,
+            dir2.x,
+            dir0.y,
+            dir1.y,
+            dir2.y,
+            dir0.z,
+            dir1.z,
+            dir2.z,
+            offset_x,
+            offset_y,
+            offset_z,
+            self.voxel_spacing.0,
+            self.voxel_spacing.1,
+            self.voxel_spacing.2,
+            self.dimensions.0,
+            self.dimensions.1,
+            self.dimensions.2
         );
 
         mha_data.extend_from_slice(header.as_bytes());
-        
+
         // Append raw voxel data (i16 little endian)
         // Reserve exact capacity
         mha_data.reserve_exact(self.voxel_data.len() * 2);
         for v in &self.voxel_data {
             mha_data.extend_from_slice(&v.to_le_bytes());
         }
-        
+
         js_sys::Uint8Array::from(mha_data.as_slice())
     }
 }
-
 
 pub struct Geometry {
     volumes: Vec<CTVolume>,

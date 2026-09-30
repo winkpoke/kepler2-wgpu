@@ -148,14 +148,15 @@ impl App {
     /// Function-level comment: Resize the application window and update graphics resources.
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         // get max texture dimension
-        let max_dim = self.graphics().device.limits().max_texture_dimension_2d as u32;
+        let max_dim = self.graphics().device.limits().max_texture_dimension_2d;
 
         let safe_width = new_size.width.min(max_dim);
         let safe_height = new_size.height.min(max_dim);
         if (safe_width != new_size.width) || (safe_height != new_size.height) {
             log::warn!(
                 "please resize the window to ({}, {}) or smaller",
-                safe_width, safe_height
+                safe_width,
+                safe_height
             );
         }
         log::info!("Resizing to: {}, {}", safe_width, safe_height);
@@ -332,7 +333,7 @@ impl App {
                         crate::rendering::core::PassId::SlicePass => {
                             // Function-level comment: Render 2D slice content (MPR views only, skip MeshView)
                             // Iterate through views and only render MPR views, not MeshView
-                            for (_, view) in layout.views_mut().iter_mut().enumerate() {
+                            for view in layout.views_mut().iter_mut() {
                                 // Check if this is a MeshView and skip it during slice pass
                                 if view.as_any().downcast_ref::<MeshView>().is_some() {
                                     continue;
@@ -448,13 +449,13 @@ impl App {
         } else if self.app_view.is_one_cell_layout() {
             self.app_view.set_grid_layout(2, 2, 2);
         }
-        
+
         // Load current volume
-        if let Some(vol) = self.app_model.volume().ok().map(|v| v.clone()) {
+        if let Some(vol) = self.app_model.volume().ok().cloned() {
             if self.saved_states.is_empty() {
                 self.load_data_from_ct_volume(&vol).unwrap();
             }
-            
+
             // Load render texture
             let texture = match self.load_render_content(&vol) {
                 Ok(t) => t,
@@ -464,7 +465,7 @@ impl App {
                 }
             };
 
-            if let Some(_) = mesh_index {
+            if mesh_index.is_some() {
                 self.app_model.enable_mesh = true;
 
                 // Build or reuse cached mesh
@@ -701,7 +702,7 @@ impl App {
         }
     }
 
-    pub fn get_oblique_rotation(&self, index: usize)->[f32; 4]{
+    pub fn get_oblique_rotation(&self, index: usize) -> [f32; 4] {
         let view = self.app_view.layout.views().get(index).unwrap();
         if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
             let n = mpr_view.get_oblique_rotation();
@@ -873,7 +874,7 @@ impl App {
     /// Function-level comment: Enable or disable Y-axis rotation for the mesh view.
     /// This method provides external control over mesh rotation animation.
     pub fn set_mesh_rotation_enabled(&mut self, enabled: bool) {
-        if self.app_view.layout.views().len() > 0 {
+        if !self.app_view.layout.views().is_empty() {
             for view in self.app_view.layout.views_mut().iter_mut() {
                 if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
                     mesh_view.set_rotation_enabled(enabled);
@@ -992,11 +993,11 @@ impl App {
     pub fn toggle_float_volume_texture(&mut self) {
         // Toggle feature always enabled - removed toggle_enabled field
         // If enabling float path, ensure hardware support
-        if !self.app_model.enable_float_volume_texture {
-            if !Self::device_supports_r16float(&self.graphics().adapter) {
-                log::warn!("Hardware doesn't support R16Float filtered sampling; staying on RG8.");
-                return;
-            }
+        if !self.app_model.enable_float_volume_texture
+            && !Self::device_supports_r16float(&self.graphics().adapter)
+        {
+            log::warn!("Hardware doesn't support R16Float filtered sampling; staying on RG8.");
+            return;
         }
         self.app_model.enable_float_volume_texture = !self.app_model.enable_float_volume_texture;
         log::info!(

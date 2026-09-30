@@ -235,10 +235,14 @@ pub fn downsample_mesh(
         let idx1 = old_to_new[face[1]];
         let idx2 = old_to_new[face[2]];
 
-        if idx0 != usize::MAX && idx1 != usize::MAX && idx2 != usize::MAX {
-            if idx0 != idx1 && idx1 != idx2 && idx0 != idx2 {
-                new_faces.push([idx0, idx1, idx2]);
-            }
+        if idx0 != usize::MAX
+            && idx1 != usize::MAX
+            && idx2 != usize::MAX
+            && idx0 != idx1
+            && idx1 != idx2
+            && idx0 != idx2
+        {
+            new_faces.push([idx0, idx1, idx2]);
         }
     }
 
@@ -297,7 +301,7 @@ impl MarchingTetrahedra {
         let (spacing_z, spacing_y, spacing_x) = spacing;
 
         // Ensure range is within bounds
-        let start_z = z_range.start.max(0);
+        let start_z = z_range.start;
         let end_z = z_range.end.min(depth - 1);
 
         // Parallelize over Z slices (native), fallback to sequential on WASM
@@ -565,7 +569,7 @@ fn create_gaussian_kernel(sigma: f32) -> Vec<f32> {
     let mut kernel = Vec::with_capacity(size);
     let mut sum = 0.0;
     let two_sigma_sq = 2.0 * sigma * sigma;
-    let norm = 1.0 / (2.0 * PI as f32 * sigma * sigma).sqrt(); // 1D normalization is actually just 1/(sqrt(2pi)*sigma)
+    let _norm = 1.0 / (2.0 * PI as f32 * sigma * sigma).sqrt(); // 1D normalization is actually just 1/(sqrt(2pi)*sigma)
 
     for i in -radius..=radius {
         let x = i as f32;

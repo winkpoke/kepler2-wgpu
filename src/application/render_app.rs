@@ -323,8 +323,8 @@ impl RenderApp {
                 Event::WindowEvent {
                     ref event,
                     window_id,
-                } if window_id == state.window().id() => {
-                    if !state.input(event) {
+                } if window_id == state.window().id()
+                    && !state.input(event) => {
                         // UPDATED!
                         match event {
                             WindowEvent::CloseRequested
@@ -568,7 +568,6 @@ impl RenderApp {
                             _ => {}
                         }
                     }
-                }
                 _ => {}
             }
         }).unwrap();

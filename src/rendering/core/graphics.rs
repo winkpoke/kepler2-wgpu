@@ -223,7 +223,7 @@ impl Graphics {
         let surface_caps = surface.get_capabilities(&adapter);
         // tests
         info!("Surface supports {} formats:", surface_caps.formats.len());
-        for fmt in surface_caps.formats.iter().copied() {
+        for fmt in surface_caps.formats.iter() {
             let is_srgb = fmt.is_srgb();
             info!("  - {:?}: sRGB={}", fmt, is_srgb);
         }

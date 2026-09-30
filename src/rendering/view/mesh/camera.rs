@@ -3,19 +3,13 @@
 use glam::{Mat4, Vec3};
 
 /// Function-level comment: Projection type enumeration for camera configuration
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum ProjectionType {
     /// Perspective projection with field of view - objects appear smaller with distance
     Perspective,
     /// Orthogonal projection - maintains object size regardless of distance (ideal for medical imaging)
+    #[default]
     Orthogonal,
-}
-
-impl Default for ProjectionType {
-    fn default() -> Self {
-        // Default to orthogonal for medical visualization accuracy
-        ProjectionType::Orthogonal
-    }
 }
 
 #[derive(Default, Debug, Clone)]

@@ -8,11 +8,11 @@ use winit::event_loop::EventLoopBuilder;
 use winit::{dpi::PhysicalSize, window::WindowBuilder};
 
 // New module organization
+pub mod acquisition;
 pub mod application;
 pub mod core;
 pub mod data;
 pub mod rendering;
-pub mod acquisition;
 
 // All modules now properly organized according to the new architecture
 
