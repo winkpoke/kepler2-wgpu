@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-01 — Prefer browser WebGPU with WebGL2 fallback
+
+- Enabled wgpu 23's browser WebGPU backend while retaining WebGL2 and the locked dependency versions.
+- Added bounded pre-canvas WebGL2 fallback, a fresh-page `?kepler_wgpu_backend=gl` diagnostic selector, and stage-labeled post-binding failure guidance.
+- Centralized selected-device filtered volume-format and 3D texture-limit decisions; malformed or oversized uploads are rejected without altering signed voxel data.
+- Added a synthetic signed-volume browser procedure. Browser runtime/backend acceptance remains pending; see [browser GPU verification](testing/browser_gpu.md).
+
 ## 2026-10-01 — Agent guidance and OpenSpec maintenance
 
 - Consolidated repository policy into `AGENTS.md`, with task-specific current references and thin tool adapters.

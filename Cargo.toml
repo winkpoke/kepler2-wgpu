@@ -65,12 +65,15 @@ features = ["png", "jpeg"]
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 console_error_panic_hook = "0.1.6"
 console_log = "1.0"
-wgpu = { version = "23.0", features = ["webgl"]}
+wgpu = { version = "23.0", features = ["webgl", "webgpu"]}
 wasm-bindgen = "0.2"
 serde-wasm-bindgen = "0.6"
 wasm-bindgen-futures = "0.4.30"
 web-sys = { version = "0.3", features = [
     "Document",
+    "HtmlCanvasElement",
+    "Location",
+    "UrlSearchParams",
     "Window",
     "Element",
     "File",

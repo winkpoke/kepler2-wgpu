@@ -1,8 +1,9 @@
 # Signed voxel GPU encoding
 
 Canonical CPU voxels remain `i16`; DICOM rescaling happens before GPU encoding.
-`src/data/volume_encoding.rs` owns byte encoding, texture format selection, and
-storage decode parameters. Both `AppModel` and `DefaultViewFactory` use it.
+`src/data/volume_encoding.rs` owns byte encoding, encoding-to-texture-format
+mapping, and storage decode parameters. `Graphics` owns a capability snapshot for
+its selected device, and `App` uses that snapshot to choose a usable representation.
 
 ## Representations
 
@@ -16,6 +17,22 @@ storage decode parameters. Both `AppModel` and `DefaultViewFactory` use it.
 The 32768 offset is a property of the signed integer domain, not a CT lower
 bound. It must never be applied to window/level settings. Shader uniforms keep
 storage decode parameters separate from display parameters.
+
+## Device capabilities and upload limits
+
+A format is eligible for volume rendering only when the selected device permits
+`TEXTURE_BINDING | COPY_DST` and filtered sampling (`FILTERABLE`) under the
+features enabled on that device. `R16Float` is preferred when eligible; otherwise
+`PackedI16Rg8` is used. Backend identity alone does not determine encoding. Device
+replacement reevaluates eligibility while retaining the prior preference when the
+new device supports it; it also retains CPU view interaction state.
+
+`RenderContent::from_bytes` checks that each dimension is nonzero and no greater
+than `device.limits().max_texture_dimension_3d`, and that the input has exactly
+two bytes per voxel with checked size arithmetic. Invalid dimensions or byte
+counts return an error before GPU texture allocation. Data is never clamped,
+resampled, or truncated to fit a device. The maximum is per axis, not a total
+voxel-count limit.
 
 ## Filtering and decoding
 

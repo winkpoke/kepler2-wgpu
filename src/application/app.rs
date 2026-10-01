@@ -66,8 +66,8 @@ impl App {
             }),
         );
 
-        // Choose default format based on device capability: prefer R16Float when supported, else RG8
-        let default_float = Self::device_supports_r16float(&graphics.adapter);
+        // Choose the device-negotiated default format, preferring filtered R16Float.
+        let default_float = graphics.capabilities().default_float_encoding();
         log::info!(
             "R16Float filterable sampling supported: {}. Defaulting to {}",
             default_float,
@@ -107,8 +107,11 @@ impl App {
         let device_changed = !Arc::ptr_eq(&self.graphics().device, &new_graphics.device);
         let format_changed =
             self.app_view.view_factory.surface_format() != new_graphics.surface_config.format;
-        let use_float = self.app_model.enable_float_volume_texture
-            && Self::device_supports_r16float(&new_graphics.adapter);
+        let replacement_encoding = new_graphics
+            .capabilities()
+            .encoding_for_preference(self.app_model.enable_float_volume_texture);
+        let use_float =
+            replacement_encoding == crate::data::volume_encoding::VolumeEncoding::R16Float;
         let content = if device_changed && (self.has_mpr_view() || self.has_mip_content()) {
             let vol = self.app_model.volume()?;
             let encoding =
@@ -888,18 +891,6 @@ impl App {
         world_coord
     }
 
-    // Check if device supports R16Float with filtering and sampling as a texture binding
-    fn device_supports_r16float(adapter: &wgpu::Adapter) -> bool {
-        let features = adapter.get_texture_format_features(wgpu::TextureFormat::R16Float);
-        let filterable = features
-            .flags
-            .contains(wgpu::TextureFormatFeatureFlags::FILTERABLE);
-        let can_sample = features
-            .allowed_usages
-            .contains(wgpu::TextureUsages::TEXTURE_BINDING);
-        filterable && can_sample
-    }
-
     /// Function-level comment: Enable or disable Y-axis rotation for the mesh view.
     /// This method provides external control over mesh rotation animation.
     pub fn set_mesh_rotation_enabled(&mut self, enabled: bool) {
@@ -1020,12 +1011,20 @@ impl App {
     /// Toggle the volume texture format (R16Float vs Rg8Unorm) and reload the CT volume.
     /// Ensures hardware support when enabling float textures and reinitializes views.
     pub fn toggle_float_volume_texture(&mut self) {
-        // Toggle feature always enabled - removed toggle_enabled field
-        // If enabling float path, ensure hardware support
-        if !self.app_model.enable_float_volume_texture
-            && !Self::device_supports_r16float(&self.graphics().adapter)
+        let requested_encoding = if self.app_model.enable_float_volume_texture {
+            crate::data::volume_encoding::VolumeEncoding::PackedI16Rg8
+        } else {
+            crate::data::volume_encoding::VolumeEncoding::R16Float
+        };
+        if !self
+            .graphics()
+            .capabilities()
+            .supports_encoding(requested_encoding)
         {
-            log::warn!("Hardware doesn't support R16Float filtered sampling; staying on RG8.");
+            log::warn!(
+                "Selected device does not support {:?} filtered volume textures; retaining current encoding",
+                requested_encoding
+            );
             return;
         }
         self.app_model.enable_float_volume_texture = !self.app_model.enable_float_volume_texture;

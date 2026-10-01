@@ -46,8 +46,9 @@ safety guarantee or regulatory assessment.
 - Resource-allocation/cache tests check bounded ownership/reuse. They do not measure
   driver memory leaks or process RSS; Valgrind/browser memory automation is not
   implemented merely because an archived plan describes it.
-- WASM library compilation and manual browser checks are separate. The repository
-  does not currently provide npm/Playwright browser-test scripts.
+- WASM library compilation and manual browser checks are separate. Follow the
+  [browser GPU smoke procedure](browser_gpu.md); the repository does not currently
+  provide npm/Playwright browser-test scripts.
 
 The [archived testing guidance](../archive/agent-guidance-2026-10-01/) preserves
 old proposals and measurements, including unimplemented API examples. Do not

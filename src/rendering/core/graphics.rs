@@ -13,10 +13,85 @@ pub struct Graphics {
     pub(crate) window: Arc<Window>,
     pub(crate) surface: wgpu::Surface<'static>,
     pub(crate) surface_config: wgpu::SurfaceConfiguration,
-    pub(crate) adapter: wgpu::Adapter,
+    capabilities: super::capabilities::GpuCapabilities,
     // Function-level comment: Wrap device and queue in Arc for cheap cloning across subsystems
     pub(crate) device: Arc<wgpu::Device>,
     pub(crate) queue: Arc<wgpu::Queue>,
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn preflight_browser_backend(
+    backend: super::browser_backend::BrowserBackend,
+) -> Result<(), String> {
+    let backends = match backend {
+        super::browser_backend::BrowserBackend::BrowserWebGpu => wgpu::Backends::BROWSER_WEBGPU,
+        super::browser_backend::BrowserBackend::Gl => wgpu::Backends::GL,
+    };
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+        backends,
+        ..Default::default()
+    });
+    let canvas = web_sys::window()
+        .and_then(|window| window.document())
+        .ok_or_else(|| format!("{backend:?} preflight: browser document is unavailable"))?
+        .create_element("canvas")
+        .map_err(|error| {
+            format!("{backend:?} preflight: detached canvas creation failed: {error:?}")
+        })?
+        .dyn_into::<web_sys::HtmlCanvasElement>()
+        .map_err(|_| format!("{backend:?} preflight: detached element is not a canvas"))?;
+    canvas.set_width(1);
+    canvas.set_height(1);
+
+    let surface = instance
+        .create_surface(wgpu::SurfaceTarget::Canvas(canvas))
+        .map_err(|error| format!("{backend:?} preflight surface creation failed: {error}"))?;
+    let adapter = instance
+        .request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::default(),
+            compatible_surface: Some(&surface),
+            force_fallback_adapter: false,
+        })
+        .await
+        .ok_or_else(|| format!("{backend:?} preflight adapter request returned no adapter"))?;
+    let adapter_info = adapter.get_info();
+    let expected_backend = match backend {
+        super::browser_backend::BrowserBackend::BrowserWebGpu => wgpu::Backend::BrowserWebGpu,
+        super::browser_backend::BrowserBackend::Gl => wgpu::Backend::Gl,
+    };
+    if adapter_info.backend != expected_backend {
+        return Err(format!(
+            "{backend:?} preflight selected unexpected adapter backend {:?}",
+            adapter_info.backend
+        ));
+    }
+
+    let surface_capabilities = surface.get_capabilities(&adapter);
+    if surface_capabilities.formats.is_empty()
+        || surface_capabilities.present_modes.is_empty()
+        || surface_capabilities.alpha_modes.is_empty()
+    {
+        return Err(format!(
+            "{backend:?} preflight surface has no usable format, present mode, or alpha mode"
+        ));
+    }
+    let required_limits = super::capabilities::browser_limits(&adapter.limits())
+        .map_err(|error| format!("{backend:?} preflight limit negotiation failed: {error}"))?;
+    let (device, _queue) = adapter
+        .request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("Kepler browser GPU preflight"),
+                required_features: wgpu::Features::empty(),
+                required_limits,
+                memory_hints: Default::default(),
+            },
+            None,
+        )
+        .await
+        .map_err(|error| format!("{backend:?} preflight device request failed: {error}"))?;
+    super::capabilities::GpuCapabilities::from_device(&adapter, &device)
+        .map_err(|error| format!("{backend:?} preflight volume capabilities failed: {error}"))?;
+    Ok(())
 }
 
 /// Graphics context that encapsulates both hardware abstraction and rendering pipeline orchestration
@@ -94,6 +169,41 @@ impl GraphicsContext {
 }
 
 impl Graphics {
+    #[cfg(target_arch = "wasm32")]
+    async fn preflight_browser_selection(
+    ) -> Result<super::browser_backend::BrowserBackend, KeplerError> {
+        use super::browser_backend::{
+            browser_backend_preference_from_query, select_browser_candidate, BrowserBackend,
+        };
+
+        let preference = browser_backend_preference_from_query();
+        // wgpu's adapter probe checks actual adapter creation, not just navigator.gpu presence.
+        let webgpu_detected = preference == super::browser_backend::BrowserBackendPreference::Auto
+            && wgpu::util::is_browser_webgpu_supported().await;
+        let selection = select_browser_candidate(
+            preference,
+            webgpu_detected,
+            || async { preflight_browser_backend(BrowserBackend::BrowserWebGpu).await },
+            || async { preflight_browser_backend(BrowserBackend::Gl).await },
+        )
+        .await
+        .map_err(|error| {
+            KeplerError::Graphics(format!(
+                "Browser GPU pre-canvas negotiation failed: {error}"
+            ))
+        })?;
+        if let Some(reason) = selection.webgpu_failure.as_deref() {
+            warn!("WebGPU unavailable during pre-canvas negotiation; trying WebGL2: {reason}");
+        }
+        info!("Browser GPU preflight selected {:?}", selection.backend);
+        Ok(selection.backend)
+    }
+
+    /// Capabilities negotiated for this graphics device.
+    pub(crate) fn capabilities(&self) -> &super::capabilities::GpuCapabilities {
+        &self.capabilities
+    }
+
     // Function-level comment: Initialize Graphics with environment-driven backend selection and optional validation.
     // Behavior:
     // - Native: default to Backends::PRIMARY; allow override via KEPLER_WGPU_BACKEND or WGPU_BACKEND (dx12, vulkan, metal, gl, primary/auto).
@@ -138,7 +248,20 @@ impl Graphics {
             }
         };
         #[cfg(target_arch = "wasm32")]
-        let selected_backends: wgpu::Backends = wgpu::Backends::GL;
+        let selected_browser_backend = Self::preflight_browser_selection().await?;
+        #[cfg(target_arch = "wasm32")]
+        let selected_backends = match selected_browser_backend {
+            super::browser_backend::BrowserBackend::BrowserWebGpu => wgpu::Backends::BROWSER_WEBGPU,
+            super::browser_backend::BrowserBackend::Gl => wgpu::Backends::GL,
+        };
+        #[cfg(target_arch = "wasm32")]
+        let post_binding_error = |stage, detail: &str| {
+            KeplerError::Graphics(super::browser_backend::post_binding_error(
+                selected_browser_backend,
+                stage,
+                detail,
+            ))
+        };
 
         #[cfg(not(target_arch = "wasm32"))]
         let instance_flags: wgpu::InstanceFlags =
@@ -158,9 +281,14 @@ impl Graphics {
             ..Default::default()
         });
 
+        #[cfg(not(target_arch = "wasm32"))]
         let surface = instance
             .create_surface(window.clone())
             .map_err(|e| KeplerError::Graphics(format!("Failed to create surface: {}", e)))?;
+        #[cfg(target_arch = "wasm32")]
+        let surface = instance.create_surface(window.clone()).map_err(|error| {
+            post_binding_error("real-canvas surface creation", &error.to_string())
+        })?;
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -169,28 +297,70 @@ impl Graphics {
                 force_fallback_adapter: false,
             })
             .await
-            .ok_or_else(|| KeplerError::Graphics("Failed to find suitable adapter".to_string()))?;
+            .ok_or_else(|| {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    KeplerError::Graphics("Failed to find suitable adapter".to_string())
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    post_binding_error(
+                        "real-canvas adapter request",
+                        "no compatible adapter was returned",
+                    )
+                }
+            })?;
+
+        #[cfg(target_arch = "wasm32")]
+        let required_limits =
+            super::capabilities::browser_limits(&adapter.limits()).map_err(|error| {
+                post_binding_error("real-canvas device limit validation", &error.to_string())
+            })?;
+        #[cfg(not(target_arch = "wasm32"))]
+        let required_limits = wgpu::Limits::default();
 
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
                     required_features: wgpu::Features::empty(),
-                    required_limits: if cfg!(target_arch = "wasm32") {
-                        wgpu::Limits {
-                            max_texture_dimension_3d: 1024,
-                            ..wgpu::Limits::downlevel_webgl2_defaults()
-                        }
-                    } else {
-                        wgpu::Limits::default()
-                    },
+                    required_limits,
                     memory_hints: Default::default(),
                 },
                 None,
             )
             .await
-            .map_err(|e| KeplerError::Graphics(format!("Failed to create device: {}", e)))?;
+            .map_err(|error| {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    KeplerError::Graphics(format!("Failed to create device: {error}"))
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    post_binding_error("real-canvas device request", &error.to_string())
+                }
+            })?;
 
+        #[cfg(target_arch = "wasm32")]
+        {
+            let backend = selected_browser_backend;
+            device.on_uncaptured_error(Box::new(move |error| {
+                log::error!(
+                    "Uncaptured wgpu validation/pipeline error for selected browser backend {backend:?}: {error}"
+                );
+            }));
+        }
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let capabilities = super::capabilities::GpuCapabilities::from_device(&adapter, &device)?;
+        #[cfg(target_arch = "wasm32")]
+        let capabilities = super::capabilities::GpuCapabilities::from_device(&adapter, &device)
+            .map_err(|error| {
+                post_binding_error(
+                    "real-canvas volume capability validation",
+                    &error.to_string(),
+                )
+            })?;
         let adapter_info = adapter.get_info();
         // Native: read env to summarize requested backend and validation; WASM: default values
         #[cfg(not(target_arch = "wasm32"))]
@@ -212,7 +382,7 @@ impl Graphics {
             Some("1") | Some("true") | Some("on")
         );
         #[cfg(target_arch = "wasm32")]
-        let (backend_str, validation) = ("gl", false);
+        let (backend_str, validation) = (format!("{:?}", adapter_info.backend), false);
 
         info!(
             "Adapter: {} ({:?}), vendor: {}, device: {}",
@@ -220,13 +390,21 @@ impl Graphics {
         );
         info!("Final backend chosen by wgpu: {:?}", adapter_info.backend);
         info!(
-            "Startup GPU summary: backend_env={} validation={} final_backend={:?} adapter=\"{}\" vendor={} device={}",
+            "Startup GPU summary: requested_backend={} validation={} final_backend={:?} adapter=\"{}\" vendor={} device={}",
             backend_str,
             if validation { "enabled" } else { "disabled" },
             adapter_info.backend,
             adapter_info.name,
             adapter_info.vendor,
             adapter_info.device
+        );
+        info!(
+            "GPU volume capabilities: backend={:?} r16float_filterable={} rg8_filterable={} max_3d_texture_dimension={} default_encoding={:?}",
+            capabilities.backend(),
+            capabilities.r16float_filterable(),
+            capabilities.rg8_filterable(),
+            capabilities.max_3d_texture_dimension(),
+            capabilities.volume_encoding()
         );
 
         let surface_caps = surface.get_capabilities(&adapter);
@@ -243,15 +421,54 @@ impl Graphics {
             .formats
             .iter()
             .copied()
-            .find(|f| !f.is_srgb())
-            .unwrap_or(surface_caps.formats[0]);
+            .find(|format| !format.is_srgb())
+            .or_else(|| surface_caps.formats.first().copied())
+            .ok_or_else(|| {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    KeplerError::Graphics("Surface reports no supported color formats".to_string())
+                }
+                #[cfg(target_arch = "wasm32")]
+                {
+                    post_binding_error(
+                        "real-canvas surface capabilities",
+                        "no color formats were returned",
+                    )
+                }
+            })?;
+        let present_mode = surface_caps.present_modes.first().copied().ok_or_else(|| {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                KeplerError::Graphics("Surface reports no supported present modes".to_string())
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                post_binding_error(
+                    "real-canvas surface capabilities",
+                    "no present modes were returned",
+                )
+            }
+        })?;
+        let alpha_mode = surface_caps.alpha_modes.first().copied().ok_or_else(|| {
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                KeplerError::Graphics("Surface reports no supported alpha modes".to_string())
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                post_binding_error(
+                    "real-canvas surface capabilities",
+                    "no alpha modes were returned",
+                )
+            }
+        })?;
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
             width: size.width,
             height: size.height,
-            present_mode: surface_caps.present_modes[0],
-            alpha_mode: surface_caps.alpha_modes[0],
+            present_mode,
+            alpha_mode,
             desired_maximum_frame_latency: 2,
             view_formats: vec![],
         };
@@ -264,7 +481,16 @@ impl Graphics {
         );
 
         if size.width > 0 && size.height > 0 {
+            #[cfg(target_arch = "wasm32")]
+            device.push_error_scope(wgpu::ErrorFilter::Validation);
             surface.configure(&device, &surface_config);
+            #[cfg(target_arch = "wasm32")]
+            if let Some(error) = device.pop_error_scope().await {
+                return Err(post_binding_error(
+                    "real-canvas surface configuration",
+                    &error.to_string(),
+                ));
+            }
         }
 
         // Wrap device and queue in Arc to enable sharing without cloning wgpu handles
@@ -274,7 +500,7 @@ impl Graphics {
         Ok(Self {
             surface,
             surface_config,
-            adapter,
+            capabilities,
             device,
             queue,
             window,

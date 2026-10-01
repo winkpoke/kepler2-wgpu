@@ -56,11 +56,14 @@ python3 -m http.server 8000
 ```
 
 Serve the **repository root** so `static/` and generated `pkg/` remain reachable.
-Open the appropriate page under `http://localhost:8000/static/`. Use synthetic
-volumes and record browser/version/backend, rendering, resize, input, idle/redraw,
-restoration, and errors. Merely building WASM or serving the page is not a passed
-browser test. The repo currently has no npm/Playwright browser-test suite; browser
-checks remain manual unless a separate automation change is approved.
+Open the appropriate page under `http://localhost:8000/static/`. Use the reproducible
+[synthetic signed-volume browser procedure](../testing/browser_gpu.md) and record
+browser/version/backend, encoding, device limit, rendering, resize, input,
+idle/redraw, restoration, and errors. Merely building WASM or serving the page is
+not a passed browser test. The repo currently has no npm/Playwright browser-test
+suite; browser checks remain manual unless a separate automation change is approved.
+The browser backend contract prefers WebGPU, falls back to WebGL2 only during
+pre-canvas negotiation, and supports fresh-page `?kepler_wgpu_backend=gl` diagnosis.
 
 `static/remedy.html` can actuate hardware. Do not connect or send live prep/exposure
 commands without explicit authorization; acquisition tests normally exercise the

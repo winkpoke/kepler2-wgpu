@@ -86,9 +86,13 @@ Transformations between coordinate systems are managed in `src/core/coord/`:
 
 The authoritative [signed voxel encoding contract](../rendering/volume-encoding.md)
 describes exact packed-i16 RG8 storage, half-float rounding, affine decode/filtering,
-and the separation from window/level. `src/data/volume_encoding.rs` owns the byte
-representation; capability negotiation belongs to graphics initialization.
-Do not infer filtered-format support from one feature bit alone.
+and the separation from window/level. `src/data/volume_encoding.rs` owns the byte representation and format mapping;
+`Graphics` snapshots capabilities for its selected device. A volume format is
+usable only when the enabled device supports `TEXTURE_BINDING | COPY_DST` and
+`FILTERABLE`. R16Float is preferred when usable; otherwise exact packed RG8 is
+selected. A device without either usable format is rejected. Do not infer support
+from backend identity or one feature bit. See the encoding guide for per-axis
+3D texture limits and pre-allocation upload validation.
 
 ## View System
 
@@ -113,6 +117,7 @@ of copying a simplified trait declaration into new code.
 - Lazily owns one `Arc<MprRenderContext>` per device/attachment-format configuration
 - Shares immutable MPR pipeline/layout/quad buffers across creation and bulk GPU rebinding
 - Keeps uniforms and bind groups per view; the volume sampler remains shared in `RenderContent`
+- Uses device-owned filtered-volume capability and texture-limit decisions; validate uploads before texture allocation
 
 ## Shader Management
 
@@ -259,6 +264,22 @@ Custom `View` implementations retain continuous rendering by default; implement
         .expect("Canvas element not found");
 }
 ```
+
+### Browser backend selection
+
+The WASM build enables wgpu 23's `webgpu` and `webgl` backends. With no query
+selector, initialization prefers browser WebGPU and makes one WebGL2 attempt if
+WebGPU detection or pre-canvas adapter/device/capability negotiation fails. A
+fresh page load with `?kepler_wgpu_backend=gl` selects WebGL2 directly for
+compatibility diagnosis. Unknown selector values warn and use automatic selection.
+
+Selection and capability checks use a disposable candidate canvas before the
+application canvas is bound. Once the real Winit canvas has acquired a context,
+surface/device/pipeline errors are reported with backend/stage context; do not
+attempt another API on that canvas. A forced-GL diagnostic requires a fresh page
+load. The selected device owns the volume format and 3D-dimension capability
+snapshot used for upload validation. See the [manual browser procedure](../testing/browser_gpu.md);
+a successful WASM build does not prove runtime selection or rendering parity.
 
 ## Debugging Rendering
 
