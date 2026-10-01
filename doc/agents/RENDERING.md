@@ -182,7 +182,7 @@ PassExecutor::execute_frame()
     ├─ Begin render pass (wgpu::CommandEncoder::begin_render_pass)
     ├─ Render each view (View::render)
     ├─ Submit commands (wgpu::Queue::submit)
-    └─ Present (wgpu::Surface::present)
+    └─ Present (wgpu::Queue::present after submission)
 ```
 
 ### Multi-Pass Rendering
@@ -207,7 +207,7 @@ successful presentation. This catches setters and direct configuration edits wit
 invalidating on getters or no-op controls. Uploading does not consume pending presentation.
 `View::mark_presented` is called only after the complete frame succeeds.
 
-`RenderApp` schedules work in `AboutToWait`, not by recursively requesting redraws.
+`RenderApp`'s owned `ApplicationHandler` schedules work in `about_to_wait`, not by recursively requesting redraws.
 Static idle viewers use `ControlFlow::Wait`; animation, surface retries, and deferred
 mesh recovery use bounded deadlines. Initial display, visual changes, layout clearing,
 resize, unocclusion, and graphics replacement trigger frames. Minimized/occluded windows
@@ -267,7 +267,7 @@ Custom `View` implementations retain continuous rendering by default; implement
 
 ### Browser backend selection
 
-The WASM build enables wgpu 23's `webgpu` and `webgl` backends. With no query
+The WASM build enables wgpu 30's `webgpu` and `webgl` backends. With no query
 selector, initialization prefers browser WebGPU and makes one WebGL2 attempt if
 WebGPU detection or pre-canvas adapter/device/capability negotiation fails. A
 fresh page load with `?kepler_wgpu_backend=gl` selects WebGL2 directly for
@@ -280,6 +280,15 @@ attempt another API on that canvas. A forced-GL diagnostic requires a fresh page
 load. The selected device owns the volume format and 3D-dimension capability
 snapshot used for upload validation. See the [manual browser procedure](../testing/browser_gpu.md);
 a successful WASM build does not prove runtime selection or rendering parity.
+
+## Rendering-error and lifecycle migration
+
+See [wgpu 30 / Winit 0.30 caller migration](../rendering/wgpu30-migration.md) for
+`KeplerResult<()>`, owned surface failure classifications, separate pass-context
+lifetimes, queue presentation, validation guards, surface/device recovery limits,
+and the single GPU-ready bootstrap bridge. Known hidden/suspended/zero-size viewers
+wait; an acquisition-only occlusion uses a bounded retry probe. Fatal GPU callbacks
+wake the idle owner through the existing quit transport.
 
 ## Debugging Rendering
 

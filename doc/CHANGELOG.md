@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-01 — wgpu 30.0.1 / Winit 0.30.13 migration (runtime acceptance pending)
+
+- Updated the locked graphics/window stack while retaining native backends and browser WebGPU/WebGL2.
+- Native GPU instances retain the window's display handle, preserving OpenGL startup on Linux/Wayland with wgpu 30.
+- **Rust API migration:** rendering methods now return `KeplerResult<()>`; `KeplerError::Surface` carries owned `SurfaceFailure`, and explicit `PassContext` annotations take separate borrow/encoder lifetimes. See [caller migration](rendering/wgpu30-migration.md).
+- Queue presentation acknowledges complete frames only; acquisition statuses use bounded retries, compatible surface recovery, and typed fatal GPU notifications. Mesh/pass failures retain context rather than becoming surface loss or successful partial drawing.
+- Preserved GPU-ready construction with one scoped pre-run window bridge; native `run_app` and browser `spawn_app` own lifecycle dispatch without changing JavaScript controls or their startup sequence.
+- Fixed browser WGSL derivative-uniformity rejection in MPR and MIP. MPR samples before its bounds return; MIP derives sampling LOD from a uniformly computed ray footprint. Existing linear-magnification/nearest-minification filters, signed decoding, window/level, and out-of-bounds display values are retained. Real Chrome WebGPU shader compilation and native minification/boundary pixel regressions pass.
+- Native offscreen signed-pixel/resource regressions pass on Apple M5 / Metal. Native-window/browser manual acceptance, including independent GL/fallback checks, remains pending; no clinical or performance claim is made.
+
 ## 2026-10-01 — Prefer browser WebGPU with WebGL2 fallback
 
 - Enabled wgpu 23's browser WebGPU backend while retaining WebGL2 and the locked dependency versions.
@@ -261,6 +271,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Architecture Documentation**: Created comprehensive state structure refactoring plan (`doc/redering/state-structure-refactoring-plan.md`) outlining separation of concerns improvements for the monolithic State struct
 
 ### Removed
+
 - **Unused Mesh State Management Code**: Removed unused mesh mode state management functionality from `src/rendering/core/state.rs`
   - **Field Removal**: Eliminated `mpr_state_slot2` field from State struct that was only used for storing MPR state snapshots
   - **Method Cleanup**: Removed `save_mpr_state()` and `restore_mpr_state()` methods that were never called in production code

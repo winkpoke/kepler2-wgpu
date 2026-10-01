@@ -83,6 +83,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // let tex_coords_3d = (u_uniform_frag.mat * vec4<f32>(in.tex_coords.x, in.tex_coords.y, depth * 0.2 + 0.5, 1)).xyz;
     let tex_coords_3d = (u_uniform_frag.mat * vec4<f32>(in.tex_coords.x, in.tex_coords.y, depth, 1)).xyz;
 
+    // Sample before per-fragment bounds/returns so implicit derivatives are
+    // uniform and the sampler still selects its original min/mag filter.
+    let sampled_value: vec4<f32> = textureSample(t_diffuse, s_diffuse, tex_coords_3d);
+
     // Component-wise comparison for out-of-bounds check
     let out_of_bounds = any(tex_coords_3d.x < 0.0 || tex_coords_3d.x > 1.0 ||
                              tex_coords_3d.y < 0.0 || tex_coords_3d.y > 1.0 ||
@@ -93,9 +97,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if out_of_bounds {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);  // Black color for out-of-bound coordinates
     }
-
-    // Sample the texture using the 3D coordinates
-    let sampled_value: vec4<f32> = textureSample(t_diffuse, s_diffuse, tex_coords_3d);
 
     let value = decode_volume_sample(
         sampled_value, u_uniform_frag.is_packed_rg8, u_uniform_frag.bias

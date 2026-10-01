@@ -784,7 +784,10 @@ impl Renderable for MeshView {
         }
     }
 
-    fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
+    fn render(
+        &mut self,
+        render_pass: &mut wgpu::RenderPass,
+    ) -> crate::core::error::KeplerResult<()> {
         // Function-level comment: Render mesh with comprehensive error handling and fallback mechanisms
 
         // Attempt rendering with error handling
@@ -794,12 +797,11 @@ impl Renderable for MeshView {
                 Ok(())
             }
             Err(error) => {
-                // Handle the error and determine recovery strategy
+                // Retain fallback bookkeeping, but never acknowledge a partial frame.
+                let failure =
+                    crate::core::error::KeplerError::Graphics(format!("draw mesh view: {error}"));
                 self.handle_render_error(error);
-
-                // Always return Ok to prevent frame failure
-                // The error handling will adjust fallback mode for next frame
-                Ok(())
+                Err(failure)
             }
         }
     }

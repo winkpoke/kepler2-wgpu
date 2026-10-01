@@ -6,6 +6,7 @@
 // Core rendering modules
 pub mod browser_backend;
 pub mod capabilities;
+mod fault;
 pub mod graphics;
 pub mod pipeline;
 pub mod render_pass;

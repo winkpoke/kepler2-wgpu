@@ -193,20 +193,20 @@ impl PassRegistry {
 }
 
 /// Render pass execution context
-pub struct PassContext<'a> {
-    /// The render pass being executed
-    pub pass: &'a mut wgpu::RenderPass<'a>,
+pub struct PassContext<'pass, 'encoder> {
+    /// The render pass being executed; its short borrow does not shorten the encoder guard.
+    pub pass: &'pass mut wgpu::RenderPass<'encoder>,
     /// The pass descriptor
-    pub descriptor: &'a PassDescriptor,
+    pub descriptor: &'pass PassDescriptor,
     /// The pass ID
     pub pass_id: PassId,
 }
 
-impl<'a> PassContext<'a> {
-    /// Create a new pass context
+impl<'pass, 'encoder> PassContext<'pass, 'encoder> {
+    /// Create a new pass context with independent borrow and encoder lifetimes.
     pub fn new(
-        pass: &'a mut wgpu::RenderPass<'a>,
-        descriptor: &'a PassDescriptor,
+        pass: &'pass mut wgpu::RenderPass<'encoder>,
+        descriptor: &'pass PassDescriptor,
         pass_id: PassId,
     ) -> Self {
         Self {
@@ -409,6 +409,7 @@ impl PassExecutor {
                 label: Some("Frame Background"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: frame_view,
+                    depth_slice: None,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -422,6 +423,7 @@ impl PassExecutor {
                 })],
                 depth_stencil_attachment: None,
                 timestamp_writes: None,
+                multiview_mask: None,
                 occlusion_query_set: None,
             });
         }
@@ -434,6 +436,7 @@ impl PassExecutor {
             self.registry
                 .build_pass_plan(effective_has_mesh_view, has_mip_view, has_mpr_view);
         let mut frame_success = true;
+        let mut first_failure = None;
 
         log::trace!(
             "[FRAME_EXEC] Pass plan: {} passes scheduled, Effective mesh view enabled: {}",
@@ -517,14 +520,17 @@ impl PassExecutor {
                         error
                     );
                     frame_success = false;
+                    let contextual_error = PassExecutionError::RenderingFailed(format!(
+                        "{pass_name} pass '{}': {error}",
+                        descriptor.name
+                    ));
+                    first_failure.get_or_insert(contextual_error.clone());
                     self.handle_pass_error(pass_id, error.clone());
 
                     // For slice pass errors, we still try to continue since 2D rendering is critical
                     if matches!(pass_id, PassId::SlicePass) {
                         log::error!("Critical slice pass failure - this may affect 2D rendering");
-                        return Err(Box::new(PassExecutionError::RenderingFailed(
-                            "Slice pass failed".to_string(),
-                        )));
+                        return Err(Box::new(contextual_error));
                     }
                 }
             }
@@ -542,9 +548,9 @@ impl PassExecutor {
                 DurationExt::as_millis_f64(&frame_start_time.elapsed())
             );
             // A partial frame must not acknowledge pending view changes as presented.
-            return Err(Box::new(PassExecutionError::RenderingFailed(
-                "Frame execution failed".to_string(),
-            )));
+            return Err(Box::new(
+                first_failure.expect("failed frame has a pass error"),
+            ));
         }
 
         Ok(())
@@ -599,6 +605,7 @@ impl PassExecutor {
             label: Some(&descriptor.name),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: frame_view, // Render directly to surface
+                depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load, // Preserve existing content from previous passes (e.g., mesh rendering)
@@ -619,6 +626,7 @@ impl PassExecutor {
                     stencil_ops: None,
                 }
             }),
+            multiview_mask: None,
             occlusion_query_set: None,
             timestamp_writes: None,
         });
@@ -685,6 +693,7 @@ impl PassExecutor {
             label: Some(&descriptor.name),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: frame_view,
+                depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load, // Preserve existing mesh content
@@ -692,6 +701,7 @@ impl PassExecutor {
                 },
             })],
             depth_stencil_attachment: None, // No depth for 2D slice rendering
+            multiview_mask: None,
             occlusion_query_set: None,
             timestamp_writes: None,
         });
@@ -759,6 +769,7 @@ impl PassExecutor {
             label: Some(&descriptor.name),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: frame_view,
+                depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load,
@@ -766,6 +777,7 @@ impl PassExecutor {
                 },
             })],
             depth_stencil_attachment: None, // No depth for MIP rendering
+            multiview_mask: None,
             occlusion_query_set: None,
             timestamp_writes: None,
         });

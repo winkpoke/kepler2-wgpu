@@ -456,6 +456,78 @@ fn mpr_axial_coronal_sagittal_slices_and_interpolation_match_voxels() {
 }
 
 #[test]
+fn volume_minification_retains_nearest_filter_in_mpr_and_projection_modes() {
+    let gpu = Gpu::new();
+    gpu.validated("Preserved volume minification", || {
+        let context = Arc::new(MprRenderContext::new(&gpu.device, FORMAT));
+        for encoding in ENCODINGS {
+            let voxels = (0..8).map(|x| -800 + 200 * x).collect();
+            let content = upload_volume(&gpu, (8, 1, 1), voxels, encoding);
+            let mut view = MprViewWgpuImpl::new(
+                context.clone(),
+                &gpu.device,
+                content.clone(),
+                Mat4::IDENTITY,
+            );
+            view.set_slice(0.5);
+            view.set_window_width(2001.0);
+            view.set_window_level(0.5);
+            let mut images = vec![draw_mpr(&gpu, &view, 4, 4, FORMAT)];
+            for mode in [0.0, 1.0, 2.0] {
+                images.push(draw_mip(
+                    &gpu,
+                    content.clone(),
+                    MipUniforms {
+                        mip_mode: mode,
+                        ..mip_uniforms()
+                    },
+                    4,
+                    4,
+                    FORMAT,
+                ));
+            }
+            for image in images {
+                for x in 0..4 {
+                    // 8 volume columns in 4 pixels: minification must choose the
+                    // odd voxel, not average it with its even neighbor (LOD 0).
+                    let hu = -800.0 + 200.0 * (2 * x + 1) as f32;
+                    assert_gray(&image, x, 2, display_byte(hu, 2001.0, 0.5, FORMAT));
+                }
+            }
+        }
+    });
+}
+
+#[test]
+fn mpr_mixed_bounds_keep_black_background_and_filtered_in_volume_pixels() {
+    let gpu = Gpu::new();
+    gpu.validated("MPR divergent bounds sampling", || {
+        let context = Arc::new(MprRenderContext::new(&gpu.device, FORMAT));
+        // At width 8, x=0 and x>=5 are outside the volume. Fragment quads at
+        // x=0/1 and x=4/5 therefore mix in-bounds and out-of-bounds invocations.
+        let matrix = Mat4::from_translation(Vec3::new(-0.1875, 0.0, 0.0))
+            * Mat4::from_scale(Vec3::new(2.0, 1.0, 1.0));
+        for encoding in ENCODINGS {
+            let content = upload_volume(&gpu, (1, 1, 1), vec![500], encoding);
+            let mut view = MprViewWgpuImpl::new(context.clone(), &gpu.device, content, matrix);
+            view.set_slice(0.5);
+            view.set_window_width(2001.0);
+            view.set_window_level(0.5);
+            let image = draw_mpr(&gpu, &view, 8, 8, FORMAT);
+            for y in 0..8 {
+                for x in 0..8 {
+                    if (1..=4).contains(&x) {
+                        assert_gray(&image, x, y, display_byte(500.0, 2001.0, 0.5, FORMAT));
+                    } else {
+                        image.assert_pixel_near(x, y, [0, 0, 0, 255], 0);
+                    }
+                }
+            }
+        }
+    });
+}
+
+#[test]
 fn mip_selects_bright_voxel_and_preserves_negative_maxima() {
     let gpu = Gpu::new();
     gpu.validated("MIP maximum and signed intensity", || {

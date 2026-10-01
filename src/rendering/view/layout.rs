@@ -399,8 +399,11 @@ impl<T: LayoutStrategy> Renderable for StaticLayout<T> {
 
     /// Render all child views sequentially.
     ///
-    /// Error handling: Propagates `wgpu::SurfaceError` from child views and stops on first failure.
-    fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
+    /// Error handling: Propagates application errors from child views and stops on first failure.
+    fn render(
+        &mut self,
+        render_pass: &mut wgpu::RenderPass,
+    ) -> crate::core::error::KeplerResult<()> {
         for v in &mut self.views {
             v.render(render_pass)?;
         }
@@ -630,8 +633,11 @@ impl Renderable for DynamicLayout {
 
     /// Render all child views sequentially.
     ///
-    /// Error handling: Propagates `wgpu::SurfaceError` from child views and stops on first failure.
-    fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
+    /// Error handling: Propagates application errors from child views and stops on first failure.
+    fn render(
+        &mut self,
+        render_pass: &mut wgpu::RenderPass,
+    ) -> crate::core::error::KeplerResult<()> {
         for v in &mut self.views {
             v.render(render_pass)?;
         }

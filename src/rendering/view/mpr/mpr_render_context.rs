@@ -69,18 +69,19 @@ pub fn create_texture_quad_pipeline(
     // Pipeline layout defines bind group layout order; must match shader binding expectations.
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Render Pipeline Layout"),
-        bind_group_layouts: &bind_group_layouts,
-        push_constant_ranges: &[],
+        bind_group_layouts: &bind_group_layouts.map(Some),
+        immediate_size: 0,
     });
 
-    // Full pipeline descriptor. All fields annotated for clarity.
+    let vertex_slots: Vec<_> = vertex_buffers.iter().cloned().map(Some).collect();
+    // Preserve the public helper's ordinary vertex layouts; adapt optional slots internally.
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("Render Pipeline"),
         layout: Some(&pipeline_layout),
         vertex: wgpu::VertexState {
             module: &shader,
             entry_point: Some("vs_main"), // WGSL entry point for vertex stage
-            buffers: vertex_buffers,      // Vertex buffer layouts (position, texcoord, etc.)
+            buffers: &vertex_slots,       // Vertex buffer layouts (position, texcoord, etc.)
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
@@ -108,7 +109,7 @@ pub fn create_texture_quad_pipeline(
             mask: !0,
             alpha_to_coverage_enabled: false,
         },
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     })
 }

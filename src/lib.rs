@@ -4,10 +4,13 @@ extern crate self as kepler_wgpu;
 
 use log::warn;
 use std::sync::Arc;
-use winit::event_loop::EventLoopBuilder;
+use winit::event_loop::EventLoop;
 
 // use wgpu::util::DeviceExt;
-use winit::{dpi::PhysicalSize, window::WindowBuilder};
+use winit::{
+    dpi::PhysicalSize,
+    window::{Window, WindowAttributes},
+};
 
 // New module organization
 pub mod acquisition;
@@ -120,6 +123,21 @@ pub async fn init() {
     }
 }
 
+/// Compatibility bridge for the existing GPU-ready async constructor.
+/// All subsequent window creation uses the active event loop.
+#[expect(
+    deprecated,
+    reason = "preserve GPU-ready construction before run for existing native/browser callers"
+)]
+fn create_bootstrap_window(
+    event_loop: &EventLoop<UserEvent>,
+    attributes: WindowAttributes,
+) -> Result<Window, KeplerError> {
+    event_loop
+        .create_window(attributes)
+        .map_err(|error| KeplerError::Window(format!("create initial window: {error}")))
+}
+
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub async fn get_render_app() -> Result<RenderApp, KeplerError> {
     #[cfg(not(target_arch = "wasm32"))]
@@ -129,17 +147,16 @@ pub async fn get_render_app() -> Result<RenderApp, KeplerError> {
 
     warn!("Start the program ...");
 
-    let event_loop = EventLoopBuilder::<UserEvent>::with_user_event()
+    let event_loop = EventLoop::<UserEvent>::with_user_event()
         .build()
-        .unwrap();
-    let window = Arc::new(
-        WindowBuilder::new()
+        .map_err(|error| KeplerError::Window(format!("create initial event loop: {error}")))?;
+    let window = Arc::new(create_bootstrap_window(
+        &event_loop,
+        Window::default_attributes()
             .with_title("Kepler WGPU Medical Imaging")
             .with_inner_size(winit::dpi::LogicalSize::new(800, 800))
-            .with_visible(true)
-            .build(&event_loop)
-            .unwrap(),
-    );
+            .with_visible(true),
+    )?);
     // let proxy = event_loop.create_proxy();
 
     #[cfg(target_arch = "wasm32")]
@@ -156,7 +173,7 @@ pub async fn get_render_app() -> Result<RenderApp, KeplerError> {
                 dst.append_child(&canvas).ok()?;
                 Some(())
             })
-            .expect("Couldn't append canvas to document body.");
+            .ok_or_else(|| KeplerError::Window("append initial canvas to wasm-example: target, document, or canvas unavailable".into()))?;
     }
     #[cfg(not(target_arch = "wasm32"))]
     {

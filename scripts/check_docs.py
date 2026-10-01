@@ -18,6 +18,7 @@ CURRENT_GUIDES = (
     "AGENTS.md", "CLINE.md", ".github/copilot-instructions.md",
     ".trae/rules/project_rules.md", "doc/README.md", "doc/agents/*.md",
     "doc/architecture/ARCHITECTURE.md", "doc/rendering/volume-encoding.md",
+    "doc/rendering/wgpu30-migration.md",
     "doc/testing/*.md", "openspec/specs/*/spec.md",
 )
 LINK = re.compile(r"!?\[[^\]\n]*\]\(([^)\n]+)\)")

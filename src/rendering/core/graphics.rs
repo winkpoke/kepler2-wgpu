@@ -13,6 +13,9 @@ pub struct Graphics {
     pub(crate) window: Arc<Window>,
     pub(crate) surface: wgpu::Surface<'static>,
     pub(crate) surface_config: wgpu::SurfaceConfiguration,
+    instance: wgpu::Instance,
+    adapter: wgpu::Adapter,
+    pub(crate) faults: super::fault::FaultNotifier,
     capabilities: super::capabilities::GpuCapabilities,
     // Function-level comment: Wrap device and queue in Arc for cheap cloning across subsystems
     pub(crate) device: Arc<wgpu::Device>,
@@ -29,7 +32,7 @@ async fn preflight_browser_backend(
     };
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends,
-        ..Default::default()
+        ..wgpu::InstanceDescriptor::new_without_display_handle()
     });
     let canvas = web_sys::window()
         .and_then(|window| window.document())
@@ -51,9 +54,10 @@ async fn preflight_browser_backend(
             power_preference: wgpu::PowerPreference::default(),
             compatible_surface: Some(&surface),
             force_fallback_adapter: false,
+            apply_limit_buckets: false,
         })
         .await
-        .ok_or_else(|| format!("{backend:?} preflight adapter request returned no adapter"))?;
+        .map_err(|error| format!("{backend:?} preflight adapter request failed: {error}"))?;
     let adapter_info = adapter.get_info();
     let expected_backend = match backend {
         super::browser_backend::BrowserBackend::BrowserWebGpu => wgpu::Backend::BrowserWebGpu,
@@ -78,15 +82,14 @@ async fn preflight_browser_backend(
     let required_limits = super::capabilities::browser_limits(&adapter.limits())
         .map_err(|error| format!("{backend:?} preflight limit negotiation failed: {error}"))?;
     let (device, _queue) = adapter
-        .request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("Kepler browser GPU preflight"),
-                required_features: wgpu::Features::empty(),
-                required_limits,
-                memory_hints: Default::default(),
-            },
-            None,
-        )
+        .request_device(&wgpu::DeviceDescriptor {
+            label: Some("Kepler browser GPU preflight"),
+            required_features: wgpu::Features::empty(),
+            required_limits,
+            memory_hints: Default::default(),
+            experimental_features: wgpu::ExperimentalFeatures::disabled(),
+            trace: wgpu::Trace::Off,
+        })
         .await
         .map_err(|error| format!("{backend:?} preflight device request failed: {error}"))?;
     super::capabilities::GpuCapabilities::from_device(&adapter, &device)
@@ -165,6 +168,13 @@ impl GraphicsContext {
         self.pass_executor_mut()
             .update_surface_format(config.format);
         *self.surface_config_mut() = config;
+    }
+}
+
+impl Drop for Graphics {
+    fn drop(&mut self) {
+        // Old devices may still be retained by views; they must not wake a new owner.
+        self.faults.clear_wake();
     }
 }
 
@@ -278,7 +288,11 @@ impl Graphics {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: selected_backends,
             flags: instance_flags,
-            ..Default::default()
+            // Native GLES needs the window's display before surface creation.
+            // Retain the window so that display also survives surface recovery.
+            #[cfg(not(target_arch = "wasm32"))]
+            display: Some(Box::new(window.clone())),
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
 
         #[cfg(not(target_arch = "wasm32"))]
@@ -295,19 +309,17 @@ impl Graphics {
                 power_preference: wgpu::PowerPreference::default(),
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
+                apply_limit_buckets: false,
             })
             .await
-            .ok_or_else(|| {
+            .map_err(|error| {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    KeplerError::Graphics("Failed to find suitable adapter".to_string())
+                    KeplerError::Graphics(format!("Failed to find suitable adapter: {error}"))
                 }
                 #[cfg(target_arch = "wasm32")]
                 {
-                    post_binding_error(
-                        "real-canvas adapter request",
-                        "no compatible adapter was returned",
-                    )
+                    post_binding_error("real-canvas adapter request", &error.to_string())
                 }
             })?;
 
@@ -317,18 +329,17 @@ impl Graphics {
                 post_binding_error("real-canvas device limit validation", &error.to_string())
             })?;
         #[cfg(not(target_arch = "wasm32"))]
-        let required_limits = wgpu::Limits::default();
+        let required_limits = super::capabilities::native_limits(&adapter.limits());
 
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: None,
-                    required_features: wgpu::Features::empty(),
-                    required_limits,
-                    memory_hints: Default::default(),
-                },
-                None,
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: None,
+                required_features: wgpu::Features::empty(),
+                required_limits,
+                memory_hints: Default::default(),
+                experimental_features: wgpu::ExperimentalFeatures::disabled(),
+                trace: wgpu::Trace::Off,
+            })
             .await
             .map_err(|error| {
                 #[cfg(not(target_arch = "wasm32"))]
@@ -341,15 +352,32 @@ impl Graphics {
                 }
             })?;
 
-        #[cfg(target_arch = "wasm32")]
-        {
-            let backend = selected_browser_backend;
-            device.on_uncaptured_error(Box::new(move |error| {
-                log::error!(
-                    "Uncaptured wgpu validation/pipeline error for selected browser backend {backend:?}: {error}"
-                );
-            }));
-        }
+        let faults = super::fault::FaultNotifier::default();
+        let backend = adapter.get_info().backend;
+        let uncaptured = faults.clone();
+        device.on_uncaptured_error(Arc::new(move |error| {
+            use crate::core::error::{SurfaceFailure, SurfaceFailureKind};
+            let kind = match &error {
+                wgpu::Error::OutOfMemory { .. } => SurfaceFailureKind::OutOfMemory,
+                wgpu::Error::Validation { .. } => SurfaceFailureKind::Validation,
+                wgpu::Error::Internal { .. } => SurfaceFailureKind::Other,
+            };
+            uncaptured.report(SurfaceFailure::new(
+                kind,
+                "uncaptured GPU operation",
+                format!("{backend:?}: {error}"),
+            ));
+        }));
+        let lost = faults.clone();
+        device.set_device_lost_callback(move |reason, message| {
+            if reason != wgpu::DeviceLostReason::Destroyed {
+                lost.report(crate::core::error::SurfaceFailure::new(
+                    crate::core::error::SurfaceFailureKind::DeviceLost,
+                    "device lost callback",
+                    format!("{backend:?} ({reason:?}): {message}"),
+                ));
+            }
+        });
 
         #[cfg(not(target_arch = "wasm32"))]
         let capabilities = super::capabilities::GpuCapabilities::from_device(&adapter, &device)?;
@@ -465,6 +493,7 @@ impl Graphics {
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: surface_format,
+            color_space: wgpu::SurfaceColorSpace::Auto,
             width: size.width,
             height: size.height,
             present_mode,
@@ -481,16 +510,23 @@ impl Graphics {
         );
 
         if size.width > 0 && size.height > 0 {
-            #[cfg(target_arch = "wasm32")]
-            device.push_error_scope(wgpu::ErrorFilter::Validation);
+            let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
             surface.configure(&device, &surface_config);
-            #[cfg(target_arch = "wasm32")]
-            if let Some(error) = device.pop_error_scope().await {
+            if let Some(error) = scope.pop().await {
+                #[cfg(target_arch = "wasm32")]
                 return Err(post_binding_error(
                     "real-canvas surface configuration",
                     &error.to_string(),
                 ));
+                #[cfg(not(target_arch = "wasm32"))]
+                return Err(crate::core::error::SurfaceFailure::new(
+                    crate::core::error::SurfaceFailureKind::Validation,
+                    "initial surface configuration",
+                    format!("{backend:?}: {error}"),
+                )
+                .into());
             }
+            faults.check()?;
         }
 
         // Wrap device and queue in Arc to enable sharing without cloning wgpu handles
@@ -500,10 +536,76 @@ impl Graphics {
         Ok(Self {
             surface,
             surface_config,
+            instance,
+            adapter,
+            faults,
             capabilities,
             device,
             queue,
             window,
+        })
+    }
+
+    /// Reuse the selected device and backend; never renegotiate a bound browser canvas.
+    pub(crate) fn recover_surface(
+        &mut self,
+        recreate: bool,
+    ) -> crate::core::error::KeplerResult<()> {
+        use crate::core::error::{SurfaceFailure, SurfaceFailureKind};
+        if self.surface_config.width == 0 || self.surface_config.height == 0 {
+            return Ok(());
+        }
+        if recreate {
+            let surface = self
+                .instance
+                .create_surface(self.window.clone())
+                .map_err(|error| {
+                    SurfaceFailure::new(
+                        SurfaceFailureKind::Lost,
+                        "recreate selected-backend surface",
+                        format!("{:?}: {error}", self.capabilities.backend()),
+                    )
+                })?;
+            let caps = surface.get_capabilities(&self.adapter);
+            let format = caps
+                .formats
+                .iter()
+                .copied()
+                .find(|format| !format.is_srgb())
+                .or_else(|| caps.formats.first().copied())
+                .ok_or_else(|| {
+                    SurfaceFailure::new(
+                        SurfaceFailureKind::Lost,
+                        "recreated surface capabilities",
+                        format!("{:?}: no color formats", self.capabilities.backend()),
+                    )
+                })?;
+            self.surface_config.format = format;
+            self.surface_config.present_mode = *caps.present_modes.first().ok_or_else(|| {
+                SurfaceFailure::new(
+                    SurfaceFailureKind::Lost,
+                    "recreated surface capabilities",
+                    "no present modes",
+                )
+            })?;
+            self.surface_config.alpha_mode = *caps.alpha_modes.first().ok_or_else(|| {
+                SurfaceFailure::new(
+                    SurfaceFailureKind::Lost,
+                    "recreated surface capabilities",
+                    "no alpha modes",
+                )
+            })?;
+            self.surface = surface;
+        }
+        self.faults.check()?;
+        self.surface.configure(&self.device, &self.surface_config);
+        self.faults.check().map_err(|error| {
+            SurfaceFailure::new(
+                SurfaceFailureKind::Validation,
+                "configure surface recovery",
+                format!("{:?}: {error}", self.capabilities.backend()),
+            )
+            .into()
         })
     }
 

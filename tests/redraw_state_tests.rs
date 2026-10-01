@@ -6,7 +6,7 @@ use std::any::Any;
 struct StaticView;
 impl Renderable for StaticView {
     fn update(&mut self, _: &wgpu::Queue) {}
-    fn render(&mut self, _: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
+    fn render(&mut self, _: &mut wgpu::RenderPass) -> kepler_wgpu::core::error::KeplerResult<()> {
         Ok(())
     }
 }
@@ -39,6 +39,25 @@ fn layout() -> DynamicLayout {
             spacing: 0,
         }),
     )
+}
+
+#[test]
+fn downstream_render_signatures_keep_unit_success_and_separate_pass_lifetimes() {
+    use kepler_wgpu::core::error::{KeplerError, KeplerResult, SurfaceFailure, SurfaceFailureKind};
+    use kepler_wgpu::rendering::core::PassContext;
+    fn is_timeout(error: &KeplerError) -> bool {
+        matches!(error, KeplerError::Surface(failure) if failure.kind == SurfaceFailureKind::Timeout)
+    }
+    let owned: KeplerError =
+        SurfaceFailure::new(SurfaceFailureKind::Timeout, "acquire", "timeout").into();
+    assert!(is_timeout(&owned));
+    assert!(!is_timeout(&KeplerError::Graphics("failed pass".into())));
+    let _: fn(&mut kepler_wgpu::App) -> KeplerResult<()> = kepler_wgpu::App::render;
+    fn draw(view: &mut dyn Renderable, context: PassContext<'_, '_>) -> KeplerResult<()> {
+        view.render(context.pass)
+    }
+    let _custom_renderer = draw;
+    let _view: Box<dyn Renderable> = Box::new(StaticView);
 }
 
 #[test]

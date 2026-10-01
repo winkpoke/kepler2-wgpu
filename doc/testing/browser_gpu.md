@@ -10,7 +10,7 @@ From the repository root, build and serve the package as described in
 [BUILD.md](../agents/BUILD.md):
 
 ```bash
-RUSTUP_TOOLCHAIN=nightly wasm-pack build --target web --out-dir pkg --release -- --locked
+wasm-pack build --target web --out-dir pkg --release -- --locked
 python3 -m http.server 8000
 ```
 
@@ -93,6 +93,18 @@ volume capabilities`.
    forced/fallback WebGL2. Do not infer backend parity from visual appearance
    alone; retain the fixture values above as data expectations.
 
+## Startup, replacement, and lifecycle acceptance
+
+For the wgpu/Winit upgrade, retain the existing `get_render_app` → `get_glcanvas`
+→ enqueue volume → `run` sequence. Confirm construction resolves GPU-ready and
+`run` returns normally to JavaScript. Repeat View/loading so the div-targeted
+replacement canvas receives the supplied volume; exercise implemented async scalar,
+coordinate, and rotation getters. Check getters/no-op controls leave a clean viewer
+idle, animation stays bounded, hide/restore retains work, and quit stops callbacks.
+The [migration guide](../rendering/wgpu30-migration.md) describes the bootstrap
+bridge and fatal-fault restart behavior. These remain runtime checks, not claims
+from packaging or source inspection.
+
 ## Controlled failure paths
 
 These checks are also pending runtime evidence. For a controlled pre-canvas
@@ -115,7 +127,7 @@ free of patient data; the fixture above contains none.
 ## Results record
 
 Record results in the active change's
-[`verification.md`](../../openspec/changes/prefer-browser-webgpu/verification.md),
+verification record (for this migration, [upgrade verification](../../openspec/changes/upgrade-wgpu-winit/verification.md); backend-selection work retains its separate [record](../../openspec/changes/prefer-browser-webgpu/verification.md)),
 including method and browser/version for each separate case. Until those checks
 are executed, keep the browser tasks open. Native offscreen tests and WASM
 compilation do not satisfy these manual runtime checks.

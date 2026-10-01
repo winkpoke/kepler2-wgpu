@@ -40,6 +40,19 @@ MPR and MIP prepend `volume_decode.wgsl` via `volume_shader_source` and use the
 same affine decoder. Byte channels are not rounded before decoding: doing so
 would destroy interpolation.
 
+Production volume textures have one mip level; the existing sampler uses linear
+magnification and nearest minification. A fixed LOD zero is **not** an equivalent
+replacement for implicit sampling because it can force magnification filtering
+when the image is downsampled. MPR samples before per-fragment bounds returns to
+keep implicit derivatives in uniform control flow, discarding that sample for
+black-background pixels. MIP computes the orthographic ray-start derivatives
+before miss returns/ray loops and derives `log2(max(length(dx), length(dy)))` in
+texel units (with a small zero-footprint floor). Its helper uses that explicit LOD,
+retaining min/mag selection without implicit derivatives in divergent control.
+Ray direction and step size are uniform, so advancing by a logical ray step does
+not change that footprint. Neither signed decoding nor projection aggregation,
+thresholds, bounds values, or window/level is changed.
+
 Raw two's-complement bytes were deliberately not chosen: interpolating encoded
 values across the sign boundary does not interpolate the signed voxels. Such
 an encoding would require decoding each neighbor before manual interpolation,
@@ -67,4 +80,10 @@ KEPLER_REQUIRE_GPU_TESTS=1 cargo test --test volume_encoding_tests
 
 Coverage includes exhaustive CPU and application-upload roundtrips, endpoint
 and CT examples, byte ordering, empty/missing data, unchanged half-float
-rounding, production WGSL validation, GPU upload/readback, and GPU filtering.
+rounding, production WGSL structure/validation, GPU upload/readback, and GPU
+filtering. Native Naga disables fragment derivative-uniformity requirements, so
+native validation alone does not prove browser WGSL acceptance. The production
+shader-structure regression guards uniform derivative placement; rendering tests
+separately pin nearest minification (including projection modes), linear
+magnification/interpolation, and mixed in/out-of-bounds fragment pixels. Actual
+browser compilation/rendering remains separate evidence.

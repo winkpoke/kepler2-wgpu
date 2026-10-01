@@ -12,6 +12,79 @@ pub(crate) enum RedrawAction {
     Request,
 }
 
+/// Lifecycle and frame-result policy shared by the real window owner and deterministic tests.
+#[derive(Default)]
+pub(crate) struct FrameOwner {
+    pub(crate) redraw: RedrawScheduler,
+    occluded: bool,
+    suspended: bool,
+    stopped: bool,
+}
+
+impl FrameOwner {
+    pub(crate) fn is_active_window<T: PartialEq>(active: T, observed: T) -> bool {
+        active == observed
+    }
+    pub(crate) fn ready(&self, surface_ready: bool) -> bool {
+        surface_ready && !self.occluded && !self.suspended && !self.stopped
+    }
+    pub(crate) fn resumed(&mut self) {
+        self.suspended = false;
+        self.occluded = false;
+        self.redraw.redraw_received();
+    }
+    pub(crate) fn suspended(&mut self) {
+        self.suspended = true;
+        self.redraw.redraw_received();
+    }
+    pub(crate) fn set_occluded(&mut self, hidden: bool) {
+        self.occluded = hidden;
+        self.redraw.redraw_received();
+    }
+    pub(crate) fn stop(&mut self) {
+        self.stopped = true;
+        self.redraw.redraw_received();
+    }
+    pub(crate) fn frame_outcome(
+        &mut self,
+        outcome: &crate::core::error::KeplerResult<super::frame::FrameOutcome>,
+        now: Duration,
+    ) {
+        use super::frame::FrameOutcome;
+        match outcome {
+            Ok(FrameOutcome::Presented {
+                reconfigure_pending,
+            }) => {
+                self.redraw.frame_succeeded(now);
+                if *reconfigure_pending {
+                    self.redraw.frame_failed(now);
+                }
+            }
+            // Unknown OS occlusion is probed at the bounded retry cadence; known
+            // hide/suspend signals still suppress all acquisitions via ready().
+            Ok(FrameOutcome::Skipped { .. }) => self.redraw.frame_failed(now),
+            Ok(FrameOutcome::Unavailable) => {}
+            Err(_) => self.stop(),
+        }
+    }
+    pub(crate) fn schedule(
+        &mut self,
+        now: Duration,
+        surface_ready: bool,
+        dirty: bool,
+        animating: bool,
+        recovery_in: Option<Duration>,
+    ) -> RedrawAction {
+        self.redraw.schedule(
+            now,
+            self.ready(surface_ready),
+            dirty,
+            animating,
+            recovery_in,
+        )
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct RedrawScheduler {
     requested: bool,
@@ -82,6 +155,94 @@ mod tests {
 
     fn ms(value: u64) -> Duration {
         Duration::from_millis(value)
+    }
+
+    #[test]
+    fn replacement_routes_only_the_active_window_and_retains_lifecycle_owner() {
+        let mut owner = FrameOwner::default();
+        let mut active = 11u64;
+        assert!(FrameOwner::is_active_window(active, 11));
+        owner.suspended();
+        active = 22;
+        assert!(!FrameOwner::is_active_window(active, 11));
+        assert!(FrameOwner::is_active_window(active, 22));
+        assert!(!owner.ready(true));
+        owner.resumed();
+        assert!(owner.ready(true));
+    }
+
+    #[test]
+    fn owner_resume_suspend_shutdown_and_frame_outcomes_use_bounded_policy() {
+        use crate::application::frame::{FrameOutcome, RecoveryAction};
+        use crate::core::error::{SurfaceFailure, SurfaceFailureKind};
+        let mut owner = FrameOwner::default();
+        owner.resumed();
+        owner.resumed();
+        assert!(owner.ready(true));
+        owner.suspended();
+        assert!(!owner.ready(true));
+        owner.resumed();
+        assert!(!owner.ready(false));
+        for kind in [SurfaceFailureKind::Timeout, SurfaceFailureKind::Occluded] {
+            owner.frame_outcome(
+                &Ok(FrameOutcome::Skipped {
+                    recovery_action: if kind == SurfaceFailureKind::Occluded {
+                        RecoveryAction::Probe
+                    } else {
+                        RecoveryAction::Retry
+                    },
+                    failure: SurfaceFailure::new(kind, "acquire", "test"),
+                }),
+                ms(0),
+            );
+            assert_eq!(
+                owner.schedule(ms(1), true, true, false, None),
+                RedrawAction::WaitFor(ms(15))
+            );
+            assert_eq!(
+                owner.schedule(ms(16), true, true, false, None),
+                RedrawAction::Request
+            );
+            owner.redraw.redraw_received();
+        }
+        owner.set_occluded(true);
+        assert_eq!(
+            owner.schedule(ms(17), true, true, true, None),
+            RedrawAction::Wait
+        );
+        owner.set_occluded(false);
+        assert!(owner.ready(true));
+        owner.stop();
+        owner.resumed();
+        assert_eq!(
+            owner.schedule(ms(100), true, true, true, None),
+            RedrawAction::Wait
+        );
+    }
+
+    #[test]
+    fn fatal_draw_or_validation_error_stops_retries_and_suboptimal_requests_reconfigure() {
+        use crate::application::frame::FrameOutcome;
+        use crate::core::error::KeplerError;
+        let mut owner = FrameOwner::default();
+        owner.frame_outcome(
+            &Ok(FrameOutcome::Presented {
+                reconfigure_pending: true,
+            }),
+            ms(0),
+        );
+        assert_eq!(
+            owner.schedule(ms(1), true, true, false, None),
+            RedrawAction::WaitFor(ms(15))
+        );
+        owner.frame_outcome(
+            &Err(KeplerError::Graphics("injected pass failure".into())),
+            ms(2),
+        );
+        assert_eq!(
+            owner.schedule(ms(100), true, true, true, Some(ms(0))),
+            RedrawAction::Wait
+        );
     }
 
     #[test]

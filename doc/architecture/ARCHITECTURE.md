@@ -25,8 +25,12 @@ available, not behind a `mesh` Cargo feature.
 - `AppModel` owns application data/configuration, including the canonical volume.
 - `AppView` owns view composition, layout, and saved CPU view state.
 - `App` coordinates model/view state and graphics, and executes complete frames.
-- `RenderApp` handles the Winit event loop and coalesces redraw scheduling;
-  [redraw.rs](../../src/application/redraw.rs) contains the scheduling policy.
+- `RenderApp` starts one initialized `ApplicationHandler` with native `run_app` or
+  browser `spawn_app`; [redraw.rs](../../src/application/redraw.rs) contains lifecycle
+  and scheduling policy. [frame.rs](../../src/application/frame.rs) owns the private
+  presented/skipped transaction; public `App::render` retains unit success.
+- GPU faults use a private notifier and the existing quit transport to wake an idle
+  owner; no new public control event or general device reconstruction is added.
 - `GraphicsContext` owns its device/queue/surface configuration and persistent
   mesh depth texture/view pool. Device resources do not cross graphics owners.
 - `DefaultViewFactory` lazily shares immutable MPR resources for compatible

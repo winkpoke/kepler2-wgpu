@@ -139,12 +139,35 @@ pub fn device_format_features(
     }
 }
 
+/// New aggregate/varying limits must not raise unused requirements relative to wgpu 23.
+/// Keep existing per-stage requirements and request no more than the new defaults.
+fn restrict_new_limits(mut requested: wgpu::Limits, supported: &wgpu::Limits) -> wgpu::Limits {
+    requested.max_bind_groups_plus_vertex_buffers = requested
+        .max_bind_groups_plus_vertex_buffers
+        .min(supported.max_bind_groups_plus_vertex_buffers);
+    requested.max_buffers_and_acceleration_structures_per_shader_stage = requested
+        .max_buffers_and_acceleration_structures_per_shader_stage
+        .min(supported.max_buffers_and_acceleration_structures_per_shader_stage);
+    requested.max_inter_stage_shader_variables = requested
+        .max_inter_stage_shader_variables
+        .min(supported.max_inter_stage_shader_variables);
+    requested
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn native_limits(supported: &wgpu::Limits) -> wgpu::Limits {
+    restrict_new_limits(wgpu::Limits::default(), supported)
+}
+
 /// Browser uses WebGL2 downlevel limits except for the adapter's supported 3D texture limit.
 pub fn browser_limits(supported: &wgpu::Limits) -> Result<wgpu::Limits, KeplerError> {
-    let requested = wgpu::Limits {
-        max_texture_dimension_3d: supported.max_texture_dimension_3d,
-        ..wgpu::Limits::downlevel_webgl2_defaults()
-    };
+    let requested = restrict_new_limits(
+        wgpu::Limits {
+            max_texture_dimension_3d: supported.max_texture_dimension_3d,
+            ..wgpu::Limits::downlevel_webgl2_defaults()
+        },
+        supported,
+    );
     if !requested.check_limits(supported) {
         return Err(KeplerError::Graphics(format!(
             "Browser adapter cannot satisfy Kepler's downlevel limits (requested 3D texture dimension {}, supported {})",
@@ -283,6 +306,30 @@ mod tests {
         )
         .flags
         .contains(wgpu::TextureFormatFeatureFlags::FILTERABLE));
+    }
+
+    #[test]
+    fn new_unused_default_limits_do_not_reject_formerly_usable_adapters() {
+        let supported = wgpu::Limits {
+            max_bind_groups_plus_vertex_buffers: 5,
+            max_buffers_and_acceleration_structures_per_shader_stage: 12,
+            max_inter_stage_shader_variables: 8,
+            ..wgpu::Limits::default()
+        };
+        let browser = browser_limits(&supported).unwrap();
+        assert_eq!(browser.max_bind_groups_plus_vertex_buffers, 5);
+        assert_eq!(
+            browser.max_buffers_and_acceleration_structures_per_shader_stage,
+            12
+        );
+        assert_eq!(browser.max_inter_stage_shader_variables, 8);
+        let native = native_limits(&supported);
+        assert!(native.check_limits(&supported));
+        assert_eq!(native.max_immediate_size, 0);
+        assert_eq!(
+            native.max_bind_groups,
+            wgpu::Limits::default().max_bind_groups
+        );
     }
 
     #[test]

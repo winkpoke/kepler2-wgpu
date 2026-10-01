@@ -12,14 +12,49 @@ pub enum KeplerError {
     Dicom(String),
     /// File I/O errors
     Io(std::io::Error),
-    /// WGPU surface errors
-    Surface(wgpu::SurfaceError),
+    /// Application-owned surface acquisition or presentation failure.
+    Surface(SurfaceFailure),
     /// Window creation errors
     Window(String),
     /// Data validation errors
     Validation(String),
     /// MPR view related errors
     Mpr(MprError),
+}
+
+/// Backend-independent class for a surface or graphics-device failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SurfaceFailureKind {
+    Timeout,
+    Occluded,
+    Outdated,
+    Lost,
+    Validation,
+    OutOfMemory,
+    DeviceLost,
+    Other,
+}
+
+/// Actionable surface failure without exposing a backend-specific error type.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SurfaceFailure {
+    pub kind: SurfaceFailureKind,
+    pub operation: String,
+    pub message: String,
+}
+
+impl SurfaceFailure {
+    pub fn new(
+        kind: SurfaceFailureKind,
+        operation: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            kind,
+            operation: operation.into(),
+            message: message.into(),
+        }
+    }
 }
 
 /// MPR (Multi-Planar Reconstruction) view specific errors
@@ -55,7 +90,11 @@ impl fmt::Display for KeplerError {
             KeplerError::Graphics(msg) => write!(f, "Graphics error: {msg}"),
             KeplerError::Dicom(msg) => write!(f, "DICOM processing error: {msg}"),
             KeplerError::Io(err) => write!(f, "I/O error: {err}"),
-            KeplerError::Surface(err) => write!(f, "Surface error: {err}"),
+            KeplerError::Surface(err) => write!(
+                f,
+                "Surface {:?} during {}: {}",
+                err.kind, err.operation, err.message
+            ),
             KeplerError::Window(msg) => write!(f, "Window error: {msg}"),
             KeplerError::Validation(msg) => write!(f, "Validation error: {msg}"),
             KeplerError::Mpr(err) => write!(f, "MPR error: {err}"),
@@ -102,7 +141,6 @@ impl std::error::Error for KeplerError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             KeplerError::Io(err) => Some(err),
-            KeplerError::Surface(err) => Some(err),
             _ => None,
         }
     }
@@ -114,9 +152,9 @@ impl From<std::io::Error> for KeplerError {
     }
 }
 
-impl From<wgpu::SurfaceError> for KeplerError {
-    fn from(err: wgpu::SurfaceError) -> Self {
-        KeplerError::Surface(err)
+impl From<SurfaceFailure> for KeplerError {
+    fn from(failure: SurfaceFailure) -> Self {
+        Self::Surface(failure)
     }
 }
 
@@ -141,3 +179,28 @@ impl From<KeplerError> for JsValue {
 
 /// Result type alias for convenience
 pub type KeplerResult<T> = Result<T, KeplerError>;
+
+#[cfg(test)]
+mod migration_tests {
+    use super::{KeplerError, SurfaceFailure, SurfaceFailureKind};
+
+    #[test]
+    fn surface_failures_are_application_owned_and_actionable() {
+        let failure = SurfaceFailure::new(
+            SurfaceFailureKind::Timeout,
+            "acquire current frame",
+            "surface acquisition timed out",
+        );
+        let error = KeplerError::Surface(failure);
+
+        assert!(error.to_string().contains("Timeout"));
+        assert!(error.to_string().contains("acquire current frame"));
+        assert!(std::error::Error::source(&error).is_none());
+    }
+
+    #[test]
+    fn rendering_errors_do_not_need_surface_error_conversion() {
+        let error = KeplerError::Graphics("render pass failed".to_owned());
+        assert!(error.to_string().contains("render pass failed"));
+    }
+}

@@ -158,6 +158,24 @@ fn failed_pass_is_not_reported_as_a_successfully_presentable_frame() {
                 result.is_err(),
                 "App must not clear pending presentation after a failed pass"
             );
+            let error = result.unwrap_err().to_string();
+            assert!(
+                error.contains("Injected render failure"),
+                "missing pass error context: {error}"
+            );
+        });
+    });
+}
+
+#[test]
+fn mesh_view_failure_is_not_reported_as_successful_drawing() {
+    let gpu = Gpu::new();
+    let mut view = MeshView::new();
+    gpu.validated("Unattached mesh view error", || {
+        render_offscreen(&gpu, 16, 16, FORMAT, false, |pass| {
+            let error = kepler_wgpu::Renderable::render(&mut view, pass).unwrap_err();
+            assert!(matches!(error, kepler_wgpu::KeplerError::Graphics(_)));
+            assert!(error.to_string().contains("context not attached"));
         });
     });
 }

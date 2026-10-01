@@ -15,20 +15,21 @@ impl Gpu {
             .is_test(true)
             .try_init();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::util::backend_bits_from_env().unwrap_or(wgpu::Backends::PRIMARY),
+            backends: wgpu::Backends::PRIMARY.with_env(),
             flags: wgpu::InstanceFlags::VALIDATION,
-            ..Default::default()
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             compatible_surface: None,
             force_fallback_adapter: false,
             power_preference: wgpu::PowerPreference::LowPower,
+            apply_limit_buckets: false,
         }))
         .expect("Headless GPU tests require an adapter; install Mesa lavapipe on Linux and set WGPU_BACKEND=vulkan. These tests must not silently skip.");
         let adapter_info = adapter.get_info();
-        log::info!("Headless test adapter: {adapter_info:?}");
+        eprintln!("Headless test adapter: {adapter_info:?}");
         let (device, queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
+            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .unwrap_or_else(|error| panic!("Requesting device on {adapter_info:?}: {error}"));
         Self {
             device: std::sync::Arc::new(device),
@@ -39,10 +40,12 @@ impl Gpu {
 
     /// Captures validation failures, including those deferred until submission.
     pub fn validated<T>(&self, label: &str, run: impl FnOnce() -> T) -> T {
-        self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let scope = self.device.push_error_scope(wgpu::ErrorFilter::Validation);
         let result = run();
-        self.device.poll(wgpu::Maintain::Wait);
-        let error = pollster::block_on(self.device.pop_error_scope());
+        self.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .expect("GPU validation polling failed");
+        let error = pollster::block_on(scope.pop());
         assert!(
             error.is_none(),
             "{label} on {:?}: {error:?}",
@@ -58,11 +61,17 @@ impl Gpu {
             .map_async(wgpu::MapMode::Read, move |result| {
                 let _ = tx.send(result);
             });
-        self.device.poll(wgpu::Maintain::Wait);
+        self.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .expect("GPU readback polling failed");
         rx.recv_timeout(Duration::from_secs(30))
             .expect("Timed out waiting for GPU readback")
             .expect("GPU readback mapping failed");
-        let bytes = buffer.slice(..).get_mapped_range().to_vec();
+        let bytes = buffer
+            .slice(..)
+            .get_mapped_range()
+            .expect("GPU mapped range unavailable")
+            .to_vec();
         buffer.unmap();
         bytes
     }
@@ -122,6 +131,7 @@ pub fn render_offscreen(
             label: Some("Headless rendering correctness"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: color_view,
+                depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     // Non-grayscale clear makes missing/partial draws visible to assertions.
@@ -145,6 +155,7 @@ pub fn render_offscreen(
                 }
             }),
             timestamp_writes: None,
+            multiview_mask: None,
             occlusion_query_set: None,
         });
         draw(&mut pass);
@@ -187,15 +198,15 @@ pub fn render_encoded_offscreen(
     let mut encoder = gpu.device.create_command_encoder(&Default::default());
     encode(&mut encoder, &color_view);
     encoder.copy_texture_to_buffer(
-        wgpu::ImageCopyTexture {
+        wgpu::TexelCopyTextureInfo {
             texture: &texture,
             mip_level: 0,
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         },
-        wgpu::ImageCopyBuffer {
+        wgpu::TexelCopyBufferInfo {
             buffer: &readback,
-            layout: wgpu::ImageDataLayout {
+            layout: wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(padded_row),
                 rows_per_image: Some(height),

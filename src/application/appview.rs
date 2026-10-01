@@ -65,8 +65,8 @@ impl AppView {
     /// View state only controls uniform uploads, not whether its pixels are drawn.
     pub(crate) fn render_pass(
         &mut self,
-        context: crate::rendering::core::PassContext<'_>,
-    ) -> Result<(), wgpu::SurfaceError> {
+        context: crate::rendering::core::PassContext<'_, '_>,
+    ) -> crate::core::error::KeplerResult<()> {
         use crate::rendering::core::PassId;
         for view in self.layout.views_mut() {
             let belongs_to_pass = match context.pass_id {

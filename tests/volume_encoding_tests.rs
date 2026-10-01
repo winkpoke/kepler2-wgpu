@@ -114,6 +114,108 @@ fn packed_channel_interpolation_preserves_signed_values_and_byte_carries() {
     }
 }
 
+// Native Naga currently disables fragment derivative-uniformity requirements,
+// so successful native pipeline creation alone cannot catch WebGPU's rejection.
+// Check the production shader structure: MPR samples before divergent bounds,
+// while MIP helpers take footprint-based LOD computed before per-fragment control.
+// Fixed LOD is not equivalent: minification and magnification filters differ.
+#[cfg(not(target_arch = "wasm32"))]
+#[test]
+fn production_volume_shaders_preserve_derivatives_outside_divergent_control_flow() {
+    use kepler_wgpu::rendering::shaders::volume_shader_source;
+    use wgpu::naga::{Expression, SampleLevel, Statement};
+
+    fn assert_uniform_prefix(
+        function: &wgpu::naga::Function,
+        expression: wgpu::naga::Handle<Expression>,
+    ) {
+        let sample = function.body.iter().position(|statement| {
+            matches!(statement, Statement::Emit(range) if range.clone().any(|h| h == expression))
+        }).expect("Derivatives/sampling must be unconditional in the entry-point body");
+        let control = function
+            .body
+            .iter()
+            .position(|statement| {
+                matches!(
+                    statement,
+                    Statement::If { .. }
+                        | Statement::Switch { .. }
+                        | Statement::Loop { .. }
+                        | Statement::Return { .. }
+                )
+            })
+            .unwrap();
+        assert!(
+            sample < control,
+            "Derivatives must precede per-fragment bounds/returns"
+        );
+    }
+
+    for (name, body) in [
+        (
+            "MPR",
+            include_str!("../src/rendering/shaders/shader_tex.wgsl"),
+        ),
+        ("MIP", include_str!("../src/rendering/shaders/mip.wgsl")),
+    ] {
+        let source = volume_shader_source(body);
+        let module = wgpu::naga::front::wgsl::parse_str(&source)
+            .unwrap_or_else(|error| panic!("{name}: {}", error.emit_to_string(&source)));
+        wgpu::naga::valid::Validator::new(
+            wgpu::naga::valid::ValidationFlags::all(),
+            wgpu::naga::valid::Capabilities::empty(),
+        )
+        .validate(&module)
+        .unwrap_or_else(|error| panic!("{name}: {error:?}"));
+        let mut samples = 0;
+        let mut derivatives = 0;
+        for function in module
+            .functions
+            .iter()
+            .map(|(_, f)| f)
+            .chain(module.entry_points.iter().map(|e| &e.function))
+        {
+            for (handle, expression) in function.expressions.iter() {
+                if let Expression::ImageSample { level, .. } = expression {
+                    samples += 1;
+                    if name == "MPR" {
+                        assert!(
+                            matches!(level, SampleLevel::Auto),
+                            "MPR must retain derivative-based filter selection"
+                        );
+                        assert_uniform_prefix(function, handle);
+                    } else {
+                        let SampleLevel::Exact(argument) = level else {
+                            panic!("MIP rays need footprint-based explicit LOD, not implicit derivatives");
+                        };
+                        assert!(
+                            matches!(
+                                function.expressions[*argument],
+                                Expression::FunctionArgument(_)
+                            ),
+                            "MIP LOD must come from the ray footprint, not fixed LOD zero"
+                        );
+                    }
+                }
+                if name == "MIP" && matches!(expression, Expression::Derivative { .. }) {
+                    derivatives += 1;
+                    assert_uniform_prefix(function, handle);
+                }
+            }
+        }
+        if name == "MIP" {
+            assert_eq!(
+                derivatives, 2,
+                "Both ray footprint derivatives must be checked"
+            );
+        }
+        assert!(
+            samples > 0,
+            "{name}: production volume sampling must be checked"
+        );
+    }
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 #[test]
 fn gpu_packed_upload_roundtrips_entire_domain_with_shared_wgsl_decoder() {
@@ -122,27 +224,19 @@ fn gpu_packed_upload_roundtrips_entire_domain_with_shared_wgsl_decoder() {
     use wgpu::util::DeviceExt;
 
     let instance = wgpu::Instance::default();
-    let Some(adapter) =
-        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            compatible_surface: None,
-            force_fallback_adapter: false,
-            power_preference: wgpu::PowerPreference::LowPower,
-        }))
-    else {
-        // Native CI may not have a GPU. Set this flag when GPU coverage is required.
-        assert!(
-            std::env::var_os("KEPLER_REQUIRE_GPU_TESTS").is_none(),
-            "No GPU adapter available"
-        );
-        log::warn!("No GPU adapter available; volume roundtrip test not exercised");
-        return;
-    };
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        compatible_surface: None,
+        force_fallback_adapter: false,
+        power_preference: wgpu::PowerPreference::LowPower,
+        apply_limit_buckets: false,
+    }))
+    .expect("Volume roundtrip GPU test requires an adapter; it must not silently skip");
+    log::info!("Volume roundtrip adapter: {:?}", adapter.get_info());
     let (device, queue) =
-        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default(), None))
-            .unwrap();
+        pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).unwrap();
 
     // Validate both production shader modules, not just the compute harness.
-    device.push_error_scope(wgpu::ErrorFilter::Validation);
+    let scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
     for body in [
         include_str!("../src/rendering/shaders/shader_tex.wgsl"),
         include_str!("../src/rendering/shaders/mip.wgsl"),
@@ -152,7 +246,8 @@ fn gpu_packed_upload_roundtrips_entire_domain_with_shared_wgsl_decoder() {
             source: wgpu::ShaderSource::Wgsl(volume_shader_source(body).into()),
         });
     }
-    assert!(pollster::block_on(device.pop_error_scope()).is_none());
+    assert!(pollster::block_on(scope.pop()).is_none());
+    let compute_scope = device.push_error_scope(wgpu::ErrorFilter::Validation);
 
     let voxels: Vec<i16> = (i16::MIN..=i16::MAX).collect();
     let encoding = VolumeEncoding::PackedI16Rg8;
@@ -267,9 +362,15 @@ fn gpu_packed_upload_roundtrips_entire_domain_with_shared_wgsl_decoder() {
     readback
         .slice(..)
         .map_async(wgpu::MapMode::Read, move |result| tx.send(result).unwrap());
-    device.poll(wgpu::Maintain::Wait);
+    device
+        .poll(wgpu::PollType::wait_indefinitely())
+        .expect("Roundtrip GPU polling failed");
+    assert!(pollster::block_on(compute_scope.pop()).is_none());
     rx.recv().unwrap().unwrap();
-    let mapped = readback.slice(..).get_mapped_range();
+    let mapped = readback
+        .slice(..)
+        .get_mapped_range()
+        .expect("Roundtrip mapped range unavailable");
     let decoded: &[f32] = bytemuck::cast_slice(&mapped);
     for (&expected, &actual) in voxels.iter().zip(decoded) {
         // RG8 storage is exact, but normalized sampling has small f32 error.

@@ -60,12 +60,14 @@ fn intersect_volume(ray_origin: vec3<f32>, ray_dir: vec3<f32>) -> vec2<f32> {
     return vec2<f32>(t_min, t_max);
 }
 
-fn sample_volume(coords: vec3<f32>) -> f32 {
+fn sample_volume(coords: vec3<f32>, sample_lod: f32) -> f32 {
     if (any(coords < vec3<f32>(0.0)) || any(coords > vec3<f32>(1.0))) {
         // Return a low value (Air) instead of 0.0 (Water) to avoid artifacts at boundaries
         return -1024.0;
     }
-    let sampled_value = textureSample(t_volume, s_volume, coords);
+    // LOD comes from uniform fragment derivatives, not divergent rays. Do not
+    // force level zero: the sampler's minification and magnification differ.
+    let sampled_value = textureSampleLevel(t_volume, s_volume, coords, sample_lod);
     return decode_volume_sample(sampled_value, u_mip.is_packed_rg8, u_mip.bias);
 }
 
@@ -85,7 +87,8 @@ fn apply_window_level(value: f32) -> f32 {
 }
 
 // Ray march with MIP / MinIP / AvgIP
-fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end: f32) -> f32 {
+fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end: f32,
+                 sample_lod: f32) -> f32 {
     var max_intensity = -1e20;
     var min_intensity = 1e20;
     var sum_intensity = 0.0;
@@ -105,7 +108,7 @@ fn mip_ray_march(ray_origin: vec3<f32>, ray_dir: vec3<f32>, t_start: f32, t_end:
         if (t > t_end) { break; }
 
         let sample_pos = ray_origin + t * ray_dir;
-        let intensity = sample_volume(sample_pos);
+        let intensity = sample_volume(sample_pos, sample_lod);
 
         // threshold filtering (uniform-driven)
         if (intensity < u_mip.lower_threshold || intensity > u_mip.upper_threshold) {
@@ -157,11 +160,23 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let t_start = max(intersection.x, 0.0);
     let t_end = intersection.y;
 
+    // The orthographic direction and step size are uniform, so adding each
+    // i*step_size*ray_dir does not change the spatial derivatives of sample_pos.
+    // Compute those derivatives before the miss return and variable ray loop.
+    let sample_start = volume_ray_origin + t_start * volume_ray_dir;
+    let texture_size = vec3<f32>(textureDimensions(t_volume));
+    let sample_dx = dpdx(sample_start) * texture_size;
+    let sample_dy = dpdy(sample_start) * texture_size;
+    let footprint = max(length(sample_dx), length(sample_dy));
+    // Explicit LOD avoids Naga's Metal 3D-gradient lowering bug. With one mip,
+    // its sign preserves the existing min/mag filter selection; no mips change.
+    let sample_lod = log2(max(footprint, 1e-6));
+
     if (t_start >= t_end) {
         return vec4<f32>(0.0, 0.0, 0.0, 1.0);
     }
 
-    let intensity = mip_ray_march(volume_ray_origin, volume_ray_dir, t_start, t_end);
+    let intensity = mip_ray_march(volume_ray_origin, volume_ray_dir, t_start, t_end, sample_lod);
 
     // Map intensity -> display value using window/level
     var processed = apply_window_level(intensity);

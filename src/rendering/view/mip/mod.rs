@@ -167,8 +167,8 @@ impl MipRenderContext {
         // Create render pipeline layout
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("MIP Pipeline Layout"),
-            bind_group_layouts: &[&texture_bind_group_layout, &uniform_bind_group_layout],
-            push_constant_ranges: &[],
+            bind_group_layouts: &[&texture_bind_group_layout, &uniform_bind_group_layout].map(Some),
+            immediate_size: 0,
         });
 
         // Create render pipeline
@@ -207,7 +207,7 @@ impl MipRenderContext {
                     mask: !0,
                     alpha_to_coverage_enabled: false,
                 },
-                multiview: None,
+                multiview_mask: None,
                 cache: None,
             }),
         );
@@ -577,7 +577,10 @@ impl Renderable for MipView {
         );
     }
 
-    fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
+    fn render(
+        &mut self,
+        render_pass: &mut wgpu::RenderPass,
+    ) -> crate::core::error::KeplerResult<()> {
         log::trace!("[MIP_RENDER] Starting MIP render");
 
         // Set the MIP render pipeline

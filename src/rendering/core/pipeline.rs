@@ -94,8 +94,8 @@ pub fn create_mip_pipeline_(
     // Create pipeline layout with MIP bind group
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("MIP Pipeline Layout"),
-        bind_group_layouts: &[bind_group_layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[bind_group_layout].map(Some),
+        immediate_size: 0,
     });
 
     // Create the MIP pipeline
@@ -133,7 +133,7 @@ pub fn create_mip_pipeline_(
             mask: !0,
             alpha_to_coverage_enabled: false,
         },
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     })
 }
@@ -272,8 +272,9 @@ pub fn get_or_create_mesh_pipeline_with_depth(
             &lighting_bind_group_layout,
             &model_bind_group_layout,
             &material_bind_group_layout,
-        ],
-        push_constant_ranges: &[],
+        ]
+        .map(Some),
+        immediate_size: 0,
     });
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some("Mesh Pipeline"),
@@ -281,7 +282,7 @@ pub fn get_or_create_mesh_pipeline_with_depth(
         vertex: wgpu::VertexState {
             module: &shader,
             entry_point: Some("vs_main"),
-            buffers: &[crate::rendering::mesh::mesh::MeshVertex::desc()],
+            buffers: &[Some(crate::rendering::mesh::mesh::MeshVertex::desc())],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
@@ -306,8 +307,8 @@ pub fn get_or_create_mesh_pipeline_with_depth(
         depth_stencil: if use_depth {
             Some(wgpu::DepthStencilState {
                 format: get_mesh_depth_format(),
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             })
@@ -319,7 +320,7 @@ pub fn get_or_create_mesh_pipeline_with_depth(
             mask: !0,
             alpha_to_coverage_enabled: false,
         },
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     });
 
@@ -544,8 +545,8 @@ pub fn create_basic_mesh_pipeline_with_lighting_and_format(
     // Create pipeline layout with two bind groups
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Basic Mesh Pipeline Layout with Lighting"),
-        bind_group_layouts: &[transform_bind_group_layout, lighting_bind_group_layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[transform_bind_group_layout, lighting_bind_group_layout].map(Some),
+        immediate_size: 0,
     });
 
     // Create the pipeline
@@ -555,7 +556,7 @@ pub fn create_basic_mesh_pipeline_with_lighting_and_format(
         vertex: wgpu::VertexState {
             module: &shader,
             entry_point: Some("vs_main"),
-            buffers: &[crate::rendering::mesh::mesh::MeshVertex::desc()],
+            buffers: &[Some(crate::rendering::mesh::mesh::MeshVertex::desc())],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
@@ -580,8 +581,8 @@ pub fn create_basic_mesh_pipeline_with_lighting_and_format(
         depth_stencil: if use_depth {
             Some(wgpu::DepthStencilState {
                 format: get_mesh_depth_format(),
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             })
@@ -593,7 +594,7 @@ pub fn create_basic_mesh_pipeline_with_lighting_and_format(
             mask: !0,
             alpha_to_coverage_enabled: false,
         },
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     })
 }
@@ -610,8 +611,8 @@ pub fn create_simple_mesh_pipeline(
     // Create pipeline layout with only one bind group
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("Simple Mesh Pipeline Layout"),
-        bind_group_layouts: &[bind_group_layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[bind_group_layout].map(Some),
+        immediate_size: 0,
     });
 
     // Create the pipeline
@@ -621,7 +622,7 @@ pub fn create_simple_mesh_pipeline(
         vertex: wgpu::VertexState {
             module: &shader,
             entry_point: Some("vs_main"),
-            buffers: &[crate::rendering::mesh::mesh::MeshVertex::desc()],
+            buffers: &[Some(crate::rendering::mesh::mesh::MeshVertex::desc())],
             compilation_options: wgpu::PipelineCompilationOptions::default(),
         },
         fragment: Some(wgpu::FragmentState {
@@ -646,8 +647,8 @@ pub fn create_simple_mesh_pipeline(
         depth_stencil: if use_depth {
             Some(wgpu::DepthStencilState {
                 format: get_mesh_depth_format(),
-                depth_write_enabled: true,
-                depth_compare: wgpu::CompareFunction::Less,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Less),
                 stencil: wgpu::StencilState::default(),
                 bias: wgpu::DepthBiasState::default(),
             })
@@ -659,7 +660,7 @@ pub fn create_simple_mesh_pipeline(
             mask: !0,
             alpha_to_coverage_enabled: false,
         },
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     })
 }

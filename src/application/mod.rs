@@ -7,6 +7,7 @@
 pub mod app;
 pub mod app_model;
 pub mod appview;
+mod frame;
 pub mod gl_canvas;
 mod redraw;
 pub mod render_app;

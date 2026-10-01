@@ -17,7 +17,7 @@ mod mesh_integration_tests {
     async fn create_test_device() -> (wgpu::Device, wgpu::Queue) {
         let instance = Instance::new(wgpu::InstanceDescriptor {
             backends: Backends::all(),
-            ..Default::default()
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
 
         let adapter = instance
@@ -25,20 +25,20 @@ mod mesh_integration_tests {
                 power_preference: wgpu::PowerPreference::default(),
                 compatible_surface: None,
                 force_fallback_adapter: false,
+                apply_limit_buckets: false,
             })
             .await
             .expect("Failed to find an appropriate adapter");
 
         adapter
-            .request_device(
-                &DeviceDescriptor {
-                    label: Some("Test Device"),
-                    required_features: Features::empty(),
-                    required_limits: Limits::default(),
-                    memory_hints: wgpu::MemoryHints::default(),
-                },
-                None,
-            )
+            .request_device(&DeviceDescriptor {
+                label: Some("Test Device"),
+                required_features: Features::empty(),
+                required_limits: Limits::default(),
+                memory_hints: wgpu::MemoryHints::default(),
+                experimental_features: wgpu::ExperimentalFeatures::disabled(),
+                trace: wgpu::Trace::Off,
+            })
             .await
             .expect("Failed to create device")
     }

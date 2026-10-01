@@ -458,7 +458,10 @@ impl Renderable for MprView {
     /// 3. **Resources**: Bind textures and uniform buffers
     /// 4. **Geometry**: Bind vertex and index buffers
     /// 5. **Draw**: Issue indexed draw call for the quad
-    fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
+    fn render(
+        &mut self,
+        render_pass: &mut wgpu::RenderPass,
+    ) -> crate::core::error::KeplerResult<()> {
         // Set the rendering pipeline for MPR visualization (from per-view implementation)
         render_pass.set_pipeline(&self.wgpu_impl.render_context.render_pipeline);
 

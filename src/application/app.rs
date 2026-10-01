@@ -14,7 +14,8 @@ use async_lock::Mutex;
 
 use winit::{event::*, window::Window};
 
-use crate::core::error::KeplerError;
+use super::frame::{Acquisition, FrameDriver, FrameOutcome, RecoveryAction};
+use crate::core::error::{KeplerError, KeplerResult, SurfaceFailure, SurfaceFailureKind};
 use crate::data::dicom::*;
 use crate::data::{ct_volume::*, AppModel};
 use crate::rendering::view::render_content::RenderContent;
@@ -44,6 +45,51 @@ pub struct App {
     pub(crate) saved_states: [usize; 4],
     surface_dirty: bool,
     surface_suspended: bool,
+    reconfigure_pending: bool,
+}
+
+impl FrameDriver for App {
+    type Texture = wgpu::SurfaceTexture;
+
+    fn check_fault(&self) -> KeplerResult<()> {
+        self.graphics().faults.check()
+    }
+    fn ready(&self) -> bool {
+        self.can_render()
+    }
+    fn reconfigure_pending(&self) -> bool {
+        self.reconfigure_pending
+    }
+    fn set_reconfigure_pending(&mut self, pending: bool) {
+        self.reconfigure_pending = pending;
+    }
+    fn recover(&mut self, action: RecoveryAction) -> KeplerResult<()> {
+        self.graphics_mut()
+            .recover_surface(action == RecoveryAction::Recreate)?;
+        self.synchronize_surface_format();
+        Ok(())
+    }
+    fn acquire(&mut self) -> Acquisition<Self::Texture> {
+        self.synchronize_surface_format();
+        Acquisition::from_surface(self.graphics().surface.get_current_texture())
+    }
+    fn draw_and_present(&mut self, frame: Self::Texture) -> KeplerResult<()> {
+        self.draw_frame(frame)
+    }
+    fn mark_presented(&mut self) {
+        self.app_view.layout.mark_presented();
+        self.surface_dirty = false;
+    }
+    fn acquisition_failure(&self, kind: SurfaceFailureKind) -> SurfaceFailure {
+        SurfaceFailure::new(
+            kind,
+            "acquire current frame",
+            format!(
+                "selected backend {:?}: no usable frame",
+                self.graphics().capabilities().backend()
+            ),
+        )
+    }
 }
 
 impl App {
@@ -92,6 +138,7 @@ impl App {
         let size = window.inner_size();
         Ok(Self {
             surface_dirty: true,
+            reconfigure_pending: false,
             surface_suspended: size.width == 0 || size.height == 0,
             graphics_context,
             app_view: AppView::new(layout, factory),
@@ -148,6 +195,7 @@ impl App {
         let window_size = new_graphics.window.inner_size();
         self.surface_suspended = window_size.width == 0 || window_size.height == 0;
         self.surface_dirty = true;
+        self.reconfigure_pending = false;
         self.graphics_context = GraphicsContext::from_graphics(new_graphics);
         self.refresh_view_factory();
         let size = (
@@ -250,6 +298,7 @@ impl App {
                 .surface
                 .configure(&self.graphics().device, &self.graphics().surface_config);
 
+            self.reconfigure_pending = false;
             self.synchronize_surface_format();
             // The persistent depth cache replaces size-dependent targets on the next mesh frame.
         }
@@ -263,6 +312,7 @@ impl App {
     /// Pending visual work, independent of animation and recovery deadlines.
     pub fn needs_redraw(&self) -> bool {
         self.surface_dirty
+            || self.reconfigure_pending
             || self.app_view.layout.needs_redraw()
             || self.app_view.view_factory.surface_format() != self.graphics_context.surface_format()
     }
@@ -310,14 +360,18 @@ impl App {
             .any(|view| view.as_any().downcast_ref::<view::MprView>().is_some())
     }
 
-    /// Function-level comment: Renders the frame using separate render passes for 3D mesh and 2D slice content.
-    /// This architecture provides better performance and cleaner separation of concerns.
-    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        if !self.can_render() {
-            return Ok(()); // Preserve pending work until the surface is restored.
-        }
-        self.synchronize_surface_format();
-        let frame = self.graphics().surface.get_current_texture()?;
+    /// Render a complete frame. Successful drawing and zero-size no-ops return unit.
+    /// Skipped acquisitions return an owned surface classification; drawing failures
+    /// return graphics errors. Pending changes are consumed only after presentation.
+    pub fn render(&mut self) -> KeplerResult<()> {
+        self.render_frame()?.into_public_result()
+    }
+
+    pub(crate) fn render_frame(&mut self) -> KeplerResult<FrameOutcome> {
+        super::frame::execute(self)
+    }
+
+    fn draw_frame(&mut self, frame: wgpu::SurfaceTexture) -> KeplerResult<()> {
         let frame_view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -377,20 +431,17 @@ impl App {
                         .map_err(|error| Box::new(error) as Box<dyn std::error::Error>)
                 },
             )
-            .map_err(|e| {
-                log::error!("PassExecutor error: {}", e);
-                wgpu::SurfaceError::Lost
-            })?;
+            .map_err(super::frame::pass_failure)?;
 
+        self.graphics().faults.check()?;
         // Submit the command buffer
         self.graphics()
             .queue
             .submit(std::iter::once(encoder.finish()));
 
-        frame.present();
-        self.app_view.layout.mark_presented();
-        self.surface_dirty = false;
-        Ok(())
+        self.graphics().faults.check()?;
+        self.graphics().queue.present(frame);
+        self.graphics().faults.check()
     }
 
     /// Internal helper to load volume and create RenderContent without modifying layout

@@ -3,18 +3,16 @@
 use std::sync::Arc;
 
 use winit::{
+    application::ApplicationHandler,
     dpi::PhysicalSize,
     event::*,
-    event_loop::EventLoop,
+    event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
     window::Window,
 };
 
-#[cfg(target_arch = "wasm32")]
-use winit::window::WindowBuilder;
-
 use crate::application::gl_canvas::{GLCanvas, UserEvent};
-use crate::application::redraw::{RedrawAction, RedrawScheduler};
+use crate::application::redraw::{FrameOwner, RedrawAction};
 use crate::core::timing::Instant;
 use crate::rendering::core::Graphics;
 use crate::{application::App, rendering::LayoutContainer};
@@ -42,6 +40,7 @@ pub struct RenderApp {
 impl RenderApp {
     pub fn new(state: App, event_loop: EventLoop<UserEvent>) -> Self {
         let proxy = event_loop.create_proxy();
+        attach_fault_transport(&state, &proxy);
         RenderApp {
             state: Some(state),
             event_loop: Some(event_loop),
@@ -53,7 +52,12 @@ impl RenderApp {
         if let Some(state) = &mut self.state {
             match Graphics::new(window.clone()).await {
                 Ok(graphics) => match state.swap_graphics(graphics) {
-                    Ok(()) => log::info!("Graphics swapped successfully."),
+                    Ok(()) => {
+                        if let Some(proxy) = &self.proxy {
+                            attach_fault_transport(state, proxy);
+                        }
+                        log::info!("Graphics swapped successfully.");
+                    }
                     Err(e) => log::error!("Failed to swap graphics: {}", e),
                 },
                 Err(e) => log::error!("Failed to create graphics: {}", e),
@@ -71,539 +75,845 @@ impl RenderApp {
     }
 
     pub async fn run(&mut self) {
-        // Take ownership to avoid borrowing `self` inside the event loop closure
         let event_loop = self.event_loop.take().unwrap();
-        let mut state = self.state.take().unwrap();
-        let proxy = self.proxy.take().unwrap();
-
-        let mut occluded = false;
-        let mut redraw = RedrawScheduler::default();
-        let clock = Instant::now();
-
+        let handler = ViewerHandler {
+            state: self.state.take().unwrap(),
+            proxy: self.proxy.take().unwrap(),
+            owner: FrameOwner::default(),
+            clock: Instant::now(),
+            shutting_down: false,
+        };
         log::info!("Starting the event loop ...");
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let mut handler = handler;
+            if let Err(error) = event_loop.run_app(&mut handler) {
+                log::error!("Viewer event loop failed: {error}");
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            use winit::platform::web::EventLoopExtWebSys;
+            event_loop.spawn_app(handler);
+        }
+    }
+}
 
-        event_loop.run(move |event, target| {
-            match event {
-                Event::UserEvent(UserEvent::SetWindowLevel(index, window_level)) => {
-                    state.set_window_level(index, window_level);
-                    log::info!("Window level set to: {}", window_level);
+fn attach_fault_transport(state: &App, proxy: &EventLoopProxy<UserEvent>) {
+    let proxy = proxy.clone();
+    state.graphics().faults.set_wake(move || {
+        let _ = proxy.send_event(UserEvent::Quit);
+    });
+}
+
+/// One owner for initialized graphics, controls, lifecycle, and frame scheduling.
+struct ViewerHandler {
+    state: App,
+    proxy: EventLoopProxy<UserEvent>,
+    owner: FrameOwner,
+    clock: Instant,
+    shutting_down: bool,
+}
+
+impl ApplicationHandler<UserEvent> for ViewerHandler {
+    fn user_event(&mut self, target: &ActiveEventLoop, event: UserEvent) {
+        self.dispatch(Event::UserEvent(event), target);
+    }
+    fn window_event(
+        &mut self,
+        target: &ActiveEventLoop,
+        window_id: winit::window::WindowId,
+        event: WindowEvent,
+    ) {
+        self.dispatch(Event::WindowEvent { window_id, event }, target);
+    }
+    fn resumed(&mut self, target: &ActiveEventLoop) {
+        self.dispatch(Event::Resumed, target);
+    }
+    fn suspended(&mut self, target: &ActiveEventLoop) {
+        self.dispatch(Event::Suspended, target);
+    }
+    fn about_to_wait(&mut self, target: &ActiveEventLoop) {
+        self.dispatch(Event::AboutToWait, target);
+    }
+}
+
+impl ViewerHandler {
+    fn dispatch(&mut self, event: Event<UserEvent>, target: &ActiveEventLoop) {
+        if self.shutting_down {
+            return;
+        }
+        let state = &mut self.state;
+        let proxy = &self.proxy;
+        let owner = &mut self.owner;
+        let clock = &self.clock;
+        match event {
+            Event::UserEvent(UserEvent::SetWindowLevel(index, window_level)) => {
+                state.set_window_level(index, window_level);
+                log::info!("Window level set to: {}", window_level);
+            }
+            Event::UserEvent(UserEvent::SetWindowWidth(index, window_width)) => {
+                state.set_window_width(index, window_width);
+                log::info!("Window width set to: {}", window_width);
+            }
+            Event::UserEvent(UserEvent::SetSliceMM(index, z)) => {
+                state.set_slice_mm(index, z);
+                log::info!("Slice set to: {} mm", z);
+            }
+            Event::UserEvent(UserEvent::SetScale(index, scale)) => {
+                state.set_scale(index, scale);
+                log::info!("Scale set to: {}", scale);
+            }
+            Event::UserEvent(UserEvent::SetTranslateInScreenCoord(index, dx, dy, dz)) => {
+                let translate = [dx, dy, dz];
+                log::info!("Move to: {:#?}", translate);
+                state.set_translate_in_screen_coord(index, translate);
+            }
+            Event::UserEvent(UserEvent::LoadDataFromCTVolume(volume)) => {
+                if let Err(e) = state.load_data_from_ct_volume(&volume) {
+                    log::error!("Failed to load data from CTVolume: {}", e);
+                } else {
+                    log::info!("Loaded data from CTVolume");
                 }
-                Event::UserEvent(UserEvent::SetWindowWidth(index, window_width)) => {
-                    state.set_window_width(index, window_width);
-                    log::info!("Window width set to: {}", window_width);
+            }
+            Event::UserEvent(UserEvent::Resize(width, height)) => {
+                log::info!("Resizing to width: {}, height: {}", width, height);
+                state.resize(PhysicalSize { width, height });
+            }
+            Event::UserEvent(UserEvent::SetPan(index, dx, dy)) => {
+                state.set_pan(index, dx, dy);
+                log::info!("Pan set to: dx={dx}, dy={dy}");
+            }
+            Event::UserEvent(UserEvent::SetPanMM(index, dx_mm, dy_mm)) => {
+                state.set_pan_mm(index, dx_mm, dy_mm);
+                log::info!("PanMM set to: dx_mm={dx_mm}, dy_mm={dy_mm}");
+            }
+            Event::UserEvent(UserEvent::Quit) => {
+                log::info!("Quit event received. Exiting event loop.");
+                state.app_view.layout.remove_all();
+                owner.stop();
+                self.shutting_down = true;
+                target.exit();
+            }
+            Event::UserEvent(UserEvent::SetWindowByDivId(div_id, volume)) => {
+                log::info!("SetWindowByDivId event received for div_id: {div_id}");
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    // Silence unused variable in native builds; volume is used on web.
+                    let _ = &volume;
                 }
-                Event::UserEvent(UserEvent::SetSliceMM(index, z)) => {
-                    state.set_slice_mm(index, z);
-                    log::info!("Slice set to: {} mm", z);
-                }
-                Event::UserEvent(UserEvent::SetScale(index, scale)) => {
-                    state.set_scale(index, scale);
-                    log::info!("Scale set to: {}", scale);
-                }
-                Event::UserEvent(UserEvent::SetTranslateInScreenCoord(index, dx, dy, dz)) => {
-                    let translate = [dx, dy, dz];
-                    log::info!("Move to: {:#?}", translate);
-                    state.set_translate_in_screen_coord(index, translate);
-                }
-                Event::UserEvent(UserEvent::LoadDataFromCTVolume(volume)) => {
-                    if let Err(e) = state.load_data_from_ct_volume(&volume) {
-                        log::error!("Failed to load data from CTVolume: {}", e);
-                    } else {
-                        log::info!("Loaded data from CTVolume");
-                    }
-                }
-                Event::UserEvent(UserEvent::Resize(width, height)) => {
-                    log::info!("Resizing to width: {}, height: {}", width, height);
-                    state.resize(PhysicalSize { width, height });
-                }
-                Event::UserEvent(UserEvent::SetPan(index, dx, dy)) => {
-                    state.set_pan(index, dx, dy);
-                    log::info!("Pan set to: dx={dx}, dy={dy}");
-                }
-                Event::UserEvent(UserEvent::SetPanMM(index, dx_mm, dy_mm)) => {
-                    state.set_pan_mm(index, dx_mm, dy_mm);
-                    log::info!("PanMM set to: dx_mm={dx_mm}, dy_mm={dy_mm}");
-                }
-                Event::UserEvent(UserEvent::Quit) => {
-                    log::info!("Quit event received. Exiting event loop.");
-                    state.app_view.layout.remove_all();
-                    target.exit();
-                }
-                Event::UserEvent(UserEvent::SetWindowByDivId(div_id, volume)) => {
-                    log::info!("SetWindowByDivId event received for div_id: {div_id}");
-                    #[cfg(not(target_arch = "wasm32"))]
+                #[cfg(target_arch = "wasm32")]
+                {
+                    let window = match target.create_window(Window::default_attributes()) {
+                        Ok(window) => Arc::new(window),
+                        Err(error) => {
+                            log::error!("Create replacement canvas window: {error}");
+                            return;
+                        }
+                    };
+                    // Winit prevents sizing with CSS, so we have to set
+                    // the size manually when on web.
+                    use winit::dpi::PhysicalSize;
+                    use winit::platform::web::WindowExtWebSys;
+                    if web_sys::window()
+                        .and_then(|win| win.document())
+                        .and_then(|doc| {
+                            let dst = doc.get_element_by_id(div_id.as_str())?;
+                            let canvas = web_sys::Element::from(window.canvas()?);
+                            dst.append_child(&canvas).ok()?;
+                            Some(())
+                        })
+                        .is_none()
                     {
-                        // Silence unused variable in native builds; volume is used on web.
-                        let _ = &volume;
-                    }
-                    #[cfg(target_arch = "wasm32")]
-                    {
-                        let window = Arc::new(WindowBuilder::new().build(target).unwrap());
-                        // Winit prevents sizing with CSS, so we have to set
-                        // the size manually when on web.
-                        use winit::dpi::PhysicalSize;
-                        use winit::platform::web::WindowExtWebSys;
-                        web_sys::window()
-                            .and_then(|win| win.document())
-                            .and_then(|doc| {
-                                let dst = doc.get_element_by_id(div_id.as_str())?;
-                                let canvas = web_sys::Element::from(window.canvas()?);
-                                dst.append_child(&canvas).ok()?;
-                                Some(())
-                            })
-                            .expect("Couldn't append canvas to document body.");
-                        let _ = window.request_inner_size(PhysicalSize::new(800, 800));
-                        let proxy = proxy.clone();
-                        state.app_view.layout.remove_all();
-                        spawn_local(async move {
-                            match Graphics::new(window.clone()).await {
-                                Ok(graphics) => {
-                                    log::info!("Graphics created in SetWindowByDivId event.");
-                                    let _ = proxy.send_event(UserEvent::GraphicsReady(graphics, volume));
-                                }
-                                Err(e) => {
-                                    log::error!("Failed to create graphics in SetWindowByDivId: {:?}", e);
-                                }
-                            }
-                        });
-                    }
-                }
-                Event::UserEvent(UserEvent::GraphicsReady(graphics, volume)) => {
-                    log::info!("GraphicsReady event received.");
-                    if let Err(e) = state.swap_graphics(graphics) {
-                        log::error!("Failed to swap graphics: {}", e);
+                        log::error!("Append replacement canvas: div or canvas unavailable");
                         return;
                     }
-                    occluded = false;
-                    redraw.redraw_received(); // Discard an outstanding request for the old window.
-                    state.resize(PhysicalSize { width: 800, height: 800 });
-                    proxy.send_event(UserEvent::LoadDataFromCTVolume(volume)).unwrap();
-                    log::info!("Graphics swapped in state.");
-                }
-                Event::UserEvent(UserEvent::ClearLayout) => {
-                    log::info!("ClearLayout event received.");
+                    let _ = window.request_inner_size(PhysicalSize::new(800, 800));
+                    let proxy = proxy.clone();
                     state.app_view.layout.remove_all();
+                    spawn_local(async move {
+                        match Graphics::new(window.clone()).await {
+                            Ok(graphics) => {
+                                log::info!("Graphics created in SetWindowByDivId event.");
+                                let _ =
+                                    proxy.send_event(UserEvent::GraphicsReady(graphics, volume));
+                            }
+                            Err(e) => {
+                                log::error!(
+                                    "Failed to create graphics in SetWindowByDivId: {:?}",
+                                    e
+                                );
+                            }
+                        }
+                    });
                 }
-                Event::UserEvent(UserEvent::ReloadShaders) => {
-                    // Function-level comment: Shader reload is now handled by individual render contexts that recreate their pipelines as needed.
-                    log::info!("ReloadShaders event: render contexts will rebuild pipelines lazily.");
+            }
+            Event::UserEvent(UserEvent::GraphicsReady(graphics, volume)) => {
+                log::info!("GraphicsReady event received.");
+                if let Err(e) = state.swap_graphics(graphics) {
+                    log::error!("Failed to swap graphics: {}", e);
+                    return;
                 }
-                Event::UserEvent(UserEvent::InvalidatePipelines) => {
-                    // Function-level comment: Pipeline invalidation is now handled by individual render contexts.
-                    log::info!("InvalidatePipelines event: render contexts will rebuild pipelines as needed.");
-                }
-                Event::UserEvent(UserEvent::SetRenderMode(mode, save_mesh, crop, sx,sy,sz,lx,ly,lz, mesh_index,index,iso_min,iso_max,mip_index,orientation_index)) => {
-                    // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
-                    state.set_render_mode(mode, save_mesh, crop, sx,sy,sz,lx,ly,lz, mesh_index,index,iso_min,iso_max,mip_index,orientation_index);
-                    log::info!("SetRenderMode toggled at runtime: mode={mode}, mip={:?}, mesh_index={:?}, index={:?}, orientation_index={orientation_index}", mip_index, mesh_index, index);
-                }
-                //mip control events
-                Event::UserEvent(UserEvent::SetMipMode(index, mode)) => {
-                    state.set_mip_mode(index, mode);
-                    log::info!("MipMode set to: index={index}, mode={mode}");
-                }
-                Event::UserEvent(UserEvent::SetSlabThickness(index, thickness)) => {
-                    state.set_slab_thickness(index, thickness);
-                    log::info!("SlabThickness set to: index={index}, thickness={thickness}");
-                }
-                Event::UserEvent(UserEvent::SetMipRotationAngleDeg(index, roll_deg, yaw_deg, pitch_deg)) => {
-                    state.set_mip_rotation_angle_degrees(index, roll_deg, yaw_deg, pitch_deg);
-                    log::info!(
+                attach_fault_transport(state, proxy);
+                owner.set_occluded(false); // Discard outstanding redraws for the old window.
+                state.resize(PhysicalSize {
+                    width: 800,
+                    height: 800,
+                });
+                proxy
+                    .send_event(UserEvent::LoadDataFromCTVolume(volume))
+                    .unwrap();
+                log::info!("Graphics swapped in state.");
+            }
+            Event::UserEvent(UserEvent::ClearLayout) => {
+                log::info!("ClearLayout event received.");
+                state.app_view.layout.remove_all();
+            }
+            Event::UserEvent(UserEvent::ReloadShaders) => {
+                // Function-level comment: Shader reload is now handled by individual render contexts that recreate their pipelines as needed.
+                log::info!("ReloadShaders event: render contexts will rebuild pipelines lazily.");
+            }
+            Event::UserEvent(UserEvent::InvalidatePipelines) => {
+                // Function-level comment: Pipeline invalidation is now handled by individual render contexts.
+                log::info!(
+                    "InvalidatePipelines event: render contexts will rebuild pipelines as needed."
+                );
+            }
+            Event::UserEvent(UserEvent::SetRenderMode(
+                mode,
+                save_mesh,
+                crop,
+                sx,
+                sy,
+                sz,
+                lx,
+                ly,
+                lz,
+                mesh_index,
+                index,
+                iso_min,
+                iso_max,
+                mip_index,
+                orientation_index,
+            )) => {
+                // Function-level comment: Runtime mesh toggle via user event; swap slot 2 view accordingly.
+                state.set_render_mode(
+                    mode,
+                    save_mesh,
+                    crop,
+                    sx,
+                    sy,
+                    sz,
+                    lx,
+                    ly,
+                    lz,
+                    mesh_index,
+                    index,
+                    iso_min,
+                    iso_max,
+                    mip_index,
+                    orientation_index,
+                );
+                log::info!("SetRenderMode toggled at runtime: mode={mode}, mip={:?}, mesh_index={:?}, index={:?}, orientation_index={orientation_index}", mip_index, mesh_index, index);
+            }
+            //mip control events
+            Event::UserEvent(UserEvent::SetMipMode(index, mode)) => {
+                state.set_mip_mode(index, mode);
+                log::info!("MipMode set to: index={index}, mode={mode}");
+            }
+            Event::UserEvent(UserEvent::SetSlabThickness(index, thickness)) => {
+                state.set_slab_thickness(index, thickness);
+                log::info!("SlabThickness set to: index={index}, thickness={thickness}");
+            }
+            Event::UserEvent(UserEvent::SetMipRotationAngleDeg(
+                index,
+                roll_deg,
+                yaw_deg,
+                pitch_deg,
+            )) => {
+                state.set_mip_rotation_angle_degrees(index, roll_deg, yaw_deg, pitch_deg);
+                log::info!(
                         "MipRotationAngleDeg set to: index={index}, roll_deg={roll_deg}, yaw_deg={yaw_deg}, pitch_deg={pitch_deg}"
                     );
-                }
-                Event::UserEvent(UserEvent::SetObliqueRotation(index, horizontal_radians, vertical_radians, in_plane_radians)) => {
-                    state.set_oblique_rotation_radians(index, horizontal_radians, vertical_radians, in_plane_radians);
-                    log::info!(
+            }
+            Event::UserEvent(UserEvent::SetObliqueRotation(
+                index,
+                horizontal_radians,
+                vertical_radians,
+                in_plane_radians,
+            )) => {
+                state.set_oblique_rotation_radians(
+                    index,
+                    horizontal_radians,
+                    vertical_radians,
+                    in_plane_radians,
+                );
+                log::info!(
                         "ObliqueRotation set to: index={index}, horizontal={:?}, vertical={:?}, in_plane={:?}",
                         horizontal_radians, vertical_radians, in_plane_radians
                     );
-                }
-                // Mesh control events
-                Event::UserEvent(UserEvent::SetMeshRotationEnabled(_index, enabled)) => {
-                    state.set_mesh_rotation_enabled(enabled);
-                    log::info!("Mesh rotation enabled={}", enabled);
-                }
-                Event::UserEvent(UserEvent::SetMeshPan(_index, dx, dy)) => {
-                    state.set_mesh_pan(dx, dy);
-                    log::info!("Mesh pan set to dx={:.3}, dy={:.3}", dx, dy);
-                }
-                Event::UserEvent(UserEvent::ResetMesh(_index)) => {
-                    state.reset_mesh();
-                    log::info!("Mesh rotation reset");
-                }
-                Event::UserEvent(UserEvent::SetMeshScale(_index, scale)) => {
-                    state.set_mesh_scale(scale);
-                    log::info!("Mesh scale set to {:.3}", scale);
-                }
-                Event::UserEvent(UserEvent::SetMeshOpacity(_index, alpha)) => {
-                    state.set_mesh_opacity(alpha);
-                    log::info!("Mesh opacity set to {:.3}", alpha);
-                }
-                Event::UserEvent(UserEvent::SetMeshRotationAngleDeg(_index, degrees_x, degrees_y)) => {
-                    state.set_mesh_rotation_angle_degrees(degrees_x, degrees_y);
-                    log::info!("Mesh rotation angle set to {:?}°", [degrees_x, degrees_y]);
-                }
-                Event::UserEvent(UserEvent::SetMeshRotation(_index, rotation)) => {
-                    state.set_mesh_rotation(rotation);
-                    log::debug!("Mesh rotation set to {:?}", rotation);
-                }
-                Event::UserEvent(UserEvent::SetObliqueRotationQuat(index, q)) => {
-                    state.set_oblique_rotation(index, q);
-                    log::debug!("Oblique rotation set to {:?}", q);
-                }
-                Event::UserEvent(UserEvent::SetMeshRotationDegrees(_index, roll_deg, yaw_deg, pitch_deg)) => {
-                    state.set_mesh_rotation_degrees(roll_deg, yaw_deg, pitch_deg);
-                    log::debug!("Mesh rotation set to {:?}°", [roll_deg, yaw_deg, pitch_deg]);
-                }
-                #[cfg(target_arch = "wasm32")]
-                Event::UserEvent(UserEvent::GetMeshRotation(_index, sender)) => {
-                    let rotation = state.get_mesh_rotation();
-                    if let Err(_) = sender.send(rotation) {
-                        log::error!("Failed to send GetMeshRotation result");
-                    } else {
-                        log::info!("Sent GetMeshRotation result: {:?}", rotation);
-                    }
-                }
-                Event::UserEvent(UserEvent::ViewClick(view_index, screen_x, screen_y, screen_z)) => {
-                    state.handle_view_click(view_index, screen_x, screen_y, screen_z);
-                    log::info!("ViewClick processed for view {}: screen_x={screen_x}, screen_y={screen_y}, screen_z={screen_z}", view_index);
-                }
-                #[cfg(target_arch = "wasm32")]
-                Event::UserEvent(UserEvent::ViewClickGet(view_index, screen_x, screen_y, screen_z, sender)) => {
-                    // Function-level comment: Compute view click result and send it back to JS via oneshot channel.
-                    let result = state.handle_view_click(view_index, screen_x, screen_y, screen_z);
-                    if let Err(_) = sender.send(result) {
-                        log::error!("Failed to send ViewClickGet result for view {}", view_index);
-                    } else {
-                        log::info!("Sent ViewClickGet result for view {}: {:?}", view_index, result);
-                    }
-                }
-                #[cfg(target_arch = "wasm32")]
-                Event::UserEvent(UserEvent::GetScreenCoordInMM(index, coord, sender)) => {
-                    // Function-level comment: Handle get_screen_coord_in_mm request and send result back via oneshot channel.
-                    let result = state.get_screen_coord_in_mm(index, coord);
-                    if let Err(_) = sender.send(result) {
-                        log::error!("Failed to send GetScreenCoordInMM result for window {}", index);
-                    } else {
-                        log::info!("Sent GetScreenCoordInMM result for window {}: {:?}", index, result);
-                    }
-                }
-                #[cfg(target_arch = "wasm32")]
-                Event::UserEvent(UserEvent::GetWindowLevel(index, sender)) => {
-                    let result = state.get_window_level(index);
-                    if let Err(_) = sender.send(result) {
-                        log::error!("Failed to send GetWindowLevel result for window {}", index);
-                    } else {
-                        log::info!("Sent GetWindowLevel result for window {}: {:?}", index, result);
-                    }
-                }
-                #[cfg(target_arch = "wasm32")]
-                Event::UserEvent(UserEvent::GetObliqueRotation(index, sender)) => {
-                    let result = state.get_oblique_rotation(index);
-                    if let Err(_) = sender.send(result) {
-                        log::error!("Failed to send GetObliqueRotation result for window {}", index);
-                    } else {
-                        log::info!("Sent GetObliqueRotation result for window {}: {:?}", index, result);
-                    }
-                }
-                #[cfg(target_arch = "wasm32")]
-                Event::UserEvent(UserEvent::GetPan(index, sender)) => {
-                    let result = state.get_translate_in_screen_coord(index);
-                    if let Err(_) = sender.send(result) {
-                        log::error!("Failed to send GetPan result for window {}", index);
-                    } else {
-                        log::info!("Sent GetPan result for window {}: {:?}", index, result);
-                    }
-                }
-                #[cfg(target_arch = "wasm32")]
-                Event::UserEvent(UserEvent::WorldCoordToScreen(index, coord, sender)) => {
-                    // Function-level comment: Handle world_coord_to_screen request and send result back via oneshot channel.
-                    let result = state.world_coord_to_screen(index, coord);
-                    if let Err(_) = sender.send(result) {
-                        log::error!("Failed to send WorldCoordToScreen result for window {}", index);
-                    } else {
-                        log::info!("Sent WorldCoordToScreen result for window {}: {:?}", index, result);
-                    }
-                }
-                Event::WindowEvent {
-                    ref event,
-                    window_id,
-                } if window_id == state.window().id()
-                    && !state.input(event) => {
-                        // UPDATED!
-                        match event {
-                            WindowEvent::CloseRequested
-                            | WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::Escape),
-                                        ..
-                                    },
-                                ..
-                            } => target.exit(),
-                            WindowEvent::Resized(physical_size) => {
-                                log::info!("physical_size: {physical_size:?}");
-                                state.resize(*physical_size);
-                            }
-                            WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyR),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                // Function-level comment: On 'R' key press, request shader reload via event.
-                                if let Err(e) = proxy.send_event(UserEvent::ReloadShaders) {
-                                    log::error!("Failed to send ReloadShaders event on KeyR: {:?}", e);
-                                } else {
-                                    log::info!("KeyR pressed: ReloadShaders event sent");
-                                }
-                            }
-                            WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyT),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                // Disable the runtime toggle feature per requirement
-                                state.disable_volume_format_toggle();
-                                println!("F key pressed: volume format toggle feature disabled");
-                            }
-                            WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyA),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                state.set_render_mode(0, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, None, 300.0, 400.0, None, 2);
-                                log::info!("KeyA pressed: mpr mode toggled to {}", true);
-                            }
-                            WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyB),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                state.set_render_mode(3, false, true, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, Some(0), None, 300.0, 400.0, None, 1);
-                                state.set_mesh_rotation_angle_degrees(90.0, 0.0);
-                                state.set_mesh_rotation_angle_degrees(0.0, 90.0);
-                                state.set_mesh_rotation_angle_degrees(90.0, 0.0);
-                                state.set_mesh_scale(3.0);
-                                state.set_mesh_pan(0.2, 0.2);
-                                state.set_mesh_opacity(0.5);
-                                log::info!("KeyB pressed: 2*2 mode toggled to {}", true);
-                            }
-                            WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyC),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                state.set_render_mode(2, true, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, Some(0), None, 300.0, 400.0, None, 1);
-                                state.set_mesh_opacity(1.0);
-                                log::info!("KeyC pressed: mesh mode toggled to {}", true);
-                            }
-                            WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyD),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                state.set_render_mode(3, true, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, Some(0), None, 300.0, 400.0, Some(3), 1);
-                                state.set_mip_mode(3,0);
-                                state.set_slab_thickness(3, 1.25);
-                                state.set_scale(3, 2.0);
-                                state.set_pan(3, 0.2, 0.2);
-                                state.set_mip_rotation_angle_degrees(3, 0.0, 180.0, 90.0);
-                                log::info!("KeyD pressed: 2*2 mode toggled to {}", true);
-                            }
-                            WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyE),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                state.set_render_mode(1, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, None, 300.0, 400.0, Some(0), 1);
-                                log::info!("KeyE pressed: mip mode toggled to {}", true);
-                            }
-                            WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyF),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(0), 300.0, 400.0, None, 1);
-                                state.set_slice_mm(0, 100.0);
-                                state.set_scale(0, 2.0);
-                                state.set_pan(1, 0.09, 0.09);
-                                state.set_mesh_scale(2.0);
-                                state.set_mesh_pan(-1.0, 1.0);
-                                log::info!("KeyF pressed: 2*2 mode toggled to {}", true);
-                            }
-                            WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyG),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                state.set_render_mode(0, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, None, 300.0, 400.0, None, 1);
-                                state.set_scale(0, 0.5);
-                                log::info!("KeyG pressed: 2*2 mode toggled to {}", true);
-                            }
-                            WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyH),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(3), 300.0, 400.0, None, 3);
-                                // state.set_oblique_normal(3, [-1.0, 0.0, 0.0], 90f32.to_radians());
-                            }
-                            WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyO),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(3), 300.0, 400.0, None, 3);
-                                // state.set_oblique_normal(3, [-0.574, 0.0, 0.819], 0f32);
-                            }
-                            WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyP),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(3), 300.0, 400.0, None, 3);
-                                state.set_oblique_rotation_radians(3, 0.0, 20.0, 0.0);
-                            }
-                            WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyS),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                state.set_scale(0, 1.0);
-                                state.set_mesh_scale(1.0);
-                            }
-                            WindowEvent::KeyboardInput {
-                                event:
-                                    KeyEvent {
-                                        state: ElementState::Pressed,
-                                        physical_key: PhysicalKey::Code(KeyCode::KeyU),
-                                        ..
-                                    },
-                                ..
-                            } => {
-                                state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(0), 300.0, 400.0, None, 1);
-                            }
-                            WindowEvent::Occluded(hidden) => {
-                                occluded = *hidden;
-                                if !occluded {
-                                    state.invalidate_surface();
-                                }
-                            }
-                            WindowEvent::RedrawRequested => {
-                                redraw.redraw_received();
-                                if !state.can_render() || occluded {
-                                    return;
-                                }
-                                // An OS redraw also needs a complete frame, even if view state is clean.
-                                state.update();
-                                match state.render() {
-                                    Ok(_) => redraw.frame_succeeded(clock.elapsed()),
-                                    // Reconfigure the surface if it's lost or outdated
-                                    Err(
-                                        wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
-                                    ) => {
-                                        let width = state.graphics().surface_config.width;
-                                        let height = state.graphics().surface_config.height;
-                                        let size = PhysicalSize::<u32> {width, height};
-                                        // Function-level comment: Surface reconfiguration handled by individual render contexts.
-                                        log::info!("Surface error {:?} - render contexts will rebuild pipelines as needed", "Lost/Outdated");
-                                        state.resize(size);
-                                        redraw.frame_failed(clock.elapsed());
-                                    }
-                                    // The system is out of memory, we should probably quit
-                                    Err(wgpu::SurfaceError::OutOfMemory) => {
-                                        log::error!("OutOfMemory");
-                                        target.exit();
-                                    }
-
-                                    // This happens when the a frame takes too long to present
-                                    Err(wgpu::SurfaceError::Timeout) => {
-                                        log::warn!("Surface timeout");
-                                        state.invalidate_surface();
-                                        redraw.frame_failed(clock.elapsed());
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                Event::Resumed => {
-                    occluded = false;
-                    state.invalidate_surface();
-                }
-                Event::Suspended => occluded = true,
-                Event::AboutToWait => {
-                    let action = redraw.schedule(
-                        clock.elapsed(), state.can_render() && !occluded,
-                        state.needs_redraw(), state.app_view.layout.is_animating(),
-                        state.app_view.layout.next_update_in(),
-                    );
-                    match action {
-                        RedrawAction::Request => {
-                            state.window().request_redraw();
-                            target.set_control_flow(ControlFlow::Wait);
-                        }
-                        RedrawAction::Wait => target.set_control_flow(ControlFlow::Wait),
-                        // winit chooses its native/web clock internally; no native Instant on WASM.
-                        RedrawAction::WaitFor(delay) => target.set_control_flow(ControlFlow::wait_duration(delay)),
-                    }
-                }
-                _ => {}
             }
-        }).unwrap();
+            // Mesh control events
+            Event::UserEvent(UserEvent::SetMeshRotationEnabled(_index, enabled)) => {
+                state.set_mesh_rotation_enabled(enabled);
+                log::info!("Mesh rotation enabled={}", enabled);
+            }
+            Event::UserEvent(UserEvent::SetMeshPan(_index, dx, dy)) => {
+                state.set_mesh_pan(dx, dy);
+                log::info!("Mesh pan set to dx={:.3}, dy={:.3}", dx, dy);
+            }
+            Event::UserEvent(UserEvent::ResetMesh(_index)) => {
+                state.reset_mesh();
+                log::info!("Mesh rotation reset");
+            }
+            Event::UserEvent(UserEvent::SetMeshScale(_index, scale)) => {
+                state.set_mesh_scale(scale);
+                log::info!("Mesh scale set to {:.3}", scale);
+            }
+            Event::UserEvent(UserEvent::SetMeshOpacity(_index, alpha)) => {
+                state.set_mesh_opacity(alpha);
+                log::info!("Mesh opacity set to {:.3}", alpha);
+            }
+            Event::UserEvent(UserEvent::SetMeshRotationAngleDeg(_index, degrees_x, degrees_y)) => {
+                state.set_mesh_rotation_angle_degrees(degrees_x, degrees_y);
+                log::info!("Mesh rotation angle set to {:?}°", [degrees_x, degrees_y]);
+            }
+            Event::UserEvent(UserEvent::SetMeshRotation(_index, rotation)) => {
+                state.set_mesh_rotation(rotation);
+                log::debug!("Mesh rotation set to {:?}", rotation);
+            }
+            Event::UserEvent(UserEvent::SetObliqueRotationQuat(index, q)) => {
+                state.set_oblique_rotation(index, q);
+                log::debug!("Oblique rotation set to {:?}", q);
+            }
+            Event::UserEvent(UserEvent::SetMeshRotationDegrees(
+                _index,
+                roll_deg,
+                yaw_deg,
+                pitch_deg,
+            )) => {
+                state.set_mesh_rotation_degrees(roll_deg, yaw_deg, pitch_deg);
+                log::debug!("Mesh rotation set to {:?}°", [roll_deg, yaw_deg, pitch_deg]);
+            }
+            #[cfg(target_arch = "wasm32")]
+            Event::UserEvent(UserEvent::GetMeshRotation(_index, sender)) => {
+                let rotation = state.get_mesh_rotation();
+                if let Err(_) = sender.send(rotation) {
+                    log::error!("Failed to send GetMeshRotation result");
+                } else {
+                    log::info!("Sent GetMeshRotation result: {:?}", rotation);
+                }
+            }
+            Event::UserEvent(UserEvent::ViewClick(view_index, screen_x, screen_y, screen_z)) => {
+                state.handle_view_click(view_index, screen_x, screen_y, screen_z);
+                log::info!("ViewClick processed for view {}: screen_x={screen_x}, screen_y={screen_y}, screen_z={screen_z}", view_index);
+            }
+            #[cfg(target_arch = "wasm32")]
+            Event::UserEvent(UserEvent::ViewClickGet(
+                view_index,
+                screen_x,
+                screen_y,
+                screen_z,
+                sender,
+            )) => {
+                // Function-level comment: Compute view click result and send it back to JS via oneshot channel.
+                let result = state.handle_view_click(view_index, screen_x, screen_y, screen_z);
+                if let Err(_) = sender.send(result) {
+                    log::error!("Failed to send ViewClickGet result for view {}", view_index);
+                } else {
+                    log::info!(
+                        "Sent ViewClickGet result for view {}: {:?}",
+                        view_index,
+                        result
+                    );
+                }
+            }
+            #[cfg(target_arch = "wasm32")]
+            Event::UserEvent(UserEvent::GetScreenCoordInMM(index, coord, sender)) => {
+                // Function-level comment: Handle get_screen_coord_in_mm request and send result back via oneshot channel.
+                let result = state.get_screen_coord_in_mm(index, coord);
+                if let Err(_) = sender.send(result) {
+                    log::error!(
+                        "Failed to send GetScreenCoordInMM result for window {}",
+                        index
+                    );
+                } else {
+                    log::info!(
+                        "Sent GetScreenCoordInMM result for window {}: {:?}",
+                        index,
+                        result
+                    );
+                }
+            }
+            #[cfg(target_arch = "wasm32")]
+            Event::UserEvent(UserEvent::GetWindowLevel(index, sender)) => {
+                let result = state.get_window_level(index);
+                if let Err(_) = sender.send(result) {
+                    log::error!("Failed to send GetWindowLevel result for window {}", index);
+                } else {
+                    log::info!(
+                        "Sent GetWindowLevel result for window {}: {:?}",
+                        index,
+                        result
+                    );
+                }
+            }
+            #[cfg(target_arch = "wasm32")]
+            Event::UserEvent(UserEvent::GetObliqueRotation(index, sender)) => {
+                let result = state.get_oblique_rotation(index);
+                if let Err(_) = sender.send(result) {
+                    log::error!(
+                        "Failed to send GetObliqueRotation result for window {}",
+                        index
+                    );
+                } else {
+                    log::info!(
+                        "Sent GetObliqueRotation result for window {}: {:?}",
+                        index,
+                        result
+                    );
+                }
+            }
+            #[cfg(target_arch = "wasm32")]
+            Event::UserEvent(UserEvent::GetPan(index, sender)) => {
+                let result = state.get_translate_in_screen_coord(index);
+                if let Err(_) = sender.send(result) {
+                    log::error!("Failed to send GetPan result for window {}", index);
+                } else {
+                    log::info!("Sent GetPan result for window {}: {:?}", index, result);
+                }
+            }
+            #[cfg(target_arch = "wasm32")]
+            Event::UserEvent(UserEvent::WorldCoordToScreen(index, coord, sender)) => {
+                // Function-level comment: Handle world_coord_to_screen request and send result back via oneshot channel.
+                let result = state.world_coord_to_screen(index, coord);
+                if let Err(_) = sender.send(result) {
+                    log::error!(
+                        "Failed to send WorldCoordToScreen result for window {}",
+                        index
+                    );
+                } else {
+                    log::info!(
+                        "Sent WorldCoordToScreen result for window {}: {:?}",
+                        index,
+                        result
+                    );
+                }
+            }
+            Event::WindowEvent {
+                ref event,
+                window_id,
+            } if FrameOwner::is_active_window(state.window().id(), window_id)
+                && !state.input(event) =>
+            {
+                // UPDATED!
+                match event {
+                    WindowEvent::CloseRequested
+                    | WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::Escape),
+                                ..
+                            },
+                        ..
+                    } => {
+                        owner.stop();
+                        self.shutting_down = true;
+                        target.exit();
+                    }
+                    WindowEvent::Resized(physical_size) => {
+                        log::info!("physical_size: {physical_size:?}");
+                        state.resize(*physical_size);
+                    }
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::KeyR),
+                                ..
+                            },
+                        ..
+                    } => {
+                        // Function-level comment: On 'R' key press, request shader reload via event.
+                        if let Err(e) = proxy.send_event(UserEvent::ReloadShaders) {
+                            log::error!("Failed to send ReloadShaders event on KeyR: {:?}", e);
+                        } else {
+                            log::info!("KeyR pressed: ReloadShaders event sent");
+                        }
+                    }
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::KeyT),
+                                ..
+                            },
+                        ..
+                    } => {
+                        // Disable the runtime toggle feature per requirement
+                        state.disable_volume_format_toggle();
+                        println!("F key pressed: volume format toggle feature disabled");
+                    }
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::KeyA),
+                                ..
+                            },
+                        ..
+                    } => {
+                        state.set_render_mode(
+                            0, false, false, -158.50882, -92.941345, -1160.3865, 134.81229,
+                            125.87259, -1035.0465, None, None, 300.0, 400.0, None, 2,
+                        );
+                        log::info!("KeyA pressed: mpr mode toggled to {}", true);
+                    }
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::KeyB),
+                                ..
+                            },
+                        ..
+                    } => {
+                        state.set_render_mode(
+                            3,
+                            false,
+                            true,
+                            -158.50882,
+                            -92.941345,
+                            -1160.3865,
+                            134.81229,
+                            125.87259,
+                            -1035.0465,
+                            Some(0),
+                            None,
+                            300.0,
+                            400.0,
+                            None,
+                            1,
+                        );
+                        state.set_mesh_rotation_angle_degrees(90.0, 0.0);
+                        state.set_mesh_rotation_angle_degrees(0.0, 90.0);
+                        state.set_mesh_rotation_angle_degrees(90.0, 0.0);
+                        state.set_mesh_scale(3.0);
+                        state.set_mesh_pan(0.2, 0.2);
+                        state.set_mesh_opacity(0.5);
+                        log::info!("KeyB pressed: 2*2 mode toggled to {}", true);
+                    }
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::KeyC),
+                                ..
+                            },
+                        ..
+                    } => {
+                        state.set_render_mode(
+                            2,
+                            true,
+                            false,
+                            -158.50882,
+                            -92.941345,
+                            -1160.3865,
+                            134.81229,
+                            125.87259,
+                            -1035.0465,
+                            Some(0),
+                            None,
+                            300.0,
+                            400.0,
+                            None,
+                            1,
+                        );
+                        state.set_mesh_opacity(1.0);
+                        log::info!("KeyC pressed: mesh mode toggled to {}", true);
+                    }
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::KeyD),
+                                ..
+                            },
+                        ..
+                    } => {
+                        state.set_render_mode(
+                            3,
+                            true,
+                            false,
+                            -158.50882,
+                            -92.941345,
+                            -1160.3865,
+                            134.81229,
+                            125.87259,
+                            -1035.0465,
+                            Some(0),
+                            None,
+                            300.0,
+                            400.0,
+                            Some(3),
+                            1,
+                        );
+                        state.set_mip_mode(3, 0);
+                        state.set_slab_thickness(3, 1.25);
+                        state.set_scale(3, 2.0);
+                        state.set_pan(3, 0.2, 0.2);
+                        state.set_mip_rotation_angle_degrees(3, 0.0, 180.0, 90.0);
+                        log::info!("KeyD pressed: 2*2 mode toggled to {}", true);
+                    }
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::KeyE),
+                                ..
+                            },
+                        ..
+                    } => {
+                        state.set_render_mode(
+                            1,
+                            false,
+                            false,
+                            -158.50882,
+                            -92.941345,
+                            -1160.3865,
+                            134.81229,
+                            125.87259,
+                            -1035.0465,
+                            None,
+                            None,
+                            300.0,
+                            400.0,
+                            Some(0),
+                            1,
+                        );
+                        log::info!("KeyE pressed: mip mode toggled to {}", true);
+                    }
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::KeyF),
+                                ..
+                            },
+                        ..
+                    } => {
+                        state.set_render_mode(
+                            3,
+                            false,
+                            false,
+                            -158.50882,
+                            -92.941345,
+                            -1160.3865,
+                            134.81229,
+                            125.87259,
+                            -1035.0465,
+                            None,
+                            Some(0),
+                            300.0,
+                            400.0,
+                            None,
+                            1,
+                        );
+                        state.set_slice_mm(0, 100.0);
+                        state.set_scale(0, 2.0);
+                        state.set_pan(1, 0.09, 0.09);
+                        state.set_mesh_scale(2.0);
+                        state.set_mesh_pan(-1.0, 1.0);
+                        log::info!("KeyF pressed: 2*2 mode toggled to {}", true);
+                    }
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::KeyG),
+                                ..
+                            },
+                        ..
+                    } => {
+                        state.set_render_mode(
+                            0, false, false, -158.50882, -92.941345, -1160.3865, 134.81229,
+                            125.87259, -1035.0465, None, None, 300.0, 400.0, None, 1,
+                        );
+                        state.set_scale(0, 0.5);
+                        log::info!("KeyG pressed: 2*2 mode toggled to {}", true);
+                    }
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::KeyH),
+                                ..
+                            },
+                        ..
+                    } => {
+                        state.set_render_mode(
+                            3,
+                            false,
+                            false,
+                            -158.50882,
+                            -92.941345,
+                            -1160.3865,
+                            134.81229,
+                            125.87259,
+                            -1035.0465,
+                            None,
+                            Some(3),
+                            300.0,
+                            400.0,
+                            None,
+                            3,
+                        );
+                        // state.set_oblique_normal(3, [-1.0, 0.0, 0.0], 90f32.to_radians());
+                    }
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::KeyO),
+                                ..
+                            },
+                        ..
+                    } => {
+                        state.set_render_mode(
+                            3,
+                            false,
+                            false,
+                            -158.50882,
+                            -92.941345,
+                            -1160.3865,
+                            134.81229,
+                            125.87259,
+                            -1035.0465,
+                            None,
+                            Some(3),
+                            300.0,
+                            400.0,
+                            None,
+                            3,
+                        );
+                        // state.set_oblique_normal(3, [-0.574, 0.0, 0.819], 0f32);
+                    }
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::KeyP),
+                                ..
+                            },
+                        ..
+                    } => {
+                        state.set_render_mode(
+                            3,
+                            false,
+                            false,
+                            -158.50882,
+                            -92.941345,
+                            -1160.3865,
+                            134.81229,
+                            125.87259,
+                            -1035.0465,
+                            None,
+                            Some(3),
+                            300.0,
+                            400.0,
+                            None,
+                            3,
+                        );
+                        state.set_oblique_rotation_radians(3, 0.0, 20.0, 0.0);
+                    }
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::KeyS),
+                                ..
+                            },
+                        ..
+                    } => {
+                        state.set_scale(0, 1.0);
+                        state.set_mesh_scale(1.0);
+                    }
+                    WindowEvent::KeyboardInput {
+                        event:
+                            KeyEvent {
+                                state: ElementState::Pressed,
+                                physical_key: PhysicalKey::Code(KeyCode::KeyU),
+                                ..
+                            },
+                        ..
+                    } => {
+                        state.set_render_mode(
+                            3,
+                            false,
+                            false,
+                            -158.50882,
+                            -92.941345,
+                            -1160.3865,
+                            134.81229,
+                            125.87259,
+                            -1035.0465,
+                            None,
+                            Some(0),
+                            300.0,
+                            400.0,
+                            None,
+                            1,
+                        );
+                    }
+                    WindowEvent::Occluded(hidden) => {
+                        owner.set_occluded(*hidden);
+                        if !hidden {
+                            state.invalidate_surface();
+                        }
+                    }
+                    WindowEvent::RedrawRequested => {
+                        owner.redraw.redraw_received();
+                        if !owner.ready(state.can_render()) {
+                            return;
+                        }
+                        // An OS redraw also needs a complete frame, even if view state is clean.
+                        state.update();
+                        let outcome = state.render_frame();
+                        owner.frame_outcome(&outcome, clock.elapsed());
+                        if let Err(error) = outcome {
+                            log::error!("Rendering stopped: {error}. Restart the viewer (fresh page in a browser).");
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            Event::Resumed => {
+                owner.resumed();
+                state.invalidate_surface();
+            }
+            Event::Suspended => owner.suspended(),
+            Event::AboutToWait => {
+                let action = owner.schedule(
+                    clock.elapsed(),
+                    state.can_render(),
+                    state.needs_redraw(),
+                    state.app_view.layout.is_animating(),
+                    state.app_view.layout.next_update_in(),
+                );
+                match action {
+                    RedrawAction::Request => {
+                        state.window().request_redraw();
+                        target.set_control_flow(ControlFlow::Wait);
+                    }
+                    RedrawAction::Wait => target.set_control_flow(ControlFlow::Wait),
+                    // winit chooses its native/web clock internally; no native Instant on WASM.
+                    RedrawAction::WaitFor(delay) => {
+                        target.set_control_flow(ControlFlow::wait_duration(delay))
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 }
