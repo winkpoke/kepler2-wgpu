@@ -34,18 +34,31 @@ claim any milestone is reached or change a threshold to fit current results.
 
 ## Reproducible export and gate
 
-Install a compatible `cargo-llvm-cov` CLI (a Cargo dev-dependency is not installation).
-Record the actual tool/toolchain/version, features, adapter/backend, scope, test
-commands, failures/ignored tests, and Git revision alongside the artifact.
+Install the compatible `cargo-llvm-cov` CLI release declared in
+[`scripts/ci-tool-versions.toml`](../../scripts/ci-tool-versions.toml); the Cargo
+dev-dependency is not CLI installation or a version pin. The resolver and native
+CI scripts require Python >=3.11. From the repository root:
 
 ```bash
-cargo +nightly llvm-cov --version
-rustc +nightly -Vv
-KEPLER_REQUIRE_GPU_TESTS=1 cargo +nightly llvm-cov --locked \
+cargo install cargo-llvm-cov \
+  --version "$(python3.11 scripts/ci_toolchain.py --print-coverage-version)" --locked
+cargo llvm-cov --version
+rustc -Vv
+rustup show active-toolchain
+git rev-parse HEAD
+KEPLER_REQUIRE_GPU_TESTS=1 cargo llvm-cov test --locked \
   --json --output-path coverage/coverage.json
-python3 scripts/coverage_summary.py coverage/coverage.json \
+python3.11 scripts/coverage_summary.py coverage/coverage.json \
   --output coverage/summary.json --overall-min 45 --medical-min 80
 ```
+
+Record compiler/CLI versions, features, adapter/backend, scope, exact test command,
+pass/fail/ignored results, and Git revision alongside the artifact. The CI workflows
+run one instrumented test command and derive JSON/LCOV/HTML reports from its saved
+coverage data; on test or threshold failure they retain logs, outcome, raw report
+when available, and provenance for diagnosis. A missing artifact is not a successful
+measurement. Their adapter record is from configured software Vulkan (lavapipe),
+not a claim of browser or clinical validation.
 
 Exit status: 0 = gates passed; 1 = valid measurement below a threshold;
 2 = missing/invalid measurement. The JSON summary is emitted even when thresholds

@@ -288,7 +288,7 @@ a successful WASM build does not prove runtime selection or rendering parity.
 **Problem**: Surface errors on startup
 ```bash
 # Check backend selection
-KEPLER_WGPU_BACKEND=vulkan cargo +nightly run --locked
+KEPLER_WGPU_BACKEND=vulkan cargo run --locked
 
 # Enable validation layers
 KEPLER_WGPU_VALIDATION=true cargo run

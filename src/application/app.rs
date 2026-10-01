@@ -1100,7 +1100,7 @@ impl App {
             // println!("Parsed repository: {:?}", repo);
             println!(
                 "Parsing completed in {:.1} ms.",
-                elapsed_time.as_millis_f32()
+                crate::core::timing::DurationExt::as_millis_f32(&elapsed_time)
             );
             repo
         };

@@ -1,39 +1,63 @@
 # Build and verification matrix
 
 **Status:** Current executable reference. Run commands from the repository root.
-The crate requires nightly (`src/lib.rs` uses `duration_millis_float`). Use locked
-Rust dependencies; changes to the lockfile are a separate dependency decision.
+[rust-toolchain.toml](../../rust-toolchain.toml) pins stable Rust 1.98.0 for native
+and WASM builds. Use locked Rust dependencies; changes to the lockfile are a
+separate dependency decision. The development pin is not an MSRV promise.
 
 ## Prerequisites
 
-- Nightly Rust, including `rustfmt`/Clippy when using those checks.
-- WASM standard library: `rustup target add --toolchain nightly wasm32-unknown-unknown`.
-- `wasm-pack` for producing the browser package; Python 3 for serving/manual checks.
+- Rustup: plain Cargo commands install/use the repository compiler pin, including
+  `rustfmt`, Clippy, LLVM tools, and the `wasm32-unknown-unknown` standard library.
+- Verify selection with `rustup show active-toolchain` and `rustc -Vv`.
+  Explicit `+<toolchain>`, `RUSTUP_TOOLCHAIN`, and rustup directory overrides can
+  bypass the file; remove unintended overrides before verification.
+- `wasm-pack` for producing the browser package; Python >=3.11 for the CI TOML
+  resolver and maintenance-script tests (standard-library `tomllib`). Python 3
+  suffices for serving/manual checks.
 - Node >=20.19 and npm for project-local OpenSpec maintenance: `npm ci --ignore-scripts`.
   Commit `package-lock.json`; no global OpenSpec upgrade is needed.
+
+## CI compiler selection
+
+The [shared Rust setup](../../.github/actions/setup-rust/action.yml) uses the
+[fail-closed TOML resolver](../../scripts/ci_toolchain.py) to read the same
+compiler/components/targets as local rustup. Its immutable installer revision
+is separate from the compiler release. Every Rust job reports and verifies the
+active release after setup, before installing tools or restoring build caches.
+
+[Platform checks](../../.github/workflows/rust-checks.yml) run independent native,
+library-test, WASM-library, formatting, and strict-Clippy jobs; a failed style/lint
+job does not cancel compiler checks. The dedicated GPU and coverage jobs retain
+required adapter execution, and [release builds](../../.github/workflows/release.yml)
+use locked native and wasm-pack Cargo arguments. Inspect hosted job logs for the
+actual compiler and outcomes: configured workflows are not proof they passed.
 
 ## Checks by scope
 
 | Scope | Command | Evidence / limitation |
 | --- | --- | --- |
-| Native types | `cargo +nightly check --locked --all-targets` | Compiles native library, binary, and test targets |
-| Native behavior | `cargo +nightly test --locked` | Includes active GPU tests; requires an adapter |
-| WASM types | `cargo +nightly check --locked --lib --target wasm32-unknown-unknown` | Library only; does not exercise browser behavior |
-| Rust formatting | `cargo +nightly fmt -- --check` | Read-only; report existing unrelated failures |
-| Rust lint | `cargo +nightly clippy --locked --all-targets -- -D warnings` | Strict; report baseline warnings/errors, do not silently suppress them |
+| Native types | `cargo check --locked --all-targets` | Compiles native library, binary, and test targets |
+| Native behavior | `cargo test --locked` | Includes active GPU tests; requires an adapter |
+| Library behavior | `cargo test --locked --lib` | Includes GPU-backed application unit tests; not CPU-only |
+| WASM types | `cargo check --locked --lib --target wasm32-unknown-unknown` | Library only; does not exercise browser behavior |
+| Rust formatting | `cargo fmt -- --check` | Read-only; report existing unrelated failures |
+| Rust lint | `cargo clippy --locked --all-targets -- -D warnings` | Strict; report baseline warnings/errors, do not silently suppress them |
 | Current docs/delta identities | `npm run docs:check` | Local inline links and pending requirement targets |
 | Maintenance-script regressions | `npm run docs:test` | Python stdlib tests, no GPU needed |
 | Spec syntax | `npm run specs:check` | Baseline specs and active changes, not implementation correctness |
 
-On systems where Python 3 is named `python` rather than `python3`, run the Python
-script/test command with that interpreter directly. PowerShell environment syntax
+If `python3` is older than 3.11, run maintenance tests directly with a supported
+interpreter, e.g. `python3.11 -m unittest discover -s scripts/tests -p 'test_*.py'`.
+On systems where Python 3 is named `python` rather than `python3`, use that
+supported interpreter directly. PowerShell environment syntax
 is `$env:NAME='value'`; POSIX examples below use `NAME=value command`.
 
 ## Native run and GPU checks
 
 ```bash
-cargo +nightly run --locked --bin kepler
-KEPLER_REQUIRE_GPU_TESTS=1 cargo +nightly test --locked \
+cargo run --locked --bin kepler
+KEPLER_REQUIRE_GPU_TESTS=1 cargo test --locked \
   --test rendering_correctness_tests --test volume_encoding_tests \
   --test render_resource_lifetime_tests --test redraw_state_tests
 ```
@@ -51,7 +75,7 @@ defaults to INFO, with noisy GPU modules filtered by `src/lib.rs`.
 ## Browser package and manual runtime verification
 
 ```bash
-RUSTUP_TOOLCHAIN=nightly wasm-pack build --target web --out-dir pkg --release -- --locked
+wasm-pack build --target web --out-dir pkg --release -- --locked
 python3 -m http.server 8000
 ```
 

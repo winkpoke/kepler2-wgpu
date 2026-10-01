@@ -15,6 +15,10 @@ Kepler2-WGPU is a Rust-based project designed for processing and visualizing **D
 
 ## Building and Running
 
+Rustup uses the exact stable compiler in `rust-toolchain.toml`. See the
+[build and verification matrix](doc/agents/BUILD.md) for locked native/WASM
+commands, platform prerequisites, and headless GPU verification.
+
 ### Prerequisites
 
 - Rust and Cargo

@@ -17,13 +17,11 @@ jobs:
       KEPLER_REQUIRE_GPU_TESTS: "1"
       RUST_LOG: warn,rendering_correctness_tests=info
     steps:
-      # Immutable revisions verified against the upstream v4/nightly/v2 refs.
+      # Immutable checkout/cache revisions; compiler setup is shared.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@be39649afda95dbf70f87cce95f68b8d5797b296
-        with:
-          toolchain: nightly
+      - uses: ./.github/actions/setup-rust
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
 
       - name: Install native dependencies and software Vulkan

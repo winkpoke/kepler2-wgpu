@@ -1,0 +1,2 @@
+[coverage]
+cargo-llvm-cov = "0.6.23"

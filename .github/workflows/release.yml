@@ -10,20 +10,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
-
-      - name: Setup Rust (nightly)
-        uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          toolchain: nightly
-          override: true
+          persist-credentials: false
+
+      - name: Install repository Rust toolchain
+        uses: ./.github/actions/setup-rust
+
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev libxkbcommon-dev libwayland-dev
 
       - name: Build Project
-        run: cargo build --release
+        run: cargo build --release --locked
 
       - name: Build with wasm-pack
         run: |
-          cargo install wasm-pack
-          wasm-pack build --release --target web
+          cargo install wasm-pack --locked
+          wasm-pack build --release --target web -- --locked
           mkdir -p build/
           cp pkg/*.wasm build/
