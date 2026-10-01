@@ -8,7 +8,7 @@ use super::{
 };
 use crate::rendering::view::invalidation::ViewInvalidation;
 use crate::{
-    core::timing::Instant,
+    core::timing::{DurationExt, Instant},
     rendering::view::{Renderable, View},
 };
 use glam::{Mat4, Quat, Vec3};
@@ -734,7 +734,7 @@ impl MeshView {
         }
 
         // Record successful render
-        let render_time_ms = start_time.elapsed().as_millis_f32();
+        let render_time_ms = DurationExt::as_millis_f32(&start_time.elapsed());
         self.record_success(render_time_ms);
         log::trace!(
             "BasicMeshView::try_render - Render completed successfully in {:.2}ms",

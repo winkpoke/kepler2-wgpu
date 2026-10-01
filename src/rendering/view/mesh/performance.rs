@@ -1,4 +1,4 @@
-use crate::core::timing::Instant;
+use crate::core::timing::{DurationExt, Instant};
 /// Performance monitoring and automatic quality adjustment for mesh rendering
 use std::time::Duration;
 
@@ -170,7 +170,7 @@ impl FrameTimer {
 
     /// Function-level comment: End frame timing and record the duration
     pub fn end_frame(&mut self) -> f32 {
-        let frame_time = self.frame_start.elapsed().as_millis_f32();
+        let frame_time = DurationExt::as_millis_f32(&self.frame_start.elapsed());
 
         if self.frame_times.len() < self.max_samples {
             self.frame_times.push(frame_time);

@@ -25,7 +25,7 @@ Commands and prerequisites are canonical in [BUILD.md](../agents/BUILD.md).
 For the focused native suites:
 
 ```bash
-KEPLER_REQUIRE_GPU_TESTS=1 cargo +nightly test --locked \
+KEPLER_REQUIRE_GPU_TESTS=1 cargo test --locked \
   --test rendering_correctness_tests --test volume_encoding_tests \
   --test render_resource_lifetime_tests --test redraw_state_tests
 ```

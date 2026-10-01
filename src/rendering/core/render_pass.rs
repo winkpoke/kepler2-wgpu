@@ -1,4 +1,4 @@
-use crate::core::timing::Instant;
+use crate::core::timing::{DurationExt, Instant};
 use std::collections::HashMap;
 /// Render pass management system for separating 2D and 3D rendering
 ///
@@ -534,12 +534,12 @@ impl PassExecutor {
             self.record_success();
             log::trace!(
                 "[FRAME_EXEC] Frame execution completed successfully in {:.2}ms",
-                frame_start_time.elapsed().as_millis_f64()
+                DurationExt::as_millis_f64(&frame_start_time.elapsed())
             );
         } else {
             log::warn!(
                 "[FRAME_EXEC] Frame execution completed with errors in {:.2}ms",
-                frame_start_time.elapsed().as_millis_f64()
+                DurationExt::as_millis_f64(&frame_start_time.elapsed())
             );
             // A partial frame must not acknowledge pending view changes as presented.
             return Err(Box::new(PassExecutionError::RenderingFailed(
@@ -624,14 +624,14 @@ impl PassExecutor {
         });
         log::trace!(
             "[MESH_PASS] Render pass creation completed in {:.2}ms",
-            render_pass_start.elapsed().as_millis_f64()
+            DurationExt::as_millis_f64(&render_pass_start.elapsed())
         );
 
         // Execute rendering
         let rendering_start = Instant::now();
         let context = PassContext::new(&mut render_pass, descriptor, PassId::MeshPass);
         let render_result = render_fn(context);
-        let rendering_time = rendering_start.elapsed().as_millis_f64();
+        let rendering_time = DurationExt::as_millis_f64(&rendering_start.elapsed());
 
         match &render_result {
             Ok(_) => {
@@ -641,7 +641,7 @@ impl PassExecutor {
                 );
                 log::trace!(
                     "[MESH_PASS] Total execution time: {:.2}ms",
-                    start_time.elapsed().as_millis_f64()
+                    DurationExt::as_millis_f64(&start_time.elapsed())
                 );
             }
             Err(e) => {
@@ -697,7 +697,7 @@ impl PassExecutor {
         });
         log::trace!(
             "[SLICE_PASS] Render pass creation completed in {:.2}ms",
-            render_pass_start.elapsed().as_millis_f64()
+            DurationExt::as_millis_f64(&render_pass_start.elapsed())
         );
         log::trace!("[SLICE_PASS] Depth attachment: DISABLED (2D slice rendering)");
 
@@ -705,7 +705,7 @@ impl PassExecutor {
         let rendering_start = Instant::now();
         let context = PassContext::new(&mut render_pass, descriptor, PassId::SlicePass);
         let render_result = render_fn(context);
-        let rendering_time = rendering_start.elapsed().as_millis_f64();
+        let rendering_time = DurationExt::as_millis_f64(&rendering_start.elapsed());
 
         match &render_result {
             Ok(_) => {
@@ -715,7 +715,7 @@ impl PassExecutor {
                 );
                 log::trace!(
                     "[SLICE_PASS] Total execution time: {:.2}ms",
-                    start_time.elapsed().as_millis_f64()
+                    DurationExt::as_millis_f64(&start_time.elapsed())
                 );
             }
             Err(e) => {
@@ -771,7 +771,7 @@ impl PassExecutor {
         });
         log::trace!(
             "[MIP_PASS] Render pass creation completed in {:.2}ms",
-            render_pass_start.elapsed().as_millis_f64()
+            DurationExt::as_millis_f64(&render_pass_start.elapsed())
         );
         log::trace!("[MIP_PASS] Depth attachment: DISABLED (MIP rendering)");
 
@@ -779,7 +779,7 @@ impl PassExecutor {
         let rendering_start = Instant::now();
         let context = PassContext::new(&mut render_pass, descriptor, PassId::MipPass);
         let render_result = render_fn(context);
-        let rendering_time = rendering_start.elapsed().as_millis_f64();
+        let rendering_time = DurationExt::as_millis_f64(&rendering_start.elapsed());
 
         match &render_result {
             Ok(_) => {
@@ -789,7 +789,7 @@ impl PassExecutor {
                 );
                 log::trace!(
                     "[MIP_PASS] Total execution time: {:.2}ms",
-                    start_time.elapsed().as_millis_f64()
+                    DurationExt::as_millis_f64(&start_time.elapsed())
                 );
             }
             Err(e) => {

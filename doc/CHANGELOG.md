@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-01 — Stable Rust toolchain baseline
+
+- Removed the nightly duration feature gate; application/rendering timing now explicitly uses the existing portable f64/f32 helpers, with fractional-millisecond regressions.
+- Pinned Rust 1.98.0 with formatting, lint, LLVM tools, and the WASM library target; updated current build instructions. Application dependencies, timer sources/resolution, and coverage policy are unchanged.
+
 ## 2026-10-01 — Agent guidance and OpenSpec maintenance
 
 - Consolidated repository policy into `AGENTS.md`, with task-specific current references and thin tool adapters.

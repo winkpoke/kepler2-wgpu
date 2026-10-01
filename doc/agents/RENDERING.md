@@ -267,7 +267,7 @@ Custom `View` implementations retain continuous rendering by default; implement
 **Problem**: Surface errors on startup
 ```bash
 # Check backend selection
-KEPLER_WGPU_BACKEND=vulkan cargo +nightly run --locked
+KEPLER_WGPU_BACKEND=vulkan cargo run --locked
 
 # Enable validation layers
 KEPLER_WGPU_VALIDATION=true cargo run
