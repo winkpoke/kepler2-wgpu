@@ -1,0 +1,42 @@
+schema: spec-driven
+
+context: |
+  Follow AGENTS.md for repository policy and task-specific document routing.
+  Kepler supports native desktop and the WASM library; Tokio is native-only.
+  Preserve signed voxel precision, column-major glam/WGSL matrix uploads,
+  device/attachment-format resource ownership, and CPU view state on GPU
+  rebinding. Use synthetic data; live device actuation requires authorization.
+  Specs describe intended behavior, not proof of clinical safety.
+  Report conflicts between requirements, source, and tests before changing
+  contracts.
+
+rules:
+  proposal:
+    - State scope, non-goals, affected contracts, and acceptance checks.
+    - Include rollback or compatibility guidance for consequential changes.
+  specs:
+    - Use observable scenarios with units, valid ranges, and tolerances.
+    - MODIFIED and REMOVED targets must exist in the baseline; preserve all
+      unchanged scenarios.
+    - Link verification sources; label missing or manual evidence explicitly.
+  design:
+    - Explain consequential ownership, native/WASM, precision, and
+      compatibility decisions.
+    - Distinguish measured behavior from performance targets or assumptions.
+  tasks:
+    - Define checkable outcomes and verification, not arbitrary test counts.
+    - Keep manual checks separate; mark each task complete only when its
+      outcome is verified.
+
+operations:
+  apply:
+    guidance:
+      - Obtain approval of scope and consequential design before implementing.
+      - Preserve unrelated work; stop for unapproved contract or safety changes.
+      - Use doc/agents/BUILD.md; report baseline failures and unperformed checks.
+  archive:
+    guidance:
+      - Keep incomplete manual or deployment work visible; do not archive it
+        as verified completion.
+      - Run npm run docs:check and strict OpenSpec validation before and
+        after syncing specs.

@@ -17,8 +17,11 @@
 
 # Node modules (if any JS tooling is used)
 node_modules/
-package-lock.json
 yarn.lock
+
+# Python maintenance-script caches
+__pycache__/
+*.pyc
 
 # IDE/Editor settings
 .vscode/

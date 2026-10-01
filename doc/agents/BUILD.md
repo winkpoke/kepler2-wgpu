@@ -1,290 +1,83 @@
-# Build & Development Commands
+# Build and verification matrix
 
-**Last Updated**: 2025-01-15
+**Status:** Current executable reference. Run commands from the repository root.
+The crate requires nightly (`src/lib.rs` uses `duration_millis_float`). Use locked
+Rust dependencies; changes to the lockfile are a separate dependency decision.
 
-## Native Development
+## Prerequisites
 
-### Building
+- Nightly Rust, including `rustfmt`/Clippy when using those checks.
+- WASM standard library: `rustup target add --toolchain nightly wasm32-unknown-unknown`.
+- `wasm-pack` for producing the browser package; Python 3 for serving/manual checks.
+- Node >=20.19 and npm for project-local OpenSpec maintenance: `npm ci --ignore-scripts`.
+  Commit `package-lock.json`; no global OpenSpec upgrade is needed.
 
-```bash
-# Build optimized binary
-cargo build --release
+## Checks by scope
 
-# Debug build
-cargo build
+| Scope | Command | Evidence / limitation |
+| --- | --- | --- |
+| Native types | `cargo +nightly check --locked --all-targets` | Compiles native library, binary, and test targets |
+| Native behavior | `cargo +nightly test --locked` | Includes active GPU tests; requires an adapter |
+| WASM types | `cargo +nightly check --locked --lib --target wasm32-unknown-unknown` | Library only; does not exercise browser behavior |
+| Rust formatting | `cargo +nightly fmt -- --check` | Read-only; report existing unrelated failures |
+| Rust lint | `cargo +nightly clippy --locked --all-targets -- -D warnings` | Strict; report baseline warnings/errors, do not silently suppress them |
+| Current docs/delta identities | `npm run docs:check` | Local inline links and pending requirement targets |
+| Maintenance-script regressions | `npm run docs:test` | Python stdlib tests, no GPU needed |
+| Spec syntax | `npm run specs:check` | Baseline specs and active changes, not implementation correctness |
 
-# Check without building
-cargo check
-```
+On systems where Python 3 is named `python` rather than `python3`, run the Python
+script/test command with that interpreter directly. PowerShell environment syntax
+is `$env:NAME='value'`; POSIX examples below use `NAME=value command`.
 
-### Running
-
-```bash
-# Run native application
-cargo run
-
-# Run with specific binary
-cargo run --bin kepler
-
-# Run with debug logging
-RUST_LOG=info cargo run
-
-# Run with trace logging (including wgpu modules)
-RUST_LOG=debug,trace cargo run
-```
-
-## WebAssembly Development
-
-### Prerequisites
+## Native run and GPU checks
 
 ```bash
-# Install wasm-pack if not installed
-cargo install wasm-pack
-
-# Ensure wasm32 target is installed
-rustup target add wasm32-unknown-unknown
-```
-
-### Building
-
-```bash
-# Build for web (generates pkg/ with .wasm and .js bindings)
-wasm-pack build --target web
-
-# Build in release mode
-wasm-pack build --release --target web
-```
-
-### Serving
-
-```bash
-# Serve static files (opens http://localhost:8080)
-npx live-server ./static
-
-# Alternative: any static file server
-python -m http.server 8080
-
-# Alternative: using Python 2
-python -m SimpleHTTPServer 8080
-```
-
-## Testing
-
-### Running Tests
-
-```bash
-# Run all tests (unit + integration)
-cargo test
-
-# Run tests with output
-cargo test -- --nocapture
-
-# Run specific test
-cargo test test_patient_creation
-
-# Run tests in release mode
-cargo test --release
-
-# Run ignored tests (integration tests requiring real data)
-cargo test -- --ignored
-
-# Run only tests in a specific file
-cargo test --test dicom_tests
-```
-
-### Headless GPU correctness baseline
-
-`cargo test` now includes **10 active native rendering tests** in
-`tests/rendering_correctness_tests.rs`. They create the production MPR, MIP and
-basic mesh pipelines, render synthetic scenes offscreen, and assert pixel values.
-A missing adapter is a failure, not a successful skip. Use nightly Rust because
-`src/lib.rs` currently requires `#![feature(duration_millis_float)]`.
-
-```bash
+cargo +nightly run --locked --bin kepler
 KEPLER_REQUIRE_GPU_TESTS=1 cargo +nightly test --locked \
-  --test rendering_correctness_tests --test volume_encoding_tests
+  --test rendering_correctness_tests --test volume_encoding_tests \
+  --test render_resource_lifetime_tests --test redraw_state_tests
 ```
 
-On Linux without a hardware GPU, install Mesa's software Vulkan driver:
+GPU correctness tests fail if no adapter exists. Software Vulkan (Mesa lavapipe)
+is suitable on Linux; the [GPU workflow](../../.github/workflows/gpu-tests.yml)
+contains its native package/ICD setup. Headless tests select `WGPU_BACKEND`, while
+the application selects `KEPLER_WGPU_BACKEND`; these are different variables.
+See [headless evidence and limitations](../testing/headless_gpu.md).
+
+For application diagnosis, use `RUST_LOG=debug`, `KEPLER_WGPU_BACKEND` (e.g. metal
+or vulkan), and `KEPLER_WGPU_VALIDATION=true` as applicable. Normal native logging
+defaults to INFO, with noisy GPU modules filtered by `src/lib.rs`.
+
+## Browser package and manual runtime verification
 
 ```bash
-sudo apt-get install libvulkan1 mesa-vulkan-drivers
-WGPU_BACKEND=vulkan KEPLER_REQUIRE_GPU_TESTS=1 cargo +nightly test --locked \
-  --test rendering_correctness_tests --test volume_encoding_tests
+RUSTUP_TOOLCHAIN=nightly wasm-pack build --target web --out-dir pkg --release -- --locked
+python3 -m http.server 8000
 ```
 
-The existing volume compute-decoder test uses `KEPLER_REQUIRE_GPU_TESTS=1` to
-reject missing adapters too. The new rendering tests always require an adapter.
-See [Headless GPU tests](../testing/headless_gpu.md) for assertions, limitations,
-and CI configuration. These tests are a wgpu 23 baseline; no upgrade is included.
+Serve the **repository root** so `static/` and generated `pkg/` remain reachable.
+Open the appropriate page under `http://localhost:8000/static/`. Use synthetic
+volumes and record browser/version/backend, rendering, resize, input, idle/redraw,
+restoration, and errors. Merely building WASM or serving the page is not a passed
+browser test. The repo currently has no npm/Playwright browser-test suite; browser
+checks remain manual unless a separate automation change is approved.
 
-### Test Organization
+`static/remedy.html` can actuate hardware. Do not connect or send live prep/exposure
+commands without explicit authorization; acquisition tests normally exercise the
+offline protocol. See [repository safety boundaries](../../AGENTS.md).
 
-```
-tests/
-├── dicom_tests.rs              # DICOM parsing and validation
-├── medical_imaging_tests.rs     # MHA/MHD format tests
-├── mesh_integration_tests.rs    # 3D mesh rendering tests
-├── mpr_view_validation_tests.rs # MPR view correctness tests
-├── performance_tests.rs         # Performance benchmarks
-└── error_handling_tests.rs     # Error handling edge cases
-```
+## Coverage and known baseline limitations
 
-## Environment Variables
+Use [coverage methodology](../testing/coverage.md) for metric/scope/tool evidence.
+Do not infer repository coverage from test counts or scoped file measurements.
 
-| Variable | Purpose | Default |
-|-----------|---------|---------|
-| `RUST_LOG` | Logging level (error, warn, info, debug, trace) | `info` if unset |
-| `KEPLER_WGPU_BACKEND` | GPU backend selection (dx12, vulkan, metal, gl, primary) | `PRIMARY` |
-| `KEPLER_WGPU_VALIDATION` | Enable WGPU validation layers | `disabled` |
+The [render-resource verification report](../../openspec/changes/optimize-render-resource-lifetimes/verification.md)
+records existing global formatting failures and denied Clippy findings in
+`image_info.rs` and DICOM validation tests. Check current output before treating
+these as unchanged; report scoped success separately from full-gate failure.
+Do not reformat unrelated files, disable tests, or mark a blocked check passed.
 
-### Examples
-
-```bash
-# Set log level to debug
-RUST_LOG=debug cargo run
-
-# Force Vulkan backend
-KEPLER_WGPU_BACKEND=vulkan cargo run
-
-# Enable WGPU validation
-KEPLER_WGPU_VALIDATION=true cargo run
-
-# Combine settings
-RUST_LOG=info KEPLER_WGPU_BACKEND=vulkan KEPLER_WGPU_VALIDATION=true cargo run
-```
-
-## Code Quality
-
-### Formatting
-
-```bash
-# Format all code
-cargo fmt
-
-# Check formatting without modifying
-cargo fmt -- --check
-```
-
-### Linting
-
-```bash
-# Run clippy lints
-cargo clippy
-
-# Run clippy with warnings as errors (strict)
-cargo clippy -- -D warnings
-```
-
-### Type Checking
-
-```bash
-# Type check without building
-cargo check
-
-# Check all targets
-cargo check --all-targets
-```
-
-## Common Issues
-
-### Surface errors on startup
-
-```bash
-# Check backend selection
-KEPLER_WGPU_BACKEND=vulkan cargo run
-
-# Enable validation layers
-KEPLER_WGPU_VALIDATION=true cargo run
-```
-
-### WASM build fails
-
-```bash
-# Ensure wasm32 target is installed
-rustup target add wasm32-unknown-unknown
-
-# Install wasm-pack
-cargo install wasm-pack
-```
-
-### Tests hang on async operations
-
-Use `pollster` to block on async in tests (already configured in Cargo.toml):
-```bash
-cargo test
-```
-
-### Logging not showing in WASM
-
-Check browser console (F12). Logs are routed to `web_sys::console`.
-
-## Performance Profiling
-
-### Build Performance
-
-```bash
-# Profile build time
-cargo build --timings
-```
-
-### Runtime Performance
-
-```rust
-use crate::core::Instant;
-
-let start = Instant::now();
-// ... do work ...
-let elapsed = start.elapsed();
-info!("Operation took {:.2} ms", elapsed.as_millis_f32());
-```
-
-## Release Checklist
-
-Before deploying:
-
-```bash
-# Format code
-cargo fmt
-
-# Check for warnings
-cargo clippy
-
-# Run all tests
-cargo test
-
-# Build release binary
-cargo build --release
-
-# Build WASM package
-wasm-pack build --release --target web
-```
-
-## CI/CD Integration
-
-If setting up CI:
-
-```yaml
-# Example GitHub Actions workflow
-- name: Install wasm-pack
-  run: cargo install wasm-pack
-
-- name: Run tests
-  run: cargo test
-
-- name: Build WASM
-  run: wasm-pack build --target web
-
-- name: Check formatting
-  run: cargo fmt -- --check
-
-- name: Run clippy
-  run: cargo clippy -- -D warnings
-```
-
-## Related Documentation
-
-- **Quick Reference**: `QUICK_REFERENCE.md` - Common commands at a glance
-- **Conventions**: `CONVENTIONS.md` - Coding standards and patterns
-- **Architecture**: `ARCHITECTURE.md` - Project structure
-- **PR Guidelines**: `PR_GUIDELINES.md` - Contribution workflow
+For every change, report the actual commands, exit status, meaningful test counts,
+and missing environments/manual work. Documentation-only changes normally need
+the docs/script/spec checks rather than a complete Rust rebuild; Rust contract
+corrections additionally warrant the affected domain tests.

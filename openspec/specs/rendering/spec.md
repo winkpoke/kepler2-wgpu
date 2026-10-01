@@ -118,3 +118,14 @@ The MIP view shader SHALL support Minimum Intensity Projection (MinIP) and Avera
 - **AND** the final pixel value SHALL be the maximum encountered value, preserving negative values
 - **AND** the shader SHALL apply configurable lower and upper intensity thresholds to filter contributions based on tissue density
 
+## Verification
+
+- [Native headless pipeline/pixel evidence](../../../doc/testing/headless_gpu.md)
+- [Encoding regressions](../../../tests/volume_encoding_tests.rs)
+- [Resource lifetime regressions](../../../tests/render_resource_lifetime_tests.rs)
+- [Redraw regressions](../../../tests/redraw_state_tests.rs)
+
+Native pixel/state tests do not prove browser behavior, every GPU failure path,
+wall-clock performance targets, or driver-memory leak freedom. Report those
+checks separately; active change deltas are not baseline requirements until synced.
+

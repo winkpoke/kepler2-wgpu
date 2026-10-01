@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Provides comprehensive testing infrastructure, fixtures, and validation for medical imaging software. Ensures patient safety, data integrity, and rendering correctness through systematic test coverage.
+Defines intended testing infrastructure, fixtures, and verification for medical imaging software. Coverage and passing tests support risk reduction but do not establish clinical safety or regulatory approval. See Verification for executable sources and known gaps.
 
 ## Requirements
 
@@ -12,7 +12,7 @@ The system SHALL provide reusable test fixtures for generating valid and invalid
 
 #### Scenario: Generating Test DICOM Data
 - **WHEN** a test needs valid DICOM CT image data
-- **THEN** the `create_test_ct_image()` helper SHALL generate a complete DICOM with all mandatory fields populated
+- **THEN** a shared synthetic DICOM fixture helper SHALL generate a complete DICOM with all mandatory fields populated
 - **AND** the generated image SHALL be parseable by `CTImage::from_bytes()`
 - **AND** it SHALL include valid UID, dimensions, pixel data, and metadata
 
@@ -23,7 +23,7 @@ The system SHALL provide reusable test fixtures for generating valid and invalid
 
 #### Scenario: Generating Volume Test Data
 - **WHEN** a test needs a CTVolume with specific dimensions
-- **THEN** the `create_test_volume_512x512x100()` helper SHALL generate a volume with exact dimensions
+- **THEN** a shared volume fixture helper SHALL generate a volume with exact dimensions
 - **AND** it SHALL include valid voxel spacing and orientation metadata
 - **AND** voxel data SHALL match the dimensions (512 * 512 * 100 voxels)
 
@@ -72,7 +72,8 @@ Patient identification and study/series metadata SHALL be validated to ensure pa
 
 #### Scenario: Study-Series Hierarchy Integrity
 - **WHEN** an ImageSeries is created
-- **THEN** its SeriesInstanceUID SHALL match the parent Study's StudyInstanceUID
+- **THEN** its StudyInstanceUID parent reference SHALL match the parent Study's StudyInstanceUID
+- **AND** its own SeriesInstanceUID SHALL identify the series independently of the study
 - **AND** when images are added to a series, their SeriesInstanceUID SHALL match the series
 - **AND** mismatched UIDs SHALL cause validation errors
 
@@ -90,7 +91,8 @@ All coordinate transformations (world ↔ screen ↔ voxel) SHALL preserve preci
 - **WHEN** an orientation matrix is created for axial, coronal, or sagittal view
 - **THEN** the matrix SHALL be orthogonal (determinant = ±1)
 - **AND** basis vectors SHALL be normalized (unit length)
-- **AND** tests SHALL verify orthogonality with epsilon tolerance (|det - 1| < 0.01)
+- **AND** tests SHALL verify unit basis lengths and orthogonal basis vectors within defined tolerances
+- **AND** tests SHALL verify |abs(det) - 1| < 0.01, allowing either handedness
 
 #### Scenario: World-Voxel Coordinate Roundtrip
 - **WHEN** a world coordinate is transformed to voxel space and back to world space
@@ -128,7 +130,7 @@ MHA and MHD file parsers SHALL validate headers, detect corruption, and handle a
 
 ### Requirement: Volume Data Integrity
 
-CTVolumed volumes SHALL validate dimensions, spacing, and data size to prevent memory corruption or incorrect rendering.
+CTVolume instances SHALL validate dimensions, spacing, and data size to prevent memory corruption or incorrect rendering.
 
 #### Scenario: Invalid Volume Dimensions
 - **WHEN** a CTVolume is created with dimensions (0, 0, 0) or negative values
@@ -153,10 +155,12 @@ CTVolumed volumes SHALL validate dimensions, spacing, and data size to prevent m
 Mathematical functions (window/level, coordinate transformations, clamping) SHALL be verified through property-based tests to ensure correctness across all input ranges.
 
 #### Scenario: Window/Level Midpoint Property
-- **FOR ALL** valid window width (-1000 to 2000) and level (-1000 to 1000) pairs
-- **THEN** the transformation at level SHALL equal window / 2 (midpoint)
-- **AND** property SHALL hold: `transform(level) = window / 2.0`
-- **AND** tolerance SHALL be < 0.01 Hounsfield units
+- **WHEN** finite window/level/bias parameters have been validated and clamped by WindowLevel
+- **THEN** stored width SHALL be positive and within MIN_WINDOW_WIDTH and MAX_WINDOW_WIDTH
+- **AND** effective_level SHALL equal the stored window_level plus bias
+- **AND** normalized display SHALL use `clamp((pixel - effective_level) / width + 0.5, 0.0, 1.0)`
+- **AND** normalized display at pixel = effective_level SHALL equal 0.5 within 0.0001 display units
+- **AND** non-finite parameters and non-positive input widths SHALL be rejected
 
 #### Scenario: Scale Clamping Bounds
 - **FOR ALL** scale values in realistic range (0.0 to 200.0)
@@ -216,8 +220,8 @@ View manager SHALL maintain consistent state across concurrent operations and en
 Rendering output SHALL maintain visual fidelity through proper window/level application, aspect ratio preservation, and clamping.
 
 #### Scenario: Window/Level Clamping
-- **WHEN** user specifies window center outside valid Hounsfield range (-1024 to +3071)
-- **THEN** the center SHALL be clamped to valid range
+- **WHEN** the user specifies a finite window level outside WindowLevel's MIN_WINDOW_LEVEL and MAX_WINDOW_LEVEL bounds
+- **THEN** the stored level SHALL be clamped to those API bounds
 - **AND** a warning SHALL be logged indicating the clamping
 - **AND** the displayed contrast SHALL remain meaningful
 
@@ -313,7 +317,7 @@ Every bug fix SHALL have a corresponding regression test to prevent recurrence.
 #### Scenario: Regression Test Validation
 - **WHEN** regression tests are added
 - **THEN** each test SHALL have clear documentation of the bug
-- **AND** the test SHALL be added to `tests/regression_tests.rs`
+- **AND** the test SHALL be added to the relevant subsystem test module or `tests/regression_tests.rs`
 - **AND** the test SHALL run on all future PRs to prevent regression
 - **AND** CI SHALL fail if the regression test fails
 
@@ -356,3 +360,17 @@ CI/CD pipeline SHALL enforce coverage targets and prevent regressions.
 - **THEN** significant decreases (> 5% absolute) SHALL trigger warnings
 - **AND** the CI SHALL report which files/lines lost coverage
 - **AND** this SHALL enable early detection of coverage regressions
+
+## Verification
+
+[The current testing map](../../../doc/testing/README.md) links fixtures, parser,
+patient, coordinate, window/level, format, volume, rendering, and protocol checks.
+[Coverage methodology](../../../doc/testing/coverage.md) defines reported metrics
+and evidence limits. [Active coverage tasks](../../changes/implement-test-coverage-plan/tasks.md)
+track remaining implementation work; unchecked tasks are not completion evidence.
+
+Some existing tests validate fixture/model state rather than exercising rejection
+at the production boundary. Browser/hardware validation, comprehensive error-path
+coverage, branch metrics, and performance/memory targets require their own evidence.
+The baseline phase-three target remains 55%; the active coverage proposal requests
+65%. Do not sync a pending delta merely to make a progress report consistent.

@@ -1,5 +1,9 @@
 # Project Context
 
+**Status: Historical — superseded by `openspec/config.yaml` and current guides.**
+Archived on 2026-10-01. The old cgmath/transpose instructions below are retained
+only as history; use [current conventions](../../agents/CONVENTIONS.md).
+
 ## Purpose
 Kepler-WGPU is a high-performance, cross-platform medical imaging framework built in Rust. It leverages WebGPU for real-time visualization of CT data, supporting Multi-Planar Reconstruction (MPR), Maximum Intensity Projection (MIP), and 3D mesh rendering on both native desktop and web (WebAssembly) environments.
 

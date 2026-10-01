@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-01 — Agent guidance and OpenSpec maintenance
+
+- Consolidated repository policy into `AGENTS.md`, with task-specific current references and thin tool adapters.
+- Archived superseded testing plans/examples; retained legacy guide paths as redirects.
+- Corrected matrix/voxel-precision guidance and testing spec identity/window-level errors; repaired acquisition spec structure.
+- Migrated to project-local OpenSpec 1.14.0, compact config, and generated skills/commands without changing rendering code or archived changes.
+- Added documentation/delta identity checks and regression tests, plus native source-line coverage summaries with explicit medical scope. Branch/trend/browser validation remains distinct from these checks.
+
 ## 2026-02-26T00-00-00
 - **Oblique MPR View Rotation Controls (Slicer-style)**
   - Added oblique plane control via normal vector + in-plane rotation (supports Horizontal/Vertical/In-Plane style control mapping).

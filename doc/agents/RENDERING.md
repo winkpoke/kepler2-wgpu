@@ -1,25 +1,23 @@
 # Rendering & GPU Patterns
 
-**Last Updated**: 2025-01-15
+**Status:** Current reference, reviewed against `947b4fc` on 2026-10-01.
+For signed storage/filtering precision, use [the encoding contract](../rendering/volume-encoding.md).
 
 ## GPU Resource Management
 
 ### WebGPU Resources (device, queue, surfaces)
 
 - **Device and Queue**: Wrapped in `Arc` for cheap cloning
-- **Surface and TextureView**: Never clone these (single-use resources)
+- **Surface and TextureView**: Borrow from their owner or create the needed view; do not assume these wgpu handles implement Clone
 - **Buffers and Textures**: Reuse when possible to minimize allocations
 - **Bind Groups**: Reuse to avoid redundant GPU state changes
 
 ### Resource Lifecycle
 
-Drop order matters:
-1. Textures
-2. Buffers
-3. Bind Groups
-4. Pipelines
-
-**Rationale**: Dependent resources must be dropped after resources they reference.
+Retain resources in the owning graphics/view context and release unused caches.
+There is no project-wide textures/buffers/bind-groups/pipelines drop sequence.
+wgpu tracks resource references; follow the concrete owner's lifetime and avoid
+cross-device reuse or unbounded retention.
 
 ### Pipeline Management
 
@@ -55,7 +53,7 @@ factory formats and existing-view rebinding across BGRA/RGBA formats and two dev
 1. **World**: 3D world coordinates (millimeters from volume origin)
 2. **Screen**: 2D screen coordinates (pixels, origin at top-left)
 3. **Voxel**: 3D voxel indices (integer indices into volume array)
-4. **Base**: Base coordinate type (uses `glam::Vec3`)
+4. **Base**: Named basis/transform stored in `glam::Mat4`
 
 ### Transformations
 
@@ -82,54 +80,23 @@ let transform = translate * scale * rotate;
 Transformations between coordinate systems are managed in `src/core/coord/`:
 - World ↔ Screen: View/projection matrices
 - World ↔ Voxel: Volume spacing and dimensions
-- Voxel ↔ Base: Direct mapping (1:1 for CT volumes)
+- Voxel ↔ Base: Use the volume's basis and spacing; do not assume an identity or one-to-one physical mapping
 
 ## Volume Rendering
 
-### Volume Texture Formats
-
-Two texture format options for CT volumes:
-
-#### R16Float
-- **Pros**: Full Hounsfield Unit precision, direct float conversion
-- **Cons**: Not all GPUs support filtering on R16Float
-- **Use when**: GPU supports it, need maximum precision
-
-#### Rg8Unorm
-- **Pros**: Broad GPU support, hardware filtering
-- **Cons**: Packed Hounsfield Units (8-bit integer), precision loss
-- **Use when**: GPU doesn't support R16Float, performance critical
-
-### Format Selection
-
-Check GPU capability before choosing format:
-
-```rust
-fn device_supports_r16float(adapter: &wgpu::Adapter) -> bool {
-    let features = adapter.features();
-    features.contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
-        // Additional checks may be needed
-}
-```
-
-### Volume Encoding
-
-See `src/data/volume_encoding.rs` for format selection logic:
-- Automatic fallback from R16Float to Rg8Unorm
-- Conversion utilities for Hounsfield Units
+The authoritative [signed voxel encoding contract](../rendering/volume-encoding.md)
+describes exact packed-i16 RG8 storage, half-float rounding, affine decode/filtering,
+and the separation from window/level. `src/data/volume_encoding.rs` owns the byte
+representation; capability negotiation belongs to graphics initialization.
+Do not infer filtered-format support from one feature bit alone.
 
 ## View System
 
 ### View Trait
 
-All renderable views implement the `View` trait:
-
-```rust
-pub trait View {
-    fn render(&self, encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView);
-    fn resize(&mut self, width: u32, height: u32);
-}
-```
+The current [`View` trait](../../src/rendering/view/view.rs) includes rendering,
+layout, GPU rebinding, state, and invalidation hooks. Read that interface instead
+of copying a simplified trait declaration into new code.
 
 ### View Types
 
@@ -300,7 +267,7 @@ Custom `View` implementations retain continuous rendering by default; implement
 **Problem**: Surface errors on startup
 ```bash
 # Check backend selection
-KEPLER_WGPU_BACKEND=vulkan cargo run
+KEPLER_WGPU_BACKEND=vulkan cargo +nightly run --locked
 
 # Enable validation layers
 KEPLER_WGPU_VALIDATION=true cargo run
@@ -332,4 +299,6 @@ Use `wgpu-profiler` or platform-specific tools:
 - **Architecture**: `ARCHITECTURE.md` - View system and modules
 - **Conventions**: `CONVENTIONS.md` - Coding patterns
 - **Pitfalls**: `PITFALLS.md` - Common rendering mistakes
-- **Render Architecture**: `doc/rendering/unified-render-architecture.md` - Deep dive
+- **Current architecture**: [Ownership map](../architecture/ARCHITECTURE.md)
+- **Verification**: [Headless rendering checks](../testing/headless_gpu.md)
+- **Historical designs**: `doc/rendering/unified-render-architecture.md` (not current policy)

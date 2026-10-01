@@ -1,5 +1,12 @@
 # Acquisition Capability Specification
 
+## Purpose
+
+Defines intended Remedy serial connection, exposure-command, and status behavior.
+Offline protocol tests do not authorize or prove live device operation.
+
+## Requirements
+
 ### Requirement: Serial Connection Management
 The system SHALL establish and maintain a serial connection to the Remedy device.
 
@@ -41,3 +48,13 @@ The system SHALL process and present device status updates.
 - **WHEN** the device sends an error code
 - **THEN** the system translates to readable message
 - **AND** logs the event.
+
+## Verification
+
+- [Protocol implementation and offline unit tests](../../../src/acquisition/remedy.rs)
+- [Protocol/browser reference](../../../doc/acquisition/remedy-serial-web.md)
+- [Testing boundaries](../../../doc/testing/README.md)
+
+Native/browser serial transport and live exposure/handshake behavior require
+separate authorized hardware validation. Spec parsing and offline packet tests
+are not evidence that those manual requirements have been fulfilled.

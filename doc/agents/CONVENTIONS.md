@@ -1,247 +1,56 @@
-# Coding Conventions
-
-**Last Updated**: 2025-01-15
-
-## Naming & Formatting
-
-- **Rust Standard**: `PascalCase` for types, `snake_case` for functions/variables
-- **Indentation**: 4 spaces (enforced by `rustfmt`)
-- **Line Length**: 100 characters (soft limit)
-
-## Platform-Specific Code
-
-Use `#[cfg(target_arch = "wasm32")]` for platform separation:
-
-```rust
-// WASM-only code
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-
-// Native-only code
-#[cfg(not(target_arch = "wasm32"))]
-use tokio::runtime::Runtime;
-
-// Platform-specific implementations
-#[cfg(target_arch = "wasm32")]
-pub fn platform_specific() {
-    // WASM implementation
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-pub fn platform_specific() {
-    // Native implementation
-}
-```
-
-## Async Patterns
-
-Cross-platform async synchronization:
-
-```rust
-// WASM: use async_lock::Mutex
-#[cfg(target_arch = "wasm32")]
-use async_lock::Mutex;
-
-// Native: use tokio::sync::Mutex
-#[cfg(not(target_arch = "wasm32"))]
-use tokio::sync::Mutex;
-```
-
-**IMPORTANT**: Never import `tokio` in WASM-targeted modules.
-
-## Error Handling
-
-Use `KeplerResult<T>` type alias (`Result<T, KeplerError>`):
-
-```rust
-use crate::core::error::{KeplerError, KeplerResult};
-
-pub fn process_data() -> KeplerResult<ProcessedData> {
-    // ...
-    Ok(data)
-}
-```
-
-Error types defined in `src/core/error.rs`:
-- `KeplerError::Graphics(String)`
-- `KeplerError::Dicom(String)`
-- `KeplerError::Io(std::io::Error)`
-- `KeplerError::Surface(wgpu::SurfaceError)`
-- `KeplerError::Window(String)`
-- `KeplerError::Validation(String)`
-- `KeplerError::Mpr(MprError)`
-
-## Logging
-
-Always use crate-level `log` macros for cross-platform logging:
-
-```rust
-use log::{info, warn, error, debug};
-
-info!("Application started");
-warn!("Missing parameter: {}", param);
-error!("Failed to load volume: {}", e);
-debug!("Rendering frame: {}", frame_count);
-```
-
-**Logger Initialization** (in `src/lib.rs`):
-- **Native**: `env_logger` with wgpu modules filtered to WARN level
-- **WASM**: Custom logger routing to `web_sys::console`
-
-**Do NOT use**:
-- `println!`, `eprintln!` (except in `main.rs` for quick debugging)
-- `dbg!` in production code
-
-## Re-exports
-
-`src/lib.rs` re-exports commonly used types. When changing public API, update `lib.rs` re-exports accordingly:
-
-```rust
-// Example re-export pattern
-pub use application::{render_app::RenderApp, gl_canvas::GLCanvas};
-pub use data::ct_volume::CTVolume;
-pub use core::error::{KeplerError, KeplerResult};
-```
-
-## Test Patterns
-
-### Test Organization
-
-```
-tests/
-├── dicom_tests.rs              # DICOM parsing and validation
-├── medical_imaging_tests.rs     # MHA/MHD format tests
-├── mesh_integration_tests.rs    # 3D mesh rendering tests
-├── mpr_view_validation_tests.rs # MPR view correctness tests
-├── performance_tests.rs         # Performance benchmarks
-└── error_handling_tests.rs     # Error handling edge cases
-```
-
-### Platform Guards
-
-Use `#[cfg(not(target_arch = "wasm32"))]` for native-only tests:
-
-```rust
-#[cfg(test)]
-mod unit_tests {
-    use super::*;
-
-    #[test]
-    fn test_functionality() {
-        let result = tested_function();
-        assert_eq!(result, expected);
-    }
-
-    #[test]
-    #[cfg(not(target_arch = "wasm32"))]
-    fn test_native_only() {
-        // Native-only test (uses tokio or filesystem)
-    }
-}
-```
-
-### Test Utilities
-
-Create helper functions in `mod test_utils` within test files for reusable test setup.
-
-### Mock Data
-
-Generate synthetic DICOM data for deterministic tests.
-
-### Performance Assertions
-
-Use `Instant::now()` to measure and assert performance:
-
-```rust
-use std::time::Instant;
-
-let start = Instant::now();
-// ... do work ...
-let elapsed = start.elapsed();
-assert!(elapsed.as_millis() < 100, "Operation too slow");
-```
-
-### Test Naming Convention
-
-- `tests/*_tests.rs`: Integration tests
-- `src/*/mod.rs` → `#[cfg(test)] mod tests { ... }`: Unit tests
-
-## Coordinate Systems
-
-Four coordinate systems are used (see `src/core/coord/`):
-
-1. **World**: 3D world coordinates (millimeters from volume origin)
-2. **Screen**: 2D screen coordinates (pixels, origin at top-left)
-3. **Voxel**: 3D voxel indices (integer indices into volume array)
-4. **Base**: Base coordinate type (uses `glam::Vec3`)
-
-Transformations use `glam::Mat4` (column-major):
-```rust
-use glam::Mat4;
-
-let transform = Mat4::from_translation(glam::Vec3::new(x, y, z));
-```
-
-## Module Organization Principles
-
-- Keep modules focused and single-purpose
-- Group related functionality in subdirectories
-- Use `mod.rs` to expose public API from subdirectories
-- Leverage Rust's module system for clear dependency boundaries
-
-## Feature Flags
-
-Use feature flags for optional functionality:
-- `mesh`: 3D mesh capabilities
-- `trace-logging`: Detailed diagnostics for debugging
-
-Conditional compilation:
-```rust
-#[cfg(feature = "mesh")]
-mod mesh_renderer;
-```
-
-## Documentation Comments
-
-Use `///` for public API documentation:
-
-```rust
-/// Converts a CT image series to a 3D volume.
-///
-/// # Arguments
-///
-/// * `series` - The image series to convert
-///
-/// # Returns
-///
-/// A `CTVolume` containing the converted 3D data
-///
-/// # Errors
-///
-/// Returns an error if the series contains incompatible images
-pub fn generate_ct_volume(series: &ImageSeries) -> KeplerResult<CTVolume> {
-    // ...
-}
-```
-
-## Performance Considerations
-
-- Use `Arc` for cheap cloning of large resources (Device, Queue)
-- Avoid cloning expensive resources (Surface, TextureView)
-- Reuse bind groups and buffers when possible
-- Be mindful of drop order: textures → buffers → bind groups → pipelines
-
-## Code Quality
-
-- Run `cargo fmt` before committing
-- Run `cargo clippy` and address warnings
-- Write tests for new functionality
-- Keep functions focused and short (< 50 lines when possible)
-
-## Related Documentation
-
-- **Quick Reference**: `QUICK_REFERENCE.md` - Common tasks and commands
-- **Architecture**: `ARCHITECTURE.md` - Project structure and modules
-- **Build**: `BUILD.md` - Development workflow
-- **Rendering**: `RENDERING.md` - GPU and coordinate systems
-- **Pitfalls**: `PITFALLS.md` - Common anti-patterns to avoid
+# Rust and platform conventions
+
+**Status:** Current reference. Dependency versions/features come from `Cargo.toml`
+and `Cargo.lock`, not documentation copies.
+
+## Platform and async boundaries
+
+Use target guards for native filesystem/runtime/window behavior versus browser APIs.
+Tokio and Rayon dependencies are native-only; browser async work uses
+`wasm-bindgen-futures` and existing `async_lock` synchronization where appropriate.
+Use the synchronization primitive of the affected owner; do not introduce a runtime
+or block the browser/render loop merely to match an example.
+
+For a synchronous native test awaiting GPU setup, `pollster::block_on` is available.
+A plain `#[test] fn` containing `.await` is a compile error, not a hanging test.
+See [the build matrix](BUILD.md) for native and WASM-library verification.
+
+## Errors, logging, and public APIs
+
+- Use the existing `KeplerResult<T>` or subsystem-specific result/error type.
+  Propagate actionable context without leaking patient identifiers or secrets.
+- Use crate-level `log` macros. Native logging honors `RUST_LOG` (INFO by default)
+  and filters noisy GPU modules. WASM uses the custom `web_sys::console` logger
+  in `src/lib.rs`; do not add a competing logger.
+- Gate expensive high-frequency diagnostics with `trace-logging` and sample them
+  where appropriate. Leave them off in normal release builds.
+- Preserve external API compatibility and review `src/lib.rs` re-exports when
+  changing public interfaces. Re-export only intended public API, not every helper.
+- Mesh support is always compiled. The optional feature currently declared for
+  diagnostics is `trace-logging`; there is no `mesh` feature flag.
+
+## Geometry and data
+
+`Base` owns a `glam::Mat4`; world/screen/voxel labels describe spaces, not separate
+Rust coordinate wrapper types. Record units and the source/destination spaces of
+transforms. World geometry uses physical spacing, not an assumed one-to-one voxel
+mapping. Upload `glam` matrices in column-major order without an extra transpose
+unless converting explicitly row-major input at the input boundary.
+
+Storage decode parameters and window/level are separate contracts. Read
+[volume encoding](../rendering/volume-encoding.md) before touching signed voxels,
+texture formats, or filtering. Read [rendering](RENDERING.md) for uniform layout
+and device/format-dependent resource ownership.
+
+## Tests and changes
+
+- Use synthetic fixtures from the [testing reference](../testing/README.md).
+  Prefer existing shared helpers to duplicate per-file fixtures.
+- Add a minimal regression for the behavior being fixed. Keep checks deterministic;
+  ordinary correctness tests should not enforce arbitrary wall-clock thresholds.
+- Benchmark performance separately with recorded hardware/backend, data, build
+  settings, and baseline. Counts or coverage percentages do not prove correctness.
+- Document public API purpose, units, valid ranges, and meaningful error cases.
+  Let `rustfmt` handle layout rather than duplicating language style tutorials.
+- Follow [architecture](../architecture/ARCHITECTURE.md) ownership boundaries and
+  [the PR checklist](PR_GUIDELINES.md); avoid unrelated cleanup.

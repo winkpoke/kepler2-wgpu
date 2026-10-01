@@ -1,0 +1,14 @@
+{
+  "medical_files": [
+    "src/data/dicom/ct_image.rs",
+    "src/data/dicom/patient.rs",
+    "src/data/dicom/studyset.rs",
+    "src/data/dicom/image_series.rs",
+    "src/data/dicom/fileio.rs",
+    "src/data/ct_volume.rs",
+    "src/core/coord/base.rs",
+    "src/core/geometry.rs",
+    "src/core/window_level.rs",
+    "src/rendering/view/mpr/mpr_view.rs"
+  ]
+}

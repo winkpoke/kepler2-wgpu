@@ -37,3 +37,14 @@ The core module SHALL have comprehensive test coverage for mathematical operatio
 - **AND** determinants SHALL be verified (orthogonal matrices have det = ±1)
 - **AND** basis vectors SHALL be normalized to unit length
 - **AND** transformations SHALL produce correct screen/world mappings
+
+## Verification
+
+- [Coordinate precision tests](../../../tests/coordinate_precision_tests.rs)
+- [Coordinate safety tests](../../../tests/coordinate_safety_tests.rs)
+- [WindowLevel unit tests](../../../src/core/window_level.rs)
+- [Core geometry unit tests](../../../src/core/geometry.rs)
+- [Current testing map and limits](../../../doc/testing/README.md)
+
+Verify explicit domains/units/tolerances; these links do not establish exhaustive
+input-range or performance-target coverage.

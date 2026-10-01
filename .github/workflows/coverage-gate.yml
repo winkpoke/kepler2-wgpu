@@ -36,48 +36,37 @@ jobs:
           echo "KEPLER_REQUIRE_GPU_TESTS=1" >> "$GITHUB_ENV"
           echo "XDG_RUNTIME_DIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
 
-      - name: Generate coverage report
+      - name: Record measurement tools and export one coverage run
         run: |
           mkdir -p coverage
-          cargo llvm-cov --locked --lcov --output-path coverage/lcov.info
+          git rev-parse HEAD > coverage/revision.txt
+          echo "Default native features; WGPU_BACKEND=vulkan" \
+            > coverage/configuration.txt
+          rustc -Vv | tee coverage/toolchain.txt
+          cargo llvm-cov --version | tee coverage/tool.txt
+          cargo llvm-cov --locked --json --output-path coverage/coverage.json
+          cargo llvm-cov report --lcov --output-path coverage/lcov.info
 
-      - name: Check medical path coverage
+      - name: Check native source-line coverage scopes
         run: |
-          COVERAGE=$(cargo llvm-cov --quiet | grep -oP '\d+(?=%)' || echo "0%")
-          echo "Medical path coverage: $COVERAGE%"
+          python3 scripts/coverage_summary.py coverage/coverage.json \
+            --output coverage/summary.json --medical-min 80 --overall-min 45
 
-          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
-            echo "ERROR: Medical path coverage $COVERAGE%" \
-              "is below 80% threshold"
-            exit 1
-          fi
-
-      - name: Check overall coverage gate
+      - name: Report trend evidence limitation
+        if: always()
         run: |
-          COVERAGE=$(cargo llvm-cov --quiet | grep -oP '\d+(?=%)' || echo "0%")
-          echo "Overall coverage: $COVERAGE%"
+          echo "::warning::Trend enforcement needs a comparable JSON baseline."
+          echo "Legacy coverage_report.txt lacks scope/metric provenance."
+          echo "See doc/testing/coverage.md. Trend evidence is pending."
 
-          MIN_COVERAGE=45
-          if (( $(echo "$COVERAGE < $MIN_COVERAGE" | bc -l) )); then
-            echo "ERROR: Coverage $COVERAGE% is below $MIN_COVERAGE% threshold"
-            exit 1
-          fi
-
-      - name: Check coverage regression
-        run: |
-          CURRENT=$(cargo llvm-cov --quiet | grep -oP '\d+(?=%)' || echo "0%")
-          BASELINE=$(git show HEAD~1:coverage_report.txt 2>/dev/null \
-            || echo "0%")
-
-          if [ -n "$BASELINE" ]; then
-            DECREASE=$(echo "$BASELINE - $CURRENT" | bc -l)
-
-            if (( $(echo "$DECREASE > 5" | bc -l) )); then
-              echo "ERROR: Coverage decreased by $DECREASE%" \
-                "(baseline: $BASELINE%, current: $CURRENT%)"
-              exit 1
-            fi
-          fi
+      - name: Retain coverage measurement and provenance
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-line-coverage
+          path: coverage/
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Comment coverage in PR
         uses: >-

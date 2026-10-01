@@ -11,7 +11,11 @@
     "build": "wasm-pack build --target web --out-dir pkg --release",
     "build:node": "wasm-pack build --target nodejs --out-dir pkg --release",
     "build:dev": "wasm-pack build --target web --out-dir pkg",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "openspec": "openspec",
+    "docs:check": "python3 scripts/check_docs.py",
+    "docs:test": "python3 -m unittest discover -s scripts/tests -p 'test_*.py'",
+    "specs:check": "openspec validate --all --strict --no-interactive"
   },
   "keywords": [
     "wasm",
@@ -32,5 +36,8 @@
   "bugs": {
     "url": "https://github.com/winkpoke/kepler2-wgpu/issues"
   },
-  "homepage": "https://github.com/winkpoke/kepler2-wgpu#readme"
+  "homepage": "https://github.com/winkpoke/kepler2-wgpu#readme",
+  "devDependencies": {
+    "@fission-ai/openspec": "1.14.0"
+  }
 }
