@@ -171,20 +171,27 @@ impl LayoutStrategy for GridLayout {
 
     /// Compute the origin and size for the cell corresponding to `index`.
     ///
-    /// Notes:
-    /// - Current implementation assumes `rows > 0` and `cols > 0`.
-    /// - Large `spacing` relative to `parent_dim` can lead to underflow; consider saturating math.
+    /// Keeps pending view placement valid while the surface is minimized or tiny.
     fn calculate_position_and_size(
         &self,
         index: u32,
         _total_views: u32,
         parent_dim: (u32, u32),
     ) -> ((i32, i32), (u32, u32)) {
-        // TODO: Use `saturating_sub` and guard zero divisions to prevent underflow/overflow.
-        let cell_width = (parent_dim.0 - (self.cols - 1) * self.spacing) / self.cols;
-        let cell_height = (parent_dim.1 - (self.rows - 1) * self.spacing) / self.rows;
-        let row = index / self.cols;
-        let col = index % self.cols;
+        let cols = self.cols.max(1);
+        let rows = self.rows.max(1);
+        let cell_width = (parent_dim
+            .0
+            .saturating_sub((cols - 1).saturating_mul(self.spacing))
+            / cols)
+            .max(1);
+        let cell_height = (parent_dim
+            .1
+            .saturating_sub((rows - 1).saturating_mul(self.spacing))
+            / rows)
+            .max(1);
+        let row = index / cols;
+        let col = index % cols;
         let x = col as i32 * (cell_width + self.spacing) as i32;
         let y = row as i32 * (cell_height + self.spacing) as i32;
         ((x, y), (cell_width, cell_height))
@@ -405,6 +412,8 @@ pub struct DynamicLayout {
     dim: (u32, u32),
     strategy: Box<dyn LayoutStrategy>,
     views: Vec<Box<dyn View>>,
+    presented_dim: Option<(u32, u32)>,
+    presented_views: Vec<usize>,
 }
 
 impl DynamicLayout {
@@ -418,13 +427,56 @@ impl DynamicLayout {
             dim,
             strategy,
             views: Vec::new(),
+            presented_dim: None,
+            presented_views: Vec::new(),
         }
+    }
+
+    fn view_identity(view: &dyn View) -> usize {
+        view as *const dyn View as *const () as usize
+    }
+
+    /// Also detects structural edits through the existing mutable views API.
+    /// Comparing identities does not allocate; no-op access leaves the frame clean.
+    pub fn needs_redraw(&self) -> bool {
+        self.presented_dim != Some(self.dim)
+            || self.presented_views.len() != self.views.len()
+            || self
+                .views
+                .iter()
+                .zip(&self.presented_views)
+                .any(|(view, identity)| {
+                    Self::view_identity(view.as_ref()) != *identity || view.needs_redraw()
+                })
+    }
+
+    /// Acknowledge presentation only after the complete frame succeeds.
+    pub fn mark_presented(&mut self) {
+        self.presented_dim = Some(self.dim);
+        self.presented_views.clear();
+        for view in &mut self.views {
+            view.mark_presented();
+            self.presented_views
+                .push(Self::view_identity(view.as_ref()));
+        }
+    }
+
+    pub fn is_animating(&self) -> bool {
+        self.views.iter().any(|view| view.is_animating())
+    }
+
+    pub fn next_update_in(&self) -> Option<std::time::Duration> {
+        self.views
+            .iter()
+            .filter_map(|view| view.next_update_in())
+            .min()
     }
 }
 
 impl DynamicLayout {
     pub fn set_strategy(&mut self, new_strategy: Box<dyn LayoutStrategy>) {
         self.strategy = new_strategy;
+        self.presented_dim = None;
         // Recalculate all view positions and sizes
         self.relayout();
     }
@@ -451,6 +503,7 @@ impl LayoutContainer for DynamicLayout {
         log::info!("Adding view at position: {:?} with size: {:?}", pos, size);
         view.move_to(pos);
         view.resize(size);
+        self.presented_dim = None;
         self.views.push(view);
     }
 
@@ -467,6 +520,9 @@ impl LayoutContainer for DynamicLayout {
 
     /// Remove all views from the container.
     fn remove_all(&mut self) {
+        if !self.views.is_empty() {
+            self.presented_dim = None;
+        }
         self.views.clear();
     }
 
@@ -498,6 +554,7 @@ impl LayoutContainer for DynamicLayout {
         new_view.move_to(pos);
         new_view.resize(size);
 
+        self.presented_dim = None;
         Some(std::mem::replace(&mut self.views[index], new_view))
     }
 

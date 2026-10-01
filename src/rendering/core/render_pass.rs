@@ -402,6 +402,29 @@ impl PassExecutor {
         F: FnMut(PassContext) -> Result<(), Box<dyn std::error::Error>>,
     {
         let frame_start_time = Instant::now();
+        // Each acquired surface image is fresh. Clear once, including an empty layout;
+        // later passes load this frame's content, never a previous presentation.
+        {
+            let _clear = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Frame Background"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: frame_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.1,
+                            b: 0.1,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
         log::trace!("[FRAME_EXEC] Starting frame execution - Surface: {}x{}, Has mesh view: {}, Has MIP view: {}, Has MPR view: {}", 
                     surface_width, surface_height, has_mesh_view, has_mip_view, has_mpr_view);
 
@@ -518,6 +541,10 @@ impl PassExecutor {
                 "[FRAME_EXEC] Frame execution completed with errors in {:.2}ms",
                 frame_start_time.elapsed().as_millis_f64()
             );
+            // A partial frame must not acknowledge pending view changes as presented.
+            return Err(Box::new(PassExecutionError::RenderingFailed(
+                "Frame execution failed".to_string(),
+            )));
         }
 
         Ok(())
@@ -544,34 +571,15 @@ impl PassExecutor {
         log::trace!("[MESH_PASS] Starting execution - Pass: '{}', Size: {}x{}, Target: Surface (direct), Depth: {}", 
                     descriptor.name, surface_width, surface_height, descriptor.uses_depth);
 
-        // Prepare depth texture if needed (only depth, no offscreen color texture)
+        // Borrow the persistent attachment; no unused color target or per-frame view creation.
         let depth_view_opt = if descriptor.uses_depth {
-            let texture_start = Instant::now();
-            texture_pool.ensure_textures(
+            texture_pool.ensure_depth(
                 device,
                 surface_width,
                 surface_height,
-                descriptor.uses_depth,
-            );
-            log::trace!(
-                "[MESH_PASS] Depth texture preparation completed in {:.2}ms",
-                texture_start.elapsed().as_millis_f64()
-            );
-
-            let view_start = Instant::now();
-            // Get just the depth view from get_mesh_views, ignoring the color view
-            let (_, depth_view_opt) = texture_pool.get_mesh_views(
-                device,
-                surface_width,
-                surface_height,
-                descriptor.color_format,
-                true,
-            );
-            log::trace!(
-                "[MESH_PASS] Depth view acquisition completed in {:.2}ms",
-                view_start.elapsed().as_millis_f64()
-            );
-            depth_view_opt
+                1,
+                get_mesh_depth_format(),
+            )
         } else {
             None
         };
@@ -597,7 +605,7 @@ impl PassExecutor {
                     store: wgpu::StoreOp::Store,
                 },
             })],
-            depth_stencil_attachment: depth_view_opt.as_ref().map(|depth_view| {
+            depth_stencil_attachment: depth_view_opt.map(|depth_view| {
                 wgpu::RenderPassDepthStencilAttachment {
                     view: depth_view,
                     depth_ops: Some(wgpu::Operations {

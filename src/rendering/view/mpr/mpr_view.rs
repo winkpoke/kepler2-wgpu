@@ -1,4 +1,16 @@
 use super::{MprRenderContext, MprViewWgpuImpl};
+use crate::rendering::view::invalidation::ViewInvalidation;
+
+#[derive(Clone, PartialEq)]
+struct MprDisplayState {
+    slice: f32,
+    base_screen: Mat4,
+    scale: f32,
+    pan: Vec3,
+    pos: (i32, i32),
+    dim: (u32, u32),
+    window: [f32; 3],
+}
 use crate::rendering::view::layout::compute_aspect_fit;
 use crate::{
     core::{
@@ -66,9 +78,36 @@ pub struct MprView {
     content_h_mm: f32,
     /// Uniform viewport padding in pixels
     padding_px: u32,
+    invalidation: ViewInvalidation<MprDisplayState>,
 }
 
 impl MprView {
+    fn display_state(&self) -> MprDisplayState {
+        MprDisplayState {
+            slice: self.slice,
+            base_screen: self.base_screen,
+            scale: self.scale,
+            pan: self.pan,
+            pos: self.pos,
+            dim: self.dim,
+            window: [
+                self.window_level.window_width(),
+                self.window_level.window_level(),
+                self.window_level.bias(),
+            ],
+        }
+    }
+
+    /// Shared immutable resources; uniforms remain private to this view.
+    pub fn render_context(&self) -> &Arc<MprRenderContext> {
+        &self.wgpu_impl.render_context
+    }
+
+    /// Volume resources shared by views of the same content.
+    pub fn render_content(&self) -> &Arc<RenderContent> {
+        &self.wgpu_impl.render_content
+    }
+
     /// Rebinds GPU resources without changing slice, oblique basis, or display state.
     /// Supply new content on device replacement; reuse existing content on format changes.
     pub fn rebuild_gpu_resources(
@@ -77,10 +116,24 @@ impl MprView {
         format: wgpu::TextureFormat,
         content: Option<Arc<RenderContent>>,
     ) {
+        self.rebuild_gpu_resources_with_context(
+            device,
+            Arc::new(MprRenderContext::new(device, format)),
+            content,
+        );
+    }
+
+    /// Rebinds to the factory's context when rebuilding multiple views together.
+    pub fn rebuild_gpu_resources_with_context(
+        &mut self,
+        device: &wgpu::Device,
+        context: Arc<MprRenderContext>,
+        content: Option<Arc<RenderContent>>,
+    ) {
         let content = content.unwrap_or_else(|| self.wgpu_impl.render_content.clone());
         let uniforms = self.wgpu_impl.uniforms;
         self.wgpu_impl = MprViewWgpuImpl::new(
-            Arc::new(MprRenderContext::new(device, format)),
+            context,
             device,
             content,
             Mat4::from_cols_array(&uniforms.frag.mat),
@@ -90,6 +143,7 @@ impl MprView {
         self.wgpu_impl.uniforms = uniforms;
         self.wgpu_impl.uniforms.frag.is_packed_rg8 = decode.is_packed_flag as f32;
         self.wgpu_impl.uniforms.frag.bias = decode.bias;
+        self.invalidation.invalidate();
     }
 
     /// Medical imaging parameter bounds for validation
@@ -235,6 +289,7 @@ impl MprView {
             content_w_mm,
             content_h_mm,
             padding_px: 0,
+            invalidation: Default::default(),
         }
     }
 
@@ -365,6 +420,10 @@ impl Renderable for MprView {
     /// Updates both vertex and fragment shader uniforms with current transformation
     /// matrix, slice position, and other rendering parameters.
     fn update(&mut self, queue: &wgpu::Queue) {
+        let state = self.display_state();
+        if !self.invalidation.needs_upload(&state) {
+            return;
+        }
         // Synchronize window/level settings with WGPU implementation only if dirty
         if self.window_level.is_dirty() {
             // Upload raw window/level (HU); bias handled in shader for RG8 path
@@ -383,6 +442,7 @@ impl Renderable for MprView {
 
         // Update GPU buffers with all current uniform values
         self.wgpu_impl.update_uniforms_buffers(queue);
+        self.invalidation.uploaded(state);
     }
 
     /// Render the MPR view to the current render pass.
@@ -437,6 +497,14 @@ impl Renderable for MprView {
 }
 
 impl View for MprView {
+    fn needs_redraw(&self) -> bool {
+        self.invalidation.needs_redraw(&self.display_state())
+    }
+
+    fn mark_presented(&mut self) {
+        self.invalidation.presented(self.display_state());
+    }
+
     /// Get the current position of this view on screen.
     fn position(&self) -> (i32, i32) {
         log::trace!("View position: {:#?}", self.pos);

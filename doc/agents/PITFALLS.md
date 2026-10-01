@@ -179,21 +179,30 @@ if device_supports_r16float(adapter) {
 
 ⚠️ **Texture pools and buffers must be dropped**
 
-- Use per-frame texture pools (`MeshTexturePool`)
-- Avoid long-lived GPU resources when possible
-- Explicitly drop unused resources
+- Retain `MeshTexturePool` in `GraphicsContext`, not in the frame function.
+- Cache only one depth texture/view pair, keyed by size, samples, and depth format.
+- Drop device-dependent resources with their owner, not on every frame.
+- Never use a process-wide pool or reuse attachments on a replacement device.
+- Release depth resources when no mesh views remain.
 
 ```rust
-// WRONG - Long-lived texture pool
-static mut TEXTURE_POOL: TexturePool = ...;
-
-// CORRECT - Drop after use
-{
-    let pool = TexturePool::new();
-    // ... use pool ...
-    drop(pool); // Explicit drop
+// WRONG - An empty pool cannot cache across frames.
+fn render_frame() {
+    let mut pool = MeshTexturePool::new();
+    // Every frame would allocate again.
 }
+
+// CORRECT - Borrow the graphics context's persistent pool.
+let depth = graphics_context.mesh_texture_pool.ensure_depth(
+    device, width, height, 1, depth_format,
+);
 ```
+
+⚠️ **Dirty uniforms do not imply partial surface redraws**
+
+Skip whole idle frames and unchanged uniform uploads, not clean-view draw calls inside
+a newly acquired surface frame. Clear the fresh frame once, then draw every visible view.
+Only acknowledge presentation after success; otherwise a failed frame can lose changes.
 
 ### Coordinate Transformations
 

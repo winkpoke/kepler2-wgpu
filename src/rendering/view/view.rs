@@ -83,10 +83,10 @@ impl ViewState {
     /// - Scale must be positive and less than 100x (prevents extreme zoom levels)
     /// - Dimensions must be non-zero (required for valid viewport)
     pub fn is_valid(&self) -> bool {
-        self.window_width > 0.0 
-            && self.scale > 0.0 
+        self.window_width > 0.0
+            && self.scale > 0.0
             && self.scale < 100.0  // Reasonable scale limit to prevent extreme zoom
-            && self.dimensions.0 > 0 
+            && self.dimensions.0 > 0
             && self.dimensions.1 > 0
     }
 }
@@ -109,6 +109,25 @@ impl Default for ViewState {
 /// operations needed for view management while allowing concrete implementations
 /// to add specialized functionality.
 pub trait View: Renderable + Any {
+    /// Whether this view differs from its last successfully presented state.
+    /// Custom views without invalidation tracking retain continuous rendering compatibility.
+    fn needs_redraw(&self) -> bool {
+        true
+    }
+
+    /// Called only after a complete frame has been submitted and presented successfully.
+    fn mark_presented(&mut self) {}
+
+    /// Whether visible animation requires subsequent frames.
+    fn is_animating(&self) -> bool {
+        false
+    }
+
+    /// Time until a deferred recovery update is required, if any.
+    fn next_update_in(&self) -> Option<std::time::Duration> {
+        None
+    }
+
     // type ViewType;
     /// Get the current position of the view on screen (top-left corner in pixels)
     fn position(&self) -> (i32, i32);

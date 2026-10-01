@@ -1,5 +1,9 @@
 #![feature(duration_millis_float)]
 
+// Allow unit and integration regressions to share the same headless GPU fixture.
+#[cfg(test)]
+extern crate self as kepler_wgpu;
+
 use log::warn;
 use std::sync::Arc;
 use winit::event_loop::EventLoopBuilder;

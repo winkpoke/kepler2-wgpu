@@ -8,6 +8,7 @@ pub mod app;
 pub mod app_model;
 pub mod appview;
 pub mod gl_canvas;
+mod redraw;
 pub mod render_app;
 
 // Re-exports for convenience

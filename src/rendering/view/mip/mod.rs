@@ -2,6 +2,7 @@
 
 use crate::core::{KeplerResult, WindowLevel};
 use crate::data::volume_encoding::VolumeEncoding;
+use crate::rendering::view::invalidation::ViewInvalidation;
 use crate::rendering::view::layout::compute_aspect_fit;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::{Renderable, View};
@@ -12,7 +13,7 @@ use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, Queue, Rend
 /// Configuration for Maximum Intensity Projection (MIP) rendering.
 /// Provides fixed quality settings for the MVP implementation to minimize complexity
 /// while delivering core MIP functionality.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MipConfig {
     /// Step size for ray marching in mm
     pub ray_step_size: f32,
@@ -310,6 +311,17 @@ impl MipViewWgpuImpl {
     }
 }
 
+#[derive(Clone, PartialEq)]
+struct MipDisplayState {
+    config: MipConfig,
+    position: (i32, i32),
+    dimensions: (u32, u32),
+    scale: f32,
+    pan: [f32; 3],
+    rotation: [f32; 3],
+    window: [f32; 2],
+}
+
 /// MIP view that integrates with the existing RenderContent architecture.
 pub struct MipView {
     /// WGPU implementation details
@@ -330,9 +342,22 @@ pub struct MipView {
     content_dimensions: (f32, f32),
     /// Window/level parameters for CT display
     window_level: WindowLevel,
+    invalidation: ViewInvalidation<MipDisplayState>,
 }
 
 impl MipView {
+    fn display_state(&self) -> MipDisplayState {
+        MipDisplayState {
+            config: self.config.clone(),
+            position: self.position,
+            dimensions: self.dimensions,
+            scale: self.scale,
+            pan: self.pan,
+            rotation: self.rotation_radians,
+            window: self.get_window_level(),
+        }
+    }
+
     /// Recreates GPU bindings and pipeline while preserving all CPU display parameters.
     /// New content is required when the device changes.
     pub fn rebuild_gpu_resources(
@@ -343,6 +368,7 @@ impl MipView {
     ) {
         let content = content.unwrap_or_else(|| self.wgpu_impl.render_content().clone());
         self.wgpu_impl = Arc::new(MipViewWgpuImpl::new(content, device, format));
+        self.invalidation.invalidate();
     }
 
     /// Create a new MIP view with the given WGPU implementation.
@@ -357,6 +383,7 @@ impl MipView {
             rotation_radians: [0.0, 0.0, 0.0],
             content_dimensions: (1.0, 1.0),
             window_level: WindowLevel::new(),
+            invalidation: Default::default(),
         }
     }
 
@@ -477,6 +504,9 @@ impl MipView {
 
 impl Renderable for MipView {
     fn update(&mut self, queue: &Queue) {
+        if !self.invalidation.needs_upload(&self.display_state()) {
+            return;
+        }
         log::trace!("[MIP_UPDATE] Starting MIP update");
 
         // Derive texture format flag for shader decoding
@@ -534,6 +564,8 @@ impl Renderable for MipView {
 
         // Upload uniforms to GPU buffer
         self.wgpu_impl.update_uniforms(queue, &uniforms);
+        // Mode defaults above mutate config; record the effective post-update state.
+        self.invalidation.uploaded(self.display_state());
 
         log::trace!(
             "[MIP_UPDATE] Uniforms set: mip_mode={}, window={}, level={}, lower={}, upper={}",
@@ -578,6 +610,14 @@ impl Renderable for MipView {
 }
 
 impl View for MipView {
+    fn needs_redraw(&self) -> bool {
+        self.invalidation.needs_redraw(&self.display_state())
+    }
+
+    fn mark_presented(&mut self) {
+        self.invalidation.presented(self.display_state());
+    }
+
     fn position(&self) -> (i32, i32) {
         self.position
     }

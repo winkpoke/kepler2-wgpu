@@ -98,26 +98,14 @@ pub fn render_offscreen(
     use_depth: bool,
     draw: impl FnOnce(&mut wgpu::RenderPass<'_>),
 ) -> Image {
-    let size = wgpu::Extent3d {
-        width,
-        height,
-        depth_or_array_layers: 1,
-    };
-    let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("Headless color target"),
-        size,
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    });
-    let color_view = texture.create_view(&Default::default());
     let depth_texture = use_depth.then(|| {
         gpu.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Headless mesh depth"),
-            size,
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -129,21 +117,11 @@ pub fn render_offscreen(
     let depth_view = depth_texture
         .as_ref()
         .map(|texture| texture.create_view(&Default::default()));
-    let unpadded_row = width * 4;
-    let padded_row = unpadded_row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
-        * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
-    let readback = gpu.device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("Headless pixel readback"),
-        size: u64::from(padded_row) * u64::from(height),
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
-    let mut encoder = gpu.device.create_command_encoder(&Default::default());
-    {
+    render_encoded_offscreen(gpu, width, height, format, |encoder, color_view| {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Headless rendering correctness"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &color_view,
+                view: color_view,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     // Non-grayscale clear makes missing/partial draws visible to assertions.
@@ -170,7 +148,44 @@ pub fn render_offscreen(
             occlusion_query_set: None,
         });
         draw(&mut pass);
-    }
+    })
+}
+
+/// Executes the production multi-pass encoder path and reads the complete target back.
+pub fn render_encoded_offscreen(
+    gpu: &Gpu,
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+    encode: impl FnOnce(&mut wgpu::CommandEncoder, &wgpu::TextureView),
+) -> Image {
+    let size = wgpu::Extent3d {
+        width,
+        height,
+        depth_or_array_layers: 1,
+    };
+    let texture = gpu.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("Headless color target"),
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let color_view = texture.create_view(&Default::default());
+    let unpadded_row = width * 4;
+    let padded_row = unpadded_row.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+        * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let readback = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("Headless pixel readback"),
+        size: u64::from(padded_row) * u64::from(height),
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    let mut encoder = gpu.device.create_command_encoder(&Default::default());
+    encode(&mut encoder, &color_view);
     encoder.copy_texture_to_buffer(
         wgpu::ImageCopyTexture {
             texture: &texture,

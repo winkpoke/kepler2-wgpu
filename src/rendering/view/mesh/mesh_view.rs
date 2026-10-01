@@ -6,11 +6,27 @@ use super::{
     mesh::{Lighting, Mesh},
     performance::{PerformanceStats, QualityController, QualityLevel},
 };
+use crate::rendering::view::invalidation::ViewInvalidation;
 use crate::{
     core::timing::Instant,
     rendering::view::{Renderable, View},
 };
 use glam::{Mat4, Quat, Vec3};
+use std::time::Duration;
+
+#[derive(Clone, PartialEq)]
+struct MeshDisplayState {
+    rotation: Mat4,
+    scale: f32,
+    pan: [f32; 3],
+    opacity: f32,
+    pos: (i32, i32),
+    dim: (u32, u32),
+    lighting: [u8; 64],
+    fallback: FallbackMode,
+    rotation_enabled: bool,
+    rotation_speed: f32,
+}
 use std::f32::consts::{FRAC_PI_2, PI};
 
 /// Function-level comment: Error types specific to mesh rendering operations
@@ -105,6 +121,8 @@ pub struct MeshView {
     pan: [f32; 3],
     /// Mesh opacity (0.0 transparent .. 1.0 opaque)
     opacity: f32,
+    invalidation: ViewInvalidation<MeshDisplayState>,
+    last_recovery_attempt: Instant,
 }
 
 impl Default for MeshView {
@@ -132,11 +150,32 @@ impl Default for MeshView {
             scale_factor: 1.0,
             pan: [0.0, 0.0, 0.0],
             opacity: 1.0,
+            invalidation: Default::default(),
+            last_recovery_attempt: Instant::now(),
         }
     }
 }
 
 impl MeshView {
+    fn display_state(&self) -> MeshDisplayState {
+        let lighting = self
+            .lighting
+            .clone()
+            .unwrap_or_else(|| self.create_default_lighting());
+        MeshDisplayState {
+            rotation: self.rotation,
+            scale: self.scale_factor,
+            pan: self.pan,
+            opacity: self.opacity,
+            pos: self.pos,
+            dim: self.dim,
+            lighting: bytemuck::cast(lighting.to_basic_uniforms()),
+            fallback: self.fallback_mode,
+            rotation_enabled: self.rotation_enabled,
+            rotation_speed: self.rotation_speed,
+        }
+    }
+
     /// Recreates mesh and orientation gizmo GPU resources, retaining interaction state.
     pub fn rebuild_gpu_resources(
         &mut self,
@@ -162,6 +201,7 @@ impl MeshView {
     /// Function-level comment: Attaches a basic mesh render context for GPU operations
     pub fn attach_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
         self.ctx = Some(ctx);
+        self.invalidation.invalidate();
         log::debug!("MeshView::attach_context - Basic context attached successfully");
         // Reset error state when new context is attached
         self.reset_error_state();
@@ -170,6 +210,7 @@ impl MeshView {
     /// Function-level comment: Attaches a basic mesh render context for the orientation cube
     pub fn attach_orientation_cube_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
         self.orientation_cube_ctx = Some(ctx);
+        self.invalidation.invalidate();
         log::debug!(
             "MeshView::attach_orientation_cube_context - Orientation cube context attached"
         );
@@ -188,6 +229,7 @@ impl MeshView {
     /// Function-level comment: Force a specific fallback mode for testing or recovery.
     pub fn set_fallback_mode(&mut self, mode: FallbackMode) {
         self.fallback_mode = mode;
+        self.last_recovery_attempt = Instant::now();
         log::info!("Mesh rendering fallback mode set to: {:?}", mode);
     }
 
@@ -195,6 +237,7 @@ impl MeshView {
     pub fn reset_error_state(&mut self) {
         self.consecutive_errors = 0;
         self.fallback_mode = FallbackMode::Normal;
+        self.invalidation.invalidate();
         log::info!("Mesh rendering error state reset");
     }
 
@@ -552,6 +595,7 @@ impl MeshView {
     fn handle_render_error(&mut self, error: MeshRenderError) {
         self.stats.error_count += 1;
         self.consecutive_errors += 1;
+        self.last_recovery_attempt = Instant::now();
 
         log::warn!(
             "Mesh render error (consecutive: {}): {}",
@@ -712,17 +756,17 @@ impl MeshView {
 
 impl Renderable for MeshView {
     fn update(&mut self, queue: &wgpu::Queue) {
-        // Function-level comment: Update mesh view state and perform health checks
-
-        // Update uniform buffers with current camera and lighting data
-        self.update_uniforms(queue);
+        if self.invalidation.needs_upload(&self.display_state()) || self.is_animating() {
+            self.update_uniforms(queue);
+            self.invalidation.uploaded(self.display_state());
+        }
 
         // Perform periodic health checks
         if self.stats.frame_count.is_multiple_of(300) {
             // Every 5 seconds at 60fps
             if !self.is_healthy() {
                 log::warn!("MeshView health check failed: consecutive_errors={}, last_success={:?}s ago, mode={:?}", 
-                    self.consecutive_errors, 
+                    self.consecutive_errors,
                     self.last_success_time.elapsed().as_secs_f64(),
                     self.fallback_mode
                 );
@@ -731,11 +775,12 @@ impl Renderable for MeshView {
 
         // Auto-recovery attempt if we've been disabled for too long
         if matches!(self.fallback_mode, FallbackMode::Disabled)
-            && self.last_success_time.elapsed().as_secs_f64() > 60.0
+            && self.last_recovery_attempt.elapsed() >= Duration::from_secs(60)
         {
             log::info!("Attempting auto-recovery from disabled state");
             self.fallback_mode = FallbackMode::Wireframe;
             self.consecutive_errors = 5; // Start with reduced error count
+            self.last_recovery_attempt = Instant::now();
         }
     }
 
@@ -772,6 +817,34 @@ impl Drop for MeshView {
 }
 
 impl View for MeshView {
+    fn needs_redraw(&self) -> bool {
+        self.invalidation.needs_redraw(&self.display_state())
+    }
+
+    fn mark_presented(&mut self) {
+        self.invalidation.presented(self.display_state());
+    }
+
+    fn is_animating(&self) -> bool {
+        self.ctx.is_some()
+            && self.dim.0 > 0
+            && self.dim.1 > 0
+            && self.rotation_enabled
+            && self.rotation_speed != 0.0
+            && self.fallback_mode != FallbackMode::Disabled
+    }
+
+    fn next_update_in(&self) -> Option<Duration> {
+        let delay = if self.fallback_mode == FallbackMode::Disabled {
+            Duration::from_secs(60)
+        } else if self.consecutive_errors > 0 {
+            Duration::from_millis(16)
+        } else {
+            return None;
+        };
+        Some(delay.saturating_sub(self.last_recovery_attempt.elapsed()))
+    }
+
     fn position(&self) -> (i32, i32) {
         self.pos
     }

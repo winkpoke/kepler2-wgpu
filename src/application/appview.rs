@@ -61,6 +61,28 @@ impl AppView {
         }
     }
 
+    /// Draws a complete pass, including clean views in the fresh surface image.
+    /// View state only controls uniform uploads, not whether its pixels are drawn.
+    pub(crate) fn render_pass(
+        &mut self,
+        context: crate::rendering::core::PassContext<'_>,
+    ) -> Result<(), wgpu::SurfaceError> {
+        use crate::rendering::core::PassId;
+        for view in self.layout.views_mut() {
+            let belongs_to_pass = match context.pass_id {
+                PassId::MeshPass => view.as_any().is::<MeshView>(),
+                PassId::MipPass => view.as_any().is::<MipView>(),
+                PassId::SlicePass => {
+                    !view.as_any().is::<MeshView>() && !view.as_any().is::<MipView>()
+                }
+            };
+            if belongs_to_pass {
+                view.render(context.pass)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Rebinds existing views to a surface format or replacement device.
     /// Passing content replaces volume GPU textures; `None` keeps same-device textures.
     pub(crate) fn rebuild_gpu_resources(
@@ -72,7 +94,11 @@ impl AppView {
     ) {
         for view in self.layout.views_mut() {
             if let Some(mpr) = view.as_any_mut().downcast_mut::<MprView>() {
-                mpr.rebuild_gpu_resources(device, format, content.clone());
+                mpr.rebuild_gpu_resources_with_context(
+                    device,
+                    self.view_factory.mpr_render_context(),
+                    content.clone(),
+                );
             } else if let Some(mip) = view.as_any_mut().downcast_mut::<MipView>() {
                 mip.rebuild_gpu_resources(device, format, content.clone());
             } else if let Some(mesh) = view.as_any_mut().downcast_mut::<MeshView>() {
@@ -731,3 +757,7 @@ impl AppView {
         }
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "appview_tests.rs"]
+mod tests;

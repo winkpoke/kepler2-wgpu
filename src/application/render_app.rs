@@ -14,8 +14,11 @@ use winit::{
 use winit::window::WindowBuilder;
 
 use crate::application::gl_canvas::{GLCanvas, UserEvent};
+use crate::application::redraw::{RedrawAction, RedrawScheduler};
+use crate::core::timing::Instant;
 use crate::rendering::core::Graphics;
 use crate::{application::App, rendering::LayoutContainer};
+use winit::event_loop::ControlFlow;
 use winit::event_loop::EventLoopProxy;
 
 #[cfg(target_arch = "wasm32")]
@@ -73,12 +76,11 @@ impl RenderApp {
         let mut state = self.state.take().unwrap();
         let proxy = self.proxy.take().unwrap();
 
-        let mut surface_configured = false;
+        let mut occluded = false;
+        let mut redraw = RedrawScheduler::default();
+        let clock = Instant::now();
 
         log::info!("Starting the event loop ...");
-
-        // Request initial redraw to start the rendering loop
-        state.window().request_redraw();
 
         event_loop.run(move |event, target| {
             match event {
@@ -113,7 +115,6 @@ impl RenderApp {
                 Event::UserEvent(UserEvent::Resize(width, height)) => {
                     log::info!("Resizing to width: {}, height: {}", width, height);
                     state.resize(PhysicalSize { width, height });
-                    surface_configured = true;
                 }
                 Event::UserEvent(UserEvent::SetPan(index, dx, dy)) => {
                     state.set_pan(index, dx, dy);
@@ -151,7 +152,7 @@ impl RenderApp {
                                 Some(())
                             })
                             .expect("Couldn't append canvas to document body.");
-                        let _ = window.request_inner_size(PhysicalSize::new(800, 800)); 
+                        let _ = window.request_inner_size(PhysicalSize::new(800, 800));
                         let proxy = proxy.clone();
                         state.app_view.layout.remove_all();
                         spawn_local(async move {
@@ -173,6 +174,8 @@ impl RenderApp {
                         log::error!("Failed to swap graphics: {}", e);
                         return;
                     }
+                    occluded = false;
+                    redraw.redraw_received(); // Discard an outstanding request for the old window.
                     state.resize(PhysicalSize { width: 800, height: 800 });
                     proxy.send_event(UserEvent::LoadDataFromCTVolume(volume)).unwrap();
                     log::info!("Graphics swapped in state.");
@@ -342,7 +345,6 @@ impl RenderApp {
                             } => target.exit(),
                             WindowEvent::Resized(physical_size) => {
                                 log::info!("physical_size: {physical_size:?}");
-                                surface_configured = true;
                                 state.resize(*physical_size);
                             }
                             WindowEvent::KeyboardInput {
@@ -535,16 +537,21 @@ impl RenderApp {
                             } => {
                                 state.set_render_mode(3, false, false, -158.50882,-92.941345,-1160.3865,134.81229,125.87259,-1035.0465, None, Some(0), 300.0, 400.0, None, 1);
                             }
+                            WindowEvent::Occluded(hidden) => {
+                                occluded = *hidden;
+                                if !occluded {
+                                    state.invalidate_surface();
+                                }
+                            }
                             WindowEvent::RedrawRequested => {
-                                // This tells winit that we want another frame after this one
-                                state.window().request_redraw();
-
-                                if !surface_configured {
+                                redraw.redraw_received();
+                                if !state.can_render() || occluded {
                                     return;
                                 }
+                                // An OS redraw also needs a complete frame, even if view state is clean.
                                 state.update();
                                 match state.render() {
-                                    Ok(_) => {}
+                                    Ok(_) => redraw.frame_succeeded(clock.elapsed()),
                                     // Reconfigure the surface if it's lost or outdated
                                     Err(
                                         wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated,
@@ -555,6 +562,7 @@ impl RenderApp {
                                         // Function-level comment: Surface reconfiguration handled by individual render contexts.
                                         log::info!("Surface error {:?} - render contexts will rebuild pipelines as needed", "Lost/Outdated");
                                         state.resize(size);
+                                        redraw.frame_failed(clock.elapsed());
                                     }
                                     // The system is out of memory, we should probably quit
                                     Err(wgpu::SurfaceError::OutOfMemory) => {
@@ -564,13 +572,36 @@ impl RenderApp {
 
                                     // This happens when the a frame takes too long to present
                                     Err(wgpu::SurfaceError::Timeout) => {
-                                        log::warn!("Surface timeout")
+                                        log::warn!("Surface timeout");
+                                        state.invalidate_surface();
+                                        redraw.frame_failed(clock.elapsed());
                                     }
                                 }
                             }
                             _ => {}
                         }
                     }
+                Event::Resumed => {
+                    occluded = false;
+                    state.invalidate_surface();
+                }
+                Event::Suspended => occluded = true,
+                Event::AboutToWait => {
+                    let action = redraw.schedule(
+                        clock.elapsed(), state.can_render() && !occluded,
+                        state.needs_redraw(), state.app_view.layout.is_animating(),
+                        state.app_view.layout.next_update_in(),
+                    );
+                    match action {
+                        RedrawAction::Request => {
+                            state.window().request_redraw();
+                            target.set_control_flow(ControlFlow::Wait);
+                        }
+                        RedrawAction::Wait => target.set_control_flow(ControlFlow::Wait),
+                        // winit chooses its native/web clock internally; no native Instant on WASM.
+                        RedrawAction::WaitFor(delay) => target.set_control_flow(ControlFlow::wait_duration(delay)),
+                    }
+                }
                 _ => {}
             }
         }).unwrap();

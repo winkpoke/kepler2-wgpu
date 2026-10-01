@@ -17,7 +17,6 @@ use winit::{event::*, window::Window};
 use crate::core::error::KeplerError;
 use crate::data::dicom::*;
 use crate::data::{ct_volume::*, AppModel};
-use crate::rendering::view::mesh::mesh_texture_pool::MeshTexturePool;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::*;
 use glam::Mat4;
@@ -43,6 +42,8 @@ pub struct App {
     pub(crate) app_model: AppModel,
     pub(crate) cached_mesh: Option<crate::mesh::mesh::Mesh>,
     pub(crate) saved_states: [usize; 4],
+    surface_dirty: bool,
+    surface_suspended: bool,
 }
 
 impl App {
@@ -88,7 +89,10 @@ impl App {
             default_float,
         );
 
+        let size = window.inner_size();
         Ok(Self {
+            surface_dirty: true,
+            surface_suspended: size.width == 0 || size.height == 0,
             graphics_context,
             app_view: AppView::new(layout, factory),
             app_model: AppModel::new(default_float),
@@ -124,6 +128,12 @@ impl App {
             None
         };
         if device_changed || format_changed {
+            self.app_view.view_factory = DefaultViewFactory::new(
+                new_graphics.device.clone(),
+                new_graphics.queue.clone(),
+                new_graphics.surface_config.format,
+                use_float,
+            );
             self.app_view.rebuild_gpu_resources(
                 &new_graphics.device,
                 &new_graphics.queue,
@@ -132,6 +142,9 @@ impl App {
             );
         }
         self.app_model.enable_float_volume_texture = use_float;
+        let window_size = new_graphics.window.inner_size();
+        self.surface_suspended = window_size.width == 0 || window_size.height == 0;
+        self.surface_dirty = true;
         self.graphics_context = GraphicsContext::from_graphics(new_graphics);
         self.refresh_view_factory();
         let size = (
@@ -139,13 +152,22 @@ impl App {
             self.graphics().surface_config.height,
         );
         // Keep the existing layout while the replacement window is minimized.
-        if size.0 > 0 && size.1 > 0 {
+        if !self.surface_suspended && size.0 > 0 && size.1 > 0 {
             self.app_view.resize(size);
         }
         Ok(())
     }
 
     fn refresh_view_factory(&mut self) {
+        if self.app_view.view_factory.is_compatible(
+            &self.graphics_context.graphics.device,
+            self.graphics_context.surface_format(),
+        ) {
+            self.app_view
+                .view_factory
+                .set_float_volume_texture(self.app_model.enable_float_volume_texture);
+            return;
+        }
         self.app_view.view_factory = DefaultViewFactory::new(
             Arc::clone(&self.graphics_context.graphics.device),
             Arc::clone(&self.graphics_context.graphics.queue),
@@ -158,13 +180,14 @@ impl App {
     fn synchronize_surface_format(&mut self) {
         let format = self.graphics_context.surface_format();
         if self.app_view.view_factory.surface_format() != format {
+            self.refresh_view_factory();
             self.app_view.rebuild_gpu_resources(
                 &self.graphics_context.graphics.device,
                 &self.graphics_context.graphics.queue,
                 format,
                 None,
             );
-            self.refresh_view_factory();
+            self.surface_dirty = true;
         }
         self.graphics_context
             .pass_executor
@@ -190,6 +213,8 @@ impl App {
 
     /// Function-level comment: Resize the application window and update graphics resources.
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+        self.surface_suspended = new_size.width == 0 || new_size.height == 0;
+        self.surface_dirty = true;
         // get max texture dimension
         let max_dim = self.graphics().device.limits().max_texture_dimension_2d;
 
@@ -223,13 +248,30 @@ impl App {
                 .configure(&self.graphics().device, &self.graphics().surface_config);
 
             self.synchronize_surface_format();
-            // Depth and other size-dependent targets are allocated by the per-frame texture pool.
+            // The persistent depth cache replaces size-dependent targets on the next mesh frame.
         }
     }
 
     #[allow(unused_variables)]
     pub fn input(&mut self, event: &WindowEvent) -> bool {
         false
+    }
+
+    /// Pending visual work, independent of animation and recovery deadlines.
+    pub fn needs_redraw(&self) -> bool {
+        self.surface_dirty
+            || self.app_view.layout.needs_redraw()
+            || self.app_view.view_factory.surface_format() != self.graphics_context.surface_format()
+    }
+
+    pub(crate) fn can_render(&self) -> bool {
+        !self.surface_suspended
+            && self.graphics().surface_config.width > 0
+            && self.graphics().surface_config.height > 0
+    }
+
+    pub(crate) fn invalidate_surface(&mut self) {
+        self.surface_dirty = true;
     }
 
     pub fn update(&mut self) {
@@ -268,6 +310,9 @@ impl App {
     /// Function-level comment: Renders the frame using separate render passes for 3D mesh and 2D slice content.
     /// This architecture provides better performance and cleaner separation of concerns.
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        if !self.can_render() {
+            return Ok(()); // Preserve pending work until the surface is restored.
+        }
         self.synchronize_surface_format();
         let frame = self.graphics().surface.get_current_texture()?;
         let frame_view = frame
@@ -300,9 +345,12 @@ impl App {
 
         // Execute frame using PassExecutor with separate render passes
         // Extract all needed values and mutable references in one go to avoid borrowing conflicts
-        // Create temporary texture pool per-frame; depth is ensured by pass executor
-        let mut texture_pool = MeshTexturePool::new();
-        let layout = &mut self.app_view.layout;
+        // Keep the pool device-scoped, and release it when there is no mesh to draw.
+        if !has_mesh_view {
+            self.graphics_context.mesh_texture_pool.clear_depth_view();
+        }
+        let texture_pool = &mut self.graphics_context.mesh_texture_pool;
+        let app_view = &mut self.app_view;
 
         let surface_width = self.graphics_context.graphics.surface_config.width;
         let surface_height = self.graphics_context.graphics.surface_config.height;
@@ -313,58 +361,17 @@ impl App {
             .execute_frame(
                 &mut encoder,
                 &frame_view,
-                &mut texture_pool,
+                texture_pool,
                 device,
                 surface_width,
                 surface_height,
                 has_mesh_view, // Whether there is a mesh view present in the layout
                 has_mip_view,  // Whether there is a MIP view present in the layout
                 has_mpr_view,  // Whether there is an MPR view present in the layout
-                |pass_context| {
-                    match pass_context.pass_id {
-                        crate::rendering::core::PassId::MeshPass => {
-                            // Function-level comment: Render 3D mesh content by finding MeshView in the layout
-                            for view in layout.views_mut().iter_mut() {
-                                if let Some(mesh_view) =
-                                    view.as_any_mut().downcast_mut::<MeshView>()
-                                {
-                                    // Call the MeshView render method with the pass context
-                                    mesh_view
-                                        .render(pass_context.pass)
-                                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-                                    break; // Only render the first mesh view found
-                                }
-                            }
-                            Ok(())
-                        }
-                        crate::rendering::core::PassId::MipPass => {
-                            // Function-level comment: Render MIP content by finding and rendering MIP views in the layout
-                            for view in layout.views_mut().iter_mut() {
-                                // Check if this view is a MipView and render it
-                                if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>()
-                                {
-                                    mip_view
-                                        .render(pass_context.pass)
-                                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-                                }
-                            }
-                            Ok(())
-                        }
-                        crate::rendering::core::PassId::SlicePass => {
-                            // Function-level comment: Render 2D slice content (MPR views only, skip MeshView)
-                            // Iterate through views and only render MPR views, not MeshView
-                            for view in layout.views_mut().iter_mut() {
-                                // Check if this is a MeshView and skip it during slice pass
-                                if view.as_any().downcast_ref::<MeshView>().is_some() {
-                                    continue;
-                                }
-                                // Render MPR views only
-                                view.render(pass_context.pass)
-                                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-                            }
-                            Ok(())
-                        }
-                    }
+                |context| {
+                    app_view
+                        .render_pass(context)
+                        .map_err(|error| Box::new(error) as Box<dyn std::error::Error>)
                 },
             )
             .map_err(|e| {
@@ -378,6 +385,8 @@ impl App {
             .submit(std::iter::once(encoder.finish()));
 
         frame.present();
+        self.app_view.layout.mark_presented();
+        self.surface_dirty = false;
         Ok(())
     }
 

@@ -35,7 +35,7 @@ Drop order matters:
 
 | Event | Resources updated |
 |---|---|
-| Ordinary resize, unchanged format | Surface configuration and layout; per-frame texture pool supplies size-dependent depth targets. No pipeline rebuild. |
+| Ordinary resize, unchanged format | Surface configuration and layout; the persistent depth cache replaces size-dependent targets on the next mesh frame. No pipeline rebuild. |
 | Same-device surface format change | Pass descriptors, view factory, and existing view GPU contexts; volume textures are reused. |
 | Device replacement via `App::swap_graphics` | Volume textures re-uploaded and all existing view GPU resources rebuilt, including orientation gizmos. |
 
@@ -143,6 +143,9 @@ pub trait View {
 - Manages `RenderContent` for each view
 - Handles texture loading and buffer creation
 - Coordinates with `AppModel` for data
+- Lazily owns one `Arc<MprRenderContext>` per device/attachment-format configuration
+- Shares immutable MPR pipeline/layout/quad buffers across creation and bulk GPU rebinding
+- Keeps uniforms and bind groups per view; the volume sampler remains shared in `RenderContent`
 
 ## Shader Management
 
@@ -171,9 +174,16 @@ Common uniform structures:
 
 ### Texture Pools
 
-Use per-frame texture pools to avoid fragmentation:
-- `MeshTexturePool` for 3D mesh rendering
-- Clear pools between frames or when swapping contexts
+`GraphicsContext` owns a persistent, depth-only `MeshTexturePool`:
+- Reuse the texture **and cached view** for `(width, height, sample_count, depth_format)`.
+- Keep at most one attachment; replace it on key changes and never allocate for zero sizes.
+- Release the attachment when mesh views are removed; drop the pool with its graphics context.
+- Never share a pool across devices. Graphics replacement constructs an empty pool.
+- Mesh color attaches directly to the surface; no temporary color target is allocated.
+
+The obsolete offscreen helpers `get_mesh_views`, `get_color_view`, and
+`ensure_mesh_offscreen_texture` have been removed. Use `ensure_depth`/`depth_view`;
+`ensure_textures`, `set_depth`, and `clear_depth_view` remain for compatibility.
 
 ### Buffer Management
 
@@ -217,6 +227,25 @@ The system uses multiple render passes for different view types:
 - Use `render_bundle` for repeated rendering operations
 
 ## Performance Optimization
+
+### Event-Driven Frames
+
+Built-in views compare small CPU state snapshots to their last uniform upload and
+successful presentation. This catches setters and direct configuration edits without
+invalidating on getters or no-op controls. Uploading does not consume pending presentation.
+`View::mark_presented` is called only after the complete frame succeeds.
+
+`RenderApp` schedules work in `AboutToWait`, not by recursively requesting redraws.
+Static idle viewers use `ControlFlow::Wait`; animation, surface retries, and deferred
+mesh recovery use bounded deadlines. Initial display, visual changes, layout clearing,
+resize, unocclusion, and graphics replacement trigger frames. Minimized/occluded windows
+wait without acquisition, retaining pending work for restoration.
+
+Every acquired surface image is cleared once and **all visible views are drawn**, even
+when only one view's uniforms changed. Surface images are not a retained backing store;
+per-view draw skipping requires a separate cached-output/compositing design.
+Custom `View` implementations retain continuous rendering by default; implement
+`needs_redraw`/`mark_presented` to opt into invalidation-aware scheduling.
 
 ### GPU Synchronization
 

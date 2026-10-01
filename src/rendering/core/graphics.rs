@@ -25,6 +25,8 @@ pub struct GraphicsContext {
     pub(crate) graphics: Graphics,
     /// Rendering pipeline orchestrator
     pub(crate) pass_executor: crate::rendering::core::PassExecutor,
+    /// Depth attachments are valid for this device and survive individual frames.
+    pub(crate) mesh_texture_pool: crate::rendering::view::mesh::mesh_texture_pool::MeshTexturePool,
 }
 
 impl GraphicsContext {
@@ -37,6 +39,7 @@ impl GraphicsContext {
         Ok(GraphicsContext {
             graphics,
             pass_executor,
+            mesh_texture_pool: Default::default(),
         })
     }
 
@@ -48,6 +51,7 @@ impl GraphicsContext {
         GraphicsContext {
             graphics,
             pass_executor,
+            mesh_texture_pool: Default::default(),
         }
     }
 

@@ -10,7 +10,7 @@ use crate::data::volume_encoding::VolumeEncoding;
 use crate::CTVolume;
 
 use log::{debug, info};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use crate::core::WindowLevel;
 use crate::rendering::view::mesh::basic_mesh_context::BasicMeshContext;
@@ -207,6 +207,7 @@ pub struct DefaultViewFactory {
     queue: Arc<wgpu::Queue>,
     surface_format: wgpu::TextureFormat,
     use_float_volume_texture: bool,
+    mpr_context: OnceLock<Arc<MprRenderContext>>,
 }
 
 impl DefaultViewFactory {
@@ -227,7 +228,29 @@ impl DefaultViewFactory {
             queue,
             surface_format,
             use_float_volume_texture,
+            mpr_context: OnceLock::new(),
         }
+    }
+
+    /// Immutable MPR resources shared by all views created or rebound by this factory.
+    pub fn mpr_render_context(&self) -> Arc<MprRenderContext> {
+        Arc::clone(
+            self.mpr_context
+                .get_or_init(|| Arc::new(MprRenderContext::new(&self.device, self.surface_format))),
+        )
+    }
+
+    /// Whether a refresh can reuse this factory's immutable GPU resources.
+    pub(crate) fn is_compatible(
+        &self,
+        device: &Arc<wgpu::Device>,
+        format: wgpu::TextureFormat,
+    ) -> bool {
+        Arc::ptr_eq(&self.device, device) && self.surface_format == format
+    }
+
+    pub(crate) fn set_float_volume_texture(&mut self, enabled: bool) {
+        self.use_float_volume_texture = enabled;
     }
 
     /// Function-level comment: Build RenderContent from CTVolume using configured texture format path
@@ -294,8 +317,7 @@ impl ViewFactory for DefaultViewFactory {
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
         let render_content = self.build_render_content(vol)?;
 
-        // Shared render context for MPR views
-        let render_context = Arc::new(MprRenderContext::new(&self.device, self.surface_format));
+        let render_context = self.mpr_render_context();
 
         // Configure WindowLevel defaults; mirror State logic where appropriate
         let mut winlev = WindowLevel::new();
@@ -353,8 +375,7 @@ impl ViewFactory for DefaultViewFactory {
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        // Shared render context for MPR views
-        let render_context = Arc::new(MprRenderContext::new(&self.device, self.surface_format));
+        let render_context = self.mpr_render_context();
 
         // Configure WindowLevel defaults; mirror State logic where appropriate
         let mut winlev = WindowLevel::new();
