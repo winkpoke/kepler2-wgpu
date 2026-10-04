@@ -43,6 +43,14 @@ GPU rebinding preserves CPU view state (slice/oblique basis, window/level, pan/z
 projection settings, and mesh rotation/opacity). Rebuild pipelines also when shaders
 or bind group layouts change.
 
+The complete bulk operation is `AppView::rebind_gpu_resources`: it receives a borrowed
+device/queue/attachment-format configuration, selects a compatible factory internally,
+and rebuilds existing views using its shared MPR context. `App` prepares replacement
+volume uploads before this operation; `None` retains same-device volume content.
+Standalone per-view rebuilding methods retain their existing interfaces. See the
+[production bulk-rebinding regression](../../src/application/appview_tests.rs) for
+context/texture reuse, CPU state, pending presentation, and headless pixel evidence.
+
 Headless regressions in `tests/rendering_correctness_tests.rs` validate independent
 factory formats and existing-view rebinding across BGRA/RGBA formats and two devices.
 
@@ -207,7 +215,9 @@ successful presentation. This catches setters and direct configuration edits wit
 invalidating on getters or no-op controls. Uploading does not consume pending presentation.
 `View::mark_presented` is called only after the complete frame succeeds.
 
-`RenderApp`'s owned `ApplicationHandler` schedules work in `about_to_wait`, not by recursively requesting redraws.
+`RenderApp`'s owned `ApplicationHandler` translates events into the private
+[viewer lifecycle operation](../../src/application/viewer_lifecycle.rs), which orders
+complete frames and scheduling effects in `about_to_wait`.
 Static idle viewers use `ControlFlow::Wait`; animation, surface retries, and deferred
 mesh recovery use bounded deadlines. Initial display, visual changes, layout clearing,
 resize, unocclusion, and graphics replacement trigger frames. Minimized/occluded windows

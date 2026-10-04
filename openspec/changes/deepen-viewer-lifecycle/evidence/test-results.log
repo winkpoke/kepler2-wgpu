@@ -1,0 +1,71 @@
+     Running unittests src/lib.rs (target/debug/deps/kepler_wgpu-806b1bea82d7466e)
+test application::viewer_lifecycle::tests::fatal_render_stop_survives_resume_and_replacement_until_explicit_quit ... ok
+test application::viewer_lifecycle::tests::failed_replacement_leaves_active_routing_and_outstanding_request_intact ... ok
+test application::viewer_lifecycle::tests::quit_clears_but_window_close_retains_layout_and_exits_only_once ... ok
+test application::viewer_lifecycle::tests::repeated_resume_complete_os_redraw_and_clean_idle_use_live_ordering ... ok
+test application::viewer_lifecycle::tests::recoverable_results_schedule_from_frame_completion_without_consuming_pending_work ... ok
+test application::viewer_lifecycle::tests::replacement_orders_effects_routes_active_window_and_retains_suspension ... ok
+test application::viewer_lifecycle::tests::unavailable_frame_is_not_success_and_animation_recovery_and_mutation_use_live_scheduler ... ok
+test application::viewer_lifecycle::tests::unavailable_intervals_keep_pending_work_and_restore_without_acquisition ... ok
+test application::appview::tests::control_and_linked_center_updates_invalidate_only_changed_views ... ok
+test application::appview::tests::transitions::malformed_upload_and_invalid_prerequisites_leave_old_layout_intact ... ok
+test application::appview::tests::production_frames_redraw_clean_views_and_clear_removed_layouts ... ok
+test application::appview::tests::bulk_rebinding_and_subsequent_creation_share_the_replacement_factory_context ... ok
+test application::appview::tests::transitions::mixed_precedence_custom_strategy_and_mesh_generation_retain_legacy_policy ... ok
+test application::appview::tests::transitions::successful_modes_commit_defaults_orientations_cache_and_pending_frame ... ok
+test application::appview::tests::transitions::returned_failures_preserve_all_committed_state_and_pixels ... ok
+test application::appview::tests::transitions::failures_from_single_mip_or_mesh_preserve_settings_and_pending_work ... ok
+test result: ok. 99 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
+     Running unittests src/main.rs (target/debug/deps/kepler-a2e750ce8a6452f5)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/coordinate_precision_tests.rs (target/debug/deps/coordinate_precision_tests-6e23799057891b3b)
+test result: ok. 5 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/coordinate_safety_tests.rs (target/debug/deps/coordinate_safety_tests-85708cfbcf5b4e9e)
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/debug_matrix.rs (target/debug/deps/debug_matrix-86ffd6e913c061e3)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/dicom_metadata_validation_tests.rs (target/debug/deps/dicom_metadata_validation_tests-7696ef8c2e508a2a)
+test result: ok. 31 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+     Running tests/dicom_pixel_data_validation_tests.rs (target/debug/deps/dicom_pixel_data_validation_tests-dccaedd26ab2a9cf)
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+     Running tests/dicom_tests.rs (target/debug/deps/dicom_tests-2f7a3ed9af7b8cfb)
+test result: ok. 0 passed; 0 failed; 8 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/error_handling_tests.rs (target/debug/deps/error_handling_tests-866cf20dd3b7e811)
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/gpu_safety_tests.rs (target/debug/deps/gpu_safety_tests-1d21aa525b1d1088)
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/layout_aspect_fit.rs (target/debug/deps/layout_aspect_fit-797904c924a41262)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/medical_imaging_tests.rs (target/debug/deps/medical_imaging_tests-32ed86a9703634fd)
+test result: ok. 9 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 0.03s
+     Running tests/mesh_integration_tests.rs (target/debug/deps/mesh_integration_tests-df917f18ce9cb596)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.22s
+     Running tests/mesh_view_tests.rs (target/debug/deps/mesh_view_tests-28db0deed6f1cf5c)
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/mpr_view_integration_tests.rs (target/debug/deps/mpr_view_integration_tests-119a30cdbc4c2028)
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/mpr_view_validation_tests.rs (target/debug/deps/mpr_view_validation_tests-a65dac58805c5519)
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/patient_safety_tests.rs (target/debug/deps/patient_safety_tests-436f46ff67fd236f)
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/performance_tests.rs (target/debug/deps/performance_tests-3f3c9fca9c3930f2)
+test result: ok. 21 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.11s
+     Running tests/redraw_state_tests.rs (target/debug/deps/redraw_state_tests-90ffca2b92bd1556)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/regression_tests.rs (target/debug/deps/regression_tests-1cc19e0fbb0862b9)
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/render_resource_lifetime_tests.rs (target/debug/deps/render_resource_lifetime_tests-09da5fe5fd428306)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+     Running tests/rendering_correctness_tests.rs (target/debug/deps/rendering_correctness_tests-990de07375093251)
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+     Running tests/robustness_tests.rs (target/debug/deps/robustness_tests-70a26221530d633b)
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/state_helper_tests.rs (target/debug/deps/state_helper_tests-e94de422d8ee3609)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/view_transition_integration_tests.rs (target/debug/deps/view_transition_integration_tests-3b68bb0b2c814c9b)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/volume_encoding_tests.rs (target/debug/deps/volume_encoding_tests-3d36d614bafa7975)
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+     Running tests/volume_integrity_tests.rs (target/debug/deps/volume_integrity_tests-cae18387be834d35)
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+test result: ok. 0 passed; 0 failed; 3 ignored; 0 measured; 0 filtered out; finished in 0.00s

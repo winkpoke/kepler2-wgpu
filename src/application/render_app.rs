@@ -12,7 +12,9 @@ use winit::{
 };
 
 use crate::application::gl_canvas::{GLCanvas, UserEvent};
-use crate::application::redraw::{FrameOwner, RedrawAction};
+use crate::application::viewer_lifecycle::{
+    LifecycleEvent, LifecycleHost, PendingWork, ViewerLifecycle, WindowSignal,
+};
 use crate::core::timing::Instant;
 use crate::rendering::core::Graphics;
 use crate::{application::App, rendering::LayoutContainer};
@@ -79,9 +81,8 @@ impl RenderApp {
         let handler = ViewerHandler {
             state: self.state.take().unwrap(),
             proxy: self.proxy.take().unwrap(),
-            owner: FrameOwner::default(),
+            lifecycle: ViewerLifecycle::default(),
             clock: Instant::now(),
-            shutting_down: false,
         };
         log::info!("Starting the event loop ...");
         #[cfg(not(target_arch = "wasm32"))]
@@ -110,9 +111,8 @@ fn attach_fault_transport(state: &App, proxy: &EventLoopProxy<UserEvent>) {
 struct ViewerHandler {
     state: App,
     proxy: EventLoopProxy<UserEvent>,
-    owner: FrameOwner,
+    lifecycle: ViewerLifecycle,
     clock: Instant,
-    shutting_down: bool,
 }
 
 impl ApplicationHandler<UserEvent> for ViewerHandler {
@@ -140,13 +140,14 @@ impl ApplicationHandler<UserEvent> for ViewerHandler {
 
 impl ViewerHandler {
     fn dispatch(&mut self, event: Event<UserEvent>, target: &ActiveEventLoop) {
-        if self.shutting_down {
+        if self.lifecycle.shutting_down() {
             return;
         }
         let state = &mut self.state;
         let proxy = &self.proxy;
-        let owner = &mut self.owner;
+        let lifecycle = &mut self.lifecycle;
         let clock = &self.clock;
+        let mut lifecycle_event = None;
         match event {
             Event::UserEvent(UserEvent::SetWindowLevel(index, window_level)) => {
                 state.set_window_level(index, window_level);
@@ -190,10 +191,7 @@ impl ViewerHandler {
             }
             Event::UserEvent(UserEvent::Quit) => {
                 log::info!("Quit event received. Exiting event loop.");
-                state.app_view.layout.remove_all();
-                owner.stop();
-                self.shutting_down = true;
-                target.exit();
+                lifecycle_event = Some(LifecycleEvent::Quit);
             }
             Event::UserEvent(UserEvent::SetWindowByDivId(div_id, volume)) => {
                 log::info!("SetWindowByDivId event received for div_id: {div_id}");
@@ -250,20 +248,7 @@ impl ViewerHandler {
             }
             Event::UserEvent(UserEvent::GraphicsReady(graphics, volume)) => {
                 log::info!("GraphicsReady event received.");
-                if let Err(e) = state.swap_graphics(graphics) {
-                    log::error!("Failed to swap graphics: {}", e);
-                    return;
-                }
-                attach_fault_transport(state, proxy);
-                owner.set_occluded(false); // Discard outstanding redraws for the old window.
-                state.resize(PhysicalSize {
-                    width: 800,
-                    height: 800,
-                });
-                proxy
-                    .send_event(UserEvent::LoadDataFromCTVolume(volume))
-                    .unwrap();
-                log::info!("Graphics swapped in state.");
+                lifecycle_event = Some(LifecycleEvent::GraphicsReady(graphics, volume));
             }
             Event::UserEvent(UserEvent::ClearLayout) => {
                 log::info!("ClearLayout event received.");
@@ -503,7 +488,7 @@ impl ViewerHandler {
             Event::WindowEvent {
                 ref event,
                 window_id,
-            } if FrameOwner::is_active_window(state.window().id(), window_id)
+            } if lifecycle.accepts_window(state.window().id(), window_id)
                 && !state.input(event) =>
             {
                 // UPDATED!
@@ -518,13 +503,17 @@ impl ViewerHandler {
                             },
                         ..
                     } => {
-                        owner.stop();
-                        self.shutting_down = true;
-                        target.exit();
+                        lifecycle_event = Some(LifecycleEvent::Window {
+                            id: window_id,
+                            signal: WindowSignal::Close,
+                        });
                     }
                     WindowEvent::Resized(physical_size) => {
                         log::info!("physical_size: {physical_size:?}");
-                        state.resize(*physical_size);
+                        lifecycle_event = Some(LifecycleEvent::Window {
+                            id: window_id,
+                            signal: WindowSignal::Resize(physical_size.width, physical_size.height),
+                        });
                     }
                     WindowEvent::KeyboardInput {
                         event:
@@ -867,53 +856,104 @@ impl ViewerHandler {
                         );
                     }
                     WindowEvent::Occluded(hidden) => {
-                        owner.set_occluded(*hidden);
-                        if !hidden {
-                            state.invalidate_surface();
-                        }
+                        lifecycle_event = Some(LifecycleEvent::Window {
+                            id: window_id,
+                            signal: WindowSignal::Occluded(*hidden),
+                        });
                     }
                     WindowEvent::RedrawRequested => {
-                        owner.redraw.redraw_received();
-                        if !owner.ready(state.can_render()) {
-                            return;
-                        }
-                        // An OS redraw also needs a complete frame, even if view state is clean.
-                        state.update();
-                        let outcome = state.render_frame();
-                        owner.frame_outcome(&outcome, clock.elapsed());
-                        if let Err(error) = outcome {
-                            log::error!("Rendering stopped: {error}. Restart the viewer (fresh page in a browser).");
-                        }
+                        lifecycle_event = Some(LifecycleEvent::Window {
+                            id: window_id,
+                            signal: WindowSignal::Redraw,
+                        });
                     }
                     _ => {}
                 }
             }
             Event::Resumed => {
-                owner.resumed();
-                state.invalidate_surface();
+                lifecycle_event = Some(LifecycleEvent::Resumed);
             }
-            Event::Suspended => owner.suspended(),
+            Event::Suspended => lifecycle_event = Some(LifecycleEvent::Suspended),
             Event::AboutToWait => {
-                let action = owner.schedule(
-                    clock.elapsed(),
-                    state.can_render(),
-                    state.needs_redraw(),
-                    state.app_view.layout.is_animating(),
-                    state.app_view.layout.next_update_in(),
-                );
-                match action {
-                    RedrawAction::Request => {
-                        state.window().request_redraw();
-                        target.set_control_flow(ControlFlow::Wait);
-                    }
-                    RedrawAction::Wait => target.set_control_flow(ControlFlow::Wait),
-                    // winit chooses its native/web clock internally; no native Instant on WASM.
-                    RedrawAction::WaitFor(delay) => {
-                        target.set_control_flow(ControlFlow::wait_duration(delay))
-                    }
-                }
+                lifecycle_event = Some(LifecycleEvent::AboutToWait);
             }
             _ => {}
         }
+        if let Some(event) = lifecycle_event {
+            lifecycle.handle(
+                event,
+                &mut WinitLifecycleHost {
+                    state,
+                    proxy,
+                    target,
+                },
+                || clock.elapsed(),
+            );
+        }
+    }
+}
+
+/// Borrowed platform adapter; the complete lifecycle sequence lives in ViewerLifecycle.
+struct WinitLifecycleHost<'a> {
+    state: &'a mut App,
+    proxy: &'a EventLoopProxy<UserEvent>,
+    target: &'a ActiveEventLoop,
+}
+
+impl LifecycleHost for WinitLifecycleHost<'_> {
+    type WindowId = winit::window::WindowId;
+    type Graphics = Graphics;
+    type Volume = crate::data::ct_volume::CTVolume;
+
+    fn active_window_id(&self) -> Self::WindowId {
+        self.state.window().id()
+    }
+    fn surface_ready(&self) -> bool {
+        self.state.can_render()
+    }
+    fn pending_work(&self) -> PendingWork {
+        PendingWork {
+            surface_ready: self.state.can_render(),
+            dirty: self.state.needs_redraw(),
+            animating: self.state.app_view.layout.is_animating(),
+            recovery_in: self.state.app_view.layout.next_update_in(),
+        }
+    }
+    fn invalidate_surface(&mut self) {
+        self.state.invalidate_surface();
+    }
+    fn update(&mut self) {
+        self.state.update();
+    }
+    fn render_frame(&mut self) -> crate::core::error::KeplerResult<super::frame::FrameOutcome> {
+        self.state.render_frame()
+    }
+    fn swap_graphics(&mut self, graphics: Graphics) -> crate::core::error::KeplerResult<()> {
+        self.state.swap_graphics(graphics)
+    }
+    fn attach_fault_transport(&mut self) {
+        attach_fault_transport(self.state, self.proxy);
+    }
+    fn resize(&mut self, width: u32, height: u32) {
+        self.state.resize(PhysicalSize { width, height });
+    }
+    fn enqueue_volume(&mut self, volume: Self::Volume) {
+        self.proxy
+            .send_event(UserEvent::LoadDataFromCTVolume(volume))
+            .unwrap();
+    }
+    fn clear_views(&mut self) {
+        self.state.app_view.layout.remove_all();
+    }
+    fn request_redraw(&mut self) {
+        self.state.window().request_redraw();
+    }
+    fn wait(&mut self, delay: Option<std::time::Duration>) {
+        // Winit chooses its native/web clock internally; no native Instant on WASM.
+        self.target
+            .set_control_flow(delay.map_or(ControlFlow::Wait, ControlFlow::wait_duration));
+    }
+    fn exit(&mut self) {
+        self.target.exit();
     }
 }

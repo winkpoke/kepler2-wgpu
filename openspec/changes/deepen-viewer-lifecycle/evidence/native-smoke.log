@@ -1,0 +1,159 @@
+[2026-10-04T06:30:14Z WARN  kepler_wgpu] Start the program ...
+[2026-10-04T06:30:14Z ERROR winit::platform_impl::macos::event_handler] tried to run event handler, but no handler was set
+[2026-10-04T06:30:14Z ERROR winit::platform_impl::macos::event_handler] tried to run event handler, but no handler was set
+[2026-10-04T06:30:14Z ERROR winit::platform_impl::macos::event_handler] tried to run event handler, but no handler was set
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::rendering::core::graphics] Backend override via env: METAL
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::rendering::core::graphics] Instance validation enabled via env KEPLER_WGPU_VALIDATION
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::rendering::core::graphics] Adapter: Apple M5 (Metal), vendor: 0, device: 0
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::rendering::core::graphics] Final backend chosen by wgpu: Metal
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::rendering::core::graphics] Startup GPU summary: requested_backend=metal validation=enabled final_backend=Metal adapter="Apple M5" vendor=0 device=0
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::rendering::core::graphics] GPU volume capabilities: backend=Metal r16float_filterable=true rg8_filterable=true max_3d_texture_dimension=2048 default_encoding=R16Float
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::rendering::core::graphics] Surface supports 4 formats:
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::rendering::core::graphics]   - Bgra8UnormSrgb: sRGB=true
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::rendering::core::graphics]   - Bgra8Unorm: sRGB=false
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::rendering::core::graphics]   - Rgba16Float: sRGB=false
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::rendering::core::graphics]   - Rgb10a2Unorm: sRGB=false
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::rendering::core::graphics] Surface format chosen: Bgra8Unorm (sRGB: false), present_mode: Fifo, alpha_mode: Opaque
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::application::app] R16Float filterable sampling supported: true. Defaulting to R16Float
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::application::render_app] Starting the event loop ...
+SMOKE: missing-volume mesh rejection
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::application::gl_canvas] Sent SetRenderMode event: mode=2, save_mesh=true, crop=false, sx=0, sy=0, sz=0, lx=0, ly=0, lz=0, mesh_index=None, index=None, iso_min=200, iso_max=800, orientation_index=0
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::application::render_app] physical_size: PhysicalSize { width: 800, height: 800 }
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::application::app] Resizing to: 800, 800
+[2026-10-04T06:30:14Z ERROR kepler_wgpu::application::app] Failed to switch view layout (mode 2): Validation error: view-layout transition requires a loaded volume
+[2026-10-04T06:30:14Z INFO  kepler_wgpu::application::render_app] SetRenderMode toggled at runtime: mode=2, mip=None, mesh_index=None, index=None, orientation_index=0
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::application::gl_canvas] Sent LoadDataFromCTVolume event
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::application::app] Using R16Float volume texture path
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::mpr::mpr_render_context] MprRenderContext initialized with shared GPU resources
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::core::window_level] Applied preset: width=1500, level=400
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view_wgpu_impl] MprViewWgpuImpl defaults => window_width: 350.0, window_level: 40.0, is_packed_rg8: 0
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] Created MprView with orientation: Transverse, scale: 1.0, translate: Vec3(0.0, 0.0, 0.0), pos: (0, 0), dim: (1, 1)
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] [Transverse]: Content size in mm: (16.0, 16.0)
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::view_factory] [DefaultViewFactory] Created MPR view (with_content) for Transverse at (0, 0) size (0, 0)
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::layout] Adding view at position: (0, 0) with size: (399, 399)
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::core::window_level] Applied preset: width=1500, level=400
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view_wgpu_impl] MprViewWgpuImpl defaults => window_width: 350.0, window_level: 40.0, is_packed_rg8: 0
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] Created MprView with orientation: Coronal, scale: 1.0, translate: Vec3(0.0, 0.0, 0.0), pos: (0, 0), dim: (1, 1)
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] [Coronal]: Content size in mm: (16.0, 16.0)
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::view_factory] [DefaultViewFactory] Created MPR view (with_content) for Coronal at (0, 0) size (0, 0)
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::layout] Adding view at position: (401, 0) with size: (399, 399)
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::core::window_level] Applied preset: width=1500, level=400
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view_wgpu_impl] MprViewWgpuImpl defaults => window_width: 350.0, window_level: 40.0, is_packed_rg8: 0
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] Created MprView with orientation: Sagittal, scale: 1.0, translate: Vec3(0.0, 0.0, 0.0), pos: (0, 0), dim: (1, 1)
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] [Sagittal]: Content size in mm: (16.0, 16.0)
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::view_factory] [DefaultViewFactory] Created MPR view (with_content) for Sagittal at (0, 0) size (0, 0)
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::layout] Adding view at position: (0, 401) with size: (399, 399)
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::core::window_level] Applied preset: width=1500, level=400
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view_wgpu_impl] MprViewWgpuImpl defaults => window_width: 350.0, window_level: 40.0, is_packed_rg8: 0
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] Created MprView with orientation: Transverse, scale: 1.0, translate: Vec3(0.0, 0.0, 0.0), pos: (0, 0), dim: (1, 1)
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] [Transverse]: Content size in mm: (16.0, 16.0)
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::view_factory] [DefaultViewFactory] Created MPR view (with_content) for Transverse at (0, 0) size (0, 0)
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::rendering::view::layout] Adding view at position: (401, 401) with size: (399, 399)
+[2026-10-04T06:30:17Z INFO  kepler_wgpu::application::render_app] Loaded data from CTVolume
+SMOKE: modified MPR settings and orientation
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::application::app] View 0 set_scale: 1.3
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::application::render_app] Scale set to: 1.3
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::application::gl_canvas] Sent SetScale event for window 0: 1.3
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::application::gl_canvas] Sent SetPan event for window 0: (0.1, 0.2)
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::application::gl_canvas] Sent SetWindowLevel event for window 0: 0.0
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::application::gl_canvas] Sent SetSliceMM event for window 0: 2.0
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::application::gl_canvas] Sent SetRenderMode event: mode=0, save_mesh=true, crop=false, sx=0, sy=0, sz=0, lx=0, ly=0, lz=0, mesh_index=None, index=Some(0), iso_min=200, iso_max=800, orientation_index=3
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::application::app] View 0 pan to: (
+        0.1,
+        0.2,
+    )
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::application::render_app] Pan set to: dx=0.1, dy=0.2
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::application::app] View 0 set_window_level: 0
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::application::render_app] Window level set to: 0
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::application::app] View 0 set_slice: 2
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::application::render_app] Slice set to: 2 mm
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::application::view_layout_transition] Using R16Float volume texture path
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::core::window_level] Applied preset: width=1500, level=400
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view_wgpu_impl] MprViewWgpuImpl defaults => window_width: 350.0, window_level: 40.0, is_packed_rg8: 0
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] Created MprView with orientation: Oblique, scale: 1.0, translate: Vec3(0.0, 0.0, 0.0), pos: (0, 0), dim: (1, 1)
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] [Oblique]: Content size in mm: (16.0, 16.0)
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::rendering::view::view_factory] [DefaultViewFactory] Created MPR view (with_content) for Oblique at (0, 0) size (0, 0)
+[2026-10-04T06:30:20Z INFO  kepler_wgpu::application::render_app] SetRenderMode toggled at runtime: mode=0, mip=None, mesh_index=None, index=Some(0), orientation_index=3
+SMOKE: single MIP
+[2026-10-04T06:30:23Z INFO  kepler_wgpu::application::gl_canvas] Sent SetRenderMode event: mode=1, save_mesh=true, crop=false, sx=0, sy=0, sz=0, lx=0, ly=0, lz=0, mesh_index=None, index=None, iso_min=200, iso_max=800, orientation_index=0
+[2026-10-04T06:30:23Z INFO  kepler_wgpu::application::view_layout_transition] Using R16Float volume texture path
+[2026-10-04T06:30:23Z INFO  kepler_wgpu::rendering::view::view_factory] [DefaultViewFactory] Created MIP view (with_content) at (0, 0) size (0, 0)
+[2026-10-04T06:30:23Z INFO  kepler_wgpu::application::render_app] SetRenderMode toggled at runtime: mode=1, mip=None, mesh_index=None, index=None, orientation_index=0
+SMOKE: single mesh generation
+[2026-10-04T06:30:26Z INFO  kepler_wgpu::application::gl_canvas] Sent SetRenderMode event: mode=2, save_mesh=false, crop=false, sx=0, sy=0, sz=0, lx=0, ly=0, lz=0, mesh_index=Some(0), index=None, iso_min=200, iso_max=800, orientation_index=0
+[2026-10-04T06:30:26Z INFO  kepler_wgpu::application::view_layout_transition] Using R16Float volume texture path
+[2026-10-04T06:30:26Z INFO  kepler_wgpu::rendering::view::mesh::mesh] --- Processing Chunk 0 (Slices 0 to 8) ---
+Merging vertices (Sort-based)...
+Merged 5052 -> 924 vertices
+Smoothing mesh (Accumulator-based)...
+Downsampling mesh (with pinning)...
+[2026-10-04T06:30:26Z INFO  kepler_wgpu::rendering::view::mesh::mesh] Generated Total: 68 vertices, 91 triangles (normalized)
+[2026-10-04T06:30:26Z INFO  kepler_wgpu::rendering::view::mesh::mesh_view] Mesh rotation disabled
+[2026-10-04T06:30:26Z INFO  kepler_wgpu::rendering::view::view_factory] [DefaultViewFactory] Mesh rotation disabled for consistent inspection
+[2026-10-04T06:30:26Z INFO  kepler_wgpu::rendering::view::mesh::basic_mesh_context] Creating BasicMeshContext with 68 vertices, 273 indices, depth: true
+[2026-10-04T06:30:26Z INFO  kepler_wgpu::rendering::view::mesh::basic_mesh_context] BasicMeshContext created successfully
+[2026-10-04T06:30:26Z INFO  kepler_wgpu::rendering::view::mesh::mesh_view] Mesh rendering error state reset
+[2026-10-04T06:30:26Z INFO  kepler_wgpu::rendering::view::mesh::basic_mesh_context] Creating BasicMeshContext with 24 vertices, 36 indices, depth: true
+[2026-10-04T06:30:26Z INFO  kepler_wgpu::rendering::view::mesh::basic_mesh_context] BasicMeshContext created successfully
+[2026-10-04T06:30:26Z INFO  kepler_wgpu::rendering::view::view_factory] [DefaultViewFactory] Created Mesh view (with_content) at (0, 0) size (0, 0)
+[2026-10-04T06:30:26Z INFO  kepler_wgpu::application::render_app] SetRenderMode toggled at runtime: mode=2, mip=None, mesh_index=Some(0), index=None, orientation_index=0
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::application::gl_canvas] Sent SetMeshScale event for window 0: 1.3
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mesh::mesh_view] Mesh scale factor set to 1.300
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::application::app] Mesh scale set to 1.300
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::application::render_app] Mesh scale set to 1.300
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mesh::mesh_view] Mesh pan offset set to (0.1, 0.2)
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::application::app] Mesh pan set to (0.100, 0.200)
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::application::render_app] Mesh pan set to dx=0.100, dy=0.200
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::application::gl_canvas] Sent SetMeshPan event for window 0: (0.1, 0.2)
+SMOKE: mixed MIP/mesh, resize
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::application::gl_canvas] Sent SetRenderMode event: mode=3, save_mesh=true, crop=false, sx=0, sy=0, sz=0, lx=0, ly=0, lz=0, mesh_index=Some(3), index=None, iso_min=200, iso_max=800, orientation_index=0
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::application::gl_canvas] Sent Resize event: width=640, height=480
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::application::view_layout_transition] Using R16Float volume texture path
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::core::window_level] Applied preset: width=1500, level=400
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view_wgpu_impl] MprViewWgpuImpl defaults => window_width: 350.0, window_level: 40.0, is_packed_rg8: 0
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] Created MprView with orientation: Oblique, scale: 1.0, translate: Vec3(0.0, 0.0, 0.0), pos: (0, 0), dim: (1, 1)
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] [Oblique]: Content size in mm: (16.0, 16.0)
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::view_factory] [DefaultViewFactory] Created MPR view (with_content) for Oblique at (0, 0) size (0, 0)
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::core::window_level] Applied preset: width=1500, level=400
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view_wgpu_impl] MprViewWgpuImpl defaults => window_width: 350.0, window_level: 40.0, is_packed_rg8: 0
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] Created MprView with orientation: Coronal, scale: 1.0, translate: Vec3(0.0, 0.0, 0.0), pos: (0, 0), dim: (1, 1)
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] [Coronal]: Content size in mm: (16.0, 16.0)
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::view_factory] [DefaultViewFactory] Created MPR view (with_content) for Coronal at (0, 0) size (0, 0)
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::core::window_level] Applied preset: width=1500, level=400
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view_wgpu_impl] MprViewWgpuImpl defaults => window_width: 350.0, window_level: 40.0, is_packed_rg8: 0
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] Created MprView with orientation: Sagittal, scale: 1.0, translate: Vec3(0.0, 0.0, 0.0), pos: (0, 0), dim: (1, 1)
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] [Sagittal]: Content size in mm: (16.0, 16.0)
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::view_factory] [DefaultViewFactory] Created MPR view (with_content) for Sagittal at (0, 0) size (0, 0)
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::core::window_level] Applied preset: width=1500, level=400
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view_wgpu_impl] MprViewWgpuImpl defaults => window_width: 350.0, window_level: 40.0, is_packed_rg8: 0
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] Created MprView with orientation: Transverse, scale: 1.0, translate: Vec3(0.0, 0.0, 0.0), pos: (0, 0), dim: (1, 1)
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] [Transverse]: Content size in mm: (16.0, 16.0)
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::view_factory] [DefaultViewFactory] Created MPR view (with_content) for Transverse at (0, 0) size (0, 0)
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::view_factory] [DefaultViewFactory] Created MIP view (with_content) at (0, 0) size (0, 0)
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mesh::mesh_view] Mesh rotation disabled
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::view_factory] [DefaultViewFactory] Mesh rotation disabled for consistent inspection
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mesh::basic_mesh_context] Creating BasicMeshContext with 68 vertices, 273 indices, depth: true
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mesh::basic_mesh_context] BasicMeshContext created successfully
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mesh::mesh_view] Mesh rendering error state reset
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mesh::basic_mesh_context] Creating BasicMeshContext with 24 vertices, 36 indices, depth: true
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::mesh::basic_mesh_context] BasicMeshContext created successfully
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::rendering::view::view_factory] [DefaultViewFactory] Created Mesh view (with_content) at (0, 0) size (0, 0)
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::application::render_app] SetRenderMode toggled at runtime: mode=3, mip=Some(2), mesh_index=Some(3), index=None, orientation_index=0
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::application::render_app] Resizing to width: 640, height: 480
+[2026-10-04T06:30:29Z INFO  kepler_wgpu::application::app] Resizing to: 640, 480
+SMOKE: invalid orientation leaves old layout
+[2026-10-04T06:30:32Z INFO  kepler_wgpu::application::gl_canvas] Sent SetRenderMode event: mode=0, save_mesh=true, crop=false, sx=0, sy=0, sz=0, lx=0, ly=0, lz=0, mesh_index=None, index=None, iso_min=200, iso_max=800, orientation_index=9
+[2026-10-04T06:30:32Z ERROR kepler_wgpu::application::app] Failed to switch view layout (mode 0): Validation error: view-layout transition: MPR orientation index 9 is outside 0..=3
+[2026-10-04T06:30:32Z INFO  kepler_wgpu::application::render_app] SetRenderMode toggled at runtime: mode=0, mip=None, mesh_index=None, index=None, orientation_index=9
+SMOKE: final MPR and quit
+[2026-10-04T06:30:35Z INFO  kepler_wgpu::application::gl_canvas] Sent SetRenderMode event: mode=0, save_mesh=true, crop=false, sx=0, sy=0, sz=0, lx=0, ly=0, lz=0, mesh_index=None, index=None, iso_min=200, iso_max=800, orientation_index=0
+[2026-10-04T06:30:35Z INFO  kepler_wgpu::application::view_layout_transition] Using R16Float volume texture path
+[2026-10-04T06:30:35Z INFO  kepler_wgpu::core::window_level] Applied preset: width=1500, level=400
+[2026-10-04T06:30:35Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view_wgpu_impl] MprViewWgpuImpl defaults => window_width: 350.0, window_level: 40.0, is_packed_rg8: 0
+[2026-10-04T06:30:35Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] Created MprView with orientation: Transverse, scale: 1.0, translate: Vec3(0.0, 0.0, 0.0), pos: (0, 0), dim: (1, 1)
+[2026-10-04T06:30:35Z INFO  kepler_wgpu::rendering::view::mpr::mpr_view] [Transverse]: Content size in mm: (16.0, 16.0)
+[2026-10-04T06:30:35Z INFO  kepler_wgpu::rendering::view::view_factory] [DefaultViewFactory] Created MPR view (with_content) for Transverse at (0, 0) size (0, 0)
+[2026-10-04T06:30:35Z INFO  kepler_wgpu::application::render_app] SetRenderMode toggled at runtime: mode=0, mip=None, mesh_index=None, index=None, orientation_index=0
+[2026-10-04T06:30:38Z INFO  kepler_wgpu::application::gl_canvas] Sent Quit event
+[2026-10-04T06:30:38Z INFO  kepler_wgpu::application::render_app] Quit event received. Exiting event loop.
+SMOKE: normal return

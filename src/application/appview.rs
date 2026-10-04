@@ -48,6 +48,14 @@ pub struct AppView {
     pub(crate) saved_states: Vec<CapturedViewState>,
 }
 
+/// Borrowed device/attachment configuration for one complete bulk rebinding operation.
+pub(super) struct ViewGpuConfiguration<'a> {
+    pub device: &'a Arc<wgpu::Device>,
+    pub queue: &'a Arc<wgpu::Queue>,
+    pub format: wgpu::TextureFormat,
+    pub use_float_volume_texture: bool,
+}
+
 impl AppView {
     /// Construct a new AppView from a layout and a view factory.
     ///
@@ -83,15 +91,31 @@ impl AppView {
         Ok(())
     }
 
-    /// Rebinds existing views to a surface format or replacement device.
+    /// Selects a compatible factory and rebinds all existing views together.
     /// Passing content replaces volume GPU textures; `None` keeps same-device textures.
-    pub(crate) fn rebuild_gpu_resources(
+    /// App validates any replacement upload before calling this operation.
+    pub(super) fn rebind_gpu_resources(
         &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        format: wgpu::TextureFormat,
+        configuration: ViewGpuConfiguration<'_>,
         content: Option<Arc<RenderContent>>,
     ) {
+        let ViewGpuConfiguration {
+            device,
+            queue,
+            format,
+            use_float_volume_texture,
+        } = configuration;
+        if self.view_factory.is_compatible(device, format) {
+            self.view_factory
+                .set_float_volume_texture(use_float_volume_texture);
+        } else {
+            self.view_factory = DefaultViewFactory::new(
+                Arc::clone(device),
+                Arc::clone(queue),
+                format,
+                use_float_volume_texture,
+            );
+        }
         for view in self.layout.views_mut() {
             if let Some(mpr) = view.as_any_mut().downcast_mut::<MprView>() {
                 mpr.rebuild_gpu_resources_with_context(

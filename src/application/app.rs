@@ -178,18 +178,19 @@ impl App {
             None
         };
         if device_changed || format_changed {
-            self.app_view.view_factory = DefaultViewFactory::new(
-                new_graphics.device.clone(),
-                new_graphics.queue.clone(),
-                new_graphics.surface_config.format,
-                use_float,
-            );
-            self.app_view.rebuild_gpu_resources(
-                &new_graphics.device,
-                &new_graphics.queue,
-                new_graphics.surface_config.format,
+            self.app_view.rebind_gpu_resources(
+                super::appview::ViewGpuConfiguration {
+                    device: &new_graphics.device,
+                    queue: &new_graphics.queue,
+                    format: new_graphics.surface_config.format,
+                    use_float_volume_texture: use_float,
+                },
                 content,
             );
+        } else {
+            self.app_view
+                .view_factory
+                .set_float_volume_texture(use_float);
         }
         self.app_model.enable_float_volume_texture = use_float;
         let window_size = new_graphics.window.inner_size();
@@ -197,7 +198,6 @@ impl App {
         self.surface_dirty = true;
         self.reconfigure_pending = false;
         self.graphics_context = GraphicsContext::from_graphics(new_graphics);
-        self.refresh_view_factory();
         let size = (
             self.graphics().surface_config.width,
             self.graphics().surface_config.height,
@@ -209,33 +209,17 @@ impl App {
         Ok(())
     }
 
-    fn refresh_view_factory(&mut self) {
-        if self.app_view.view_factory.is_compatible(
-            &self.graphics_context.graphics.device,
-            self.graphics_context.surface_format(),
-        ) {
-            self.app_view
-                .view_factory
-                .set_float_volume_texture(self.app_model.enable_float_volume_texture);
-            return;
-        }
-        self.app_view.view_factory = DefaultViewFactory::new(
-            Arc::clone(&self.graphics_context.graphics.device),
-            Arc::clone(&self.graphics_context.graphics.queue),
-            self.graphics_context.surface_format(),
-            self.app_model.enable_float_volume_texture,
-        );
-    }
-
     /// Synchronizes existing views after a surface-only format change, not an ordinary resize.
     fn synchronize_surface_format(&mut self) {
         let format = self.graphics_context.surface_format();
         if self.app_view.view_factory.surface_format() != format {
-            self.refresh_view_factory();
-            self.app_view.rebuild_gpu_resources(
-                &self.graphics_context.graphics.device,
-                &self.graphics_context.graphics.queue,
-                format,
+            self.app_view.rebind_gpu_resources(
+                super::appview::ViewGpuConfiguration {
+                    device: &self.graphics_context.graphics.device,
+                    queue: &self.graphics_context.graphics.queue,
+                    format,
+                    use_float_volume_texture: self.app_model.enable_float_volume_texture,
+                },
                 None,
             );
             self.surface_dirty = true;

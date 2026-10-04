@@ -19,3 +19,7 @@ _Avoid_: Saved states when the intended meaning is orientation selection
 **View-slot orientation**:
 The MPR orientation selected for a position within a view layout.
 _Avoid_: Saved state
+
+**Viewer lifecycle**:
+The viewer's readiness, visibility, suspension, graphics replacement, frame scheduling, and shutdown over time.
+_Avoid_: View-layout transition when referring to the viewer's availability or lifetime

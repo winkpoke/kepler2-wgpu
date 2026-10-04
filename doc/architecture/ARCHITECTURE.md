@@ -26,8 +26,10 @@ available, not behind a `mesh` Cargo feature.
 - `AppView` owns view composition, layout, and saved CPU view state.
 - `App` coordinates model/view state and graphics, and executes complete frames.
 - `RenderApp` starts one initialized `ApplicationHandler` with native `run_app` or
-  browser `spawn_app`; [redraw.rs](../../src/application/redraw.rs) contains lifecycle
-  and scheduling policy. [frame.rs](../../src/application/frame.rs) owns the private
+  browser `spawn_app`. The private [viewer lifecycle](../../src/application/viewer_lifecycle.rs)
+  owns complete lifecycle ordering and borrows Winit/application effects;
+  [redraw.rs](../../src/application/redraw.rs) retains readiness and scheduling policy.
+  [frame.rs](../../src/application/frame.rs) owns the private
   presented/skipped transaction; public `App::render` retains unit success.
 - GPU faults use a private notifier and the existing quit transport to wake an idle
   owner; no new public control event or general device reconstruction is added.
@@ -64,12 +66,33 @@ Production-seam tests live in [AppView tests](../../src/application/appview_test
 
 ## Frame and rebinding contracts
 
+Winit dispatch translates lifecycle events into `ViewerLifecycle::handle` after
+the existing active-window and input-consumption gate. The operation acknowledges
+redraw, checks readiness, updates, executes the existing complete frame, and records
+the outcome before later scheduling effects. It also orders replacement swap,
+fault-wake attachment, old-request reset, resize, and supplied-volume enqueue.
+Failed swaps perform no follow-on effects. The same lifecycle owner retains
+suspension and fatal stop across replacement. Fatal frame errors stop automatic
+rendering; explicit Quit clears views and exits, while Close/Escape exit without
+clearing. Explicit shutdown silences subsequent dispatch.
+
+[Recording lifecycle tests](../../src/application/viewer_lifecycle_tests.rs) cross
+the production operation with deterministic time and primitive effects. They cover
+sequencing and policy integration, not Winit callback delivery, pre-run control
+ordering, or native/browser graphics acceptance.
+
 An acquired surface image is cleared once and all visible views are drawn. Upload
 invalidation and successful presentation are separate states; failed frames retain
 pending work. Ordinary same-format resize updates layout/size-dependent targets,
 not pipelines. A format change rebuilds format-dependent resources. Device
 replacement reuploads volume data and rebuilds device-owned resources while
 preserving CPU view state. See [rendering contracts](../agents/RENDERING.md).
+
+`AppView::rebind_gpu_resources` accepts a borrowed device/queue/format configuration
+and any prepared replacement volume content. It selects or refreshes its compatible
+factory before rebuilding all existing views from that factory's shared MPR context.
+Callers no longer coordinate factory replacement separately. `App` retains upload
+validation and graphics/depth ownership; same-format resize avoids this operation.
 
 Regression anchors: [rendering correctness](../../tests/rendering_correctness_tests.rs),
 [resource lifetimes](../../tests/render_resource_lifetime_tests.rs),

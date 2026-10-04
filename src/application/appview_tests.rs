@@ -123,6 +123,23 @@ fn bulk_rebinding_and_subsequent_creation_share_the_replacement_factory_context(
     let (mut app, vol) = fixture(&original);
     let original_context = app.view_factory.mpr_render_context();
     app.set_scale(0, 1.2).unwrap();
+    app.set_pan(0, 0.1, -0.1).unwrap();
+    app.set_window_level(0, 500.0).unwrap();
+    app.set_window_width(0, 1000.0).unwrap();
+    let state_before: Vec<_> = app
+        .layout
+        .views()
+        .iter()
+        .map(|view| {
+            format!(
+                "{:?}",
+                view.as_any()
+                    .downcast_ref::<MprView>()
+                    .unwrap()
+                    .save_state()
+            )
+        })
+        .collect();
     for gpu in [&original, &replacement] {
         gpu.validated("Bulk MPR rebinding", || {
             let format = wgpu::TextureFormat::Bgra8Unorm;
@@ -140,18 +157,27 @@ fn bulk_rebinding_and_subsequent_creation_share_the_replacement_factory_context(
                 )
                 .unwrap(),
             );
-            app.view_factory =
-                DefaultViewFactory::new(gpu.device.clone(), gpu.queue.clone(), format, false);
-            app.rebuild_gpu_resources(&gpu.device, &gpu.queue, format, Some(content));
+            app.rebind_gpu_resources(
+                ViewGpuConfiguration {
+                    device: &gpu.device,
+                    queue: &gpu.queue,
+                    format,
+                    use_float_volume_texture: false,
+                },
+                Some(content),
+            );
             let expected = app.view_factory.mpr_render_context();
             assert!(!Arc::ptr_eq(&original_context, &expected));
-            for view in app.layout.views_mut() {
+            for (index, view) in app.layout.views_mut().iter_mut().enumerate() {
                 let mpr = view.as_any_mut().downcast_mut::<MprView>().unwrap();
                 assert!(Arc::ptr_eq(&expected, mpr.render_context()));
                 assert!(mpr.needs_redraw());
-                headless_gpu::render_offscreen(gpu, 32, 16, format, false, |pass| {
+                assert_eq!(format!("{:?}", mpr.save_state()), state_before[index]);
+                let pixels = headless_gpu::render_offscreen(gpu, 32, 16, format, false, |pass| {
                     mpr.render(pass).unwrap()
                 });
+                let gray = if index == 0 { 128 } else { 145 };
+                pixels.assert_pixel_near(8 + index as u32 * 16, 8, [gray, gray, gray, 255], 2);
             }
             assert_eq!(
                 app.layout.views()[0]
@@ -172,6 +198,40 @@ fn bulk_rebinding_and_subsequent_creation_share_the_replacement_factory_context(
                     .unwrap()
                     .render_context()
             ));
+            // An explicit compatible rebind retains the factory context and volume textures.
+            let contents: Vec<_> = app
+                .layout
+                .views()
+                .iter()
+                .map(|view| {
+                    Arc::clone(
+                        view.as_any()
+                            .downcast_ref::<MprView>()
+                            .unwrap()
+                            .render_content(),
+                    )
+                })
+                .collect();
+            app.rebind_gpu_resources(
+                ViewGpuConfiguration {
+                    device: &gpu.device,
+                    queue: &gpu.queue,
+                    format,
+                    use_float_volume_texture: false,
+                },
+                None,
+            );
+            assert!(Arc::ptr_eq(
+                &expected,
+                &app.view_factory.mpr_render_context()
+            ));
+            for (index, view) in app.layout.views().iter().enumerate() {
+                let mpr = view.as_any().downcast_ref::<MprView>().unwrap();
+                assert!(Arc::ptr_eq(&expected, mpr.render_context()));
+                assert!(Arc::ptr_eq(&contents[index], mpr.render_content()));
+                assert!(mpr.needs_redraw());
+                assert_eq!(format!("{:?}", mpr.save_state()), state_before[index]);
+            }
         });
     }
 }

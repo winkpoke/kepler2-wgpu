@@ -31,6 +31,7 @@ ignored, and empty tests are not execution evidence.
 | MHA/MHD and volumes | [format tests](../../tests/medical_imaging_tests.rs), [volume tests](../../tests/volume_integrity_tests.rs) | Audit implemented rejection paths, not merely fixture invariants |
 | Rendering / resource ownership | [headless tests](headless_gpu.md) | Native pixels/state; not browser, clinical, wall-clock, or driver-memory certification |
 | View-layout transitions | [production AppView transition tests](../../src/application/appview_tests.rs) | Same private operation as native/browser controls; synthetic GPU pixels and returned failure adapters; manual platform acceptance remains separate |
+| Viewer lifecycle dispatch | [production lifecycle tests](../../src/application/viewer_lifecycle_tests.rs) | Live event-handling operation, recording effects and deterministic completion clock; no OS callback or pre-run control-delivery claim |
 | Remedy protocol | [offline protocol/unit tests](../../src/acquisition/remedy.rs), [protocol reference](../acquisition/remedy-serial-web.md) | Live hardware, serial transport, and exposure checks require explicit authorization |
 
 Use seeded property-based inputs with realistic valid domains and explicit edge
