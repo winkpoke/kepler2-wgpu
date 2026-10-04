@@ -1,0 +1,33 @@
+   Compiling kepler-wgpu v0.9.0 (/Users/philchen/Projects/2026/kepler2-wgpu)
+warning: struct `ProcessResult` is never constructed
+   --> src/acquisition/remedy.rs:528:8
+    |
+528 | struct ProcessResult {
+    |        ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `kepler-wgpu` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.29s
+     Running unittests src/lib.rs (target/debug/deps/kepler_wgpu-806b1bea82d7466e)
+
+running 1 test
+Headless test adapter: AdapterInfo { name: "Apple M5", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+[2026-10-03T19:18:38Z WARN  kepler_wgpu::rendering::view::mesh::mesh] No mesh generated for any tissue. Returning degenerate mesh to prevent buffer errors.
+[2026-10-03T19:18:38Z WARN  kepler_wgpu::application::view_layout_transition] Generated mesh is empty (ISO: 200-800). Injecting dummy triangle.
+
+thread 'application::appview::tests::transitions::returned_failures_preserve_all_committed_state_and_pixels' (10383599) panicked at src/application/appview_tests.rs:352:21:
+assertion `left == right` failed: displayed views changed after failure
+  left: []
+ right: [ViewSnapshot { identity: 510561586176, position: (0, 0), dimensions: (16, 16), interaction: "Transverse Some(ViewState { window_level: 300.0, window_width: 900.0, bias: 0.0, slice_mm: 0.49999997, scale: 1.3, translate_in_screen_coord: [0.1, -0.1, 0.0625], position: (0, 0), dimensions: (16, 16) }) Mat4 { x_axis: Vec4(9.737451, 3.0121465, -2.0661612, 0.0), y_axis: Vec4(-2.8609967, 9.94682, 1.0175712, 0.0), z_axis: Vec4(1.7468054, -0.29565603, 7.8013625, 0.0), w_axis: Vec4(-0.5165136, -1.9275684, 4.2739205, 1.0) }", pending: false }, ViewSnapshot { identity: 510561584640, position: (16, 0), dimensions: (16, 16), interaction: "Transverse Some(ViewState { window_level: 400.0, window_width: 1500.0, bias: 0.0, slice_mm: 0.0, scale: 1.0, translate_in_screen_coord: [0.0, 0.0, 0.0], position: (16, 0), dimensions: (16, 16) }) Mat4 { x_axis: Vec4(8.0, 0.0, 0.0, 0.0), y_axis: Vec4(0.0, 8.0, 0.0, 0.0), z_axis: Vec4(0.0, 0.0, 8.0, 0.0), w_axis: Vec4(0.0, 0.0, 4.0, 1.0) }", pending: false }]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test application::appview::tests::transitions::returned_failures_preserve_all_committed_state_and_pixels ... FAILED
+
+failures:
+
+failures:
+    application::appview::tests::transitions::returned_failures_preserve_all_committed_state_and_pixels
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 86 filtered out; finished in 0.21s
+
+error: test failed, to rerun pass `--lib`

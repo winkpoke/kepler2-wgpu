@@ -477,6 +477,27 @@ impl DynamicLayout {
 }
 
 impl DynamicLayout {
+    /// Place a complete replacement before touching displayed views or presentation state.
+    /// `None` retains the current strategy, including custom strategies that cannot be cloned.
+    pub(crate) fn replace_all_views(
+        &mut self,
+        mut views: Vec<Box<dyn View>>,
+        strategy: Option<Box<dyn LayoutStrategy>>,
+    ) {
+        let placement = strategy.as_deref().unwrap_or(self.strategy.as_ref());
+        let count = views.len() as u32;
+        for (index, view) in views.iter_mut().enumerate() {
+            let (pos, size) = placement.calculate_position_and_size(index as u32, count, self.dim);
+            view.move_to(pos);
+            view.resize(size);
+        }
+        if let Some(strategy) = strategy {
+            self.strategy = strategy;
+        }
+        self.views = views;
+        self.presented_dim = None;
+    }
+
     pub fn set_strategy(&mut self, new_strategy: Box<dyn LayoutStrategy>) {
         self.strategy = new_strategy;
         self.presented_dim = None;

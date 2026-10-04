@@ -38,6 +38,30 @@ available, not behind a `mesh` Cargo feature.
 - `RenderContent` holds uploaded view data/resources. The [volume encoding contract](../rendering/volume-encoding.md)
   separates signed voxel storage from medical display parameters.
 
+## View-layout transitions
+
+The existing `App::set_render_mode` controls enter the private
+[view-layout transition module](../../src/application/view_layout_transition.rs).
+It borrows `AppModel`'s canonical volume, `AppView`'s concrete factory/layout,
+and `App`'s mesh cache and view-slot orientations. These owners remain unchanged;
+captured CPU interaction state in `AppView` is distinct from orientation selection.
+
+The operation validates used selections, uploads content, prepares any candidate
+mesh and all replacement views, then commits the complete collection and related
+state. `DynamicLayout::replace_all_views` places incoming views with the retained
+parent dimensions and retained or new strategy before replacing displayed views.
+Returned preparation failures leave the old views, cache/configuration, volume,
+and clean or pending presentation state intact. A successful replacement becomes
+pending for a complete frame and uses existing view defaults without automatic
+state restoration. Explicit capture/restore and GPU rebinding retain their contracts.
+
+Old and candidate resources coexist temporarily; one candidate is dropped on
+failure or committed on success. Compatible lazy factory caches may be populated
+during preparation. This operation does not recover panics or asynchronous fatal
+GPU faults, redesign volume loading, or add mesh-cache identity/invalidation.
+Requests without a volume fail without mutation or deferred application.
+Production-seam tests live in [AppView tests](../../src/application/appview_tests.rs).
+
 ## Frame and rebinding contracts
 
 An acquired surface image is cleared once and all visible views are drawn. Upload

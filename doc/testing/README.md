@@ -30,12 +30,23 @@ ignored, and empty tests are not execution evidence.
 | Window/level | [WindowLevel unit tests](../../src/core/window_level.rs), [GPU pixels](../../tests/rendering_correctness_tests.rs) | Normalized display midpoint is 0.5 at effective level; clamped display is not invertible |
 | MHA/MHD and volumes | [format tests](../../tests/medical_imaging_tests.rs), [volume tests](../../tests/volume_integrity_tests.rs) | Audit implemented rejection paths, not merely fixture invariants |
 | Rendering / resource ownership | [headless tests](headless_gpu.md) | Native pixels/state; not browser, clinical, wall-clock, or driver-memory certification |
+| View-layout transitions | [production AppView transition tests](../../src/application/appview_tests.rs) | Same private operation as native/browser controls; synthetic GPU pixels and returned failure adapters; manual platform acceptance remains separate |
 | Remedy protocol | [offline protocol/unit tests](../../src/acquisition/remedy.rs), [protocol reference](../acquisition/remedy-serial-web.md) | Live hardware, serial transport, and exposure checks require explicit authorization |
 
 Use seeded property-based inputs with realistic valid domains and explicit edge
 cases. Derive expected values independently from the implementation where possible.
 A passing syntax validator, test count, or coverage percentage is not a clinical
 safety guarantee or regulatory assessment.
+
+Transition regressions cover successful MPR/MIP/mesh/mixed recreation with existing
+defaults, orientation and slot compatibility, and failed preparation preserving
+the old layout and related state. Upload and chosen-constructor failure adapters
+drive the production operation; they also check candidate content is released.
+Malformed uploads use real validation, and old MPR frames remain renderable after
+errors. Clean versus pending redraw status is checked before another frame consumes
+it. Existing GPU-rebinding tests continue to require CPU state preservation.
+These checks do not establish recovery from asynchronous fatal GPU faults,
+concurrent view mutation, driver-memory leak freedom, or a performance gain.
 
 ## Coverage, performance, memory, and browsers
 

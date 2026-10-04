@@ -1,0 +1,41 @@
+   Compiling kepler-wgpu v0.9.0 (/Users/philchen/Projects/2026/kepler2-wgpu)
+warning: struct `ProcessResult` is never constructed
+   --> src/acquisition/remedy.rs:528:8
+    |
+528 | struct ProcessResult {
+    |        ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `kepler-wgpu` (lib test) generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.09s
+     Running unittests src/lib.rs (target/debug/deps/kepler_wgpu-806b1bea82d7466e)
+
+running 8 tests
+Headless test adapter: AdapterInfo { name: "Apple M5", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+Headless test adapter: AdapterInfo { name: "Apple M5", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+Headless test adapter: AdapterInfo { name: "Apple M5", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+Headless test adapter: AdapterInfo { name: "Apple M5", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+Headless test adapter: AdapterInfo { name: "Apple M5", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+Headless test adapter: AdapterInfo { name: "Apple M5", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+Headless test adapter: AdapterInfo { name: "Apple M5", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+Headless test adapter: AdapterInfo { name: "Apple M5", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+Headless test adapter: AdapterInfo { name: "Apple M5", vendor: 0, device: 0, device_type: IntegratedGpu, device_pci_bus_id: "", driver: "", driver_info: "", backend: Metal, subgroup_min_size: 4, subgroup_max_size: 64, transient_saves_memory: Some(true), limit_bucket: None }
+test application::appview::tests::control_and_linked_center_updates_invalidate_only_changed_views ... ok
+test application::appview::tests::transitions::malformed_upload_and_invalid_prerequisites_leave_old_layout_intact ... ok
+test application::appview::tests::production_frames_redraw_clean_views_and_clear_removed_layouts ... ok
+test application::appview::tests::bulk_rebinding_and_subsequent_creation_share_the_replacement_factory_context ... ok
+[2026-10-03T19:25:28Z WARN  kepler_wgpu::rendering::view::mesh::mesh] No mesh generated for any tissue. Returning degenerate mesh to prevent buffer errors.
+[2026-10-03T19:25:28Z WARN  kepler_wgpu::application::view_layout_transition] Generated mesh is empty (ISO: 1000-2000). Injecting dummy triangle.
+[2026-10-03T19:25:28Z WARN  kepler_wgpu::rendering::view::mesh::mesh] No mesh generated for any tissue. Returning degenerate mesh to prevent buffer errors.
+[2026-10-03T19:25:28Z WARN  kepler_wgpu::application::view_layout_transition] Generated mesh is empty (ISO: 200-800). Injecting dummy triangle.
+[2026-10-03T19:25:28Z WARN  kepler_wgpu::rendering::view::mesh::mesh] No mesh generated for any tissue. Returning degenerate mesh to prevent buffer errors.
+[2026-10-03T19:25:28Z WARN  kepler_wgpu::application::view_layout_transition] Generated mesh is empty (ISO: 200-800). Injecting dummy triangle.
+test application::appview::tests::transitions::mixed_precedence_custom_strategy_and_mesh_generation_retain_legacy_policy ... ok
+[2026-10-03T19:25:28Z WARN  kepler_wgpu::rendering::view::mesh::mesh] No mesh generated for any tissue. Returning degenerate mesh to prevent buffer errors.
+[2026-10-03T19:25:28Z WARN  kepler_wgpu::application::view_layout_transition] Generated mesh is empty (ISO: 200-800). Injecting dummy triangle.
+test application::appview::tests::transitions::successful_modes_commit_defaults_orientations_cache_and_pending_frame ... ok
+test application::appview::tests::transitions::failures_from_single_mip_or_mesh_preserve_settings_and_pending_work ... ok
+test application::appview::tests::transitions::returned_failures_preserve_all_committed_state_and_pixels ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 83 filtered out; finished in 0.27s

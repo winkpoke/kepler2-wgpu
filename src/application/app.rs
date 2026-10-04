@@ -483,23 +483,12 @@ impl App {
         }
     }
 
-    /// Render mode setter for MPR, MIP, and Mesh.
+    /// Recreate a view layout with existing initialization defaults.
     ///
-    /// Function-level comment:
-    /// This function replaces both `set_mesh_mode` and `set_mpr_mip_mode`, allowing unified control
-    /// of rendering modes (MPR, MIP, Mesh). It automatically saves and restores view states
-    /// when switching between single-cell and multi-cell layouts.
-    ///
-    /// Parameters:
-    /// - mode: 0 = MPR, 1 = MIP, 2 = Mesh
-    /// - save_mesh: if true, reuse cached mesh if available
-    /// - crop: whether to crop the ROI with given world bounds
-    /// - sx..lz: world bounds
-    /// - one_cell: whether to switch to single-view layout
-    /// - mesh_index: the target cell index for mesh view
-    /// - iso_min, iso_max: ISO range for mesh extraction
-    /// - mip: optional parameter for MIP config
-    /// - orientation_index: orientation for MPR
+    /// Modes 0/1/2 select single MPR/MIP/mesh; all others select mixed layout.
+    /// Crop bounds are in world units and ISO values retain mesh-extraction units.
+    /// Used orientation and four-slot indices are 0..=3. Returned preparation
+    /// errors are logged and preserve the previous viewer; no volume means no switch.
     pub fn set_render_mode(
         &mut self,
         mode: usize,
@@ -518,131 +507,30 @@ impl App {
         mip_index: Option<usize>,
         orientation_index: usize,
     ) {
-        // Save current view states before layout switch
-        // self.app_view.save_view_states();
-
-        // Prepare cropping region if requested
-        let world_min = crop.then_some([sx, sy, sz]);
-        let world_max = crop.then_some([lx, ly, lz]);
-
-        // Layout management
-        if mode == 2 {
-            self.app_view.set_one_cell_layout();
-            self.app_view.layout.remove_all();
-        } else if self.app_view.is_one_cell_layout() {
-            self.app_view.set_grid_layout(2, 2, 2);
-        }
-
-        // Load current volume
-        if let Some(vol) = self.app_model.volume().ok().cloned() {
-            if self.saved_states.is_empty() {
-                self.load_data_from_ct_volume(&vol).unwrap();
-            }
-
-            // Load render texture
-            let texture = match self.load_render_content(&vol) {
-                Ok(t) => t,
-                Err(e) => {
-                    log::error!("Failed to load render texture: {}", e);
-                    return;
-                }
-            };
-
-            if mesh_index.is_some() {
-                self.app_model.enable_mesh = true;
-
-                // Build or reuse cached mesh
-                if !save_mesh || self.cached_mesh.is_none() {
-                    let mut mesh = crate::rendering::view::mesh::mesh::Mesh::new(
-                        &vol, iso_min, iso_max, world_min, world_max,
-                    );
-
-                    // Safety: Ensure non-empty mesh
-                    if mesh.vertices.is_empty() {
-                        log::warn!(
-                            "Generated mesh is empty (ISO: {}-{}). Injecting dummy triangle.",
-                            iso_min,
-                            iso_max
-                        );
-                        let dummy = crate::rendering::view::mesh::mesh::MeshVertex {
-                            position: [0.0, 0.0, 0.0],
-                            normal: [0.0, 0.0, 1.0],
-                            color: [0.0, 0.0, 0.0],
-                        };
-                        mesh.vertices.extend([dummy; 3]);
-                        mesh.indices.extend([0, 1, 2]);
-                    }
-                    self.cached_mesh = Some(mesh);
-                }
-            }
-
-            if let Some(idx) = index {
-                self.saved_states[idx] = orientation_index;
-            }
-
-            // Switch rendering mode
-            match mode {
-                // === MPR ===
-                0 => {
-                    log::info!("Switching to MPR mode (orientation: {})", orientation_index);
-                    let _ = self.app_view.set_layout_mode_single(
-                        texture.clone(),
-                        &vol,
-                        0, // mode=0 for MPR
-                        orientation_index,
-                    );
-
-                    // self.app_view.restore_view_states();
-                }
-
-                // === MIP ===
-                1 => {
-                    log::info!("Switching to MIP mode");
-                    let _ = self.app_view.set_layout_mode_single(
-                        texture.clone(),
-                        &vol,
-                        1, // mode=1 for MIP
-                        orientation_index,
-                    );
-
-                    // self.app_view.restore_view_states();
-                }
-
-                // === Mesh ===
-                2 => {
-                    log::info!("Switching to Mesh mode");
-                    // Create mesh view
-                    let mesh_view = self
-                        .app_view
-                        .view_factory
-                        .create_mesh_view_with_content(
-                            texture,
-                            self.cached_mesh.as_ref().expect("cached_mesh must exist"),
-                            (0, 0),
-                            (0, 0),
-                        )
-                        .expect("Failed to create mesh view");
-
-                    self.app_view.layout.add_view(mesh_view);
-                    // self.app_view.restore_view_states();
-                }
-                _ => {
-                    let _ = self.app_view.configure_mesh_layout(
-                        texture.clone(),
-                        &vol,
-                        self.saved_states,
-                        mip_index,
-                        mesh_index,
-                        self.cached_mesh.clone(),
-                    );
-
-                    // self.app_view.restore_view_states();
-                }
-            }
-        } else {
-            log::info!(
-                "MPR/MIP layout requested without loaded volume; will apply on next data load."
-            );
+        let request = super::view_layout_transition::TransitionRequest {
+            mode,
+            reuse_mesh: save_mesh,
+            world_min: crop.then_some([sx, sy, sz]),
+            world_max: crop.then_some([lx, ly, lz]),
+            mesh_index,
+            orientation_slot: index,
+            iso_range: (iso_min, iso_max),
+            mip_index,
+            orientation_index,
+        };
+        let preparation = super::view_layout_transition::GpuPreparation {
+            device: &self.graphics_context.graphics.device,
+            queue: &self.graphics_context.graphics.queue,
+        };
+        if let Err(error) = super::view_layout_transition::apply(
+            &mut self.app_model,
+            &mut self.app_view,
+            &mut self.cached_mesh,
+            &mut self.saved_states,
+            request,
+            &preparation,
+        ) {
+            log::error!("Failed to switch view layout (mode {mode}): {error}");
         }
     }
 

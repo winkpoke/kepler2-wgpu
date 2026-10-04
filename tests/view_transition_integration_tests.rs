@@ -1,3 +1,5 @@
+//! Production transition coverage lives in src/application/appview_tests.rs.
+//! Remaining ViewManager checks retain their separate scope and known simulation limits.
 /// Integration tests for view transition workflows
 ///
 /// This module provides comprehensive integration testing for view transition workflows,
@@ -110,83 +112,6 @@ mod view_transition_integration_tests {
         view_manager.clear_states();
 
         assert_eq!(view_manager.saved_state_count(), 0);
-    }
-
-    #[test]
-    fn test_complete_workflow_simulation() {
-        // Simulate a complete workflow without actual GPU resources
-
-        // Simulate workflow steps
-        let workflow_steps = [
-            "initialize",
-            "enable_mesh_mode",
-            "render_frame",
-            "disable_mesh_mode",
-            "cleanup",
-        ];
-
-        let mut step_count = 0;
-        for step in &workflow_steps {
-            match *step {
-                "initialize" => {
-                    // Simulate initialization
-                    step_count += 1;
-                }
-                "enable_mesh_mode" => {
-                    // Simulate enabling mesh mode
-                    step_count += 1;
-                }
-                "render_frame" => {
-                    // Simulate rendering
-                    step_count += 1;
-                }
-                "disable_mesh_mode" => {
-                    // Simulate disabling mesh mode
-                    step_count += 1;
-                }
-                "cleanup" => {
-                    // Simulate cleanup
-                    step_count += 1;
-                }
-                _ => {}
-            }
-        }
-
-        assert_eq!(step_count, workflow_steps.len());
-    }
-
-    #[test]
-    fn test_transition_state_patterns() {
-        // Test state transition patterns used in view workflows
-        #[derive(Debug, PartialEq, Clone, Copy)]
-        enum ViewState {
-            Mesh,
-            Standard,
-            Transitioning,
-        }
-
-        let mut current_state = ViewState::Standard;
-        let mut transition_count = 0;
-
-        // Simulate state transitions
-        let transitions = [
-            ViewState::Transitioning,
-            ViewState::Mesh,
-            ViewState::Transitioning,
-            ViewState::Standard,
-            ViewState::Transitioning,
-            ViewState::Mesh,
-        ];
-
-        for target_state in &transitions {
-            if current_state != *target_state {
-                current_state = *target_state;
-                transition_count += 1;
-            }
-        }
-
-        assert_eq!(transition_count, transitions.len());
-        assert_eq!(current_state, ViewState::Mesh);
     }
 
     #[test]
@@ -314,35 +239,6 @@ mod view_transition_integration_tests {
 
         assert_eq!(completed_operations, operations.len());
         assert_eq!(view_manager.saved_state_count(), 0);
-    }
-
-    #[test]
-    fn test_error_recovery_patterns() {
-        // Test error recovery patterns used in view transitions
-        let mut success_count = 0;
-        let mut error_count = 0;
-
-        // Simulate operations that might succeed or fail
-        for i in 0..20 {
-            let operation_result = if i % 7 == 0 {
-                Err("Simulated error")
-            } else {
-                Ok("Success")
-            };
-
-            match operation_result {
-                Ok(_) => success_count += 1,
-                Err(_) => {
-                    error_count += 1;
-                    // Simulate error recovery
-                    // In real code, this might involve state cleanup
-                }
-            }
-        }
-
-        assert!(success_count > 0);
-        assert!(error_count > 0);
-        assert_eq!(success_count + error_count, 20);
     }
 
     #[test]

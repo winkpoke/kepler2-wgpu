@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-04 — Complete view-layout transitions
+
+- Concentrated existing mode controls into one private prepare/commit operation. Returned upload or replacement-view errors preserve the displayed layout, interaction settings, orientation selections, mesh cache/configuration, and pending redraw state.
+- Successful recreation keeps existing defaults. Explicit state restoration and CPU-state preservation during GPU rebinding remain compatible.
+- Missing volume, unusable selections, and missing required mesh are reported before mutation; no deferred mode request is implied. Native/browser control signatures and valid mode/cache/slot semantics are retained.
+- Added production-seam synthetic headless regressions. Native/browser runtime acceptance is recorded separately in the [change verification](../openspec/changes/deepen-view-layout-transitions/verification.md); temporary old/candidate resources coexist, and fatal GPU recovery remains outside this change.
+
 ## 2026-10-01 — wgpu 30.0.1 / Winit 0.30.13 migration (runtime acceptance pending)
 
 - Updated the locked graphics/window stack while retaining native backends and browser WebGPU/WebGL2.

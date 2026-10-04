@@ -11,6 +11,7 @@ mod frame;
 pub mod gl_canvas;
 mod redraw;
 pub mod render_app;
+mod view_layout_transition;
 
 // Re-exports for convenience
 pub use app::*;
