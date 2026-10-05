@@ -230,6 +230,7 @@ Final verification after the footprint correction:
 | Command/check | Outcome | Limits |
 | --- | --- | --- |
 | `node /tmp/kepler-wgsl-repro/probe.mjs footprint-green` | PASS, exit 0 | Chrome 154.0.8037.58, both actual production shader modules, zero compilation errors and null validation errors. Shader compilation only: not full RenderApp/page/pixel/lifecycle acceptance. |
+| `node /tmp/kepler-wgsl-repro/probe.mjs footprint-pixels` | PASS, exit 0 | Fresh Chrome WebGPU profile; additionally creates the production MIP pipeline and renders/maps synthetic packed signed 8×1×1 voxels into 4×4 RGBA8. MIP/MinIP/AvgIP each produce grayscale `[51,102,153,204]`, exactly the independent nearest-minification expectation (≤2-byte bound); null validation scopes. Does not exercise the Rust owner/page or establish all-browser/full-volume parity. |
 | `cargo test --locked --test volume_encoding_tests production_volume_shaders_preserve_derivatives -- --nocapture` | PASS, exit 0 | One focused production-structure regression. |
 | `KEPLER_REQUIRE_GPU_TESTS=1 cargo test --locked --test rendering_correctness_tests --test volume_encoding_tests --test render_resource_lifetime_tests --test redraw_state_tests` | PASS, exit 0 | **37** passed: redraw 4, resources 9, rendering 14, encoding 10. Apple M5/Metal. |
 | `cargo test --locked` | PASS, exit 0 | **367** passed, 23 ignored; no live hardware testing. |
@@ -238,8 +239,13 @@ Final verification after the footprint correction:
 | `wasm-pack build --target web --out-dir pkg --release -- --locked` | PASS, exit 0 | Final corrected package rebuilt; generated output remains ignored. Requires a full browser reload after the prior viewer quit. |
 | `cargo fmt -- --check` | FAIL, exit 1 | Original coordinate/patient/volume safety/integrity formatting only; changed tests formatted. |
 | `cargo clippy --locked --all-targets -- -D warnings` | FAIL, exit 101 | Same baseline 39 library / 56 library-test findings. No global quality-gate pass claimed. |
+| Active LSP probes of two changed Rust tests and four updated Markdown paths | No errors/warnings | All six checks confirmed; only 18 auxiliary spelling suggestions misinterpret the graphics acronym LOD (level of detail) as LOAD. |
+| `npm run docs:check` | PASS, exit 0 | No current-doc/delta link issues. |
+| `python3.11 -m unittest discover -s scripts/tests -p 'test_*.py'` | PASS, exit 0 | 47 supported-interpreter maintenance regressions. |
+| `npm run specs:check` and strict upgrade validation | PASS, exit 0 each | Delta/current spec syntax only; no manual task marked complete. |
+| `git diff --check` | PASS, exit 0 | Final localized shader/test/docs edits; no added dependency or public API change. |
 
-Machine-local logs: `/tmp/kepler-wgsl-browser-{red,footprint-green}.json`,
+Machine-local logs: `/tmp/kepler-wgsl-browser-{red,footprint-green,footprint-pixels}.json`,
 `/tmp/kepler-wgsl-{regression-red,uniform-flow-red,minification-red}.log`,
 `/tmp/kepler-wgsl-{regression,gpu,native,wasm,full,package,fmt,clippy}-final.log`.
 The temporary harness is explicitly a throwaway diagnostic, not a new standing
