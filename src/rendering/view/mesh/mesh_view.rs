@@ -1,4 +1,8 @@
 #![allow(dead_code)]
+use crate::rendering::view::invalidation::ViewInvalidation;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use std::time::Duration;
 
 use super::{
     basic_mesh_context::MultiMeshContext,
@@ -6,9 +10,12 @@ use super::{
     performance::{PerformanceStats, QualityController, QualityLevel},
 };
 use crate::{
-    core::{timing::Instant, KeplerResult, WindowLevel},
-    rendering::view::{Renderable, View, NeedleUniform, ObliquePlaneUniform},
-    rendering::view::camera::Camera
+    core::{
+        timing::{DurationExt, Instant},
+        KeplerResult, WindowLevel,
+    },
+    rendering::view::camera::Camera,
+    rendering::view::{NeedleUniform, ObliquePlaneUniform, Renderable, View},
 };
 use glam::{Mat4, Quat, Vec3};
 use std::f32::consts::FRAC_PI_2;
@@ -33,7 +40,9 @@ impl std::fmt::Display for MeshRenderError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             MeshRenderError::ContextNotAttached => write!(f, "Mesh render context not attached"),
-            MeshRenderError::BufferValidationFailed(msg) => write!(f, "Buffer validation failed: {}", msg),
+            MeshRenderError::BufferValidationFailed(msg) => {
+                write!(f, "Buffer validation failed: {}", msg)
+            }
             MeshRenderError::PipelineError(msg) => write!(f, "Pipeline error: {}", msg),
             MeshRenderError::ViewportError(msg) => write!(f, "Viewport error: {}", msg),
             MeshRenderError::ResourceError(msg) => write!(f, "Resource error: {}", msg),
@@ -74,6 +83,9 @@ impl Default for FallbackMode {
 }
 
 pub struct MeshView {
+    invalidation: ViewInvalidation<Vec<u8>>,
+    content_revision: AtomicU64,
+    last_recovery_attempt: Instant,
     view_id: usize,
     volume_ctx: Option<Arc<MeshRenderContext>>,
     spine_ctx: Option<Arc<Mutex<MultiMeshContext>>>,
@@ -116,9 +128,104 @@ pub struct MeshView {
     balls: [[f32; 4]; 4],
 }
 
+pub(crate) struct PreparedMeshGpu {
+    volume: Option<Arc<MeshRenderContext>>,
+    spine: Option<Arc<Mutex<MultiMeshContext>>>,
+    needle: Option<Arc<Mutex<MultiMeshContext>>>,
+}
 impl MeshView {
+    fn display_state(&self) -> Vec<u8> {
+        let mut state = Vec::new();
+        for value in [
+            self.camera.model_rotation_quat().to_array().to_vec(),
+            self.camera.get_pan().to_array().to_vec(),
+            vec![
+                self.camera.get_zoom(),
+                self.opacity,
+                self.window_level.window_width(),
+                self.window_level.window_level(),
+                self.slab_thickness,
+                self.needle_enabled,
+                self.plane_rotation_angle,
+                self.rotation_speed,
+            ],
+            self.roi_min.to_vec(),
+            self.roi_max.to_vec(),
+        ] {
+            state.extend_from_slice(bytemuck::cast_slice(&value));
+        }
+        state.extend_from_slice(bytemuck::bytes_of(&self.spine_lighting));
+        state.extend_from_slice(bytemuck::bytes_of(&self.needle_lighting));
+        state.extend_from_slice(bytemuck::cast_slice(&self.needles));
+        state.extend_from_slice(bytemuck::bytes_of(&self.oblique_planes));
+        state.extend_from_slice(bytemuck::bytes_of(&self.balls));
+        state.extend_from_slice(&self.content_revision.load(Ordering::Relaxed).to_ne_bytes());
+        state.extend_from_slice(bytemuck::bytes_of(&[
+            self.pos.0,
+            self.pos.1,
+            self.dim.0 as i32,
+            self.dim.1 as i32,
+        ]));
+        state.extend_from_slice(bytemuck::bytes_of(&[self.mode as u32, self.needle_index]));
+        state.push(u8::from(self.rotation_enabled));
+        state.push(u8::from(self.ball_enabled));
+        state.push(self.fallback_mode as u8);
+        state
+    }
+
+    pub fn rebuild_gpu_resources(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
+        content: Option<Arc<crate::rendering::view::RenderContent>>,
+    ) {
+        let prepared = self.prepare_gpu_resources(device, queue, format, content);
+        self.commit_gpu_resources(prepared);
+    }
+    pub(crate) fn prepare_gpu_resources(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
+        content: Option<Arc<crate::rendering::view::RenderContent>>,
+    ) -> PreparedMeshGpu {
+        let volume = self.volume_ctx.as_ref().map(|ctx| {
+            Arc::new(MeshRenderContext::new(
+                device,
+                format,
+                content
+                    .clone()
+                    .unwrap_or_else(|| ctx.render_content.clone()),
+            ))
+        });
+        let rebuild = |ctx: &Option<Arc<Mutex<MultiMeshContext>>>| {
+            ctx.as_ref().map(|old| {
+                let next = old
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .rebuild(device, queue, format);
+                Arc::new(Mutex::new(next))
+            })
+        };
+        PreparedMeshGpu {
+            volume,
+            spine: rebuild(&self.spine_ctx),
+            needle: rebuild(&self.needle_ctx),
+        }
+    }
+    pub(crate) fn commit_gpu_resources(&mut self, prepared: PreparedMeshGpu) {
+        self.volume_ctx = prepared.volume;
+        self.spine_ctx = prepared.spine;
+        self.needle_ctx = prepared.needle;
+        self.invalidation.invalidate();
+    }
+
     pub fn new() -> Self {
         Self {
+            invalidation: Default::default(),
+            content_revision: AtomicU64::new(0),
+            last_recovery_attempt: Instant::now(),
             view_id: 0,
             volume_ctx: None,
             spine_ctx: None,
@@ -163,18 +270,21 @@ impl MeshView {
 
     /// Function-level comment: Attaches a volume render context for GPU operations
     pub fn attach_context(&mut self, ctx: std::sync::Arc<MeshRenderContext>) {
+        self.invalidation.invalidate();
         self.volume_ctx = Some(ctx);
         log::debug!("MeshView::attach_context - Volume context attached successfully");
     }
 
     /// Function-level comment: Attaches a spine render context for GPU operations
     pub fn attach_spine_context(&mut self, ctx: MultiMeshContext) {
+        self.invalidation.invalidate();
         self.spine_ctx = Some(Arc::new(Mutex::new(ctx)));
         log::debug!("MeshView::attach_spine_context - Spine context attached successfully");
     }
 
     pub fn attach_needle_context(&mut self, ctx: MultiMeshContext) {
-        self.needle_ctx= Some(Arc::new(Mutex::new(ctx)));
+        self.invalidation.invalidate();
+        self.needle_ctx = Some(Arc::new(Mutex::new(ctx)));
         log::debug!("MeshView::attach_needle_context - Needle context attached successfully");
     }
 
@@ -203,6 +313,7 @@ impl MeshView {
     // }
 
     pub fn set_meshes(&self, id: u32, kind: u32, device: &wgpu::Device, meshes: Arc<Vec<Mesh>>) {
+        self.content_revision.fetch_add(1, Ordering::Relaxed);
         let ctx = match kind {
             0 | 3 => &self.spine_ctx,
             1 => &self.needle_ctx,
@@ -221,6 +332,7 @@ impl MeshView {
 
     /// Function-level comment: Toggle visibility of a single vertebra by label id.
     pub fn set_spine_visibility(&self, label_id: u8, visible: bool) {
+        self.content_revision.fetch_add(1, Ordering::Relaxed);
         if let Some(ctx) = &self.spine_ctx {
             if let Ok(mut guard) = ctx.lock() {
                 guard.set_label_visibility(label_id, visible);
@@ -241,6 +353,7 @@ impl MeshView {
     /// Function-level comment: Force a specific fallback mode for testing or recovery.
     pub fn set_fallback_mode(&mut self, mode: FallbackMode) {
         self.fallback_mode = mode;
+        self.last_recovery_attempt = Instant::now();
         log::info!("Mesh rendering fallback mode set to: {:?}", mode);
     }
 
@@ -248,6 +361,7 @@ impl MeshView {
     pub fn reset_error_state(&mut self) {
         self.consecutive_errors = 0;
         self.fallback_mode = FallbackMode::Normal;
+        self.invalidation.invalidate();
         log::info!("Mesh rendering error state reset");
     }
 
@@ -322,14 +436,16 @@ impl MeshView {
     /// Function-level comment: Reset the rotation angle to zero.
     /// Useful for returning to a known orientation or synchronizing multiple objects.
     pub fn reset_rotation(&mut self) {
-        self.camera.set_model_rotation_quat(Quat::from_xyzw(0.0, 0.0, 1.0, 0.0),);
+        self.camera
+            .set_model_rotation_quat(Quat::from_xyzw(0.0, 0.0, 1.0, 0.0));
         self.last_frame_time = Instant::now();
         log::debug!("Mesh rotation reset to identity");
     }
 
     /// Apply an incremental orbit in degrees
     pub fn set_rotation_angle_degrees(&mut self, degrees_x: f32, degrees_y: f32) {
-        self.camera.orbit_angles(degrees_y.to_radians(), degrees_x.to_radians());
+        self.camera
+            .orbit_angles(degrees_y.to_radians(), degrees_x.to_radians());
         self.last_frame_time = Instant::now();
         log::info!(
             "Mesh rotation set to (deg_x: {}, deg_y: {})",
@@ -345,13 +461,15 @@ impl MeshView {
             yaw_deg.to_radians(),
             pitch_deg.to_radians(),
         );
-        let rot = Mat4::from_rotation_x(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(pitch);
+        let rot =
+            Mat4::from_rotation_x(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(pitch);
         self.camera.set_model_rotation_quat(Quat::from_mat4(&rot));
         self.last_frame_time = Instant::now();
     }
 
     pub fn set_rotation_quat(&mut self, rotation: [f32; 4]) -> KeplerResult<()> {
-        self.camera.set_model_rotation_quat(Quat::from_array(rotation));
+        self.camera
+            .set_model_rotation_quat(Quat::from_array(rotation));
         self.last_frame_time = Instant::now();
         log::info!("Mesh rotation set to {:?}", rotation);
         Ok(())
@@ -452,7 +570,7 @@ impl MeshView {
         self.needle_enabled = enabled;
         log::info!("[NEEDLE] Mesh needle rendering {}", enabled);
     }
-    
+
     pub fn set_ball_enabled(&mut self, enabled: bool) {
         self.ball_enabled = enabled;
         log::info!("[BALL] Mesh ball rendering {}", enabled);
@@ -461,7 +579,12 @@ impl MeshView {
     pub fn set_ball(&mut self, ball: usize, pos: [f32; 3], radius_uv: f32) {
         if ball < 4usize {
             self.balls[ball] = [pos[0], pos[1], pos[2], radius_uv];
-            log::info!("[BALL] Mesh ball {} position set to {:?} (radius {:.4} uv)", ball, pos, radius_uv);
+            log::info!(
+                "[BALL] Mesh ball {} position set to {:?} (radius {:.4} uv)",
+                ball,
+                pos,
+                radius_uv
+            );
         } else {
             log::warn!("[BALL] Invalid ball index: {}", ball);
         }
@@ -475,13 +598,18 @@ impl MeshView {
             needle.color = color;
         } else {
             self.needles.push(NeedleUniform {
-                entry, 
-                tip: pos, 
-                radius: NeedleUniform::default().radius, 
-                id, 
-                color
+                entry,
+                tip: pos,
+                radius: NeedleUniform::default().radius,
+                id,
+                color,
             });
-            log::info!("[NEEDLE] set_new_needle {} : entry={:?}, pos={:?}",id, entry, pos);
+            log::info!(
+                "[NEEDLE] set_new_needle {} : entry={:?}, pos={:?}",
+                id,
+                entry,
+                pos
+            );
         }
     }
 
@@ -502,7 +630,14 @@ impl MeshView {
     /// * `index`     - index of the plane to set
     /// * `visible`   - whether the plane is composited this frame
     /// * `alpha`     - 0..=1 compositing opacity shared by all 4 planes
-    pub fn set_oblique_plane(&mut self, center: [f32; 3], normal: [f32; 3], index: usize, oblique_crop: f32, alpha: f32) {
+    pub fn set_oblique_plane(
+        &mut self,
+        center: [f32; 3],
+        normal: [f32; 3],
+        index: usize,
+        oblique_crop: f32,
+        alpha: f32,
+    ) {
         self.oblique_planes[index] = ObliquePlaneUniform {
             center,
             visible: oblique_crop,
@@ -587,7 +722,8 @@ impl MeshView {
         }
 
         // Extract volume dimensions — shared by both volume and needle transforms
-        let vol_extent = self.volume_ctx
+        let vol_extent = self
+            .volume_ctx
             .as_ref()
             .map(|ctx| ctx.render_content.texture.size())
             .unwrap_or_default();
@@ -612,7 +748,11 @@ impl MeshView {
         if let Some(vol_ctx) = &self.volume_ctx {
             // Extract format and bias from RenderContent decode parameters
             let decode_params = vol_ctx.render_content.decode_parameters();
-            let is_packed_rg8 = if decode_params.is_packed_flag == 1 { 1.0 } else { 0.0 };
+            let is_packed_rg8 = if decode_params.is_packed_flag == 1 {
+                1.0
+            } else {
+                0.0
+            };
 
             let mut gpu_needles = [NeedleUniform::default(); 32];
             for (i, needle) in self.needles.iter().take(32).enumerate() {
@@ -621,7 +761,7 @@ impl MeshView {
                     radius: needle.radius,
                     tip: needle.tip,
                     id: needle.id,
-                    color: needle.color
+                    color: needle.color,
                 };
             }
 
@@ -702,6 +842,7 @@ impl MeshView {
     fn handle_render_error(&mut self, error: MeshRenderError) {
         self.stats.error_count += 1;
         self.consecutive_errors += 1;
+        self.last_recovery_attempt = Instant::now();
 
         log::warn!(
             "Mesh render error (consecutive: {}): {}",
@@ -807,7 +948,9 @@ impl MeshView {
         if let Some(vol_ctx) = &self.volume_ctx {
             vol_ctx.render(render_pass);
         } else {
-            log::warn!("BasicMeshView::try_render - Volume rendering requested but no volume context attached");
+            return Err(MeshRenderError::ResourceError(
+                "Volume context not attached".to_string(),
+            ));
         }
 
         // Render the polygonal spine mesh SECOND, as a translucent overlay.
@@ -827,7 +970,7 @@ impl MeshView {
         }
 
         // Record successful render
-        let render_time_ms = start_time.elapsed().as_millis_f32();
+        let render_time_ms = DurationExt::as_millis_f32(&start_time.elapsed());
         self.record_success(render_time_ms);
         log::trace!(
             "BasicMeshView::try_render - Render completed successfully in {:.2}ms",
@@ -852,14 +995,17 @@ impl Renderable for MeshView {
         // Function-level comment: Update mesh view state and perform health checks
 
         // Update uniform buffers with current camera and lighting data
-        self.update_uniforms(queue);
+        if self.invalidation.needs_upload(&self.display_state()) || self.is_animating() {
+            self.update_uniforms(queue);
+            self.invalidation.uploaded(self.display_state());
+        }
 
         // Perform periodic health checks
         if self.stats.frame_count % 300 == 0 {
             // Every 5 seconds at 60fps
             if !self.is_healthy() {
-                log::warn!("MeshView health check failed: consecutive_errors={}, last_success={:?}s ago, mode={:?}", 
-                    self.consecutive_errors, 
+                log::warn!("MeshView health check failed: consecutive_errors={}, last_success={:?}s ago, mode={:?}",
+                    self.consecutive_errors,
                     self.last_success_time.elapsed().as_secs_f64(),
                     self.fallback_mode
                 );
@@ -868,15 +1014,19 @@ impl Renderable for MeshView {
 
         // Auto-recovery attempt if we've been disabled for too long
         if matches!(self.fallback_mode, FallbackMode::Disabled)
-            && self.last_success_time.elapsed().as_secs_f64() > 60.0
+            && self.last_recovery_attempt.elapsed() >= Duration::from_secs(60)
         {
             log::info!("Attempting auto-recovery from disabled state");
             self.fallback_mode = FallbackMode::Wireframe;
             self.consecutive_errors = 5; // Start with reduced error count
+            self.last_recovery_attempt = Instant::now();
         }
     }
 
-    fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
+    fn render(
+        &mut self,
+        render_pass: &mut wgpu::RenderPass,
+    ) -> crate::core::error::KeplerResult<()> {
         // Function-level comment: Render mesh with comprehensive error handling and fallback mechanisms
 
         // Attempt rendering with error handling
@@ -886,12 +1036,11 @@ impl Renderable for MeshView {
                 Ok(())
             }
             Err(error) => {
-                // Handle the error and determine recovery strategy
+                // Retain fallback bookkeeping, but never acknowledge a partial frame.
+                let failure =
+                    crate::core::error::KeplerError::Graphics(format!("draw mesh view: {error}"));
                 self.handle_render_error(error);
-
-                // Always return Ok to prevent frame failure
-                // The error handling will adjust fallback mode for next frame
-                Ok(())
+                Err(failure)
             }
         }
     }
@@ -909,6 +1058,34 @@ impl Drop for MeshView {
 }
 
 impl View for MeshView {
+    fn needs_redraw(&self) -> bool {
+        self.invalidation.needs_redraw(&self.display_state())
+    }
+
+    fn mark_presented(&mut self) {
+        self.invalidation.presented(self.display_state());
+    }
+
+    fn is_animating(&self) -> bool {
+        self.volume_ctx.is_some()
+            && self.dim.0 > 0
+            && self.dim.1 > 0
+            && self.rotation_enabled
+            && self.rotation_speed != 0.0
+            && self.fallback_mode != FallbackMode::Disabled
+    }
+
+    fn next_update_in(&self) -> Option<Duration> {
+        let delay = if self.fallback_mode == FallbackMode::Disabled {
+            Duration::from_secs(60)
+        } else if self.consecutive_errors > 0 {
+            Duration::from_millis(16)
+        } else {
+            return None;
+        };
+        Some(delay.saturating_sub(self.last_recovery_attempt.elapsed()))
+    }
+
     fn position(&self) -> (i32, i32) {
         self.pos
     }
@@ -941,7 +1118,10 @@ mod tests {
     #[test]
     fn test_rotation_default_identity() {
         let mesh_view = MeshView::new();
-        assert!(mesh_view.camera().model_rotation_quat().abs_diff_eq(Quat::IDENTITY, 1e-6));
+        assert!(mesh_view
+            .camera()
+            .model_rotation_quat()
+            .abs_diff_eq(Quat::IDENTITY, 1e-6));
 
         // Check Matrix columns
         let mat = Mat4::from_quat(mesh_view.camera().model_rotation_quat());
@@ -996,7 +1176,12 @@ mod tests {
         let q = mesh_view.camera().model_rotation_quat();
         // A rotation quaternion is double-covered: q and -q are the same
         // orientation, and the shared camera may return either sign.
-        assert!(q.dot(expected).abs() > 0.9999, "expected {:?}, got {:?}", expected, q);
+        assert!(
+            q.dot(expected).abs() > 0.9999,
+            "expected {:?}, got {:?}",
+            expected,
+            q
+        );
     }
 
     #[test]
@@ -1016,7 +1201,12 @@ mod tests {
 
         // Should approach 180° about Y (sign-agnostic).
         let expected = Quat::from_rotation_y(180.0_f32.to_radians());
-        assert!(q2.dot(expected).abs() > 0.9999, "expected {:?}, got {:?}", expected, q2);
+        assert!(
+            q2.dot(expected).abs() > 0.9999,
+            "expected {:?}, got {:?}",
+            expected,
+            q2
+        );
     }
 
     /// Function-level comment: Reset rotation and verify default orientation (Identity)
@@ -1029,7 +1219,10 @@ mod tests {
 
         // Reset
         mesh_view.reset_rotation();
-        assert!(mesh_view.camera().model_rotation_quat().abs_diff_eq(Quat::IDENTITY, 1e-6));
+        assert!(mesh_view
+            .camera()
+            .model_rotation_quat()
+            .abs_diff_eq(Quat::IDENTITY, 1e-6));
     }
 
     /// Regression guard: the polygonal mesh `model_view_proj` must place the

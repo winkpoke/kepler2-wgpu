@@ -3,34 +3,87 @@
 use log::{info, trace, warn};
 
 // ---------------------------------------- WASM ---------------------------------------------
-use crate::rendering::{view, Graphics, GraphicsContext};
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::{fs, io};
-use winit::{event::*, window::Window};
-use crate::core::{error::KeplerError, WindowLevel};
+use super::frame::{Acquisition, FrameDriver, FrameOutcome, RecoveryAction};
+use crate::acquisition::process::{load_average_raw_from_bytes, process_raw};
+use crate::application::appview::AppView;
+use crate::core::error::{KeplerError, KeplerResult, SurfaceFailure, SurfaceFailureKind};
 use crate::data::dicom::*;
-use crate::data::volume_encoding::VolumeEncoding;
 use crate::data::{ct_volume::*, AppModel};
-use crate::rendering::view::mesh::mesh_texture_pool::MeshTexturePool;
 use crate::rendering::view::mesh::mesh::spine;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::*;
-use crate::application::appview::AppView;
-use crate::acquisition::process::{process_raw, load_average_raw_from_bytes};
+use crate::rendering::{view, Graphics, GraphicsContext};
 #[cfg(target_arch = "wasm32")]
 use async_lock::Mutex;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::{fs, io};
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
+use winit::{event::*, window::Window};
 
 /// Main application logic and state management
 pub struct App {
+    reconfigure_pending: bool,
+    surface_dirty: bool,
+    surface_suspended: bool,
+    /// Set when a size change must be applied to the platform surface.
+    surface_configure_needed: bool,
     /// Graphics context that encapsulates both hardware abstraction and rendering pipeline orchestration
     pub(crate) graphics_context: GraphicsContext,
     pub(crate) app_view: AppView,
     pub(crate) app_model: AppModel,
     pub(crate) saved_states: [usize; 4],
     pub(crate) current_meshes: Arc<Vec<Mesh>>,
+}
+
+impl FrameDriver for App {
+    type Texture = wgpu::SurfaceTexture;
+
+    fn check_fault(&self) -> KeplerResult<()> {
+        self.graphics().faults.check()
+    }
+    fn ready(&self) -> bool {
+        self.can_render()
+    }
+    fn reconfigure_pending(&self) -> bool {
+        self.reconfigure_pending
+    }
+    fn set_reconfigure_pending(&mut self, pending: bool) {
+        self.reconfigure_pending = pending;
+    }
+    fn recover(&mut self, action: RecoveryAction) -> KeplerResult<()> {
+        self.graphics_mut()
+            .recover_surface(action == RecoveryAction::Recreate)?;
+        // Recovery already configures the surface at the current size.
+        self.surface_configure_needed = false;
+        self.synchronize_surface_format()?;
+        Ok(())
+    }
+    fn acquire(&mut self) -> Acquisition<Self::Texture> {
+        if let Err(error) = self.synchronize_surface_format() {
+            return Acquisition::PreparationFailed(error);
+        }
+        self.apply_pending_surface_configuration();
+        Acquisition::from_surface(self.graphics().surface.get_current_texture())
+    }
+    fn draw_and_present(&mut self, frame: Self::Texture) -> KeplerResult<()> {
+        self.draw_frame(frame)
+    }
+    fn mark_presented(&mut self) {
+        self.app_view.layout.mark_presented();
+        self.surface_dirty = false;
+    }
+    fn acquisition_failure(&self, kind: SurfaceFailureKind) -> SurfaceFailure {
+        SurfaceFailure::new(
+            kind,
+            "acquire current frame",
+            format!(
+                "selected backend {:?}: no usable frame",
+                self.graphics().capabilities().backend()
+            ),
+        )
+    }
 }
 
 impl App {
@@ -54,7 +107,7 @@ impl App {
         );
 
         // Choose default format based on device capability: prefer R16Float when supported, else RG8
-        let default_float = Self::device_supports_r16float(&graphics.adapter);
+        let default_float = graphics.capabilities().default_float_encoding();
         log::info!(
             "R16Float filterable sampling supported: {}. Defaulting to {}",
             default_float,
@@ -65,8 +118,6 @@ impl App {
             }
         );
 
-        crate::rendering::core::pipeline::set_swapchain_format(graphics.surface_config.format);
-
         // Create GraphicsContext which encapsulates both graphics and pass_executor
         let graphics_context = GraphicsContext::from_graphics(graphics);
 
@@ -74,11 +125,17 @@ impl App {
         let factory = crate::rendering::view::DefaultViewFactory::new(
             Arc::clone(&graphics_context.graphics.device),
             Arc::clone(&graphics_context.graphics.queue),
-            graphics_context.graphics.surface_config.format,
+            graphics_context.surface_format(),
             default_float,
         );
 
+        let size = window.inner_size();
         Ok(Self {
+            surface_dirty: true,
+            reconfigure_pending: false,
+            surface_suspended: size.width == 0 || size.height == 0,
+            // Graphics::initialize only configures a non-empty surface
+            surface_configure_needed: size.width == 0 || size.height == 0,
             graphics_context,
             app_view: AppView::new(layout, factory),
             app_model: AppModel::new(default_float),
@@ -87,33 +144,99 @@ impl App {
         })
     }
 
+    /// Replaces graphics and rebinds existing views, retaining their CPU interaction state.
+    /// Volume upload failures leave the current context intact.
     pub fn swap_graphics(&mut self, new_graphics: Graphics) {
-        // Function-level comment: Swap the underlying Graphics (window/surface/device/queue) safely.
-        // This replaces the graphics inside GraphicsContext and updates dependent state:
-        // - PassExecutor is recreated with the new surface format to keep pipelines targeting the correct format.
-        // - Global swapchain format is updated for modules that query it.
-        // - Mesh depth view is cleared to avoid stale references across device changes.
+        if let Err(error) = self.try_swap_graphics(new_graphics) {
+            log::error!("Graphics replacement failed: {error}");
+        }
+    }
 
-        // Recreate GraphicsContext from new Graphics to ensure PassExecutor targets the new surface format
-        let new_gc = crate::rendering::core::graphics::GraphicsContext::from_graphics(new_graphics);
-        // Update global swapchain format for pipeline helpers
-        crate::rendering::core::pipeline::set_swapchain_format(
-            new_gc.graphics.surface_config.format,
+    pub(crate) fn try_swap_graphics(&mut self, new_graphics: Graphics) -> Result<(), KeplerError> {
+        let device_changed = !Arc::ptr_eq(&self.graphics().device, &new_graphics.device);
+        let format_changed =
+            self.app_view.view_factory.surface_format() != new_graphics.surface_config.format;
+        let use_float = self.app_model.enable_float_volume_texture
+            && new_graphics.capabilities().default_float_encoding();
+        let content = if device_changed
+            && (self.has_mpr_view()
+                || self.has_mip_content()
+                || self
+                    .app_view
+                    .layout
+                    .views()
+                    .iter()
+                    .any(|v| v.as_any().is::<MeshView>()))
+        {
+            let vol = self.app_model.volume()?;
+            let encoding =
+                crate::data::volume_encoding::VolumeEncoding::for_float_support(use_float);
+            let bytes = encoding.encode_volume(vol.voxel_data());
+            Some(Arc::new(RenderContent::from_bytes(
+                &new_graphics.device,
+                &new_graphics.queue,
+                &bytes,
+                "CT Volume",
+                vol.dimensions.0 as u32,
+                vol.dimensions.1 as u32,
+                vol.dimensions.2 as u32,
+                encoding,
+            )?))
+        } else {
+            None
+        };
+        if device_changed || format_changed {
+            self.app_view.rebind_gpu_resources(
+                super::appview::ViewGpuConfiguration {
+                    device: &new_graphics.device,
+                    queue: &new_graphics.queue,
+                    format: new_graphics.surface_config.format,
+                    use_float_volume_texture: use_float,
+                },
+                content,
+            )?;
+        } else {
+            self.app_view
+                .view_factory
+                .set_float_volume_texture(use_float);
+        }
+        self.app_model.enable_float_volume_texture = use_float;
+        let window_size = new_graphics.window.inner_size();
+        self.surface_suspended = window_size.width == 0 || window_size.height == 0;
+        self.surface_configure_needed = self.surface_suspended;
+        self.surface_dirty = true;
+        self.reconfigure_pending = false;
+        self.graphics_context = GraphicsContext::from_graphics(new_graphics);
+        let size = (
+            self.graphics().surface_config.width,
+            self.graphics().surface_config.height,
         );
-        // Replace the graphics_context
-        self.graphics_context = new_gc;
+        // Keep the existing layout while the replacement window is minimized.
+        if !self.surface_suspended && size.0 > 0 && size.1 > 0 {
+            self.app_view.resize(size);
+        }
+        Ok(())
+    }
 
-        // Function-level comment: Clear mesh resources bound to old device to prevent stale references.
-        // Texture pool is now created per-frame, so no persistent state to clear
-        // Function-level comment: Reinitialize the DefaultViewFactory with the new device/queue to avoid cross-device resource mismatches on WASM.
-        // This fixes a panic where a TextureView created on the new device was used to create a bind group on the old device.
-        self.app_view.view_factory = crate::rendering::view::DefaultViewFactory::new(
-            std::sync::Arc::clone(&self.graphics_context.graphics.device),
-            std::sync::Arc::clone(&self.graphics_context.graphics.queue),
-            self.graphics_context.graphics.surface_config.format,
-            self.app_model.enable_float_volume_texture,
-        );
-        log::info!("ViewFactory reinitialized after graphics swap.");
+    /// Synchronizes existing views after a surface-only format change, not an ordinary resize.
+    fn synchronize_surface_format(&mut self) -> crate::core::error::KeplerResult<()> {
+        let format = self.graphics_context.surface_format();
+        if self.app_view.view_factory.surface_format() != format {
+            self.app_view.rebind_gpu_resources(
+                super::appview::ViewGpuConfiguration {
+                    device: &self.graphics_context.graphics.device,
+                    queue: &self.graphics_context.graphics.queue,
+                    format,
+                    use_float_volume_texture: self.app_model.enable_float_volume_texture,
+                },
+                None,
+            )?;
+            self.surface_dirty = true;
+        }
+        self.graphics_context
+            .pass_executor
+            .update_surface_format(format);
+        Ok(())
     }
 
     /// Get a reference to the window
@@ -135,6 +258,8 @@ impl App {
 
     /// Function-level comment: Resize the application window and update graphics resources.
     pub fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+        self.surface_suspended = new_size.width == 0 || new_size.height == 0;
+        self.surface_dirty = true;
         // get max texture dimension
         let max_dim = self.graphics().device.limits().max_texture_dimension_2d as u32;
 
@@ -150,50 +275,45 @@ impl App {
         log::info!("Resizing to: {}, {}", safe_width, safe_height);
 
         if safe_width > 0 && safe_height > 0 {
-            // self.size = new_size;
             self.graphics_mut().surface_config.width = safe_width;
             self.graphics_mut().surface_config.height = safe_height;
 
             self.app_view.layout.resize((safe_width, safe_height));
 
-            #[cfg(target_arch = "wasm32")]
-            {
-                // sets the style width and height of the window canvas
-                let _ = self
-                    .window()
-                    .request_inner_size(winit::dpi::PhysicalSize::new(safe_width, safe_height));
+            // Commit the new size to the platform surface at the next acquisition.
+            self.surface_configure_needed = true;
+
+            self.reconfigure_pending = false;
+            if let Err(error) = self.synchronize_surface_format() {
+                self.surface_suspended = true;
+                log::error!("Failed to synchronize resized surface: {error}");
             }
-            self.graphics()
-                .surface
-                .configure(&self.graphics().device, &self.graphics().surface_config);
-
-            // Update PassExecutor with new surface format
-            let surface_format = self.graphics().surface_config.format;
-            self.graphics_context
-                .pass_executor
-                .update_surface_format(surface_format);
-
-            // Recreate depth texture to match new surface size
-            let depth_format = crate::rendering::core::pipeline::get_mesh_depth_format();
-            let size = wgpu::Extent3d {
-                width: self.graphics().surface_config.width,
-                height: self.graphics().surface_config.height,
-                depth_or_array_layers: 1,
-            };
-            let desc = wgpu::TextureDescriptor {
-                label: Some("Mesh Depth Texture"),
-                size,
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: depth_format,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                view_formats: &[],
-            };
-            let depth_tex = self.graphics().device.create_texture(&desc);
-            let _ = depth_tex.create_view(&wgpu::TextureViewDescriptor::default());
-            // Texture pool is now created per-frame, so no persistent depth texture to update
+            // The persistent depth cache replaces size-dependent targets on the next mesh frame.
         }
+    }
+
+    /// Applies a pending size change to the platform surface immediately before
+    /// acquisition. Running this inside the frame (instead of in `resize`) keeps the
+    /// canvas resize, the swapchain reconfigure, and the redraw within one animation
+    /// frame, eliminating the cleared-but-not-redrawn window that caused flicker.
+    fn apply_pending_surface_configuration(&mut self) {
+        if !self.surface_configure_needed {
+            return;
+        }
+        let (width, height) = (
+            self.graphics().surface_config.width,
+            self.graphics().surface_config.height,
+        );
+        if width == 0 || height == 0 {
+            return;
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            // Keep the canvas backing size in step with the swapchain in the same frame.
+            let _ = self.window().request_inner_size(winit::dpi::PhysicalSize::new(width, height));
+        }
+        self.graphics().surface.configure(&self.graphics().device, &self.graphics().surface_config);
+        self.surface_configure_needed = false;
     }
 
     #[allow(unused_variables)]
@@ -201,8 +321,28 @@ impl App {
         false
     }
 
+    /// Pending visual work, independent of animation and recovery deadlines.
+    pub fn needs_redraw(&self) -> bool {
+        self.surface_dirty
+            || self.reconfigure_pending
+            || self.app_view.layout.needs_redraw()
+            || self.app_view.view_factory.surface_format() != self.graphics_context.surface_format()
+    }
+
+    pub(crate) fn can_render(&self) -> bool {
+        !self.surface_suspended
+            && self.graphics().surface_config.width > 0
+            && self.graphics().surface_config.height > 0
+    }
+
+    pub(crate) fn invalidate_surface(&mut self) {
+        self.surface_dirty = true;
+    }
+
     pub fn update(&mut self) {
-        self.app_view.layout.update(&self.graphics_context.graphics.queue);
+        self.app_view
+            .layout
+            .update(&self.graphics_context.graphics.queue);
     }
 
     /// Function-level comment: Check if the layout contains any MIP views for MIP pass execution.
@@ -232,10 +372,18 @@ impl App {
             .any(|view| view.as_any().downcast_ref::<view::MprView>().is_some())
     }
 
-    /// Function-level comment: Renders the frame using separate render passes for 3D mesh and 2D slice content.
-    /// This architecture provides better performance and cleaner separation of concerns.
-    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
-        let frame = self.graphics().surface.get_current_texture()?;
+    /// Render a complete frame. Successful drawing and zero-size no-ops return unit.
+    /// Skipped acquisitions return an owned surface classification; drawing failures
+    /// return graphics errors. Pending changes are consumed only after presentation.
+    pub fn render(&mut self) -> KeplerResult<()> {
+        self.render_frame()?.into_public_result()
+    }
+
+    pub(crate) fn render_frame(&mut self) -> KeplerResult<FrameOutcome> {
+        super::frame::execute(self)
+    }
+
+    fn draw_frame(&mut self, frame: wgpu::SurfaceTexture) -> KeplerResult<()> {
         let frame_view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -254,7 +402,7 @@ impl App {
         let has_mpr_view = self.has_mpr_view();
 
         // Debug logging for pass execution conditions
-        trace!("View-driven pass conditions - has_mesh_view: {}, has_mip_view: {}, has_mpr_view: {}, views_len: {}", 
+        trace!("View-driven pass conditions - has_mesh_view: {}, has_mip_view: {}, has_mpr_view: {}, views_len: {}",
                has_mesh_view, has_mip_view, has_mpr_view, self.app_view.layout.views().len());
 
         // Reset mesh pass error state if mesh view is present and pass executor is unhealthy
@@ -266,9 +414,12 @@ impl App {
 
         // Execute frame using PassExecutor with separate render passes
         // Extract all needed values and mutable references in one go to avoid borrowing conflicts
-        // Create temporary texture pool per-frame; depth is ensured by pass executor
-        let mut texture_pool = MeshTexturePool::new();
-        let layout = &mut self.app_view.layout;
+        // Keep the pool device-scoped, and release it when there is no mesh to draw.
+        if !has_mesh_view {
+            self.graphics_context.mesh_texture_pool.clear_depth_view();
+        }
+        let texture_pool = &mut self.graphics_context.mesh_texture_pool;
+        let app_view = &mut self.app_view;
 
         let surface_width = self.graphics_context.graphics.surface_config.width;
         let surface_height = self.graphics_context.graphics.surface_config.height;
@@ -279,123 +430,47 @@ impl App {
             .execute_frame(
                 &mut encoder,
                 &frame_view,
-                &mut texture_pool,
+                texture_pool,
                 device,
                 surface_width,
                 surface_height,
                 has_mesh_view, // Whether there is a mesh view present in the layout
                 has_mip_view,  // Whether there is a MIP view present in the layout
                 has_mpr_view,  // Whether there is an MPR view present in the layout
-                |pass_context| {
-                    match pass_context.pass_id {
-                        crate::rendering::core::PassId::MeshPass => {
-                            // Function-level comment: Render 3D mesh content by finding MeshView in the layout
-                            for view in layout.views_mut().iter_mut() {
-                                if let Some(mesh_view) =
-                                    view.as_any_mut().downcast_mut::<MeshView>()
-                                {
-                                    // Call the MeshView render method with the pass context
-                                    mesh_view
-                                        .render(pass_context.pass)
-                                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-                                    break; // Only render the first mesh view found
-                                }
-                            }
-                            Ok(())
-                        }
-                        crate::rendering::core::PassId::MipPass => {
-                            // Function-level comment: Render MIP content by finding and rendering MIP views in the layout
-                            for view in layout.views_mut().iter_mut() {
-                                // Check if this view is a MipView and render it
-                                if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>()
-                                {
-                                    mip_view
-                                        .render(pass_context.pass)
-                                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-                                }
-                            }
-                            Ok(())
-                        }
-                        crate::rendering::core::PassId::SlicePass => {
-                            // Function-level comment: Render 2D slice content (MPR views only, skip MeshView)
-                            // Iterate through views and only render MPR views, not MeshView
-                            for (_, view) in layout.views_mut().iter_mut().enumerate() {
-                                // Check if this is a MeshView and skip it during slice pass
-                                if view.as_any().downcast_ref::<MeshView>().is_some() {
-                                    continue;
-                                }
-                                // Render MPR views only
-                                view.render(pass_context.pass)
-                                    .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)?;
-                            }
-                            Ok(())
-                        }
-                    }
+                |context| {
+                    app_view
+                        .render_pass(context)
+                        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
                 },
             )
-            .map_err(|e| {
-                log::error!("PassExecutor error: {}", e);
-                wgpu::SurfaceError::Lost
-            })?;
-
+            .map_err(super::frame::pass_failure)?;
         // Submit the command buffer
         self.graphics()
             .queue
             .submit(std::iter::once(encoder.finish()));
 
-        frame.present();
-        Ok(())
+        self.graphics().faults.check()?;
+        self.graphics().queue.present(frame);
+        self.graphics().faults.check()
     }
 
     /// Internal helper to load volume and create RenderContent without modifying layout
-    fn load_render_content(&mut self, vol_input: &CTVolume) -> Result<Arc<RenderContent>, KeplerError> {
-        let _ = self.app_model.load_volume(vol_input.clone());
-        let mut winlev;
-
+    fn load_render_content(&mut self, vol: &CTVolume) -> Result<Arc<RenderContent>, KeplerError> {
+        let _ = self.app_model.load_volume(vol.clone());
         // Delegate data preparation to AppModel
         let (bytes, encoding) = self.app_model.get_volume_render_data()?;
 
-        match encoding {
-            VolumeEncoding::HuFloat => {
-                winlev = WindowLevel::new();
-                if let Err(e) = winlev.apply_bone_preset() {
-                    log::warn!("apply_bone_preset (float path) failed: {}", e);
-                }
-                info!("Using R16Float volume texture path");
-
-                Ok(Arc::new(RenderContent::from_bytes_r16f(
-                    &self.graphics().device,
-                    &self.graphics().queue,
-                    &bytes,
-                    "CT Volume",
-                    vol_input.dimensions.0 as u32,
-                    vol_input.dimensions.1 as u32,
-                    vol_input.dimensions.2 as u32,
-                    encoding,
-                )?))
-            }
-            VolumeEncoding::HuPackedRg8 { offset } => {
-                winlev = WindowLevel::new();
-                if let Err(e) = winlev.set_bias(offset) {
-                    log::warn!("set_bias (packed RG8 path) failed: {}", e);
-                }
-                if let Err(e) = winlev.apply_bone_preset() {
-                    log::warn!("apply_bone_preset (packed RG8 path) failed: {}", e);
-                }
-                info!("Using Rg8Unorm volume texture path");
-
-                Ok(Arc::new(RenderContent::from_bytes(
-                    &self.graphics().device,
-                    &self.graphics().queue,
-                    &bytes,
-                    "CT Volume",
-                    vol_input.dimensions.0 as u32,
-                    vol_input.dimensions.1 as u32,
-                    vol_input.dimensions.2 as u32,
-                    encoding,
-                )?))
-            }
-        }
+        info!("Using {:?} volume texture path", encoding);
+        Ok(Arc::new(RenderContent::from_bytes(
+            &self.graphics().device,
+            &self.graphics().queue,
+            &bytes,
+            "CT Volume",
+            vol.dimensions.0 as u32,
+            vol.dimensions.1 as u32,
+            vol.dimensions.2 as u32,
+            encoding,
+        )?))
     }
 
     pub fn load_data_from_ct_volume(
@@ -426,21 +501,23 @@ impl App {
     /// the 4th grid cell stays empty. vol_1 is kept in the app model so that
     /// subsequent single-view mode switches still have a volume to rebuild from.
     pub fn load_dr_to_pro(
-        &mut self, 
+        &mut self,
         index: usize,
-        vol: &CTVolume, 
+        vol: &CTVolume,
         avg_dark_raw: &[u8],
         avg_bright_raw: &[u8],
     ) {
         let mut vol = vol.clone();
-        let avg_dark = load_average_raw_from_bytes(&avg_dark_raw).expect("Failed to load dark field");
-        let avg_bright = load_average_raw_from_bytes(&avg_bright_raw).expect("Failed to load bright field");
+        let avg_dark =
+            load_average_raw_from_bytes(&avg_dark_raw).expect("Failed to load dark field");
+        let avg_bright =
+            load_average_raw_from_bytes(&avg_bright_raw).expect("Failed to load bright field");
         let p = process_raw(vol.clone().voxel_data, &avg_dark, &avg_bright, 1e-8).unwrap();
         vol.set_voxel_data(p);
         vol.rotate_180_xy();
-        
+
         let _ = self.app_model.load_volume(vol.clone());
-        if let Err(e) = self.app_view.configure_dr_transverse_layout(index, &vol){
+        if let Err(e) = self.app_view.configure_dr_transverse_layout(index, &vol) {
             log::error!("Failed to configure DR-to-PRO transverse layout: {}", e);
         }
 
@@ -448,10 +525,10 @@ impl App {
     }
 
     pub fn overlay_dr_segmentation(
-        &mut self, 
-        overlay_vol_0: &CTVolume, 
+        &mut self,
+        overlay_vol_0: &CTVolume,
         overlay_vol_90: &CTVolume,
-        scale: f32
+        scale: f32,
     ) {
         let device = &self.graphics_context.graphics.device;
         let queue = &self.graphics_context.graphics.queue;
@@ -466,27 +543,43 @@ impl App {
             let vmax = *data.iter().max().unwrap_or(&1);
             let denom = ((vmax - vmin) as f32).max(1.0);
             // Full-range pseudo-color encoding
-            let label_bytes: Vec<u8> = data.iter().map(|&v| {
-                let t = (v - vmin) as f32 / denom;
-                (1.0 + t.clamp(0.0, 1.0) * 254.0) as u8
-            }).collect();
+            let label_bytes: Vec<u8> = data
+                .iter()
+                .map(|&v| {
+                    let t = (v - vmin) as f32 / denom;
+                    (1.0 + t.clamp(0.0, 1.0) * 254.0) as u8
+                })
+                .collect();
             match RenderContent::from_labels_r8(
-                device, queue, &label_bytes,
+                device,
+                queue,
+                &label_bytes,
                 "DR Label Overlay",
                 width,
                 height,
-                depth
+                depth,
             ) {
                 Ok(dr_label) => {
                     if let Some(view) = self.app_view.layout.views_mut().get_mut(view_idx) {
                         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
                             mpr_view.set_segmentation(device, Some(Arc::new(dr_label)));
-                            mpr_view.set_segmentation_visibility(queue, [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], true);
+                            mpr_view.retain_segmentation_source(
+                                Arc::new(label_bytes.clone()),
+                                (width, height, depth),
+                            );
+                            mpr_view.set_segmentation_visibility(
+                                queue,
+                                [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                                true,
+                            );
                         }
                     }
                 }
                 Err(e) => {
-                    log::error!("Failed to build DR label overlay for view {view_idx}: {}", e);
+                    log::error!(
+                        "Failed to build DR label overlay for view {view_idx}: {}",
+                        e
+                    );
                 }
             }
         }
@@ -513,82 +606,25 @@ impl App {
         mip_index: Option<usize>,
         orientation_index: usize,
     ) {
-        // Save current view states before layout switch
-        self.app_view.save_view_states();
-        
-        if let Some(vol) = self.app_model.volume().ok().map(|v| v.clone()) {
-            if self.saved_states.is_empty() {
-                self.load_data_from_ct_volume(&vol).unwrap();
-            }
-            
-            // Load render texture (may downsample internally and store in app_model)
-            let texture = match self.load_render_content(&vol) {
-                Ok(t) => t,
-                Err(e) => {
-                    log::error!("Failed to load render texture: {}", e);
-                    return;
-                }
-            };
-
-            // Use the volume that may have been downsampled by load_render_content
-            let vol_render = self.app_model.volume().unwrap();
-
-            if let Some(idx) = mpr_index {
-                self.saved_states[idx] = orientation_index;
-            }
-
-            // Switch rendering mode using the (potentially downsampled) volume
-            match mode {
-                0 | 1 | 2  => {
-                    log::info!("Switching to OneCellLayout");
-                    let _ = self.app_view.set_layout_mode_single(
-                        texture.clone(),
-                        vol_render,
-                        mode,
-                        orientation_index,
-                    );
-
-                    self.app_view.restore_view_states();
-                }
-                // LargeLeft3RightLayout
-                4 => {
-                    log::info!("Switching to LargeLeft3RightLayout");
-                    let _ = self.app_view.set_layout_three(
-                        texture.clone(),
-                        vol_render,
-                        self.saved_states,
-                        mip_index,
-                        mesh_index,
-                    );
-
-                    self.app_view.restore_view_states();
-                }
-                _ => {
-                    log::info!("Switching to 2*2GridLayout");
-                    let _ = self.app_view.configure_mesh_layout(
-                        texture.clone(),
-                        vol_render,
-                        self.saved_states,
-                        mip_index,
-                        mesh_index,
-                    );
-
-                    self.app_view.restore_view_states();
-                }
-            }
-
-            let thickness = vol_render.voxel_spacing.2 / vol_render.voxel_spacing.0;
-            for index_opt in [mesh_index, mip_index].iter() {
-                if let Some(index) = index_opt {
-                    if let Err(e) = self.app_view.set_slab_thickness(*index, thickness) {
-                        log::warn!("set_slab_thickness failed on view {}: {}", index, e);
-                    }
-                }
-            }
-        } else {
-            log::info!(
-                "MPR/MIP layout requested without loaded volume; will apply on next data load."
-            );
+        let request = super::view_layout_transition::TransitionRequest {
+            mode,
+            mesh_index,
+            orientation_slot: mpr_index,
+            mip_index,
+            orientation_index,
+        };
+        let preparation = super::view_layout_transition::GpuPreparation {
+            device: &self.graphics_context.graphics.device,
+            queue: &self.graphics_context.graphics.queue,
+        };
+        if let Err(error) = super::view_layout_transition::apply(
+            &self.app_model,
+            &mut self.app_view,
+            &mut self.saved_states,
+            request,
+            &preparation,
+        ) {
+            log::error!("Failed to switch view layout (mode {mode}): {error}");
         }
     }
 
@@ -608,6 +644,12 @@ impl App {
     }
 
     pub fn set_ai_segmentation(&mut self, raw: Vec<u8>) {
+        if raw.iter().any(|&label| label > 7) {
+            log::warn!(
+                "AI segmentation labels must be in 0..=7; retaining the current segmentation"
+            );
+            return;
+        }
         if raw.is_empty() {
             let device = &self.graphics_context.graphics.device;
             for view in self.app_view.layout.views_mut().iter_mut() {
@@ -624,19 +666,32 @@ impl App {
             let (dims, spacing) = match self.app_model.volume() {
                 Ok(vol) => (vol.dimensions(), vol.voxel_spacing()),
                 Err(_) => {
-                    log::warn!("SetSegmentationAll: no CT volume loaded, skipping 3D mesh extraction");
+                    log::warn!(
+                        "SetSegmentationAll: no CT volume loaded, skipping 3D mesh extraction"
+                    );
                     return;
                 }
             };
             let height = dims.0 as u32;
-            let width  = dims.1 as u32;
-            let depth  = dims.2 as u32;
-            match RenderContent::from_labels_r8(device, queue, &raw, "ai_segmentation",width, height, depth) {
+            let width = dims.1 as u32;
+            let depth = dims.2 as u32;
+            match RenderContent::from_labels_r8(
+                device,
+                queue,
+                &raw,
+                "ai_segmentation",
+                width,
+                height,
+                depth,
+            ) {
                 Ok(seg_content) => {
                     let seg_arc = std::sync::Arc::new(seg_content);
+                    let source = Arc::new(raw.clone());
                     for view in self.app_view.layout.views_mut().iter_mut() {
                         if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
                             mpr_view.set_segmentation(device, Some(seg_arc.clone()));
+                            mpr_view
+                                .retain_segmentation_source(source.clone(), (width, height, depth));
                         }
                     }
                     let label_ids: [u8; 7] = [1, 2, 3, 4, 5, 6, 7];
@@ -662,7 +717,7 @@ impl App {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
                 mpr_view.set_segmentation_visibility(queue, mask, false);
             }
-            if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>(){
+            if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
                 for label_id in 1..8 {
                     let visible = if mask[label_id] > 0.5 { true } else { false };
                     mesh_view.set_spine_visibility(label_id as u8, visible);
@@ -732,7 +787,10 @@ impl App {
     }
 
     pub fn set_translate_in_screen_coord(&mut self, index: usize, translate: [f32; 3]) {
-        if let Err(e) = self.app_view.set_translate_in_screen_coord(index, translate){
+        if let Err(e) = self
+            .app_view
+            .set_translate_in_screen_coord(index, translate)
+        {
             log::warn!(
                 "set_translate_in_screen_coord failed on view {}: {}",
                 index,
@@ -750,13 +808,16 @@ impl App {
     pub fn set_pan_mm(&mut self, index: usize, x_mm: f32, y_mm: f32) {
         if let Err(e) = self.app_view.set_pan_mm(index, x_mm, y_mm) {
             log::warn!("set_pan_mm failed on view {}: {}", index, e);
-        } 
+        }
     }
 
     pub fn set_center_at_point_in_mm(&mut self, index: usize, x_mm: f32, y_mm: f32, z_mm: f32) {
-        if let Err(e) = self.app_view.set_center_at_point_in_mm(index, [x_mm, y_mm, z_mm]){
+        if let Err(e) = self
+            .app_view
+            .set_center_at_point_in_mm(index, [x_mm, y_mm, z_mm])
+        {
             log::warn!("set_center_at_point_in_mm failed on view {}: {}", index, e);
-        } 
+        }
     }
 
     pub fn set_slab_thickness(&mut self, index: usize, thickness: f32) {
@@ -765,13 +826,22 @@ impl App {
         }
     }
 
-    pub fn set_rotation_angle_degrees(&mut self, index: usize, roll_deg: f32, yaw_deg: f32, pitch_deg: f32) {
-        if let Err(e) = self.app_view.set_rotation_angle_degrees(index, roll_deg, yaw_deg, pitch_deg){
-            log::warn!("set_rotation_angle_degrees failed on view {}: {}",index,e);
+    pub fn set_rotation_angle_degrees(
+        &mut self,
+        index: usize,
+        roll_deg: f32,
+        yaw_deg: f32,
+        pitch_deg: f32,
+    ) {
+        if let Err(e) = self
+            .app_view
+            .set_rotation_angle_degrees(index, roll_deg, yaw_deg, pitch_deg)
+        {
+            log::warn!("set_rotation_angle_degrees failed on view {}: {}", index, e);
         }
     }
 
-    pub fn get_rotation(&self, index: usize)->[f32; 4]{
+    pub fn get_rotation(&self, index: usize) -> [f32; 4] {
         let view = self.app_view.layout.views().get(index).unwrap();
         if let Some(mpr_view) = view.as_any().downcast_ref::<MprView>() {
             let n = mpr_view.get_oblique_rotation();
@@ -824,18 +894,33 @@ impl App {
         }
     }
 
-    pub fn sync_oblique_to_3d(&mut self, index: usize, oblique_crop: f32, alpha: f32){
+    pub fn sync_oblique_to_3d(&mut self, index: usize, oblique_crop: f32, alpha: f32) {
         let mut raw: Option<([f32; 3], [f32; 3])> = None;
         if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                let slice_center_world = mpr_view.get_base().transform_point3(glam::Vec3::new(0.5, 0.5, 0.0));
+                let slice_center_world = mpr_view
+                    .get_base()
+                    .transform_point3(glam::Vec3::new(0.5, 0.5, 0.0));
                 let normal_uv = mpr_view.get_oblique_rotation_uv().to_array();
-                raw = Some((normal_uv, [slice_center_world.x, slice_center_world.y, slice_center_world.z]))
+                raw = Some((
+                    normal_uv,
+                    [
+                        slice_center_world.x,
+                        slice_center_world.y,
+                        slice_center_world.z,
+                    ],
+                ))
             }
-        } ;
+        };
         if let Some((normal_uv, slice_center_mm)) = raw {
             let slice_center_uv = self.mm_to_uv(slice_center_mm);
-            if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()){
+            if let Some(mesh_view) = self
+                .app_view
+                .layout
+                .views_mut()
+                .iter_mut()
+                .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>())
+            {
                 mesh_view.set_oblique_plane(slice_center_uv, normal_uv, index, oblique_crop, alpha);
             }
         }
@@ -894,7 +979,7 @@ impl App {
         }
     }
 
-    /// get pixel value from screen coordinate 
+    /// get pixel value from screen coordinate
     pub fn get_pixel_value_from_screen(
         &self,
         view_index: usize,
@@ -916,16 +1001,26 @@ impl App {
         let vz = voxel_coord.z.round() as isize;
 
         let (cols, rows, slices) = vol.dimensions();
-        let pixel_value = if vx >= 0 && vx < cols as isize 
-            && vy >= 0 && vy < rows as isize 
-            && vz >= 0 && vz < slices as isize 
+        let pixel_value = if vx >= 0
+            && vx < cols as isize
+            && vy >= 0
+            && vy < rows as isize
+            && vz >= 0
+            && vz < slices as isize
         {
-            vol.get_voxel(vx as usize, vy as usize, vz as usize).unwrap_or(-1000) as f32
+            vol.get_voxel(vx as usize, vy as usize, vz as usize)
+                .unwrap_or(-1000) as f32
         } else {
             -1000.0
         };
-        
-        log::info!("vx={}, vy={}, vz={}, pixel_value={:?}", vx, vy, vz, pixel_value);
+
+        log::info!(
+            "vx={}, vy={}, vz={}, pixel_value={:?}",
+            vx,
+            vy,
+            vz,
+            pixel_value
+        );
         [vx as f32, vy as f32, vz as f32, pixel_value]
     }
 
@@ -944,7 +1039,12 @@ impl App {
 
         // Convert screen coordinates to world coordinates for the clicked view
         let (world_coord, slice_mm) = {
-            let clicked_view = self.app_view.layout.views().get(clicked_view_index).unwrap();
+            let clicked_view = self
+                .app_view
+                .layout
+                .views()
+                .get(clicked_view_index)
+                .unwrap();
             if let Some(mpr_view) = clicked_view.as_any().downcast_ref::<MprView>() {
                 let world_coord = mpr_view.screen_coord_to_world([screen_x, screen_y, screen_z]);
                 let slice = mpr_view.get_slice_mm();
@@ -1052,8 +1152,11 @@ impl App {
 
     /// Set mesh rotation angle in degrees
     pub fn set_rotation_degrees(&mut self, index: usize, degrees_x: f32, degrees_y: f32) {
-        if let Err(e) = self.app_view.set_rotation_degrees(index, degrees_x, degrees_y){
-            log::warn!("set_rotation_degrees failed on view {}: {}",index,e);
+        if let Err(e) = self
+            .app_view
+            .set_rotation_degrees(index, degrees_x, degrees_y)
+        {
+            log::warn!("set_rotation_degrees failed on view {}: {}", index, e);
         }
     }
 
@@ -1076,37 +1179,71 @@ impl App {
     }
 
     pub fn set_mesh_opacity(&mut self, alpha: f32) {
-        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+        if let Some(mesh_view) = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>())
+        {
             mesh_view.set_opacity(alpha);
             log::info!("Mesh opacity set to {:.3}", alpha);
         };
     }
 
     pub fn set_mesh_mode(&mut self, mode: usize) {
-        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+        if let Some(mesh_view) = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>())
+        {
             mesh_view.set_mode(mode);
             log::info!("Mesh mode set to {:?}", mode);
         };
     }
 
-    pub fn set_mesh_roi(&mut self, sx: f32,sy: f32, sz: f32, lx: f32, ly: f32,lz: f32){
+    pub fn set_mesh_roi(&mut self, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32) {
         let roi_point_min = [sx, sy, sz];
         let roi_point_max = [lx, ly, lz];
         let a = self.mm_to_uv(roi_point_min);
         let b = self.mm_to_uv(roi_point_max);
         let roi_min = [a[0].min(b[0]), a[1].min(b[1]), a[2].min(b[2])];
         let roi_max = [a[0].max(b[0]), a[1].max(b[1]), a[2].max(b[2])];
-        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+        if let Some(mesh_view) = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>())
+        {
             mesh_view.set_roi(roi_min, roi_max);
-            log::info!("Mesh roi set from {:?} to {:?}", roi_point_min, roi_point_max);
+            log::info!(
+                "Mesh roi set from {:?} to {:?}",
+                roi_point_min,
+                roi_point_max
+            );
         };
     }
 
     pub fn set_ball_enabled(&mut self, enabled: bool) {
-        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+        if let Some(mesh_view) = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>())
+        {
             mesh_view.set_ball_enabled(enabled);
         };
-        if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
+        if let Some(mip_view) = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MipView>())
+        {
             mip_view.set_ball_enabled(enabled);
         }
         for view in self.app_view.layout.views_mut().iter_mut() {
@@ -1116,26 +1253,34 @@ impl App {
         }
     }
 
-    pub fn set_ball(&mut self, ball: usize, x: f32, y: f32, z: f32){
+    pub fn set_ball(&mut self, ball: usize, x: f32, y: f32, z: f32) {
         let ball_mm = [x, y, z];
         let ball_vol = self.mm_to_uv(ball_mm);
         let radius_uv = if let Ok(vol) = self.app_model.volume() {
             let (nx, ny, nz) = vol.dimensions();
             let (sx, sy, sz) = vol.voxel_spacing();
-            let physical = [
-                nx as f32 * sx,
-                ny as f32 * sy,
-                nz as f32 * sz,
-            ];
+            let physical = [nx as f32 * sx, ny as f32 * sy, nz as f32 * sz];
             let min_physical = physical.iter().cloned().reduce(f32::min).unwrap_or(1.0);
             (3.0 / min_physical).clamp(0.0001, 0.1)
         } else {
             0.1
         };
-        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+        if let Some(mesh_view) = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>())
+        {
             mesh_view.set_ball(ball, ball_vol, radius_uv);
         };
-        if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
+        if let Some(mip_view) = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MipView>())
+        {
             mip_view.set_ball(ball, ball_vol, radius_uv);
         }
         for view in self.app_view.layout.views_mut().iter_mut() {
@@ -1147,10 +1292,22 @@ impl App {
 
     // NEEDLE
     pub fn set_mesh_needle_enabled(&mut self, enabled: f32) {
-        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+        if let Some(mesh_view) = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>())
+        {
             mesh_view.set_needle_enabled(enabled);
         };
-        if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
+        if let Some(mip_view) = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MipView>())
+        {
             mip_view.set_needle_enabled(enabled);
         }
         // Mirror to every MPR view so the orthogonal projection tracks the 3D needle visibility toggle in real time.
@@ -1173,8 +1330,12 @@ impl App {
         );
     }
 
-    pub fn set_needle_angle(&mut self, index: usize, id: u32, angle: f32){
-        let plane = self.app_view.layout.views_mut().iter_mut()
+    pub fn set_needle_angle(&mut self, index: usize, id: u32, angle: f32) {
+        let plane = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
             .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>())
             .and_then(|mesh_view| mesh_view.set_needle_angle(id, angle));
         let Some((normal_uv, tip_uv)) = plane else {
@@ -1184,7 +1345,7 @@ impl App {
             log::warn!("set_needle_angle: degenerate needle plane (axis ∥ +X), view not rotated");
             return;
         }
-        if let Some(view) = self.app_view.layout.views_mut().get_mut(index){
+        if let Some(view) = self.app_view.layout.views_mut().get_mut(index) {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
                 mpr_view.set_oblique_plane_from_uv(normal_uv, tip_uv);
             }
@@ -1208,15 +1369,22 @@ impl App {
                     }
                 }
 
-                if kind == 1{
+                if kind == 1 {
                     for view in self.app_view.layout.views_mut().iter_mut() {
-                        let (normal, d) = if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
-                            mpr_view.set_mesh(id, kind, device, &queue, self.current_meshes.clone());
-                            mpr_view.set_mesh_overlay(true, 1.0);
-                            mpr_view.get_slice_plane_uv()
-                        } else {
-                            continue;
-                        };
+                        let (normal, d) =
+                            if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
+                                mpr_view.set_mesh(
+                                    id,
+                                    kind,
+                                    device,
+                                    &queue,
+                                    self.current_meshes.clone(),
+                                );
+                                mpr_view.set_mesh_overlay(true, 1.0);
+                                mpr_view.get_slice_plane_uv()
+                            } else {
+                                continue;
+                            };
                         if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
                             mesh_view.set_slice_clip(&queue, normal.to_array(), d, true);
                         }
@@ -1229,19 +1397,43 @@ impl App {
         }
     }
 
-    pub fn set_new_needle_mm(&mut self, needle_id: u32, sx: f32, sy: f32, sz: f32, lx: f32, ly: f32, lz: f32, r: f32, g: f32, b: f32) {
+    pub fn set_new_needle_mm(
+        &mut self,
+        needle_id: u32,
+        sx: f32,
+        sy: f32,
+        sz: f32,
+        lx: f32,
+        ly: f32,
+        lz: f32,
+        r: f32,
+        g: f32,
+        b: f32,
+    ) {
         let entry_mm = [sx, sy, sz];
         let pos_mm = [lx, ly, lz];
         let entry_vol = self.mm_to_uv(entry_mm);
         let pos_vol = self.mm_to_uv(pos_mm);
         // let device_arc = self.graphics().device.clone();
 
-        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+        if let Some(mesh_view) = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>())
+        {
             mesh_view.set_new_needle(needle_id, entry_vol, pos_vol, [r, g, b, 1.0]);
             // mesh_view.rebuild_needle_meshes(&device_arc);
         };
-        if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
-            mip_view.set_new_needle(needle_id, entry_vol, pos_vol,[r, g, b, 0.5]);
+        if let Some(mip_view) = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MipView>())
+        {
+            mip_view.set_new_needle(needle_id, entry_vol, pos_vol, [r, g, b, 0.5]);
         }
         // Push the same trajectory to every MPR view for orthogonal projection.
         for view in self.app_view.layout.views_mut().iter_mut() {
@@ -1251,19 +1443,19 @@ impl App {
         }
         log::info!(
             "Needle {} set: entry_mm={:?} -> vol={:?}, pos_mm={:?} -> vol={:?}",
-            needle_id, entry_mm, entry_vol, pos_mm, pos_vol
+            needle_id,
+            entry_mm,
+            entry_vol,
+            pos_mm,
+            pos_vol
         );
     }
 
-    pub fn set_needle_radius(&mut self, id: u32, radius_mm: f32){
+    pub fn set_needle_radius(&mut self, id: u32, radius_mm: f32) {
         let radius_uv = if let Ok(vol) = self.app_model.volume() {
             let (nx, ny, nz) = vol.dimensions();
             let (sx, sy, sz) = vol.voxel_spacing();
-            let physical = [
-                nx as f32 * sx,
-                ny as f32 * sy,
-                nz as f32 * sz,
-            ];
+            let physical = [nx as f32 * sx, ny as f32 * sy, nz as f32 * sz];
             let min_physical = physical.iter().cloned().reduce(f32::min).unwrap_or(1.0);
             (radius_mm / min_physical).clamp(0.0001, 0.1)
         } else {
@@ -1271,11 +1463,23 @@ impl App {
         };
         // let device_arc = self.graphics().device.clone();
 
-        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+        if let Some(mesh_view) = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>())
+        {
             mesh_view.set_needle_radius(id, radius_uv);
             // mesh_view.rebuild_needle_meshes(&device_arc);
         };
-        if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
+        if let Some(mip_view) = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MipView>())
+        {
             mip_view.set_needle_radius(id, radius_uv);
         }
         for view in self.app_view.layout.views_mut().iter_mut() {
@@ -1283,7 +1487,12 @@ impl App {
                 mpr_view.set_needle_radius(id, radius_uv);
             }
         }
-        log::info!("Needle {} radius set: {}mm -> {}uv",id, radius_mm, radius_uv);
+        log::info!(
+            "Needle {} radius set: {}mm -> {}uv",
+            id,
+            radius_mm,
+            radius_uv
+        );
     }
 
     pub fn set_needle_position_mm(&mut self, id: u32, sx: f32, sy: f32, sz: f32) {
@@ -1291,11 +1500,23 @@ impl App {
         let pos_vol = self.mm_to_uv(pos_mm);
         // let device_arc = self.graphics().device.clone();
 
-        if let Some(mesh_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MeshView>()) {
+        if let Some(mesh_view) = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>())
+        {
             mesh_view.set_needle_position(id, pos_vol);
             // mesh_view.rebuild_needle_meshes(&device_arc);
         };
-        if let Some(mip_view) = self.app_view.layout.views_mut().iter_mut().find_map(|v| v.as_any_mut().downcast_mut::<MipView>()) {
+        if let Some(mip_view) = self
+            .app_view
+            .layout
+            .views_mut()
+            .iter_mut()
+            .find_map(|v| v.as_any_mut().downcast_mut::<MipView>())
+        {
             mip_view.set_needle_position(id, pos_vol);
         }
         for view in self.app_view.layout.views_mut().iter_mut() {
@@ -1303,7 +1524,12 @@ impl App {
                 mpr_view.set_needle_position(id, pos_vol);
             }
         }
-        log::info!("Needle {} position set: pos_mm={:?} -> vol={:?}", id, pos_mm, pos_vol);
+        log::info!(
+            "Needle {} position set: pos_mm={:?} -> vol={:?}",
+            id,
+            pos_mm,
+            pos_vol
+        );
     }
 
     /// Toggle the volume texture format (R16Float vs Rg8Unorm) and reload the CT volume.
@@ -1312,7 +1538,7 @@ impl App {
         // Toggle feature always enabled - removed toggle_enabled field
         // If enabling float path, ensure hardware support
         if !self.app_model.enable_float_volume_texture {
-            if !Self::device_supports_r16float(&self.graphics().adapter) {
+            if !self.graphics().capabilities().default_float_encoding() {
                 log::warn!("Hardware doesn't support R16Float filtered sampling; staying on RG8.");
                 return;
             }
@@ -1390,7 +1616,7 @@ impl App {
             // println!("Parsed repository: {:?}", repo);
             println!(
                 "Parsing completed in {:.1} ms.",
-                elapsed_time.as_millis_f32()
+                crate::core::timing::DurationExt::as_millis_f32(&elapsed_time)
             );
             repo
         };

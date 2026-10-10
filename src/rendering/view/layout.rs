@@ -171,20 +171,27 @@ impl LayoutStrategy for GridLayout {
 
     /// Compute the origin and size for the cell corresponding to `index`.
     ///
-    /// Notes:
-    /// - Current implementation assumes `rows > 0` and `cols > 0`.
-    /// - Large `spacing` relative to `parent_dim` can lead to underflow; consider saturating math.
+    /// Keeps pending view placement valid while the surface is minimized or tiny.
     fn calculate_position_and_size(
         &self,
         index: u32,
         _total_views: u32,
         parent_dim: (u32, u32),
     ) -> ((i32, i32), (u32, u32)) {
-        // TODO: Use `saturating_sub` and guard zero divisions to prevent underflow/overflow.
-        let cell_width = (parent_dim.0 - (self.cols - 1) * self.spacing) / self.cols;
-        let cell_height = (parent_dim.1 - (self.rows - 1) * self.spacing) / self.rows;
-        let row = index / self.cols;
-        let col = index % self.cols;
+        let cols = self.cols.max(1);
+        let rows = self.rows.max(1);
+        let cell_width = (parent_dim
+            .0
+            .saturating_sub((cols - 1).saturating_mul(self.spacing))
+            / cols)
+            .max(1);
+        let cell_height = (parent_dim
+            .1
+            .saturating_sub((rows - 1).saturating_mul(self.spacing))
+            / rows)
+            .max(1);
+        let row = index / cols;
+        let col = index % cols;
         let x = col as i32 * (cell_width + self.spacing) as i32;
         let y = row as i32 * (cell_height + self.spacing) as i32;
         ((x, y), (cell_width, cell_height))
@@ -231,7 +238,7 @@ impl LayoutStrategy for OneCellLayout {
     }
 }
 
-pub struct LargeLeft3RightLayout{
+pub struct LargeLeft3RightLayout {
     pub rows: u32,
     pub cols: u32,
     pub spacing: u32,
@@ -266,13 +273,9 @@ impl LayoutStrategy for LargeLeft3RightLayout {
         let i = index - 1;
         let y = (i * small_h) as i32;
 
-        (
-            (left_w as i32, y),
-            (right_w, small_h)
-        )
+        ((left_w as i32, y), (right_w, small_h))
     }
 }
-
 
 /// A generic layout container parameterized by a `LayoutStrategy`.
 ///
@@ -386,7 +389,7 @@ impl<T: LayoutStrategy> LayoutContainer for StaticLayout<T> {
 
             // For more robust type checking, we can also check if the type names contain
             // the expected view type (e.g., "MeshView" or "GenericMPRView")
-            actual_type.contains(&target_type.split("::").last().unwrap_or(target_type))
+            actual_type.contains(target_type.split("::").last().unwrap_or(target_type))
         } else {
             false
         }
@@ -436,8 +439,11 @@ impl<T: LayoutStrategy> Renderable for StaticLayout<T> {
 
     /// Render all child views sequentially.
     ///
-    /// Error handling: Propagates `wgpu::SurfaceError` from child views and stops on first failure.
-    fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
+    /// Error handling: Propagates application errors from child views and stops on first failure.
+    fn render(
+        &mut self,
+        render_pass: &mut wgpu::RenderPass,
+    ) -> crate::core::error::KeplerResult<()> {
         for v in &mut self.views {
             v.render(render_pass)?;
         }
@@ -449,6 +455,8 @@ pub struct DynamicLayout {
     dim: (u32, u32),
     strategy: Box<dyn LayoutStrategy>,
     views: Vec<Box<dyn View>>,
+    presented_dim: Option<(u32, u32)>,
+    presented_views: Vec<usize>,
 }
 
 impl DynamicLayout {
@@ -462,13 +470,77 @@ impl DynamicLayout {
             dim,
             strategy,
             views: Vec::new(),
+            presented_dim: None,
+            presented_views: Vec::new(),
         }
+    }
+
+    fn view_identity(view: &dyn View) -> usize {
+        view as *const dyn View as *const () as usize
+    }
+
+    /// Also detects structural edits through the existing mutable views API.
+    /// Comparing identities does not allocate; no-op access leaves the frame clean.
+    pub fn needs_redraw(&self) -> bool {
+        self.presented_dim != Some(self.dim)
+            || self.presented_views.len() != self.views.len()
+            || self
+                .views
+                .iter()
+                .zip(&self.presented_views)
+                .any(|(view, identity)| {
+                    Self::view_identity(view.as_ref()) != *identity || view.needs_redraw()
+                })
+    }
+
+    /// Acknowledge presentation only after the complete frame succeeds.
+    pub fn mark_presented(&mut self) {
+        self.presented_dim = Some(self.dim);
+        self.presented_views.clear();
+        for view in &mut self.views {
+            view.mark_presented();
+            self.presented_views
+                .push(Self::view_identity(view.as_ref()));
+        }
+    }
+
+    pub fn is_animating(&self) -> bool {
+        self.views.iter().any(|view| view.is_animating())
+    }
+
+    pub fn next_update_in(&self) -> Option<std::time::Duration> {
+        self.views
+            .iter()
+            .filter_map(|view| view.next_update_in())
+            .min()
     }
 }
 
 impl DynamicLayout {
+    /// Place a complete replacement before touching displayed views or presentation state.
+    /// `None` retains the current strategy, including custom strategies that cannot be cloned.
+    pub(crate) fn replace_all_views(
+        &mut self,
+        mut views: Vec<Box<dyn View>>,
+        strategy: Option<Box<dyn LayoutStrategy>>,
+    ) {
+        let placement = strategy.as_deref().unwrap_or(self.strategy.as_ref());
+        let count = views.len() as u32;
+        for (index, view) in views.iter_mut().enumerate() {
+            let (pos, size) = placement.calculate_position_and_size(index as u32, count, self.dim);
+            view.move_to(pos);
+            view.resize(size);
+        }
+        if let Some(strategy) = strategy {
+            self.strategy = strategy;
+        }
+        self.views = views;
+        self.presented_dim = None;
+    }
+
     pub fn set_strategy(&mut self, new_strategy: Box<dyn LayoutStrategy>) {
         self.strategy = new_strategy;
+        self.presented_dim = None;
         // Recalculate all view positions and sizes
         self.relayout();
     }
@@ -495,6 +567,7 @@ impl LayoutContainer for DynamicLayout {
         log::info!("Adding view at position: {:?} with size: {:?}", pos, size);
         view.move_to(pos);
         view.resize(size);
+        self.presented_dim = None;
         self.views.push(view);
     }
 
@@ -511,6 +584,9 @@ impl LayoutContainer for DynamicLayout {
 
     /// Remove all views from the container.
     fn remove_all(&mut self) {
+        if !self.views.is_empty() {
+            self.presented_dim = None;
+        }
         self.views.clear();
     }
 
@@ -542,6 +618,7 @@ impl LayoutContainer for DynamicLayout {
         new_view.move_to(pos);
         new_view.resize(size);
 
+        self.presented_dim = None;
         Some(std::mem::replace(&mut self.views[index], new_view))
     }
 
@@ -567,7 +644,7 @@ impl LayoutContainer for DynamicLayout {
 
             // For more robust type checking, we can also check if the type names contain
             // the expected view type (e.g., "MeshView" or "GenericMPRView")
-            actual_type.contains(&target_type.split("::").last().unwrap_or(target_type))
+            actual_type.contains(target_type.split("::").last().unwrap_or(target_type))
         } else {
             false
         }
@@ -617,8 +694,11 @@ impl Renderable for DynamicLayout {
 
     /// Render all child views sequentially.
     ///
-    /// Error handling: Propagates `wgpu::SurfaceError` from child views and stops on first failure.
-    fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
+    /// Error handling: Propagates application errors from child views and stops on first failure.
+    fn render(
+        &mut self,
+        render_pass: &mut wgpu::RenderPass,
+    ) -> crate::core::error::KeplerResult<()> {
         for v in &mut self.views {
             v.render(render_pass)?;
         }

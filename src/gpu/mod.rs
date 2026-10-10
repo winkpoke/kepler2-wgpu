@@ -1,15 +1,12 @@
 //! Native-only GPU backend boundary.
 //!
-//! This module establishes a clean separation between the existing WASM/browser
-//! rendering path (which uses `wgpu` **23** through the `rendering` stack) and a
-//! future native compute path (which uses `wgpu` **30**, aliased as `wgpu30`
-//! in `Cargo.toml`). The two backends intentionally do **not** share one unified
-//! wgpu API layer; they only share the conceptual `GpuState` / `GpuContext`
-//! boundary so the native compute backend can evolve independently toward wgpu 30.
+//! The viewer and compute backend both use wgpu 30.0.1. Native compute retains
+//! the crate-local `wgpu30` alias and its independent `GpuState` / `GpuContext`
+//! device ownership; it never borrows the viewer's surface or GPU resources.
 //!
 //! Everything here is gated to `#[cfg(not(target_arch = "wasm32"))]` so the WASM
-//! build continues to resolve `wgpu` 23 (with the `webgl` feature) and never sees
-//! `wgpu` 30 types or APIs.
+//! build excludes the server compute owner while its viewer uses wgpu 30's
+//! WebGPU/WebGL backends.
 
 #[cfg(not(target_arch = "wasm32"))]
 mod native;

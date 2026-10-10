@@ -32,12 +32,12 @@ impl Base {
 
     pub fn scale(&mut self, scale: [f32; 3]) {
         let s = Mat4::from_scale(Vec3::from(scale));
-        self.matrix = self.matrix * s;
+        self.matrix *= s;
     }
 
     pub fn translate(&mut self, translate: [f32; 3]) {
         let t = Mat4::from_translation(Vec3::from(translate));
-        self.matrix = self.matrix * t;
+        self.matrix *= t;
     }
 }
 

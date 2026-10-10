@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
-use anyhow::Result;
-use std::fmt;
 use crate::core::coord::Base;
+use anyhow::Result;
 use glam::Mat4;
+use std::fmt;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
@@ -12,8 +12,8 @@ use wasm_bindgen::prelude::*;
 #[derive(Clone)]
 pub struct CTVolume {
     pub(crate) dimensions: (usize, usize, usize), // (rows, columns, number of slices)
-    pub(crate) voxel_spacing: (f32, f32, f32), // (spacing_x, spacing_y, spacing_z)
-    pub(crate) voxel_data: Vec<i16>, // 3D voxel data 
+    pub(crate) voxel_spacing: (f32, f32, f32),    // (spacing_x, spacing_y, spacing_z)
+    pub(crate) voxel_data: Vec<i16>,              // 3D voxel data
     pub(crate) base: Base,
 }
 
@@ -23,7 +23,7 @@ impl fmt::Debug for CTVolume {
             .field("dimensions", &self.dimensions)
             .field("voxel_spacing", &self.voxel_spacing)
             .field("voxel_data", &format!("{} slices", self.voxel_data.len()))
-            .field("base", &format!("\n{:?}", &self.base))
+            .field("base", &format!("\n{:?}", self.base))
             .finish()
     }
 }
@@ -53,7 +53,10 @@ impl CTVolume {
         let stride = self.dimensions.0 * self.dimensions.1;
         let start = slice * stride;
         let end = start + stride;
-        let data: Vec<u16> = self.voxel_data[start..end].iter().map(|x| *x as u16).collect();
+        let data: Vec<u16> = self.voxel_data[start..end]
+            .iter()
+            .map(|x| *x as u16)
+            .collect();
         Ok(data)
     }
 
@@ -100,14 +103,14 @@ impl CTVolume {
     /// Downsample XY plane by 2x using 2x2 average pooling.
     pub fn downsample_2x(&self) -> CTVolume {
         let (rows, cols, slices) = self.dimensions;
-        
+
         let new_rows = rows / 2;
         let new_cols = cols / 2;
-        
+
         if new_rows == 0 || new_cols == 0 {
             return self.clone();
         }
-        
+
         let new_data_len = new_rows * new_cols * slices;
         let mut new_data = Vec::with_capacity(new_data_len);
 
@@ -134,13 +137,13 @@ impl CTVolume {
         }
 
         let (sx, sy, sz) = self.voxel_spacing;
-        
+
         let mut new_base = self.base.clone();
         let mut m = new_base.matrix;
         m.x_axis = m.x_axis * 2.0;
         m.y_axis = m.y_axis * 2.0;
         new_base.matrix = m;
-        
+
         CTVolume::new(
             (new_rows, new_cols, slices),
             (sx * 2.0, sy * 2.0, sz),
@@ -151,7 +154,7 @@ impl CTVolume {
 
     pub fn upscale_bilinear(&self, scale: f32) -> Vec<i16> {
         let src = &self.voxel_data;
-        let src_width  = self.dimensions.0;
+        let src_width = self.dimensions.0;
         let src_height = self.dimensions.1;
 
         let dst_width = (src_width as f32 * scale).round() as usize;
@@ -194,17 +197,17 @@ impl CTVolume {
     #[wasm_bindgen(js_name = export_mha)]
     pub fn export_mha(&self) -> js_sys::Uint8Array {
         let mut mha_data = Vec::new();
-        
+
         // Extract offset (translation) from base matrix
         let offset_x = self.base.matrix.w_axis.x;
         let offset_y = self.base.matrix.w_axis.y;
         let offset_z = self.base.matrix.w_axis.z;
-        
+
         // Calculate direction cosines by removing scaling
         let col0 = self.base.matrix.x_axis.truncate();
         let col1 = self.base.matrix.y_axis.truncate();
         let col2 = self.base.matrix.z_axis.truncate();
-        
+
         let dir0 = col0.normalize_or_zero();
         let dir1 = col1.normalize_or_zero();
         let dir2 = col2.normalize_or_zero();
@@ -226,27 +229,38 @@ impl CTVolume {
             DimSize = {} {} {}\n\
             ElementType = MET_SHORT\n\
             ElementDataFile = LOCAL\n",
-            dir0.x, dir1.x, dir2.x,
-            dir0.y, dir1.y, dir2.y,
-            dir0.z, dir1.z, dir2.z,
-            offset_x, offset_y, offset_z,
-            self.voxel_spacing.0, self.voxel_spacing.1, self.voxel_spacing.2,
-            self.dimensions.0, self.dimensions.1, self.dimensions.2
+            dir0.x,
+            dir1.x,
+            dir2.x,
+            dir0.y,
+            dir1.y,
+            dir2.y,
+            dir0.z,
+            dir1.z,
+            dir2.z,
+            offset_x,
+            offset_y,
+            offset_z,
+            self.voxel_spacing.0,
+            self.voxel_spacing.1,
+            self.voxel_spacing.2,
+            self.dimensions.0,
+            self.dimensions.1,
+            self.dimensions.2
         );
 
         mha_data.extend_from_slice(header.as_bytes());
-        
+
         // Append raw voxel data (i16 little endian)
         // Reserve exact capacity
         mha_data.reserve_exact(self.voxel_data.len() * 2);
         for v in &self.voxel_data {
             mha_data.extend_from_slice(&v.to_le_bytes());
         }
-        
+
         js_sys::Uint8Array::from(mha_data.as_slice())
     }
 }
-
 
 pub struct Geometry {
     volumes: Vec<CTVolume>,

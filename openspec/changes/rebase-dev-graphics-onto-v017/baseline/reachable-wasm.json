@@ -1,0 +1,6954 @@
+[
+  {
+    "id": 5745,
+    "name": "kepler_wgpu",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/lib.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        181,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu"
+    ]
+  },
+  {
+    "id": 5744,
+    "name": "define_dicom_struct",
+    "kind": "macro",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/dicom_helper.rs",
+      "begin": [
+        6,
+        1
+      ],
+      "end": [
+        116,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "define_dicom_struct"
+    ]
+  },
+  {
+    "id": 5743,
+    "name": "impl_user_event_senders_for_glcanvas",
+    "kind": "macro",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/gl_canvas.rs",
+      "begin": [
+        84,
+        1
+      ],
+      "end": [
+        112,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "impl_user_event_senders_for_glcanvas"
+    ]
+  },
+  {
+    "id": 5742,
+    "name": "drop_render_app",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/lib.rs",
+      "begin": [
+        179,
+        1
+      ],
+      "end": [
+        181,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "drop_render_app"
+    ]
+  },
+  {
+    "id": 5741,
+    "name": "get_render_app",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/lib.rs",
+      "begin": [
+        127,
+        1
+      ],
+      "end": [
+        176,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "get_render_app"
+    ]
+  },
+  {
+    "id": 5740,
+    "name": "init",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/lib.rs",
+      "begin": [
+        116,
+        1
+      ],
+      "end": [
+        124,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "init"
+    ]
+  },
+  {
+    "id": 5738,
+    "name": "init_logger",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/lib.rs",
+      "begin": [
+        108,
+        1
+      ],
+      "end": [
+        112,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "init_logger"
+    ]
+  },
+  {
+    "id": 5737,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/lib.rs",
+      "begin": [
+        32,
+        1
+      ],
+      "end": [
+        32,
+        25
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 4757,
+    "name": "mesh",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mod.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        16,
+        20
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh"
+    ]
+  },
+  {
+    "id": 4756,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mod.rs",
+      "begin": [
+        16,
+        1
+      ],
+      "end": [
+        16,
+        20
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 3977,
+    "name": "Mesh",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mesh.rs",
+      "begin": [
+        248,
+        1
+      ],
+      "end": [
+        253,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "mesh",
+      "Mesh"
+    ]
+  },
+  {
+    "id": 4755,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mod.rs",
+      "begin": [
+        15,
+        1
+      ],
+      "end": [
+        15,
+        35
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 4173,
+    "name": "QualityLevel",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/performance.rs",
+      "begin": [
+        34,
+        1
+      ],
+      "end": [
+        45,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "performance",
+      "QualityLevel"
+    ]
+  },
+  {
+    "id": 4754,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mod.rs",
+      "begin": [
+        14,
+        38
+      ],
+      "end": [
+        14,
+        46
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 3123,
+    "name": "MeshView",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mesh_view.rs",
+      "begin": [
+        76,
+        1
+      ],
+      "end": [
+        117,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "mesh_view",
+      "MeshView"
+    ]
+  },
+  {
+    "id": 4753,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mod.rs",
+      "begin": [
+        14,
+        21
+      ],
+      "end": [
+        14,
+        36
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 4029,
+    "name": "MeshRenderError",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mesh_view.rs",
+      "begin": [
+        19,
+        1
+      ],
+      "end": [
+        30,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "mesh_view",
+      "MeshRenderError"
+    ]
+  },
+  {
+    "id": 4752,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mod.rs",
+      "begin": [
+        13,
+        1
+      ],
+      "end": [
+        13,
+        46
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 4164,
+    "name": "MultiMeshContext",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/basic_mesh_context.rs",
+      "begin": [
+        167,
+        1
+      ],
+      "end": [
+        180,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "basic_mesh_context",
+      "MultiMeshContext"
+    ]
+  },
+  {
+    "id": 4751,
+    "name": "performance",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/performance.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        376,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "performance"
+    ]
+  },
+  {
+    "id": 4176,
+    "name": "PerformanceStats",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/performance.rs",
+      "begin": [
+        353,
+        1
+      ],
+      "end": [
+        360,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "performance",
+      "PerformanceStats"
+    ]
+  },
+  {
+    "id": 4680,
+    "name": "QualityController",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/performance.rs",
+      "begin": [
+        215,
+        1
+      ],
+      "end": [
+        223,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "performance",
+      "QualityController"
+    ]
+  },
+  {
+    "id": 4643,
+    "name": "FrameTimer",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/performance.rs",
+      "begin": [
+        153,
+        1
+      ],
+      "end": [
+        158,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "performance",
+      "FrameTimer"
+    ]
+  },
+  {
+    "id": 4541,
+    "name": "TextureQuality",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/performance.rs",
+      "begin": [
+        145,
+        1
+      ],
+      "end": [
+        149,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "performance",
+      "TextureQuality"
+    ]
+  },
+  {
+    "id": 4538,
+    "name": "ShadowQuality",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/performance.rs",
+      "begin": [
+        136,
+        1
+      ],
+      "end": [
+        141,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "performance",
+      "ShadowQuality"
+    ]
+  },
+  {
+    "id": 4487,
+    "name": "QualitySettings",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/performance.rs",
+      "begin": [
+        125,
+        1
+      ],
+      "end": [
+        132,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "performance",
+      "QualitySettings"
+    ]
+  },
+  {
+    "id": 4449,
+    "name": "PerformanceTargets",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/performance.rs",
+      "begin": [
+        7,
+        1
+      ],
+      "end": [
+        18,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "performance",
+      "PerformanceTargets"
+    ]
+  },
+  {
+    "id": 4443,
+    "name": "mesh_texture_pool",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mesh_texture_pool.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        170,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "mesh_texture_pool"
+    ]
+  },
+  {
+    "id": 2996,
+    "name": "MeshTexturePool",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mesh_texture_pool.rs",
+      "begin": [
+        6,
+        1
+      ],
+      "end": [
+        17,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "mesh_texture_pool",
+      "MeshTexturePool"
+    ]
+  },
+  {
+    "id": 4406,
+    "name": "basic_mesh_context",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/basic_mesh_context.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        552,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "basic_mesh_context"
+    ]
+  },
+  {
+    "id": 4333,
+    "name": "MeshUpload",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/basic_mesh_context.rs",
+      "begin": [
+        78,
+        1
+      ],
+      "end": [
+        92,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "basic_mesh_context",
+      "MeshUpload"
+    ]
+  },
+  {
+    "id": 4292,
+    "name": "MeshKind",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/basic_mesh_context.rs",
+      "begin": [
+        60,
+        1
+      ],
+      "end": [
+        69,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "basic_mesh_context",
+      "MeshKind"
+    ]
+  },
+  {
+    "id": 4252,
+    "name": "BasicUniforms",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/basic_mesh_context.rs",
+      "begin": [
+        23,
+        1
+      ],
+      "end": [
+        37,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "basic_mesh_context",
+      "BasicUniforms"
+    ]
+  },
+  {
+    "id": 4245,
+    "name": "mesh_view",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mesh_view.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        1143,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "mesh_view"
+    ]
+  },
+  {
+    "id": 4095,
+    "name": "FallbackMode",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mesh_view.rs",
+      "begin": [
+        59,
+        1
+      ],
+      "end": [
+        68,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "mesh_view",
+      "FallbackMode"
+    ]
+  },
+  {
+    "id": 4065,
+    "name": "RenderStats",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mesh_view.rs",
+      "begin": [
+        48,
+        1
+      ],
+      "end": [
+        55,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "mesh_view",
+      "RenderStats"
+    ]
+  },
+  {
+    "id": 4019,
+    "name": "mesh",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mesh.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        997,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "mesh"
+    ]
+  },
+  {
+    "id": 4018,
+    "name": "spine",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mesh.rs",
+      "begin": [
+        847,
+        1
+      ],
+      "end": [
+        981,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "mesh",
+      "spine"
+    ]
+  },
+  {
+    "id": 3929,
+    "name": "MeshVertex",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mesh.rs",
+      "begin": [
+        237,
+        1
+      ],
+      "end": [
+        241,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "mesh",
+      "MeshVertex"
+    ]
+  },
+  {
+    "id": 3894,
+    "name": "Lighting",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mesh.rs",
+      "begin": [
+        200,
+        1
+      ],
+      "end": [
+        206,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "mesh",
+      "Lighting"
+    ]
+  },
+  {
+    "id": 3853,
+    "name": "BasicLightingUniforms",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mesh.rs",
+      "begin": [
+        173,
+        1
+      ],
+      "end": [
+        180,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "mesh",
+      "BasicLightingUniforms"
+    ]
+  },
+  {
+    "id": 3820,
+    "name": "MeshRenderContext",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mesh.rs",
+      "begin": [
+        78,
+        1
+      ],
+      "end": [
+        86,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "mesh",
+      "MeshRenderContext"
+    ]
+  },
+  {
+    "id": 3777,
+    "name": "VolumeUniforms",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mesh/mesh.rs",
+      "begin": [
+        17,
+        1
+      ],
+      "end": [
+        43,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mesh",
+      "mesh",
+      "VolumeUniforms"
+    ]
+  },
+  {
+    "id": 5736,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/lib.rs",
+      "begin": [
+        29,
+        53
+      ],
+      "end": [
+        29,
+        57
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 247,
+    "name": "View",
+    "kind": "trait",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/view.rs",
+      "begin": [
+        111,
+        1
+      ],
+      "end": [
+        130,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "view",
+      "View"
+    ]
+  },
+  {
+    "id": 5735,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/lib.rs",
+      "begin": [
+        29,
+        39
+      ],
+      "end": [
+        29,
+        51
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 3260,
+    "name": "StaticLayout",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/layout.rs",
+      "begin": [
+        281,
+        1
+      ],
+      "end": [
+        288,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "layout",
+      "StaticLayout"
+    ]
+  },
+  {
+    "id": 5734,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/lib.rs",
+      "begin": [
+        29,
+        27
+      ],
+      "end": [
+        29,
+        37
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 3107,
+    "name": "Renderable",
+    "kind": "trait",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/renderable.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        4,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "renderable",
+      "Renderable"
+    ]
+  },
+  {
+    "id": 5733,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/lib.rs",
+      "begin": [
+        28,
+        27
+      ],
+      "end": [
+        28,
+        32
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1231,
+    "name": "dicom",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/mod.rs",
+      "begin": [
+        9,
+        1
+      ],
+      "end": [
+        30,
+        25
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom"
+    ]
+  },
+  {
+    "id": 1520,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/mod.rs",
+      "begin": [
+        30,
+        1
+      ],
+      "end": [
+        30,
+        25
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1514,
+    "name": "export_dicom",
+    "kind": "module",
+    "visibility": {
+      "restricted": {
+        "parent": 1231,
+        "path": "::data::dicom"
+      }
+    },
+    "span": {
+      "filename": "src/data/dicom/export_dicom.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        533,
+        2
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1466,
+    "name": "MemSink",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/export_dicom.rs",
+      "begin": [
+        294,
+        1
+      ],
+      "end": [
+        296,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom",
+      "export_dicom",
+      "MemSink"
+    ]
+  },
+  {
+    "id": 1463,
+    "name": "FsSink",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/export_dicom.rs",
+      "begin": [
+        282,
+        1
+      ],
+      "end": [
+        284,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom",
+      "export_dicom",
+      "FsSink"
+    ]
+  },
+  {
+    "id": 1459,
+    "name": "DicomSink",
+    "kind": "trait",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/export_dicom.rs",
+      "begin": [
+        278,
+        1
+      ],
+      "end": [
+        280,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom",
+      "export_dicom",
+      "DicomSink"
+    ]
+  },
+  {
+    "id": 1458,
+    "name": "build_ct_dicom",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/export_dicom.rs",
+      "begin": [
+        24,
+        1
+      ],
+      "end": [
+        93,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom",
+      "export_dicom",
+      "build_ct_dicom"
+    ]
+  },
+  {
+    "id": 1457,
+    "name": "generate_uid",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/export_dicom.rs",
+      "begin": [
+        17,
+        1
+      ],
+      "end": [
+        21,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom",
+      "export_dicom",
+      "generate_uid"
+    ]
+  },
+  {
+    "id": 1519,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/mod.rs",
+      "begin": [
+        27,
+        1
+      ],
+      "end": [
+        27,
+        23
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1456,
+    "name": "dicom_repo",
+    "kind": "module",
+    "visibility": {
+      "restricted": {
+        "parent": 1231,
+        "path": "::data::dicom"
+      }
+    },
+    "span": {
+      "filename": "src/data/dicom/dicom_repo.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        395,
+        2
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 28,
+    "name": "DicomRepo",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/dicom_repo.rs",
+      "begin": [
+        16,
+        1
+      ],
+      "end": [
+        21,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom",
+      "dicom_repo",
+      "DicomRepo"
+    ]
+  },
+  {
+    "id": 1518,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/mod.rs",
+      "begin": [
+        24,
+        1
+      ],
+      "end": [
+        24,
+        21
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1368,
+    "name": "ct_image",
+    "kind": "module",
+    "visibility": {
+      "restricted": {
+        "parent": 1231,
+        "path": "::data::dicom"
+      }
+    },
+    "span": {
+      "filename": "src/data/dicom/ct_image.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        172,
+        2
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1331,
+    "name": "CTImage",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/ct_image.rs",
+      "begin": [
+        7,
+        1
+      ],
+      "end": [
+        24,
+        3
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom",
+      "ct_image",
+      "CTImage"
+    ]
+  },
+  {
+    "id": 1517,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/mod.rs",
+      "begin": [
+        21,
+        1
+      ],
+      "end": [
+        21,
+        25
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1314,
+    "name": "image_series",
+    "kind": "module",
+    "visibility": {
+      "restricted": {
+        "parent": 1231,
+        "path": "::data::dicom"
+      }
+    },
+    "span": {
+      "filename": "src/data/dicom/image_series.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        49,
+        2
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1278,
+    "name": "ImageSeries",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/image_series.rs",
+      "begin": [
+        7,
+        1
+      ],
+      "end": [
+        12,
+        3
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom",
+      "image_series",
+      "ImageSeries"
+    ]
+  },
+  {
+    "id": 1516,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/mod.rs",
+      "begin": [
+        18,
+        1
+      ],
+      "end": [
+        18,
+        21
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1273,
+    "name": "studyset",
+    "kind": "module",
+    "visibility": {
+      "restricted": {
+        "parent": 1231,
+        "path": "::data::dicom"
+      }
+    },
+    "span": {
+      "filename": "src/data/dicom/studyset.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        48,
+        2
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1237,
+    "name": "StudySet",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/studyset.rs",
+      "begin": [
+        7,
+        1
+      ],
+      "end": [
+        13,
+        3
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom",
+      "studyset",
+      "StudySet"
+    ]
+  },
+  {
+    "id": 1515,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/mod.rs",
+      "begin": [
+        15,
+        1
+      ],
+      "end": [
+        15,
+        20
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1230,
+    "name": "patient",
+    "kind": "module",
+    "visibility": {
+      "restricted": {
+        "parent": 1231,
+        "path": "::data::dicom"
+      }
+    },
+    "span": {
+      "filename": "src/data/dicom/patient.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        87,
+        2
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1190,
+    "name": "Patient",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/patient.rs",
+      "begin": [
+        7,
+        1
+      ],
+      "end": [
+        12,
+        3
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom",
+      "patient",
+      "Patient"
+    ]
+  },
+  {
+    "id": 1184,
+    "name": "fileio",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/fileio.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        627,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom",
+      "fileio"
+    ]
+  },
+  {
+    "id": 1183,
+    "name": "build_ct_dicom_wasm",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/fileio.rs",
+      "begin": [
+        515,
+        1
+      ],
+      "end": [
+        627,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom",
+      "fileio",
+      "build_ct_dicom_wasm"
+    ]
+  },
+  {
+    "id": 1182,
+    "name": "parse_mha_and_generate_ct",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/fileio.rs",
+      "begin": [
+        428,
+        1
+      ],
+      "end": [
+        511,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom",
+      "fileio",
+      "parse_mha_and_generate_ct"
+    ]
+  },
+  {
+    "id": 1180,
+    "name": "read_file_as_bytes",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/fileio.rs",
+      "begin": [
+        420,
+        1
+      ],
+      "end": [
+        424,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom",
+      "fileio",
+      "read_file_as_bytes"
+    ]
+  },
+  {
+    "id": 1179,
+    "name": "parse_common_files_wasm",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/fileio.rs",
+      "begin": [
+        300,
+        1
+      ],
+      "end": [
+        416,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom",
+      "fileio",
+      "parse_common_files_wasm"
+    ]
+  },
+  {
+    "id": 1178,
+    "name": "parse_dcm_files_wasm",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom/fileio.rs",
+      "begin": [
+        197,
+        1
+      ],
+      "end": [
+        293,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom",
+      "fileio",
+      "parse_dcm_files_wasm"
+    ]
+  },
+  {
+    "id": 5732,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/lib.rs",
+      "begin": [
+        28,
+        16
+      ],
+      "end": [
+        28,
+        25
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1177,
+    "name": "ct_volume",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/ct_volume.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        258,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "ct_volume"
+    ]
+  },
+  {
+    "id": 1176,
+    "name": "CTVolumeGenerator",
+    "kind": "trait",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/ct_volume.rs",
+      "begin": [
+        256,
+        1
+      ],
+      "end": [
+        258,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "ct_volume",
+      "CTVolumeGenerator"
+    ]
+  },
+  {
+    "id": 1153,
+    "name": "Geometry",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/ct_volume.rs",
+      "begin": [
+        251,
+        1
+      ],
+      "end": [
+        254,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "ct_volume",
+      "Geometry"
+    ]
+  },
+  {
+    "id": 25,
+    "name": "CTVolume",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/ct_volume.rs",
+      "begin": [
+        13,
+        1
+      ],
+      "end": [
+        18,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "ct_volume",
+      "CTVolume"
+    ]
+  },
+  {
+    "id": 5731,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/lib.rs",
+      "begin": [
+        27,
+        43
+      ],
+      "end": [
+        27,
+        49
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 983,
+    "name": "timing",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/timing.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        126,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "core",
+      "timing"
+    ]
+  },
+  {
+    "id": 977,
+    "name": "DurationExt",
+    "kind": "trait",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/timing.rs",
+      "begin": [
+        81,
+        1
+      ],
+      "end": [
+        90,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "core",
+      "timing",
+      "DurationExt"
+    ]
+  },
+  {
+    "id": 938,
+    "name": "Instant",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/timing.rs",
+      "begin": [
+        24,
+        1
+      ],
+      "end": [
+        29,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "core",
+      "timing",
+      "Instant"
+    ]
+  },
+  {
+    "id": 5730,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/lib.rs",
+      "begin": [
+        27,
+        23
+      ],
+      "end": [
+        27,
+        41
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 10,
+    "name": "KeplerError",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/error.rs",
+      "begin": [
+        8,
+        1
+      ],
+      "end": [
+        23,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "core",
+      "error",
+      "KeplerError"
+    ]
+  },
+  {
+    "id": 5729,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/lib.rs",
+      "begin": [
+        27,
+        16
+      ],
+      "end": [
+        27,
+        21
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 785,
+    "name": "coord",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/coord/mod.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        119,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "core",
+      "coord"
+    ]
+  },
+  {
+    "id": 786,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/coord/mod.rs",
+      "begin": [
+        2,
+        1
+      ],
+      "end": [
+        2,
+        17
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 784,
+    "name": "base",
+    "kind": "module",
+    "visibility": {
+      "restricted": {
+        "parent": 785,
+        "path": "::core::coord"
+      }
+    },
+    "span": {
+      "filename": "src/core/coord/base.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        60,
+        2
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 748,
+    "name": "Base",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/coord/base.rs",
+      "begin": [
+        5,
+        1
+      ],
+      "end": [
+        8,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "core",
+      "coord",
+      "base",
+      "Base"
+    ]
+  },
+  {
+    "id": 5728,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/lib.rs",
+      "begin": [
+        26,
+        67
+      ],
+      "end": [
+        26,
+        70
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 5,
+    "name": "App",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/app.rs",
+      "begin": [
+        27,
+        1
+      ],
+      "end": [
+        34,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "application",
+      "app",
+      "App"
+    ]
+  },
+  {
+    "id": 5727,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/lib.rs",
+      "begin": [
+        26,
+        44
+      ],
+      "end": [
+        26,
+        65
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 668,
+    "name": "RenderApp",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/render_app.rs",
+      "begin": [
+        33,
+        1
+      ],
+      "end": [
+        37,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "application",
+      "render_app",
+      "RenderApp"
+    ]
+  },
+  {
+    "id": 5726,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/lib.rs",
+      "begin": [
+        26,
+        23
+      ],
+      "end": [
+        26,
+        42
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 522,
+    "name": "GLCanvas",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/gl_canvas.rs",
+      "begin": [
+        592,
+        1
+      ],
+      "end": [
+        594,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "application",
+      "gl_canvas",
+      "GLCanvas"
+    ]
+  },
+  {
+    "id": 5725,
+    "name": "acquisition",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/mod.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        3,
+        17
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition"
+    ]
+  },
+  {
+    "id": 5724,
+    "name": "process",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/process.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        53,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition",
+      "process"
+    ]
+  },
+  {
+    "id": 5723,
+    "name": "process_raw",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/process.rs",
+      "begin": [
+        26,
+        1
+      ],
+      "end": [
+        53,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition",
+      "process",
+      "process_raw"
+    ]
+  },
+  {
+    "id": 5721,
+    "name": "load_average_raw_from_bytes",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/process.rs",
+      "begin": [
+        8,
+        1
+      ],
+      "end": [
+        23,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition",
+      "process",
+      "load_average_raw_from_bytes"
+    ]
+  },
+  {
+    "id": 5720,
+    "name": "error",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/error.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        176,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition",
+      "error"
+    ]
+  },
+  {
+    "id": 5719,
+    "name": "get_error_message",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/error.rs",
+      "begin": [
+        95,
+        1
+      ],
+      "end": [
+        176,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition",
+      "error",
+      "get_error_message"
+    ]
+  },
+  {
+    "id": 5692,
+    "name": "ErrorValidator",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/error.rs",
+      "begin": [
+        24,
+        1
+      ],
+      "end": [
+        28,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition",
+      "error",
+      "ErrorValidator"
+    ]
+  },
+  {
+    "id": 5658,
+    "name": "GeneratorPhase",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/error.rs",
+      "begin": [
+        16,
+        1
+      ],
+      "end": [
+        22,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition",
+      "error",
+      "GeneratorPhase"
+    ]
+  },
+  {
+    "id": 5621,
+    "name": "GeneratorError",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/error.rs",
+      "begin": [
+        9,
+        1
+      ],
+      "end": [
+        13,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition",
+      "error",
+      "GeneratorError"
+    ]
+  },
+  {
+    "id": 5586,
+    "name": "ErrorType",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/error.rs",
+      "begin": [
+        2,
+        1
+      ],
+      "end": [
+        6,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition",
+      "error",
+      "ErrorType"
+    ]
+  },
+  {
+    "id": 5579,
+    "name": "remedy",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/remedy.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        516,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition",
+      "remedy"
+    ]
+  },
+  {
+    "id": 5504,
+    "name": "RemedyWasm",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/remedy.rs",
+      "begin": [
+        446,
+        1
+      ],
+      "end": [
+        448,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition",
+      "remedy",
+      "RemedyWasm"
+    ]
+  },
+  {
+    "id": 5475,
+    "name": "RemedyProtocol",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/remedy.rs",
+      "begin": [
+        138,
+        1
+      ],
+      "end": [
+        143,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition",
+      "remedy",
+      "RemedyProtocol"
+    ]
+  },
+  {
+    "id": 5470,
+    "name": "verify_checksum",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/remedy.rs",
+      "begin": [
+        126,
+        1
+      ],
+      "end": [
+        134,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition",
+      "remedy",
+      "verify_checksum"
+    ]
+  },
+  {
+    "id": 5469,
+    "name": "build_packet",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/remedy.rs",
+      "begin": [
+        118,
+        1
+      ],
+      "end": [
+        124,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition",
+      "remedy",
+      "build_packet"
+    ]
+  },
+  {
+    "id": 5434,
+    "name": "SystemState",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/remedy.rs",
+      "begin": [
+        34,
+        1
+      ],
+      "end": [
+        47,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition",
+      "remedy",
+      "SystemState"
+    ]
+  },
+  {
+    "id": 5389,
+    "name": "RemedyEvent",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/remedy.rs",
+      "begin": [
+        25,
+        1
+      ],
+      "end": [
+        31,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition",
+      "remedy",
+      "RemedyEvent"
+    ]
+  },
+  {
+    "id": 5341,
+    "name": "LogColor",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/acquisition/remedy.rs",
+      "begin": [
+        17,
+        1
+      ],
+      "end": [
+        22,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "acquisition",
+      "remedy",
+      "LogColor"
+    ]
+  },
+  {
+    "id": 5336,
+    "name": "rendering",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/mod.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        13,
+        17
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering"
+    ]
+  },
+  {
+    "id": 5335,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/mod.rs",
+      "begin": [
+        13,
+        1
+      ],
+      "end": [
+        13,
+        17
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 3182,
+    "name": "view",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mod.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        120,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view"
+    ]
+  },
+  {
+    "id": 5333,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mod.rs",
+      "begin": [
+        39,
+        1
+      ],
+      "end": [
+        39,
+        27
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 5240,
+    "name": "render_content",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/render_content.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        355,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "render_content"
+    ]
+  },
+  {
+    "id": 26,
+    "name": "RenderContent",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/render_content.rs",
+      "begin": [
+        12,
+        1
+      ],
+      "end": [
+        18,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "render_content",
+      "RenderContent"
+    ]
+  },
+  {
+    "id": 5177,
+    "name": "VolumeDecodeParameters",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/render_content.rs",
+      "begin": [
+        7,
+        1
+      ],
+      "end": [
+        10,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "render_content",
+      "VolumeDecodeParameters"
+    ]
+  },
+  {
+    "id": 5332,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mod.rs",
+      "begin": [
+        38,
+        1
+      ],
+      "end": [
+        38,
+        16
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 5174,
+    "name": "mpr",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mpr/mod.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        17,
+        31
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mpr"
+    ]
+  },
+  {
+    "id": 5173,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mpr/mod.rs",
+      "begin": [
+        17,
+        1
+      ],
+      "end": [
+        17,
+        31
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 5071,
+    "name": "mpr_view_wgpu_impl",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mpr/mpr_view_wgpu_impl.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        508,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mpr",
+      "mpr_view_wgpu_impl"
+    ]
+  },
+  {
+    "id": 5028,
+    "name": "MprViewWgpuImpl",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mpr/mpr_view_wgpu_impl.rs",
+      "begin": [
+        72,
+        1
+      ],
+      "end": [
+        99,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mpr",
+      "mpr_view_wgpu_impl",
+      "MprViewWgpuImpl"
+    ]
+  },
+  {
+    "id": 4983,
+    "name": "Uniforms",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mpr/mpr_view_wgpu_impl.rs",
+      "begin": [
+        64,
+        1
+      ],
+      "end": [
+        67,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mpr",
+      "mpr_view_wgpu_impl",
+      "Uniforms"
+    ]
+  },
+  {
+    "id": 4945,
+    "name": "UniformsFrag",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mpr/mpr_view_wgpu_impl.rs",
+      "begin": [
+        18,
+        1
+      ],
+      "end": [
+        36,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mpr",
+      "mpr_view_wgpu_impl",
+      "UniformsFrag"
+    ]
+  },
+  {
+    "id": 4892,
+    "name": "UniformsVert",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mpr/mpr_view_wgpu_impl.rs",
+      "begin": [
+        12,
+        1
+      ],
+      "end": [
+        14,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mpr",
+      "mpr_view_wgpu_impl",
+      "UniformsVert"
+    ]
+  },
+  {
+    "id": 5172,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mpr/mod.rs",
+      "begin": [
+        16,
+        1
+      ],
+      "end": [
+        16,
+        21
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 5170,
+    "name": "mpr_view",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mpr/mpr_view.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        1650,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mpr",
+      "mpr_view"
+    ]
+  },
+  {
+    "id": 5169,
+    "name": "CoronalView",
+    "kind": "type_alias",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mpr/mpr_view.rs",
+      "begin": [
+        1378,
+        1
+      ],
+      "end": [
+        1378,
+        32
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mpr",
+      "mpr_view",
+      "CoronalView"
+    ]
+  },
+  {
+    "id": 5168,
+    "name": "TransverseView",
+    "kind": "type_alias",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mpr/mpr_view.rs",
+      "begin": [
+        1377,
+        1
+      ],
+      "end": [
+        1377,
+        35
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mpr",
+      "mpr_view",
+      "TransverseView"
+    ]
+  },
+  {
+    "id": 5167,
+    "name": "SagittalView",
+    "kind": "type_alias",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mpr/mpr_view.rs",
+      "begin": [
+        1376,
+        1
+      ],
+      "end": [
+        1376,
+        33
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mpr",
+      "mpr_view",
+      "SagittalView"
+    ]
+  },
+  {
+    "id": 5166,
+    "name": "ObliqueView",
+    "kind": "type_alias",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mpr/mpr_view.rs",
+      "begin": [
+        1375,
+        1
+      ],
+      "end": [
+        1375,
+        32
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mpr",
+      "mpr_view",
+      "ObliqueView"
+    ]
+  },
+  {
+    "id": 3131,
+    "name": "MprView",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mpr/mpr_view.rs",
+      "begin": [
+        39,
+        1
+      ],
+      "end": [
+        92,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mpr",
+      "mpr_view",
+      "MprView"
+    ]
+  },
+  {
+    "id": 5171,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mpr/mod.rs",
+      "begin": [
+        15,
+        1
+      ],
+      "end": [
+        15,
+        31
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 4890,
+    "name": "mpr_render_context",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mpr/mpr_render_context.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        163,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mpr",
+      "mpr_render_context"
+    ]
+  },
+  {
+    "id": 4866,
+    "name": "MprRenderContext",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mpr/mpr_render_context.rs",
+      "begin": [
+        11,
+        1
+      ],
+      "end": [
+        34,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mpr",
+      "mpr_render_context",
+      "MprRenderContext"
+    ]
+  },
+  {
+    "id": 5331,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mod.rs",
+      "begin": [
+        37,
+        1
+      ],
+      "end": [
+        37,
+        16
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 3751,
+    "name": "mip",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mip/mod.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        611,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mip"
+    ]
+  },
+  {
+    "id": 3115,
+    "name": "MipView",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mip/mod.rs",
+      "begin": [
+        240,
+        1
+      ],
+      "end": [
+        264,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mip",
+      "MipView"
+    ]
+  },
+  {
+    "id": 3664,
+    "name": "MipViewWgpuImpl",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mip/mod.rs",
+      "begin": [
+        182,
+        1
+      ],
+      "end": [
+        193,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mip",
+      "MipViewWgpuImpl"
+    ]
+  },
+  {
+    "id": 3631,
+    "name": "MipRenderContext",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mip/mod.rs",
+      "begin": [
+        113,
+        1
+      ],
+      "end": [
+        120,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mip",
+      "MipRenderContext"
+    ]
+  },
+  {
+    "id": 3585,
+    "name": "MipUniforms",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mip/mod.rs",
+      "begin": [
+        58,
+        1
+      ],
+      "end": [
+        84,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mip",
+      "MipUniforms"
+    ]
+  },
+  {
+    "id": 185,
+    "name": "MipConfig",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mip/mod.rs",
+      "begin": [
+        18,
+        1
+      ],
+      "end": [
+        31,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "mip",
+      "MipConfig"
+    ]
+  },
+  {
+    "id": 5330,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mod.rs",
+      "begin": [
+        36,
+        1
+      ],
+      "end": [
+        36,
+        17
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 5329,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mod.rs",
+      "begin": [
+        18,
+        1
+      ],
+      "end": [
+        18,
+        25
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 3527,
+    "name": "view_manager",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/view_manager.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        305,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "view_manager"
+    ]
+  },
+  {
+    "id": 3492,
+    "name": "ViewManager",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/view_manager.rs",
+      "begin": [
+        22,
+        1
+      ],
+      "end": [
+        27,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "view_manager",
+      "ViewManager"
+    ]
+  },
+  {
+    "id": 5328,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mod.rs",
+      "begin": [
+        15,
+        1
+      ],
+      "end": [
+        15,
+        19
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 3489,
+    "name": "layout",
+    "kind": "module",
+    "visibility": {
+      "restricted": {
+        "parent": 3182,
+        "path": "::rendering::view"
+      }
+    },
+    "span": {
+      "filename": "src/rendering/view/layout.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        627,
+        2
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 240,
+    "name": "DynamicLayout",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/layout.rs",
+      "begin": [
+        448,
+        1
+      ],
+      "end": [
+        452,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "layout",
+      "DynamicLayout"
+    ]
+  },
+  {
+    "id": 3325,
+    "name": "LargeLeft3RightLayout",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/layout.rs",
+      "begin": [
+        234,
+        1
+      ],
+      "end": [
+        238,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "layout",
+      "LargeLeft3RightLayout"
+    ]
+  },
+  {
+    "id": 3321,
+    "name": "OneCellLayout",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/layout.rs",
+      "begin": [
+        201,
+        1
+      ],
+      "end": [
+        208,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "layout",
+      "OneCellLayout"
+    ]
+  },
+  {
+    "id": 3317,
+    "name": "GridLayout",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/layout.rs",
+      "begin": [
+        158,
+        1
+      ],
+      "end": [
+        165,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "layout",
+      "GridLayout"
+    ]
+  },
+  {
+    "id": 3337,
+    "name": "LayoutContainer",
+    "kind": "trait",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/layout.rs",
+      "begin": [
+        140,
+        1
+      ],
+      "end": [
+        152,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "layout",
+      "LayoutContainer"
+    ]
+  },
+  {
+    "id": 3259,
+    "name": "LayoutStrategy",
+    "kind": "trait",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/layout.rs",
+      "begin": [
+        124,
+        1
+      ],
+      "end": [
+        138,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "layout",
+      "LayoutStrategy"
+    ]
+  },
+  {
+    "id": 3311,
+    "name": "compute_aspect_fit",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/layout.rs",
+      "begin": [
+        32,
+        1
+      ],
+      "end": [
+        113,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "layout",
+      "compute_aspect_fit"
+    ]
+  },
+  {
+    "id": 3279,
+    "name": "AspectFitResult",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/layout.rs",
+      "begin": [
+        21,
+        1
+      ],
+      "end": [
+        27,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "layout",
+      "AspectFitResult"
+    ]
+  },
+  {
+    "id": 5327,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mod.rs",
+      "begin": [
+        12,
+        1
+      ],
+      "end": [
+        12,
+        23
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 3273,
+    "name": "renderable",
+    "kind": "module",
+    "visibility": {
+      "restricted": {
+        "parent": 3182,
+        "path": "::rendering::view"
+      }
+    },
+    "span": {
+      "filename": "src/rendering/view/renderable.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        4,
+        2
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 5326,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mod.rs",
+      "begin": [
+        7,
+        1
+      ],
+      "end": [
+        7,
+        25
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 3253,
+    "name": "view_factory",
+    "kind": "module",
+    "visibility": {
+      "restricted": {
+        "parent": 3182,
+        "path": "::rendering::view"
+      }
+    },
+    "span": {
+      "filename": "src/rendering/view/view_factory.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        473,
+        2
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 241,
+    "name": "DefaultViewFactory",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/view_factory.rs",
+      "begin": [
+        209,
+        1
+      ],
+      "end": [
+        214,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "view_factory",
+      "DefaultViewFactory"
+    ]
+  },
+  {
+    "id": 3197,
+    "name": "MockViewFactory",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/view_factory.rs",
+      "begin": [
+        119,
+        1
+      ],
+      "end": [
+        119,
+        28
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "view_factory",
+      "MockViewFactory"
+    ]
+  },
+  {
+    "id": 3189,
+    "name": "ViewFactory",
+    "kind": "trait",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/view_factory.rs",
+      "begin": [
+        35,
+        1
+      ],
+      "end": [
+        117,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "view_factory",
+      "ViewFactory"
+    ]
+  },
+  {
+    "id": 5325,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mod.rs",
+      "begin": [
+        4,
+        1
+      ],
+      "end": [
+        4,
+        17
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 3181,
+    "name": "view",
+    "kind": "module",
+    "visibility": {
+      "restricted": {
+        "parent": 3182,
+        "path": "::rendering::view"
+      }
+    },
+    "span": {
+      "filename": "src/rendering/view/view.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        203,
+        2
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 3180,
+    "name": "ALL_ORIENTATIONS",
+    "kind": "constant",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/view.rs",
+      "begin": [
+        182,
+        1
+      ],
+      "end": [
+        187,
+        3
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "view",
+      "ALL_ORIENTATIONS"
+    ]
+  },
+  {
+    "id": 179,
+    "name": "Orientation",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/view.rs",
+      "begin": [
+        170,
+        1
+      ],
+      "end": [
+        179,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "view",
+      "Orientation"
+    ]
+  },
+  {
+    "id": 3135,
+    "name": "StatefulView",
+    "kind": "trait",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/view.rs",
+      "begin": [
+        145,
+        1
+      ],
+      "end": [
+        165,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "view",
+      "StatefulView"
+    ]
+  },
+  {
+    "id": 181,
+    "name": "ViewState",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/view.rs",
+      "begin": [
+        27,
+        1
+      ],
+      "end": [
+        44,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "view",
+      "ViewState"
+    ]
+  },
+  {
+    "id": 198,
+    "name": "ObliquePlaneUniform",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mod.rs",
+      "begin": [
+        104,
+        1
+      ],
+      "end": [
+        109,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "ObliquePlaneUniform"
+    ]
+  },
+  {
+    "id": 3583,
+    "name": "NeedleUniform",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mod.rs",
+      "begin": [
+        67,
+        1
+      ],
+      "end": [
+        73,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "NeedleUniform"
+    ]
+  },
+  {
+    "id": 5243,
+    "name": "LABEL_COLORS",
+    "kind": "constant",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mod.rs",
+      "begin": [
+        53,
+        1
+      ],
+      "end": [
+        62,
+        3
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "LABEL_COLORS"
+    ]
+  },
+  {
+    "id": 5242,
+    "name": "LABEL_NAMES",
+    "kind": "constant",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mod.rs",
+      "begin": [
+        41,
+        1
+      ],
+      "end": [
+        50,
+        3
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "LABEL_NAMES"
+    ]
+  },
+  {
+    "id": 5241,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/mod.rs",
+      "begin": [
+        9,
+        1
+      ],
+      "end": [
+        9,
+        53
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 4857,
+    "name": "camera",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/camera.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        337,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "camera"
+    ]
+  },
+  {
+    "id": 4187,
+    "name": "Camera",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/camera.rs",
+      "begin": [
+        34,
+        1
+      ],
+      "end": [
+        47,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "camera",
+      "Camera"
+    ]
+  },
+  {
+    "id": 4760,
+    "name": "ProjectionType",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/view/camera.rs",
+      "begin": [
+        5,
+        1
+      ],
+      "end": [
+        8,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "view",
+      "camera",
+      "ProjectionType"
+    ]
+  },
+  {
+    "id": 5334,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/mod.rs",
+      "begin": [
+        12,
+        1
+      ],
+      "end": [
+        12,
+        17
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 3058,
+    "name": "core",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/mod.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        16,
+        20
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core"
+    ]
+  },
+  {
+    "id": 3057,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/mod.rs",
+      "begin": [
+        16,
+        1
+      ],
+      "end": [
+        16,
+        20
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 3053,
+    "name": "texture",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/texture.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        80,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "texture"
+    ]
+  },
+  {
+    "id": 3026,
+    "name": "Texture",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/texture.rs",
+      "begin": [
+        4,
+        1
+      ],
+      "end": [
+        9,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "texture",
+      "Texture"
+    ]
+  },
+  {
+    "id": 3056,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/mod.rs",
+      "begin": [
+        15,
+        1
+      ],
+      "end": [
+        15,
+        24
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 3020,
+    "name": "render_pass",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/render_pass.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        843,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "render_pass"
+    ]
+  },
+  {
+    "id": 2627,
+    "name": "PassExecutor",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/render_pass.rs",
+      "begin": [
+        275,
+        1
+      ],
+      "end": [
+        284,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "render_pass",
+      "PassExecutor"
+    ]
+  },
+  {
+    "id": 2958,
+    "name": "PassExecutionStats",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/render_pass.rs",
+      "begin": [
+        265,
+        1
+      ],
+      "end": [
+        272,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "render_pass",
+      "PassExecutionStats"
+    ]
+  },
+  {
+    "id": 2918,
+    "name": "PassExecutionError",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/render_pass.rs",
+      "begin": [
+        232,
+        1
+      ],
+      "end": [
+        243,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "render_pass",
+      "PassExecutionError"
+    ]
+  },
+  {
+    "id": 2882,
+    "name": "PassContext",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/render_pass.rs",
+      "begin": [
+        196,
+        1
+      ],
+      "end": [
+        203,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "render_pass",
+      "PassContext"
+    ]
+  },
+  {
+    "id": 2852,
+    "name": "PassRegistry",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/render_pass.rs",
+      "begin": [
+        132,
+        1
+      ],
+      "end": [
+        135,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "render_pass",
+      "PassRegistry"
+    ]
+  },
+  {
+    "id": 2822,
+    "name": "PassPlan",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/render_pass.rs",
+      "begin": [
+        96,
+        1
+      ],
+      "end": [
+        101,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "render_pass",
+      "PassPlan"
+    ]
+  },
+  {
+    "id": 2788,
+    "name": "PassDescriptor",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/render_pass.rs",
+      "begin": [
+        26,
+        1
+      ],
+      "end": [
+        39,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "render_pass",
+      "PassDescriptor"
+    ]
+  },
+  {
+    "id": 2744,
+    "name": "PassId",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/render_pass.rs",
+      "begin": [
+        15,
+        1
+      ],
+      "end": [
+        22,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "render_pass",
+      "PassId"
+    ]
+  },
+  {
+    "id": 3055,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/mod.rs",
+      "begin": [
+        14,
+        1
+      ],
+      "end": [
+        14,
+        21
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 2740,
+    "name": "pipeline",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/pipeline.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        547,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "pipeline"
+    ]
+  },
+  {
+    "id": 2739,
+    "name": "select_pipeline",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/pipeline.rs",
+      "begin": [
+        511,
+        1
+      ],
+      "end": [
+        520,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "pipeline",
+      "select_pipeline"
+    ]
+  },
+  {
+    "id": 2738,
+    "name": "create_volume_pipelines",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/pipeline.rs",
+      "begin": [
+        478,
+        1
+      ],
+      "end": [
+        506,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "pipeline",
+      "create_volume_pipelines"
+    ]
+  },
+  {
+    "id": 2736,
+    "name": "create_texture_quad_pipeline",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/pipeline.rs",
+      "begin": [
+        411,
+        1
+      ],
+      "end": [
+        472,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "pipeline",
+      "create_texture_quad_pipeline"
+    ]
+  },
+  {
+    "id": 2735,
+    "name": "create_mip_pipeline",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/pipeline.rs",
+      "begin": [
+        346,
+        1
+      ],
+      "end": [
+        407,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "pipeline",
+      "create_mip_pipeline"
+    ]
+  },
+  {
+    "id": 2734,
+    "name": "create_volume_pipeline",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/pipeline.rs",
+      "begin": [
+        277,
+        1
+      ],
+      "end": [
+        344,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "pipeline",
+      "create_volume_pipeline"
+    ]
+  },
+  {
+    "id": 2732,
+    "name": "create_basic_mesh_pipeline_with_lighting",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/pipeline.rs",
+      "begin": [
+        206,
+        1
+      ],
+      "end": [
+        274,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "pipeline",
+      "create_basic_mesh_pipeline_with_lighting"
+    ]
+  },
+  {
+    "id": 2730,
+    "name": "create_uniform_bind_group_layout",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/pipeline.rs",
+      "begin": [
+        188,
+        1
+      ],
+      "end": [
+        202,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "pipeline",
+      "create_uniform_bind_group_layout"
+    ]
+  },
+  {
+    "id": 2729,
+    "name": "create_texture_bind_group_layout_addseg",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/pipeline.rs",
+      "begin": [
+        140,
+        1
+      ],
+      "end": [
+        185,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "pipeline",
+      "create_texture_bind_group_layout_addseg"
+    ]
+  },
+  {
+    "id": 2728,
+    "name": "create_texture_bind_group_layout",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/pipeline.rs",
+      "begin": [
+        113,
+        1
+      ],
+      "end": [
+        138,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "pipeline",
+      "create_texture_bind_group_layout"
+    ]
+  },
+  {
+    "id": 2725,
+    "name": "create_basic_lighting_bind_group_layout",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/pipeline.rs",
+      "begin": [
+        97,
+        1
+      ],
+      "end": [
+        111,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "pipeline",
+      "create_basic_lighting_bind_group_layout"
+    ]
+  },
+  {
+    "id": 2703,
+    "name": "VolumePipelines",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/pipeline.rs",
+      "begin": [
+        79,
+        1
+      ],
+      "end": [
+        83,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "pipeline",
+      "VolumePipelines"
+    ]
+  },
+  {
+    "id": 2662,
+    "name": "VolumeRenderMode",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/pipeline.rs",
+      "begin": [
+        73,
+        1
+      ],
+      "end": [
+        77,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "pipeline",
+      "VolumeRenderMode"
+    ]
+  },
+  {
+    "id": 2658,
+    "name": "get_mesh_depth_format",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/pipeline.rs",
+      "begin": [
+        68,
+        1
+      ],
+      "end": [
+        70,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "pipeline",
+      "get_mesh_depth_format"
+    ]
+  },
+  {
+    "id": 2657,
+    "name": "get_swapchain_format",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/pipeline.rs",
+      "begin": [
+        57,
+        1
+      ],
+      "end": [
+        61,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "pipeline",
+      "get_swapchain_format"
+    ]
+  },
+  {
+    "id": 2655,
+    "name": "set_swapchain_format",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/pipeline.rs",
+      "begin": [
+        48,
+        1
+      ],
+      "end": [
+        51,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "pipeline",
+      "set_swapchain_format"
+    ]
+  },
+  {
+    "id": 3054,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/mod.rs",
+      "begin": [
+        13,
+        1
+      ],
+      "end": [
+        13,
+        21
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 2654,
+    "name": "graphics",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/graphics.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        279,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "graphics"
+    ]
+  },
+  {
+    "id": 2621,
+    "name": "GraphicsContext",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/graphics.rs",
+      "begin": [
+        23,
+        1
+      ],
+      "end": [
+        28,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "graphics",
+      "GraphicsContext"
+    ]
+  },
+  {
+    "id": 13,
+    "name": "Graphics",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/core/graphics.rs",
+      "begin": [
+        12,
+        1
+      ],
+      "end": [
+        20,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "core",
+      "graphics",
+      "Graphics"
+    ]
+  },
+  {
+    "id": 3059,
+    "name": "shaders",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/rendering/shaders/mod.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        4,
+        90
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "rendering",
+      "shaders"
+    ]
+  },
+  {
+    "id": 2545,
+    "name": "data",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/mod.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        16,
+        49
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data"
+    ]
+  },
+  {
+    "id": 2544,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/mod.rs",
+      "begin": [
+        14,
+        1
+      ],
+      "end": [
+        14,
+        22
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 2543,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/mod.rs",
+      "begin": [
+        16,
+        1
+      ],
+      "end": [
+        16,
+        49
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 139,
+    "name": "AppModel",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/app_model.rs",
+      "begin": [
+        14,
+        1
+      ],
+      "end": [
+        17,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "application",
+      "app_model",
+      "AppModel"
+    ]
+  },
+  {
+    "id": 2542,
+    "name": "volume_encoding",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/volume_encoding.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        9,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "volume_encoding"
+    ]
+  },
+  {
+    "id": 142,
+    "name": "VolumeEncoding",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/volume_encoding.rs",
+      "begin": [
+        2,
+        1
+      ],
+      "end": [
+        5,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "volume_encoding",
+      "VolumeEncoding"
+    ]
+  },
+  {
+    "id": 2505,
+    "name": "medical_imaging",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/mod.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        13,
+        23
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging"
+    ]
+  },
+  {
+    "id": 2504,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/mod.rs",
+      "begin": [
+        13,
+        1
+      ],
+      "end": [
+        13,
+        23
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 2500,
+    "name": "validation",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/validation.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        532,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "validation"
+    ]
+  },
+  {
+    "id": 2074,
+    "name": "ValidationResult",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/validation.rs",
+      "begin": [
+        475,
+        1
+      ],
+      "end": [
+        481,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "validation",
+      "ValidationResult"
+    ]
+  },
+  {
+    "id": 1824,
+    "name": "MedicalImageValidator",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/validation.rs",
+      "begin": [
+        305,
+        1
+      ],
+      "end": [
+        310,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "validation",
+      "MedicalImageValidator"
+    ]
+  },
+  {
+    "id": 2320,
+    "name": "MedicalHeaderChecker",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/validation.rs",
+      "begin": [
+        251,
+        1
+      ],
+      "end": [
+        254,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "validation",
+      "MedicalHeaderChecker"
+    ]
+  },
+  {
+    "id": 2350,
+    "name": "ChecksumAlgorithm",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/validation.rs",
+      "begin": [
+        191,
+        1
+      ],
+      "end": [
+        194,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "validation",
+      "ChecksumAlgorithm"
+    ]
+  },
+  {
+    "id": 2316,
+    "name": "ChecksumChecker",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/validation.rs",
+      "begin": [
+        185,
+        1
+      ],
+      "end": [
+        188,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "validation",
+      "ChecksumChecker"
+    ]
+  },
+  {
+    "id": 2312,
+    "name": "DataSizeChecker",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/validation.rs",
+      "begin": [
+        131,
+        1
+      ],
+      "end": [
+        134,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "validation",
+      "DataSizeChecker"
+    ]
+  },
+  {
+    "id": 2308,
+    "name": "IntegrityChecker",
+    "kind": "trait",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/validation.rs",
+      "begin": [
+        111,
+        1
+      ],
+      "end": [
+        126,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "validation",
+      "IntegrityChecker"
+    ]
+  },
+  {
+    "id": 2278,
+    "name": "DataIssue",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/validation.rs",
+      "begin": [
+        103,
+        1
+      ],
+      "end": [
+        108,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "validation",
+      "DataIssue"
+    ]
+  },
+  {
+    "id": 2246,
+    "name": "MetadataIssue",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/validation.rs",
+      "begin": [
+        94,
+        1
+      ],
+      "end": [
+        99,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "validation",
+      "MetadataIssue"
+    ]
+  },
+  {
+    "id": 2179,
+    "name": "WarningSeverity",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/validation.rs",
+      "begin": [
+        86,
+        1
+      ],
+      "end": [
+        90,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "validation",
+      "WarningSeverity"
+    ]
+  },
+  {
+    "id": 2181,
+    "name": "ValidationWarning",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/validation.rs",
+      "begin": [
+        78,
+        1
+      ],
+      "end": [
+        82,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "validation",
+      "ValidationWarning"
+    ]
+  },
+  {
+    "id": 2143,
+    "name": "ValidationError",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/validation.rs",
+      "begin": [
+        25,
+        1
+      ],
+      "end": [
+        74,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "validation",
+      "ValidationError"
+    ]
+  },
+  {
+    "id": 2503,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/mod.rs",
+      "begin": [
+        12,
+        1
+      ],
+      "end": [
+        12,
+        21
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 2109,
+    "name": "metadata",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/metadata/mod.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        9,
+        19
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "metadata"
+    ]
+  },
+  {
+    "id": 2108,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/metadata/mod.rs",
+      "begin": [
+        9,
+        1
+      ],
+      "end": [
+        9,
+        19
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 2105,
+    "name": "volume",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/metadata/volume.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        111,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "metadata",
+      "volume"
+    ]
+  },
+  {
+    "id": 1748,
+    "name": "MedicalVolume",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/metadata/volume.rs",
+      "begin": [
+        15,
+        1
+      ],
+      "end": [
+        24,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "metadata",
+      "volume",
+      "MedicalVolume"
+    ]
+  },
+  {
+    "id": 2107,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/metadata/mod.rs",
+      "begin": [
+        8,
+        1
+      ],
+      "end": [
+        8,
+        23
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 2069,
+    "name": "pixel_data",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/metadata/pixel_data.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        182,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "metadata",
+      "pixel_data"
+    ]
+  },
+  {
+    "id": 1793,
+    "name": "PixelData",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/metadata/pixel_data.rs",
+      "begin": [
+        26,
+        1
+      ],
+      "end": [
+        33,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "metadata",
+      "pixel_data",
+      "PixelData"
+    ]
+  },
+  {
+    "id": 1860,
+    "name": "PixelType",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/metadata/pixel_data.rs",
+      "begin": [
+        14,
+        1
+      ],
+      "end": [
+        21,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "metadata",
+      "pixel_data",
+      "PixelType"
+    ]
+  },
+  {
+    "id": 1862,
+    "name": "Endianness",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/metadata/pixel_data.rs",
+      "begin": [
+        6,
+        1
+      ],
+      "end": [
+        9,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "metadata",
+      "pixel_data",
+      "Endianness"
+    ]
+  },
+  {
+    "id": 2106,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/metadata/mod.rs",
+      "begin": [
+        7,
+        1
+      ],
+      "end": [
+        7,
+        23
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1948,
+    "name": "image_info",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/metadata/image_info.rs",
+      "begin": [
+        4,
+        1
+      ],
+      "end": [
+        416,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "metadata",
+      "image_info"
+    ]
+  },
+  {
+    "id": 1865,
+    "name": "PatientPosition",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/metadata/image_info.rs",
+      "begin": [
+        224,
+        1
+      ],
+      "end": [
+        234,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "metadata",
+      "image_info",
+      "PatientPosition"
+    ]
+  },
+  {
+    "id": 1750,
+    "name": "ImageMetadata",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/metadata/image_info.rs",
+      "begin": [
+        17,
+        1
+      ],
+      "end": [
+        38,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "metadata",
+      "image_info",
+      "ImageMetadata"
+    ]
+  },
+  {
+    "id": 2502,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/mod.rs",
+      "begin": [
+        11,
+        1
+      ],
+      "end": [
+        11,
+        20
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1854,
+    "name": "formats",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/formats/mod.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        9,
+        16
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "formats"
+    ]
+  },
+  {
+    "id": 1853,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/formats/mod.rs",
+      "begin": [
+        9,
+        1
+      ],
+      "end": [
+        9,
+        16
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1850,
+    "name": "mhd",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/formats/mhd.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        100,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "formats",
+      "mhd"
+    ]
+  },
+  {
+    "id": 1822,
+    "name": "MhdParser",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/formats/mhd.rs",
+      "begin": [
+        14,
+        1
+      ],
+      "end": [
+        23,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "formats",
+      "mhd",
+      "MhdParser"
+    ]
+  },
+  {
+    "id": 1852,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/formats/mod.rs",
+      "begin": [
+        8,
+        1
+      ],
+      "end": [
+        8,
+        16
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1818,
+    "name": "mha",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/formats/mha.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        90,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "formats",
+      "mha"
+    ]
+  },
+  {
+    "id": 1791,
+    "name": "MhaParser",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/formats/mha.rs",
+      "begin": [
+        18,
+        1
+      ],
+      "end": [
+        25,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "formats",
+      "mha",
+      "MhaParser"
+    ]
+  },
+  {
+    "id": 1851,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/formats/mod.rs",
+      "begin": [
+        7,
+        1
+      ],
+      "end": [
+        7,
+        19
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1787,
+    "name": "common",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/formats/common.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        122,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "formats",
+      "common"
+    ]
+  },
+  {
+    "id": 1786,
+    "name": "parse_metaimage_header",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/formats/common.rs",
+      "begin": [
+        77,
+        1
+      ],
+      "end": [
+        122,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "formats",
+      "common",
+      "parse_metaimage_header"
+    ]
+  },
+  {
+    "id": 1755,
+    "name": "CompressionType",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/formats/common.rs",
+      "begin": [
+        69,
+        1
+      ],
+      "end": [
+        73,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "formats",
+      "common",
+      "CompressionType"
+    ]
+  },
+  {
+    "id": 1751,
+    "name": "MedicalImageParser",
+    "kind": "trait",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/formats/common.rs",
+      "begin": [
+        41,
+        1
+      ],
+      "end": [
+        65,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "formats",
+      "common",
+      "MedicalImageParser"
+    ]
+  },
+  {
+    "id": 1746,
+    "name": "get_extension",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/formats/common.rs",
+      "begin": [
+        23,
+        1
+      ],
+      "end": [
+        37,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "formats",
+      "common",
+      "get_extension"
+    ]
+  },
+  {
+    "id": 1703,
+    "name": "ImageFormat",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/formats/common.rs",
+      "begin": [
+        14,
+        1
+      ],
+      "end": [
+        20,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "formats",
+      "common",
+      "ImageFormat"
+    ]
+  },
+  {
+    "id": 2501,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/mod.rs",
+      "begin": [
+        10,
+        1
+      ],
+      "end": [
+        10,
+        18
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1697,
+    "name": "error",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/error.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        114,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "error"
+    ]
+  },
+  {
+    "id": 1662,
+    "name": "ErrorContext",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/error.rs",
+      "begin": [
+        78,
+        1
+      ],
+      "end": [
+        83,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "error",
+      "ErrorContext"
+    ]
+  },
+  {
+    "id": 1656,
+    "name": "MedicalImagingResult",
+    "kind": "type_alias",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/error.rs",
+      "begin": [
+        73,
+        1
+      ],
+      "end": [
+        73,
+        67
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "error",
+      "MedicalImagingResult"
+    ]
+  },
+  {
+    "id": 1623,
+    "name": "MedicalImagingError",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/medical_imaging/error.rs",
+      "begin": [
+        10,
+        1
+      ],
+      "end": [
+        70,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "medical_imaging",
+      "error",
+      "MedicalImagingError"
+    ]
+  },
+  {
+    "id": 1587,
+    "name": "dicom_",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom_.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        37,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom_"
+    ]
+  },
+  {
+    "id": 1522,
+    "name": "DicomObject",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/data/dicom_.rs",
+      "begin": [
+        15,
+        1
+      ],
+      "end": [
+        18,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "data",
+      "dicom_",
+      "DicomObject"
+    ]
+  },
+  {
+    "id": 1062,
+    "name": "core",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/mod.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        16,
+        25
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "core"
+    ]
+  },
+  {
+    "id": 1061,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/mod.rs",
+      "begin": [
+        16,
+        1
+      ],
+      "end": [
+        16,
+        25
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1056,
+    "name": "window_level",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/window_level.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        409,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "core",
+      "window_level"
+    ]
+  },
+  {
+    "id": 988,
+    "name": "WindowLevel",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/window_level.rs",
+      "begin": [
+        17,
+        1
+      ],
+      "end": [
+        26,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "core",
+      "window_level",
+      "WindowLevel"
+    ]
+  },
+  {
+    "id": 1060,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/mod.rs",
+      "begin": [
+        15,
+        1
+      ],
+      "end": [
+        15,
+        19
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 1059,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/mod.rs",
+      "begin": [
+        14,
+        1
+      ],
+      "end": [
+        14,
+        21
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 936,
+    "name": "geometry",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/geometry.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        439,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "core",
+      "geometry"
+    ]
+  },
+  {
+    "id": 906,
+    "name": "GeometryBuilder",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/geometry.rs",
+      "begin": [
+        13,
+        1
+      ],
+      "end": [
+        18,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "core",
+      "geometry",
+      "GeometryBuilder"
+    ]
+  },
+  {
+    "id": 1058,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/mod.rs",
+      "begin": [
+        13,
+        1
+      ],
+      "end": [
+        13,
+        18
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 903,
+    "name": "error",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/error.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        143,
+        51
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "core",
+      "error"
+    ]
+  },
+  {
+    "id": 902,
+    "name": "KeplerResult",
+    "kind": "type_alias",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/error.rs",
+      "begin": [
+        143,
+        1
+      ],
+      "end": [
+        143,
+        51
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "core",
+      "error",
+      "KeplerResult"
+    ]
+  },
+  {
+    "id": 801,
+    "name": "MprError",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/error.rs",
+      "begin": [
+        27,
+        1
+      ],
+      "end": [
+        50,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "core",
+      "error",
+      "MprError"
+    ]
+  },
+  {
+    "id": 1057,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/core/mod.rs",
+      "begin": [
+        12,
+        1
+      ],
+      "end": [
+        12,
+        18
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 744,
+    "name": "application",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/mod.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        18,
+        23
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "application"
+    ]
+  },
+  {
+    "id": 743,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/mod.rs",
+      "begin": [
+        18,
+        1
+      ],
+      "end": [
+        18,
+        23
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 738,
+    "name": "render_app",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/render_app.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        605,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "application",
+      "render_app"
+    ]
+  },
+  {
+    "id": 664,
+    "name": "create_graphics",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/render_app.rs",
+      "begin": [
+        26,
+        1
+      ],
+      "end": [
+        30,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "application",
+      "render_app",
+      "create_graphics"
+    ]
+  },
+  {
+    "id": 742,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/mod.rs",
+      "begin": [
+        17,
+        1
+      ],
+      "end": [
+        17,
+        22
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 663,
+    "name": "gl_canvas",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/gl_canvas.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        626,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "application",
+      "gl_canvas"
+    ]
+  },
+  {
+    "id": 497,
+    "name": "UserEvent",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/gl_canvas.rs",
+      "begin": [
+        12,
+        1
+      ],
+      "end": [
+        81,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "application",
+      "gl_canvas",
+      "UserEvent"
+    ]
+  },
+  {
+    "id": 741,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/mod.rs",
+      "begin": [
+        16,
+        1
+      ],
+      "end": [
+        16,
+        20
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 302,
+    "name": "appview",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/appview.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        869,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "application",
+      "appview"
+    ]
+  },
+  {
+    "id": 238,
+    "name": "AppView",
+    "kind": "struct",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/appview.rs",
+      "begin": [
+        47,
+        1
+      ],
+      "end": [
+        51,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "application",
+      "appview",
+      "AppView"
+    ]
+  },
+  {
+    "id": 200,
+    "name": "CapturedViewState",
+    "kind": "enum",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/appview.rs",
+      "begin": [
+        21,
+        1
+      ],
+      "end": [
+        44,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "application",
+      "appview",
+      "CapturedViewState"
+    ]
+  },
+  {
+    "id": 740,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/mod.rs",
+      "begin": [
+        15,
+        1
+      ],
+      "end": [
+        15,
+        22
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 175,
+    "name": "app_model",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/app_model.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        92,
+        41
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "application",
+      "app_model"
+    ]
+  },
+  {
+    "id": 174,
+    "name": "SharedAppModel",
+    "kind": "type_alias",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/app_model.rs",
+      "begin": [
+        92,
+        1
+      ],
+      "end": [
+        92,
+        41
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "application",
+      "app_model",
+      "SharedAppModel"
+    ]
+  },
+  {
+    "id": 739,
+    "name": null,
+    "kind": "use",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/mod.rs",
+      "begin": [
+        14,
+        1
+      ],
+      "end": [
+        14,
+        16
+      ]
+    },
+    "public_path": null
+  },
+  {
+    "id": 136,
+    "name": "app",
+    "kind": "module",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/app.rs",
+      "begin": [
+        1,
+        1
+      ],
+      "end": [
+        1414,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "application",
+      "app"
+    ]
+  },
+  {
+    "id": 135,
+    "name": "load_data_from_repo_wasm",
+    "kind": "function",
+    "visibility": "public",
+    "span": {
+      "filename": "src/application/app.rs",
+      "begin": [
+        1411,
+        1
+      ],
+      "end": [
+        1414,
+        2
+      ]
+    },
+    "public_path": [
+      "kepler_wgpu",
+      "application",
+      "app",
+      "load_data_from_repo_wasm"
+    ]
+  }
+]

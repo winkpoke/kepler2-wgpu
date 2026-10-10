@@ -10,7 +10,7 @@ use crate::data::volume_encoding::VolumeEncoding;
 use crate::CTVolume;
 
 use log::{debug, info};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use crate::core::WindowLevel;
 use crate::rendering::view::mesh::basic_mesh_context::MultiMeshContext;
@@ -126,8 +126,7 @@ impl ViewFactory for MockViewFactory {
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(Box::new(std::io::Error::other(
             "Mock factory - not implemented",
         )))
     }
@@ -140,8 +139,7 @@ impl ViewFactory for MockViewFactory {
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(Box::new(std::io::Error::other(
             "Mock factory - not implemented",
         )))
     }
@@ -153,8 +151,7 @@ impl ViewFactory for MockViewFactory {
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(Box::new(std::io::Error::other(
             "Mock factory - not implemented",
         )))
     }
@@ -168,8 +165,7 @@ impl ViewFactory for MockViewFactory {
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(Box::new(std::io::Error::other(
             "Mock factory - not implemented",
         )))
     }
@@ -181,8 +177,7 @@ impl ViewFactory for MockViewFactory {
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(Box::new(std::io::Error::other(
             "Mock factory - not implemented",
         )))
     }
@@ -193,8 +188,7 @@ impl ViewFactory for MockViewFactory {
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        Err(Box::new(std::io::Error::new(
-            std::io::ErrorKind::Other,
+        Err(Box::new(std::io::Error::other(
             "Mock factory - not implemented",
         )))
     }
@@ -211,9 +205,15 @@ pub struct DefaultViewFactory {
     queue: Arc<wgpu::Queue>,
     surface_format: wgpu::TextureFormat,
     use_float_volume_texture: bool,
+    mpr_context: OnceLock<Arc<MprRenderContext>>,
+    mpr_source: std::sync::Mutex<Option<(usize, usize, std::sync::Weak<CTVolume>)>>,
 }
 
 impl DefaultViewFactory {
+    pub fn surface_format(&self) -> wgpu::TextureFormat {
+        self.surface_format
+    }
+
     /// Function-level comment: Create a new DefaultViewFactory with required GPU resources and configuration
     pub fn new(
         device: Arc<wgpu::Device>,
@@ -226,7 +226,33 @@ impl DefaultViewFactory {
             queue,
             surface_format,
             use_float_volume_texture,
+            mpr_context: OnceLock::new(),
+            mpr_source: std::sync::Mutex::new(None),
         }
+    }
+
+    /// Immutable MPR resources shared by all views created or rebound by this factory.
+    pub fn mpr_render_context(&self) -> Arc<MprRenderContext> {
+        Arc::clone(self.mpr_context.get_or_init(|| {
+            Arc::new(MprRenderContext::new_with_format(
+                &self.device,
+                &self.queue,
+                self.surface_format,
+            ))
+        }))
+    }
+
+    /// Whether a refresh can reuse this factory's immutable GPU resources.
+    pub(crate) fn is_compatible(
+        &self,
+        device: &Arc<wgpu::Device>,
+        format: wgpu::TextureFormat,
+    ) -> bool {
+        Arc::ptr_eq(&self.device, device) && self.surface_format == format
+    }
+
+    pub(crate) fn set_float_volume_texture(&mut self, enabled: bool) {
+        self.use_float_volume_texture = enabled;
     }
 
     /// Function-level comment: Build RenderContent from CTVolume using configured texture format path
@@ -234,61 +260,22 @@ impl DefaultViewFactory {
         &self,
         vol: &CTVolume,
     ) -> Result<Arc<RenderContent>, Box<dyn std::error::Error>> {
-        if self.use_float_volume_texture {
-            debug!("[DefaultViewFactory] Using R16Float volume texture path");
-            // Convert voxel i16 to half-float (f16) bit pattern then cast to bytes
-            let bytes: Vec<u8> = {
-                let voxels_f16_bits: Vec<u16> = vol
-                    .voxel_data
-                    .iter()
-                    .map(|&x| half::f16::from_f32(x as f32).to_bits())
-                    .collect();
-                bytemuck::cast_slice(&voxels_f16_bits).to_vec()
-            };
-            let encoding = VolumeEncoding::HuFloat;
-            match RenderContent::from_bytes_r16f(
-                &self.device,
-                &self.queue,
-                &bytes,
-                "CT Volume",
-                vol.dimensions.0 as u32,
-                vol.dimensions.1 as u32,
-                vol.dimensions.2 as u32,
-                encoding,
-            ) {
-                Ok(rc) => Ok(Arc::new(rc)),
-                Err(e) => Err(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e.to_string(),
-                ))),
-            }
-        } else {
-            debug!("[DefaultViewFactory] Using Rg8Unorm volume texture path");
-            let offset = VolumeEncoding::DEFAULT_HU_OFFSET;
-            let voxel_data: Vec<u16> = vol
-                .voxel_data
-                .iter()
-                .map(|x| (*x + offset as i16) as u16)
-                .collect();
-            let voxel_bytes: Vec<u8> = bytemuck::cast_slice(&voxel_data).to_vec();
-            let encoding = VolumeEncoding::HuPackedRg8 { offset };
-            match RenderContent::from_bytes(
-                &self.device,
-                &self.queue,
-                &voxel_bytes,
-                "CT Volume",
-                vol.dimensions.0 as u32,
-                vol.dimensions.1 as u32,
-                vol.dimensions.2 as u32,
-                encoding,
-            ) {
-                Ok(rc) => Ok(Arc::new(rc)),
-                Err(e) => Err(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    e.to_string(),
-                ))),
-            }
-        }
+        let encoding = VolumeEncoding::for_float_support(self.use_float_volume_texture);
+        debug!(
+            "[DefaultViewFactory] Using {:?} volume texture path",
+            encoding
+        );
+        let bytes = encoding.encode_volume(vol.voxel_data());
+        Ok(Arc::new(RenderContent::from_bytes(
+            &self.device,
+            &self.queue,
+            &bytes,
+            "CT Volume",
+            vol.dimensions.0 as u32,
+            vol.dimensions.1 as u32,
+            vol.dimensions.2 as u32,
+            encoding,
+        )?))
     }
 }
 
@@ -323,23 +310,16 @@ impl ViewFactory for DefaultViewFactory {
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        let render_content = match self.build_render_content(vol) {
-            Ok(rc) => rc,
-            Err(e) => return Err(e),
-        };
+        let render_content = self.build_render_content(vol)?;
 
         // Shared render context for MPR views
-        let render_context = Arc::new(MprRenderContext::new(&self.device, &self.queue));
+        let render_context = self.mpr_render_context();
 
         // Configure WindowLevel defaults; mirror State logic where appropriate
         let mut winlev = WindowLevel::new();
-        let decode_params = render_content.decode_parameters();
-        if decode_params.bias != 0.0 {
-            let _ = winlev.set_bias(decode_params.bias);
-        }
         let _ = winlev.apply_bone_preset();
 
-        let view = MprView::new(
+        let mut view = MprView::new(
             render_context,
             &self.device,
             render_content,
@@ -352,6 +332,7 @@ impl ViewFactory for DefaultViewFactory {
             size,
         );
 
+        view.set_target_format(self.surface_format);
         info!(
             "[DefaultViewFactory] Created MPR view for {:?} at {:?} size {:?}",
             orientation, pos, size
@@ -366,10 +347,9 @@ impl ViewFactory for DefaultViewFactory {
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        let render_content = match self.build_render_content(vol) {
-            Ok(rc) => rc,
-            Err(e) => return Err(e),
-        };
+        use crate::rendering::view::View as _;
+
+        let render_content = self.build_render_content(vol)?;
         let mip_wgpu_impl = MipViewWgpuImpl::new(render_content, &self.device, self.surface_format);
 
         let mut mip_view = MipView::new(Arc::new(mip_wgpu_impl));
@@ -393,17 +373,25 @@ impl ViewFactory for DefaultViewFactory {
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
         // Shared render context for MPR views
-        let render_context = Arc::new(MprRenderContext::new(&self.device, &self.queue));
+        let render_context = self.mpr_render_context();
 
         // Configure WindowLevel defaults; mirror State logic where appropriate
         let mut winlev = WindowLevel::new();
-        let decode_params = render_content.decode_parameters();
-        if decode_params.bias != 0.0 {
-            let _ = winlev.set_bias(decode_params.bias);
-        }
         let _ = winlev.apply_bone_preset();
 
-        let view = MprView::new(
+        let key = (
+            Arc::as_ptr(&render_content) as usize,
+            vol.voxel_data().as_ptr() as usize,
+        );
+        let mut cache = self.mpr_source.lock().unwrap_or_else(|e| e.into_inner());
+        let source = cache
+            .as_ref()
+            .filter(|(content, voxels, _)| (*content, *voxels) == key)
+            .and_then(|(_, _, source)| source.upgrade())
+            .unwrap_or_else(|| Arc::new(vol.clone()));
+        *cache = Some((key.0, key.1, Arc::downgrade(&source)));
+        drop(cache);
+        let mut view = MprView::new_with_source(
             render_context,
             &self.device,
             render_content,
@@ -414,8 +402,10 @@ impl ViewFactory for DefaultViewFactory {
             [0.0, 0.0, 0.0],
             pos,
             size,
+            source,
         );
 
+        view.set_target_format(self.surface_format);
         info!(
             "[DefaultViewFactory] Created MPR view (with_content) for {:?} at {:?} size {:?}",
             orientation, pos, size
@@ -458,10 +448,12 @@ impl ViewFactory for DefaultViewFactory {
         mesh_view.move_to(pos);
         mesh_view.resize(size);
 
-        let spine_ctx = MultiMeshContext::new(&self.device, &self.queue);
+        let spine_ctx =
+            MultiMeshContext::new_with_format(&self.device, &self.queue, self.surface_format);
         mesh_view.attach_spine_context(spine_ctx);
 
-        let needle_ctx = MultiMeshContext::new(&self.device, &self.queue);
+        let needle_ctx =
+            MultiMeshContext::new_with_format(&self.device, &self.queue, self.surface_format);
         mesh_view.attach_needle_context(needle_ctx);
 
         info!(

@@ -17,11 +17,11 @@ pub enum UserEvent {
     SetTranslateInScreenCoord(usize, f32, f32, f32),
     SetPan(usize, f32, f32),   // pan in screen space
     SetPanMM(usize, f32, f32), // pan in mm space
-    SetAliasing(usize, bool), // set antialiasing
+    SetAliasing(usize, bool),  // set antialiasing
     LoadDataFromCTVolume(CTVolume),
     LoadDrToPro(usize, CTVolume, Vec<u8>, Vec<u8>), // load DR to PRO data with average dark and bright values
     LoadDrOverlay(CTVolume, CTVolume, f32), // stack a label overlay (from another MHA) on the DR view
-    Resize(u32, u32), // width, height
+    Resize(u32, u32),                       // width, height
     Quit,
     SetWindowByDivId(String, CTVolume),
     GraphicsReady(Graphics, CTVolume),
@@ -30,7 +30,7 @@ pub enum UserEvent {
     ReloadShaders,
     /// Manually trigger pipeline cache invalidation without any other action.
     InvalidatePipelines,
-    SetRenderMode(usize,Option<usize>,Option<usize>,Option<usize>,usize),
+    SetRenderMode(usize, Option<usize>, Option<usize>, Option<usize>, usize),
     SetMipMode(usize, u32),
     #[cfg(target_arch = "wasm32")]
     GetRotation(usize, oneshot::Sender<[f32; 4]>),
@@ -65,7 +65,7 @@ pub enum UserEvent {
     SetMeshRoi(usize, f32, f32, f32, f32, f32, f32),
     SetMeshMode(usize, usize),
     SetMeshBallEnabled(usize, bool),
-    SetBall(usize,usize, f32, f32, f32),
+    SetBall(usize, usize, f32, f32, f32),
     SetMeshNeedleEnabled(usize, f32),
     SetMeshNeedleTrajectory(usize, u32, f32, f32, f32, f32, f32, f32, f32, f32, f32),
     SetMeshNeedlePosition(usize, u32, f32, f32, f32),
@@ -124,11 +124,19 @@ impl GLCanvas {
         }
     }
 
-    pub fn load_dr_to_pro(&self, index: usize, vol: &CTVolume, avg_dark: Vec<u8>, avg_bright: Vec<u8>) {
-        if let Err(e) = self
-            .proxy
-            .send_event(UserEvent::LoadDrToPro(index, vol.clone(), avg_dark, avg_bright))
-        {
+    pub fn load_dr_to_pro(
+        &self,
+        index: usize,
+        vol: &CTVolume,
+        avg_dark: Vec<u8>,
+        avg_bright: Vec<u8>,
+    ) {
+        if let Err(e) = self.proxy.send_event(UserEvent::LoadDrToPro(
+            index,
+            vol.clone(),
+            avg_dark,
+            avg_bright,
+        )) {
             log::error!("Failed to send LoadDrToPro event {:?}", e);
         } else {
             log::info!("Sent LoadDrToPro event");
@@ -140,10 +148,11 @@ impl GLCanvas {
     /// `load_dr_to_pro`; geometry lines up only when the overlay volume
     /// shares the DR volume's voxel grid.
     pub fn load_dr_overlay(&self, overlay_vol_0: &CTVolume, overlay_vol_90: &CTVolume, scale: f32) {
-        if let Err(e) = self
-            .proxy
-            .send_event(UserEvent::LoadDrOverlay(overlay_vol_0.clone(), overlay_vol_90.clone(), scale))
-        {
+        if let Err(e) = self.proxy.send_event(UserEvent::LoadDrOverlay(
+            overlay_vol_0.clone(),
+            overlay_vol_90.clone(),
+            scale,
+        )) {
             log::error!("Failed to send LoadDrOverlay event {:?}", e);
         } else {
             log::info!("Sent LoadDrOverlay event");
@@ -182,9 +191,10 @@ impl GLCanvas {
     }
 
     pub fn apply_segmentation(&self, raw: Vec<u8>) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetSegmentationAll(
-            raw.clone(),
-        )) {
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::SetSegmentationAll(raw.clone()))
+        {
             log::error!("Failed to send SetSegmentationAll event: {:?}", e);
         } else {
             log::info!("Sent SetSegmentationAll event");
@@ -199,7 +209,10 @@ impl GLCanvas {
         for (i, &v) in mask.iter().enumerate().take(8) {
             arr[i] = v;
         }
-        if let Err(e) = self.proxy.send_event(UserEvent::SetSegmentationVisibility(arr)) {
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::SetSegmentationVisibility(arr))
+        {
             log::error!("Failed to send SetSegmentationVisibility event: {:?}", e);
         } else {
             log::info!("Sent SetSegmentationVisibility event");
@@ -207,7 +220,10 @@ impl GLCanvas {
     }
 
     pub fn set_obj_mesh(&self, raw: Vec<u8>, id: u32, kind: u32) {
-        if let Err(e) = self.proxy.send_event(UserEvent::SetOBJMesh(raw.clone(), id, kind)) {
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::SetOBJMesh(raw.clone(), id, kind))
+        {
             log::error!("Failed to send SetOBJMesh event: {:?}", e);
         } else {
             log::info!("Sent SetOBJMesh event");
@@ -319,7 +335,8 @@ impl GLCanvas {
         log::info!("Sent GetRotation event for window {}", index);
 
         match rx.await {
-            Ok(result) => serde_json::to_string(&result).map_err(|e| format!("JSON serialization error: {}", e)),
+            Ok(result) => serde_json::to_string(&result)
+                .map_err(|e| format!("JSON serialization error: {}", e)),
             Err(e) => Err(format!("Failed to receive result: {:?}", e)),
         }
     }
@@ -397,9 +414,8 @@ impl GLCanvas {
         match rx.await {
             Ok(result) => Ok(result.into()),
             Err(e) => Err(format!("Failed to receive result: {:?}", e)),
-        }   
+        }
     }
-
 
     #[cfg(target_arch = "wasm32")]
     pub async fn get_window_level(&self, index: usize) -> Result<Box<[f32]>, String> {
@@ -443,8 +459,15 @@ impl GLCanvas {
     pub async fn get_oblique_normal(&self, index: usize) -> Result<Box<[f32]>, String> {
         let (tx, rx) = oneshot::channel();
 
-        if let Err(e) = self.proxy.send_event(UserEvent::GetObliqueNormal(index, tx)) {
-            log::error!("Failed to send GetObliqueNormal event for window {}: {:?}", index, e);
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::GetObliqueNormal(index, tx))
+        {
+            log::error!(
+                "Failed to send GetObliqueNormal event for window {}: {:?}",
+                index,
+                e
+            );
             return Err(format!("Failed to send event: {:?}", e));
         }
 
@@ -499,7 +522,9 @@ impl GLCanvas {
         );
         let (tx, rx) = oneshot::channel();
 
-        if let Err(e) = self.proxy.send_event(UserEvent::GetPixelValue(index, x, y, tx))
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::GetPixelValue(index, x, y, tx))
         {
             log::error!(
                 "Failed to send GetPixelValue event for window {}: {:?}",
@@ -580,7 +605,10 @@ impl GLCanvas {
         }
         let mut arr = [0.0; 4];
         arr.copy_from_slice(&quat);
-        if let Err(e) = self.proxy.send_event(UserEvent::SetRotationQuat(index, arr)){
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::SetRotationQuat(index, arr))
+        {
             log::error!("Failed to send SetRotationQuat event: {:?}", e);
         } else {
             log::info!("Sent SetRotationQuat event for window {}", index);

@@ -7,8 +7,12 @@
 pub mod app;
 pub mod app_model;
 pub mod appview;
+mod frame;
 pub mod gl_canvas;
+mod redraw;
 pub mod render_app;
+mod view_layout_transition;
+mod viewer_lifecycle;
 
 // Re-exports for convenience
 pub use app::*;

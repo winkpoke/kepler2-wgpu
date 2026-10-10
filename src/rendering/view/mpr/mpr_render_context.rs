@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
-use std::sync::Arc;
-use wgpu::util::DeviceExt;
 use crate::rendering::pipeline::*;
 use crate::rendering::view::render_content::RenderContent;
+use std::sync::Arc;
+use wgpu::util::DeviceExt;
 
 /// Global GPU state shared across all MPR views
 /// Contains pipeline, bind group layouts, and shared vertex/index buffers
@@ -85,6 +85,17 @@ impl MprRenderContext {
     /// # Returns
     /// A new MprRenderContext with initialized shared resources
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+        let target_format = crate::rendering::core::pipeline::get_swapchain_format()
+            .unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
+        Self::new_with_format(device, queue, target_format)
+    }
+
+    /// Creates shared MPR resources for the owner's explicit color attachment format.
+    pub fn new_with_format(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        target_format: wgpu::TextureFormat,
+    ) -> Self {
         // Create bind group layout for 3D texture and sampler
         let texture_bind_group_layout = create_texture_bind_group_layout_addseg(device);
 
@@ -105,10 +116,6 @@ impl MprRenderContext {
             });
 
         let fragment_bind_group_layout = create_uniform_bind_group_layout(device, None);
-
-        // Get target format for pipeline creation
-        let target_format = crate::rendering::core::pipeline::get_swapchain_format()
-            .unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
 
         // Create render pipeline directly
         let bgls: [&wgpu::BindGroupLayout; 3] = [
@@ -144,7 +151,7 @@ impl MprRenderContext {
         // zero byte is uploaded so the texture is a valid R8Uint image.
         let default_seg_content = Arc::new(
             RenderContent::from_labels_r8(device, queue, &[0u8], "MPR Default Seg", 1, 1, 1)
-            .expect("failed to build default seg content"),
+                .expect("failed to build default seg content"),
         );
 
         log::info!("MprRenderContext initialized with shared GPU resources");

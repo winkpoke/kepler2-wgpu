@@ -1,14 +1,14 @@
 #![allow(dead_code)]
 
 use crate::data::volume_encoding::VolumeEncoding;
-use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::core::pipeline::*;
-use crate::rendering::view::{LABEL_COLORS, LABEL_NAMES, NeedleUniform, ObliquePlaneUniform};
+use crate::rendering::view::render_content::RenderContent;
+use crate::rendering::view::{NeedleUniform, ObliquePlaneUniform, LABEL_COLORS, LABEL_NAMES};
+use glam::{Mat4, Vec3};
 use mcubes::{MarchingCubes, MeshSide};
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tobj;
-use serde::{Serialize, Deserialize};
-use glam::{Mat4,Vec3};
 use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, RenderPipeline};
 
 /// Volume rendering parameters (sent to fragment shader)
@@ -35,7 +35,7 @@ pub struct VolumeUniforms {
     pub light_dir: [f32; 3],
     pub aspect_ratio: f32,
     pub needle_count: u32,
-    pub needle_enabled:f32,
+    pub needle_enabled: f32,
     pub needle_index: u32,
     pub plane_rotation_angle: f32,
     pub oblique_planes: [ObliquePlaneUniform; 4],
@@ -94,7 +94,8 @@ impl MeshRenderContext {
         let texture_bind_group_layout = create_texture_bind_group_layout(device);
 
         // Uniform buffer
-        let min_binding_size = std::num::NonZeroU64::new(std::mem::size_of::<VolumeUniforms>() as u64);
+        let min_binding_size =
+            std::num::NonZeroU64::new(std::mem::size_of::<VolumeUniforms>() as u64);
         let uniform_bind_group_layout = create_uniform_bind_group_layout(device, min_binding_size);
 
         // Create render pipeline
@@ -411,17 +412,25 @@ impl Mesh {
             20, 21, 22, 22, 23, 20,
         ];
 
-        Self { label_id: 0, label_name: "Cube".to_string(), vertices, indices }
+        Self {
+            label_id: 0,
+            label_name: "Cube".to_string(),
+            vertices,
+            indices,
+        }
     }
 
     /// Load a mesh from an in-memory OBJ buffer into the renderer's `[0,1]^3` UV space.
-    pub fn import_obj_bytes(bytes: &[u8], kind: u32) -> Result<Vec<Mesh>, Box<dyn std::error::Error>> {
+    pub fn import_obj_bytes(
+        bytes: &[u8],
+        kind: u32,
+    ) -> Result<Vec<Mesh>, Box<dyn std::error::Error>> {
         let mut reader = std::io::Cursor::new(bytes);
         let (models, _materials) = tobj::load_obj_buf(
             &mut reader,
-            &tobj::LoadOptions{
-                triangulate:true,
-                single_index:true,
+            &tobj::LoadOptions {
+                triangulate: true,
+                single_index: true,
                 ..Default::default()
             },
             |_path| Ok((Vec::new(), Default::default())),
@@ -453,20 +462,24 @@ impl Mesh {
 
             let mut vertices = Vec::<MeshVertex>::with_capacity(vertex_count);
             for i in 0..vertex_count {
-                let pos = [mesh.positions[i * 3], mesh.positions[i * 3 + 1], mesh.positions[i * 3 + 2]];
+                let pos = [
+                    mesh.positions[i * 3],
+                    mesh.positions[i * 3 + 1],
+                    mesh.positions[i * 3 + 2],
+                ];
                 let normal = [normals[i * 3], normals[i * 3 + 1], normals[i * 3 + 2]];
                 vertices.push(MeshVertex {
-                    position:pos,
+                    position: pos,
                     normal,
-                    color:[1.0,1.0,1.0],
+                    color: [1.0, 1.0, 1.0],
                 });
             }
 
             result.push(Mesh {
                 label_id,
-                label_name:m.name,
+                label_name: m.name,
                 vertices,
-                indices:mesh.indices.clone(),
+                indices: mesh.indices.clone(),
             });
         }
 
@@ -488,9 +501,12 @@ impl Mesh {
 
         log::info!(
             "OBJ imported: {} object(s) min={:?}, max={:?}, extent={:?}",
-            result.len(), min, max, extent
+            result.len(),
+            min,
+            max,
+            extent
         );
-        
+
         if kind == 0 {
             for mesh in &result {
                 log::info!(
@@ -529,7 +545,10 @@ impl Mesh {
     /// Resolve an OBJ object name back to a segmentation label id.
     fn label_id_for_name(name: &str) -> Option<u8> {
         let needle = name.trim();
-        LABEL_NAMES.iter().enumerate().skip(1) // index 0 is the empty background entry
+        LABEL_NAMES
+            .iter()
+            .enumerate()
+            .skip(1) // index 0 is the empty background entry
             .find(|(_, candidate)| candidate.eq_ignore_ascii_case(needle))
             .map(|(id, _)| id as u8)
     }
@@ -554,9 +573,12 @@ impl Mesh {
             }
             obj.push_str(&format!(
                 "f {}//{} {}//{} {}//{}\n",
-                tri[0] + 1 + offset, tri[0] + 1 + offset,
-                tri[1] + 1 + offset, tri[1] + 1 + offset,
-                tri[2] + 1 + offset, tri[2] + 1 + offset,
+                tri[0] + 1 + offset,
+                tri[0] + 1 + offset,
+                tri[1] + 1 + offset,
+                tri[1] + 1 + offset,
+                tri[2] + 1 + offset,
+                tri[2] + 1 + offset,
             ));
         }
     }
@@ -575,7 +597,8 @@ impl Mesh {
 
     /// Split a mesh list into one standalone OBJ document per object.
     pub fn meshes_to_obj_split(meshes: &Vec<Self>) -> Vec<(String, String)> {
-        meshes.iter()
+        meshes
+            .iter()
             .filter(|m| !m.indices.is_empty() && !m.vertices.is_empty())
             .map(|m| {
                 let stem = if m.label_name.trim().is_empty() {
@@ -584,7 +607,8 @@ impl Mesh {
                     m.label_name.trim().to_string()
                 };
                 (stem, Self::mesh_to_obj_single(m))
-            }).collect()
+            })
+            .collect()
     }
 
     pub fn meshes_to_obj(meshes: &Vec<Self>) -> String {
@@ -710,7 +734,11 @@ fn taubin_smooth(
 /// topologically isolated and no smoothing or normal averaging can cross a
 /// face boundary. Returns the welded positions plus remapped indices, with
 /// degenerate triangles (two or more corners collapsing to one vertex) dropped.
-fn weld_positions(positions: &[[f32; 3]], indices: &[u32], tolerance: f32) -> (Vec<[f32; 3]>, Vec<u32>) {
+fn weld_positions(
+    positions: &[[f32; 3]],
+    indices: &[u32],
+    tolerance: f32,
+) -> (Vec<[f32; 3]>, Vec<u32>) {
     use std::collections::HashMap;
 
     let inv = 1.0 / tolerance.max(1e-9);
@@ -753,11 +781,11 @@ fn weld_positions(positions: &[[f32; 3]], indices: &[u32], tolerance: f32) -> (V
     (welded, out_idx)
 }
 
-fn compute_vertex_normals(positions:&[f32],indices:&[u32])->Vec<f32>{
-    let vertex_count = positions.len()/3;
+fn compute_vertex_normals(positions: &[f32], indices: &[u32]) -> Vec<f32> {
+    let vertex_count = positions.len() / 3;
 
     // each vertex accumulate normal
-    let mut normals = vec![glam::Vec3::ZERO;vertex_count];
+    let mut normals = vec![glam::Vec3::ZERO; vertex_count];
 
     /*
         triangle:
@@ -768,35 +796,35 @@ fn compute_vertex_normals(positions:&[f32],indices:&[u32])->Vec<f32>{
         normal: (v1-v0)×(v2-v0)
     */
     for tri in indices.chunks(3) {
-        if tri.len()!=3 {
+        if tri.len() != 3 {
             continue;
         }
         let i0 = tri[0] as usize;
         let i1 = tri[1] as usize;
         let i2 = tri[2] as usize;
         let p0 = glam::Vec3::new(
-            positions[i0*3],
-            positions[i0*3+1],
-            positions[i0*3+2],
+            positions[i0 * 3],
+            positions[i0 * 3 + 1],
+            positions[i0 * 3 + 2],
         );
         let p1 = glam::Vec3::new(
-            positions[i1*3],
-            positions[i1*3+1],
-            positions[i1*3+2],
+            positions[i1 * 3],
+            positions[i1 * 3 + 1],
+            positions[i1 * 3 + 2],
         );
         let p2 = glam::Vec3::new(
-            positions[i2*3],
-            positions[i2*3+1],
-            positions[i2*3+2],
+            positions[i2 * 3],
+            positions[i2 * 3 + 1],
+            positions[i2 * 3 + 2],
         );
-        let face_normal = (p1-p0).cross(p2-p0).normalize_or_zero();
-        normals[i0]+=face_normal;
-        normals[i1]+=face_normal;
-        normals[i2]+=face_normal;
+        let face_normal = (p1 - p0).cross(p2 - p0).normalize_or_zero();
+        normals[i0] += face_normal;
+        normals[i1] += face_normal;
+        normals[i2] += face_normal;
     }
 
     // normalize each vertex normal
-    let mut result = Vec::<f32>::with_capacity(vertex_count*3);
+    let mut result = Vec::<f32>::with_capacity(vertex_count * 3);
     for n in normals {
         let n = n.normalize_or_zero();
         result.push(n.x);
@@ -848,9 +876,9 @@ pub fn spine(
     segmentation: &[u8],
     dims: (usize, usize, usize),
     spacing: (f32, f32, f32),
-    label_ids:&[u8],
+    label_ids: &[u8],
     _iso_legacy: f32,
-)-> Vec<Mesh> {
+) -> Vec<Mesh> {
     let (rows, cols, slices) = dims;
     let mut results = Vec::new();
 
@@ -902,10 +930,14 @@ pub fn spine(
             lin_alg::f32::Vec3::new(0.0, 0.0, 0.0),
             field,
             iso,
-        ).expect("mcubes init: dims/values length mismatch");
+        )
+        .expect("mcubes init: dims/values length mismatch");
         let cube_mesh = mc.generate(MeshSide::InsideOnly);
 
-        let color = LABEL_COLORS.get(label_id as usize).copied().unwrap_or([1.0,1.0,1.0,1.0]);
+        let color = LABEL_COLORS
+            .get(label_id as usize)
+            .copied()
+            .unwrap_or([1.0, 1.0, 1.0, 1.0]);
 
         // Marching cubes hands back *unshared* vertices: one fresh triple per
         // triangle, indexed 0,1,2,3,... So the three inputs below are welded
@@ -922,13 +954,13 @@ pub fn spine(
             .iter()
             .map(|v| [v.posit.x, v.posit.y, v.posit.z])
             .collect();
-        let raw_indices: Vec<u32> =
-            cube_mesh.indices.iter().map(|&i| i as u32).collect();
+        let raw_indices: Vec<u32> = cube_mesh.indices.iter().map(|&i| i as u32).collect();
 
         // Weld tolerance is a thousandth of the smallest voxel edge. Anything
         // looser starts merging genuinely distinct surface points.
         let min_pitch = spacing.0.min(spacing.1).min(spacing.2).max(1e-6);
-        let (mut positions, indices) = weld_positions(&raw_positions, &raw_indices, min_pitch * 1e-3);
+        let (mut positions, indices) =
+            weld_positions(&raw_positions, &raw_indices, min_pitch * 1e-3);
 
         // Taubin lambda|mu - see the module-level constants above for the
         // derivation and the measured round-count response.
@@ -961,8 +993,8 @@ pub fn spine(
         });
     }
 
-    let phys_x = cols as f32 * spacing.0;   // mcubes X extent = texture/volume Y
-    let phys_y = rows as f32 * spacing.1;   // mcubes Y extent = texture/volume X
+    let phys_x = cols as f32 * spacing.0; // mcubes X extent = texture/volume Y
+    let phys_y = rows as f32 * spacing.1; // mcubes Y extent = texture/volume X
     let phys_z = slices as f32 * spacing.2; // mcubes Z extent = texture/volume Z
     let inv_x = 1.0 / phys_x.max(1e-6);
     let inv_y = 1.0 / phys_y.max(1e-6);
@@ -983,7 +1015,8 @@ pub fn spine(
 impl MeshVertex {
     /// Function-level comment: Vertex attribute array for position, normal, and color
     /// Defines position, normal, and color attributes for the vertex shader
-    const ATTRS: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x3];
+    const ATTRS: [wgpu::VertexAttribute; 3] =
+        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32x3];
 
     /// Function-level comment: Creates vertex buffer layout descriptor for lighting-enabled mesh
     /// Returns layout for position, normal, and color vertex attributes

@@ -1,4 +1,4 @@
-//! Native GPU context backed by `wgpu` **30** (aliased as `wgpu30` in Cargo.toml).
+//! Native GPU context backed by wgpu 30 through the crate-local `wgpu30` alias.
 //!
 //! Deliberately decoupled from the WASM/browser rendering path. It only
 //! initializes a headless, compute-capable device — no `Surface`, no `Window`,
@@ -11,9 +11,8 @@ use parking_lot::Mutex;
 
 /// A lazily-created, shared native GPU context.
 ///
-/// `device`/`queue` come from `wgpu` 30 and are kept entirely inside this module;
-/// the rest of the crate must not mix them with the `wgpu` 23 types used by the
-/// rendering stack.
+/// `device`/`queue` belong to this compute owner. Although the viewer uses the
+/// same wgpu version, its resources must remain on its own device.
 pub struct GpuContext {
     pub(crate) adapter_name: String,
     pub(crate) backend: String,
@@ -85,7 +84,7 @@ impl GpuContext {
 ///
 /// Lives inside `ServerState` only on the native backend
 /// (`cfg(not(target_arch = "wasm32"))`), so the WASM build never references
-/// `wgpu30` or any `wgpu` 30 type.
+/// the server's `wgpu30` alias or compute state.
 pub struct GpuState {
     inner: Mutex<Option<Arc<GpuContext>>>,
 }

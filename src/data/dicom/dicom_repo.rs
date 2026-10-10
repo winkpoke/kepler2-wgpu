@@ -273,6 +273,12 @@ impl DicomRepo {
     }
 }
 
+impl Default for DicomRepo {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 impl CTVolumeGenerator for DicomRepo {
     // Non-WASM synchronous implementation

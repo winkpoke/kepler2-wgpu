@@ -5,37 +5,90 @@ on:
     branches: [main, develop]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   coverage:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
-
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          toolchain: stable
-          override: true
+          persist-credentials: false
+
+      - name: Install repository Rust toolchain
+        id: rust
+        uses: ./.github/actions/setup-rust
 
       - name: Install cargo-llvm-cov
+        env:
+          CARGO_LLVM_COV_VERSION: ${{ steps.rust.outputs.coverage-cli-version }}
         run: |
-          cargo install cargo-llvm-cov
+          cargo install cargo-llvm-cov \
+            --version "$CARGO_LLVM_COV_VERSION" --locked
 
-      - name: Generate coverage report
+      - name: Install native dependencies and headless GPU driver
         run: |
-          cargo llvm-cov --html --output-dir coverage --lcov --output-dir coverage
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev libxkbcommon-dev \
+            libwayland-dev libvulkan1 mesa-vulkan-drivers vulkan-tools
+          icd=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
+          test -n "$icd"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+          runtime="$RUNNER_TEMP/kepler-gpu-runtime"
+          mkdir -p "$runtime"
+          chmod 700 "$runtime"
+          printf '%s\n' "WGPU_BACKEND=vulkan" \
+            "KEPLER_REQUIRE_GPU_TESTS=1" "XDG_RUNTIME_DIR=$runtime" \
+            >> "$GITHUB_ENV"
+
+      - name: Record coverage provenance
+        run: |
+          mkdir -p coverage
+          git rev-parse HEAD > coverage/revision.txt
+          rustc -Vv | tee coverage/toolchain.txt
+          cargo llvm-cov --version | tee coverage/tool.txt
+          printf '%s\n' "features=default" "target=native" \
+            "backend=vulkan" "coverage-scope=doc/testing/coverage-scope.json" \
+            > coverage/configuration.txt
+          cp doc/testing/coverage-scope.json coverage/coverage-scope.json
+          icd=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
+          VK_ICD_FILENAMES="$icd" \
+            XDG_RUNTIME_DIR="$RUNNER_TEMP/kepler-gpu-runtime" \
+            vulkaninfo --summary > coverage/adapter.txt 2>&1
+
+      - name: Generate coverage report from one instrumented run
+        run: |
+          set +e
+          cargo llvm-cov test --locked --lcov \
+            --output-path coverage/lcov.info > coverage/test-run.log 2>&1
+          result=$?
+          set -e
+          cat coverage/test-run.log
+          {
+            echo "exit_code=$result"
+            grep '^test result:' coverage/test-run.log || true
+          } > coverage/test-outcome.txt
+          exit "$result"
+
+      - name: Render HTML from the same instrumented run
+        if: success()
+        run: cargo llvm-cov report --html --output-dir coverage
 
       - name: Upload to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@b9fd7d16f6d7d1b5d2bec1a2887e65ceed900238
         with:
-          file: ./coverage/lcov.info
+          files: ./coverage/lcov.info
           flags: unittests
           name: codecov-umbrella
           fail_ci_if_error: true
 
       - name: Store coverage artifacts
-        uses: actions/upload-artifact@v3
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: coverage-report
           path: coverage/
+          if-no-files-found: warn
+          retention-days: 14

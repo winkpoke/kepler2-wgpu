@@ -1,0 +1,626 @@
+use winit::event_loop::EventLoopProxy;
+
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
+
+use crate::{data::ct_volume::CTVolume, rendering::core::Graphics};
+
+#[cfg(target_arch = "wasm32")]
+use futures::channel::oneshot;
+
+#[derive(Debug)]
+pub enum UserEvent {
+    SetWindowLevel(usize, f32),
+    SetWindowWidth(usize, f32),
+    SetSliceMM(usize, f32),
+    SetScale(usize, f32),
+    SetTranslateInScreenCoord(usize, f32, f32, f32),
+    SetPan(usize, f32, f32),   // pan in screen space
+    SetPanMM(usize, f32, f32), // pan in mm space
+    SetAliasing(usize, bool), // set antialiasing
+    LoadDataFromCTVolume(CTVolume),
+    LoadDrToPro(usize, CTVolume, Vec<u8>, Vec<u8>), // load DR to PRO data with average dark and bright values
+    LoadDrOverlay(CTVolume, CTVolume, f32), // stack a label overlay (from another MHA) on the DR view
+    Resize(u32, u32), // width, height
+    Quit,
+    SetWindowByDivId(String, CTVolume),
+    GraphicsReady(Graphics, CTVolume),
+    ClearLayout,
+    /// Manually trigger shader reload by invalidating pipelines; pipelines will be lazily rebuilt on next render.
+    ReloadShaders,
+    /// Manually trigger pipeline cache invalidation without any other action.
+    InvalidatePipelines,
+    SetRenderMode(usize,Option<usize>,Option<usize>,Option<usize>,usize),
+    SetMipMode(usize, u32),
+    #[cfg(target_arch = "wasm32")]
+    GetRotation(usize, oneshot::Sender<[f32; 4]>),
+    #[cfg(target_arch = "wasm32")]
+    GetScreenCoordInMM(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
+    #[cfg(target_arch = "wasm32")]
+    GetWindowLevel(usize, oneshot::Sender<[f32; 2]>),
+    #[cfg(target_arch = "wasm32")]
+    GetBaseScreen(usize, oneshot::Sender<[f32; 16]>),
+    #[cfg(target_arch = "wasm32")]
+    GetPan(usize, oneshot::Sender<[f32; 3]>),
+    #[cfg(target_arch = "wasm32")]
+    WorldCoordToScreen(usize, [f32; 3], oneshot::Sender<[f32; 3]>),
+    #[cfg(target_arch = "wasm32")]
+    GetObliqueNormal(usize, oneshot::Sender<[f32; 3]>),
+    SetSlabThickness(usize, f32),
+    SetRotationAngleDeg(usize, f32, f32, f32),
+    ViewClick(usize, f32, f32, f32), // view_index, screen_x, screen_y, screen_z
+    SetObliqueRotation(usize, f32, f32, f32),
+    SetRotationQuat(usize, [f32; 4]),
+    SetObliquePlane(usize, f32, f32),
+    #[cfg(target_arch = "wasm32")]
+    /// View click with reply; returns [x_mm, y_mm, slice_mm, reserved]
+    ViewClickGet(usize, f32, f32, f32, oneshot::Sender<[f32; 4]>),
+    #[cfg(target_arch = "wasm32")]
+    GetPixelValue(usize, f32, f32, oneshot::Sender<[f32; 4]>),
+    // Mesh control events
+    SetMeshRotationEnabled(usize, bool),
+    SetMeshOpacity(usize, f32),
+    ResetMesh(usize),
+    SetRotationDeg(usize, f32, f32),
+    SetMeshRoi(usize, f32, f32, f32, f32, f32, f32),
+    SetMeshMode(usize, usize),
+    SetMeshBallEnabled(usize, bool),
+    SetBall(usize,usize, f32, f32, f32),
+    SetMeshNeedleEnabled(usize, f32),
+    SetMeshNeedleTrajectory(usize, u32, f32, f32, f32, f32, f32, f32, f32, f32, f32),
+    SetMeshNeedlePosition(usize, u32, f32, f32, f32),
+    SetMeshNeedleRadius(usize, u32, f32),
+    SetMeshNeedleAngle(usize, u32, f32),
+    SetSegmentationAll(Vec<u8>),
+    SetSegmentationVisibility([f32; 8]),
+    SetOBJMesh(Vec<u8>, u32, u32),
+    #[cfg(target_arch = "wasm32")]
+    ExportCurrentObj(oneshot::Sender<String>),
+    #[cfg(target_arch = "wasm32")]
+    ExportSplitObj(oneshot::Sender<Vec<(String, String)>>),
+}
+
+#[macro_export]
+macro_rules! impl_user_event_senders_for_glcanvas {
+    (
+        $( $fn_name:ident => $variant:ident( $( $arg:ident : $arg_ty:ty ),* ) ),* $(,)?
+    ) => {
+        #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+        impl GLCanvas {
+            $(
+                /// Sends a `UserEvent::$variant` targeted to a specific window index.
+                pub fn $fn_name(&self, index: usize, $( $arg: $arg_ty ),* ) {
+                    if let Err(e) = self.proxy.send_event(UserEvent::$variant(index, $( $arg ),*)) {
+                        log::error!(
+                            "Failed to send {} event for window {}: {:?}",
+                            stringify!($variant),
+                            index,
+                            e
+                        );
+                    } else {
+                        log::info!(
+                            "Sent {} event for window {}: {:?}",
+                            stringify!($variant),
+                            index,
+                            ( $( $arg ),* )
+                        );
+                    }
+                }
+            )*
+        }
+    };
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+impl GLCanvas {
+    pub fn load_data_from_ct_volume(&self, volume: &CTVolume) {
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::LoadDataFromCTVolume(volume.clone()))
+        {
+            log::error!("Failed to send LoadDataFromCTVolume event {:?}", e);
+        } else {
+            log::info!("Sent LoadDataFromCTVolume event");
+        }
+    }
+
+    pub fn load_dr_to_pro(&self, index: usize, vol: &CTVolume, avg_dark: Vec<u8>, avg_bright: Vec<u8>) {
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::LoadDrToPro(index, vol.clone(), avg_dark, avg_bright))
+        {
+            log::error!("Failed to send LoadDrToPro event {:?}", e);
+        } else {
+            log::info!("Sent LoadDrToPro event");
+        }
+    }
+
+    /// Stack a full-range pseudo-color overlay built from `overlay_vol`
+    /// (a separate MHA) onto the DR MPR view in grid cell 0. Call after
+    /// `load_dr_to_pro`; geometry lines up only when the overlay volume
+    /// shares the DR volume's voxel grid.
+    pub fn load_dr_overlay(&self, overlay_vol_0: &CTVolume, overlay_vol_90: &CTVolume, scale: f32) {
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::LoadDrOverlay(overlay_vol_0.clone(), overlay_vol_90.clone(), scale))
+        {
+            log::error!("Failed to send LoadDrOverlay event {:?}", e);
+        } else {
+            log::info!("Sent LoadDrOverlay event");
+        }
+    }
+
+    pub fn resize(&self, width: u32, height: u32) {
+        if let Err(e) = self.proxy.send_event(UserEvent::Resize(width, height)) {
+            log::error!("Failed to send Resize event: {:?}", e);
+        } else {
+            log::info!("Sent Resize event: width={}, height={}", width, height);
+        }
+    }
+
+    pub fn quit(&self) {
+        if let Err(e) = self.proxy.send_event(UserEvent::Quit) {
+            log::error!("Failed to send Quit event: {:?}", e);
+        } else {
+            log::info!("Sent Quit event");
+        }
+    }
+
+    pub fn set_window_by_div_id(&self, div_id: String, volume: &CTVolume) {
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::SetWindowByDivId(div_id.clone(), volume.clone()))
+        {
+            log::error!(
+                "Failed to send SetWindowByDivId event for div_id {}: {:?}",
+                div_id,
+                e
+            );
+        } else {
+            log::info!("Sent SetWindowByDivId event for div_id {}", div_id);
+        }
+    }
+
+    pub fn apply_segmentation(&self, raw: Vec<u8>) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetSegmentationAll(
+            raw.clone(),
+        )) {
+            log::error!("Failed to send SetSegmentationAll event: {:?}", e);
+        } else {
+            log::info!("Sent SetSegmentationAll event");
+        }
+    }
+
+    /// Send a label-visibility mask update to the render loop. `mask` is an
+    /// 8-element array (index = label id, value > 0.5 means visible). Only the
+    /// first 8 entries are used; a shorter slice leaves the rest hidden.
+    pub fn set_segmentation_visibility(&self, mask: Vec<f32>) {
+        let mut arr = [0.0f32; 8];
+        for (i, &v) in mask.iter().enumerate().take(8) {
+            arr[i] = v;
+        }
+        if let Err(e) = self.proxy.send_event(UserEvent::SetSegmentationVisibility(arr)) {
+            log::error!("Failed to send SetSegmentationVisibility event: {:?}", e);
+        } else {
+            log::info!("Sent SetSegmentationVisibility event");
+        }
+    }
+
+    pub fn set_obj_mesh(&self, raw: Vec<u8>, id: u32, kind: u32) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetOBJMesh(raw.clone(), id, kind)) {
+            log::error!("Failed to send SetOBJMesh event: {:?}", e);
+        } else {
+            log::info!("Sent SetOBJMesh event");
+        }
+    }
+
+    pub fn clear_layout(&self) {
+        if let Err(e) = self.proxy.send_event(UserEvent::ClearLayout) {
+            log::error!("Failed to send ClearLayout event: {:?}", e);
+        } else {
+            log::info!("Sent ClearLayout event");
+        }
+    }
+
+    /// Sends a ReloadShaders event which will invalidate pipelines; they will be recreated as needed.
+    pub fn reload_shaders(&self) {
+        if let Err(e) = self.proxy.send_event(UserEvent::ReloadShaders) {
+            log::error!("Failed to send ReloadShaders event: {:?}", e);
+        } else {
+            log::info!("Sent ReloadShaders event");
+        }
+    }
+
+    /// Sends an InvalidatePipelines event without any shader changes.
+    pub fn invalidate_pipelines(&self) {
+        if let Err(e) = self.proxy.send_event(UserEvent::InvalidatePipelines) {
+            log::error!("Failed to send InvalidatePipelines event: {:?}", e);
+        } else {
+            log::info!("Sent InvalidatePipelines event");
+        }
+    }
+
+    pub fn set_render_mode(
+        &self,
+        mode: usize,
+        mesh_index: Option<usize>,
+        mpr_index: Option<usize>,
+        mip_index: Option<usize>,
+        orientation_index: usize,
+    ) {
+        if let Err(e) = self.proxy.send_event(UserEvent::SetRenderMode(
+            mode,
+            mesh_index,
+            mpr_index,
+            mip_index,
+            orientation_index,
+        )) {
+            log::error!("Failed to send SetRenderMode event: {:?}", e);
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn export_current_obj(&self) -> Result<String, String> {
+        let (tx, rx) = oneshot::channel();
+        if let Err(e) = self.proxy.send_event(UserEvent::ExportCurrentObj(tx)) {
+            log::error!("Failed to send ExportCurrentObj event: {:?}", e);
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+        log::info!("Sent ExportCurrentObj event");
+        match rx.await {
+            Ok(result) => Ok(result),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
+        }
+    }
+
+    /// Export one standalone OBJ per loaded label.
+    #[cfg(target_arch = "wasm32")]
+    pub async fn export_split_obj(&self) -> Result<js_sys::Array, String> {
+        let (tx, rx) = oneshot::channel();
+        if let Err(e) = self.proxy.send_event(UserEvent::ExportSplitObj(tx)) {
+            log::error!("Failed to send ExportSplitObj event: {:?}", e);
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+        log::info!("Sent ExportSplitObj event");
+
+        let pairs = match rx.await {
+            Ok(result) => result,
+            Err(e) => return Err(format!("Failed to receive result: {:?}", e)),
+        };
+
+        // [names, bodies] — two parallel arrays packed into one JS value so the
+        // async signature stays a single return.
+        let names = js_sys::Array::new();
+        let bodies = js_sys::Array::new();
+        for (stem, body) in &pairs {
+            names.push(&wasm_bindgen::JsValue::from_str(stem));
+            bodies.push(&wasm_bindgen::JsValue::from_str(body));
+        }
+        let out = js_sys::Array::new();
+        out.push(&names);
+        out.push(&bodies);
+        log::info!("ExportSplitObj: {} file(s)", pairs.len());
+        Ok(out)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn get_rotation(&self, index: usize) -> Result<String, String> {
+        let (tx, rx) = oneshot::channel();
+
+        if let Err(e) = self.proxy.send_event(UserEvent::GetRotation(index, tx)) {
+            log::error!(
+                "Failed to send GetRotation event for window {}: {:?}",
+                index,
+                e
+            );
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+
+        log::info!("Sent GetRotation event for window {}", index);
+
+        match rx.await {
+            Ok(result) => serde_json::to_string(&result).map_err(|e| format!("JSON serialization error: {}", e)),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn get_screen_coord_in_mm(
+        &self,
+        index: usize,
+        x: f32,
+        y: f32,
+        z: f32,
+    ) -> Result<Box<[f32]>, String> {
+        log::info!(
+            "get_screen_coord_in_mm: index={}, x={}, y={}, z={}",
+            index,
+            x,
+            y,
+            z
+        );
+        let (tx, rx) = oneshot::channel();
+
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::GetScreenCoordInMM(index, [x, y, z], tx))
+        {
+            log::error!(
+                "Failed to send GetScreenCoordInMM event for window {}: {:?}",
+                index,
+                e
+            );
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+
+        log::info!(
+            "Sent GetScreenCoordInMM event for window {}: {:?}",
+            index,
+            [x, y, z]
+        );
+
+        match rx.await {
+            Ok(result) => {
+                log::info!(
+                    "Received GetScreenCoordInMM result for window {}: {:?}",
+                    index,
+                    result
+                );
+                Ok(result.into())
+            }
+            Err(e) => {
+                log::error!(
+                    "Failed to receive GetScreenCoordInMM result for window {}: {:?}",
+                    index,
+                    e
+                );
+                Err(format!("Failed to receive result: {:?}", e))
+            }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn get_base_screen(&self, index: usize) -> Result<Box<[f32]>, String> {
+        let (tx, rx) = oneshot::channel();
+
+        if let Err(e) = self.proxy.send_event(UserEvent::GetBaseScreen(index, tx)) {
+            log::error!(
+                "Failed to send GetBaseScreen event for window {}: {:?}",
+                index,
+                e
+            );
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+
+        log::info!("Sent GetBaseScreen event for window {}", index);
+
+        match rx.await {
+            Ok(result) => Ok(result.into()),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
+        }   
+    }
+
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn get_window_level(&self, index: usize) -> Result<Box<[f32]>, String> {
+        let (tx, rx) = oneshot::channel();
+
+        if let Err(e) = self.proxy.send_event(UserEvent::GetWindowLevel(index, tx)) {
+            log::error!(
+                "Failed to send GetWindowLevel event for window {}: {:?}",
+                index,
+                e
+            );
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+
+        log::info!("Sent GetWindowLevel event for window {}", index);
+
+        match rx.await {
+            Ok(result) => Ok(result.into()),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn get_pan(&self, index: usize) -> Result<Box<[f32]>, String> {
+        let (tx, rx) = oneshot::channel();
+
+        if let Err(e) = self.proxy.send_event(UserEvent::GetPan(index, tx)) {
+            log::error!("Failed to send GetPan event for window {}: {:?}", index, e);
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+
+        log::info!("Sent GetPan event for window {}", index);
+
+        match rx.await {
+            Ok(result) => Ok(result.into()),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn get_oblique_normal(&self, index: usize) -> Result<Box<[f32]>, String> {
+        let (tx, rx) = oneshot::channel();
+
+        if let Err(e) = self.proxy.send_event(UserEvent::GetObliqueNormal(index, tx)) {
+            log::error!("Failed to send GetObliqueNormal event for window {}: {:?}", index, e);
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+
+        log::info!("Sent GetObliqueNormal event for window {}", index);
+
+        match rx.await {
+            Ok(result) => Ok(result.into()),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    /// Dispatch a view click and asynchronously return computed world/slice data.
+    pub async fn handle_view_click_get(
+        &self,
+        index: usize,
+        x: f32,
+        y: f32,
+        z: f32,
+    ) -> Result<Box<[f32]>, String> {
+        let (tx, rx) = oneshot::channel();
+
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::ViewClickGet(index, x, y, z, tx))
+        {
+            log::error!(
+                "Failed to send ViewClickGet event for window {}: {:?}",
+                index,
+                e
+            );
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+        match rx.await {
+            Ok(result) => Ok(result.into()),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn get_pixel_value_from_screen(
+        &self,
+        index: usize,
+        x: f32,
+        y: f32,
+    ) -> Result<Box<[f32]>, String> {
+        log::info!(
+            "get_pixel_value_from_screen: index={}, x={}, y={}",
+            index,
+            x,
+            y
+        );
+        let (tx, rx) = oneshot::channel();
+
+        if let Err(e) = self.proxy.send_event(UserEvent::GetPixelValue(index, x, y, tx))
+        {
+            log::error!(
+                "Failed to send GetPixelValue event for window {}: {:?}",
+                index,
+                e
+            );
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+
+        match rx.await {
+            Ok(result) => Ok(result.into()),
+            Err(e) => Err(format!("Failed to receive result: {:?}", e)),
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn world_coord_to_screen(
+        &self,
+        index: usize,
+        x: f32,
+        y: f32,
+        z: f32,
+    ) -> Result<Box<[f32]>, String> {
+        log::info!(
+            "world_coord_to_screen: index={}, x={}, y={}, z={}",
+            index,
+            x,
+            y,
+            z
+        );
+        let (tx, rx) = oneshot::channel();
+
+        if let Err(e) = self
+            .proxy
+            .send_event(UserEvent::WorldCoordToScreen(index, [x, y, z], tx))
+        {
+            log::error!(
+                "Failed to send WorldCoordToScreen event for window {}: {:?}",
+                index,
+                e
+            );
+            return Err(format!("Failed to send event: {:?}", e));
+        }
+
+        log::info!(
+            "Sent WorldCoordToScreen event for window {}: {:?}",
+            index,
+            [x, y, z]
+        );
+
+        match rx.await {
+            Ok(result) => {
+                log::info!(
+                    "Received WorldCoordToScreen result for window {}: {:?}",
+                    index,
+                    result
+                );
+                Ok(result.into())
+            }
+            Err(e) => {
+                log::error!(
+                    "Failed to receive WorldCoordToScreen result for window {}: {:?}",
+                    index,
+                    e
+                );
+                Err(format!("Failed to receive result: {:?}", e))
+            }
+        }
+    }
+
+    pub fn set_rotation_quat(&self, index: usize, quat: Vec<f32>) {
+        if quat.len() != 4 {
+            log::error!(
+                "set_oblique_rotation_quat expected 4 floats, got {}",
+                quat.len()
+            );
+            return;
+        }
+        let mut arr = [0.0; 4];
+        arr.copy_from_slice(&quat);
+        if let Err(e) = self.proxy.send_event(UserEvent::SetRotationQuat(index, arr)){
+            log::error!("Failed to send SetRotationQuat event: {:?}", e);
+        } else {
+            log::info!("Sent SetRotationQuat event for window {}", index);
+        }
+    }
+}
+
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub struct GLCanvas {
+    pub(crate) proxy: EventLoopProxy<UserEvent>,
+}
+
+impl_user_event_senders_for_glcanvas! {
+    set_window_level => SetWindowLevel(window_level: f32),
+    set_window_width => SetWindowWidth(window_width: f32),
+    set_slice_mm => SetSliceMM(slice: f32),
+    set_scale => SetScale(scale: f32),
+    set_translate_in_screen_coord => SetTranslateInScreenCoord(x: f32, y: f32, z: f32),
+    set_pan => SetPan(dx: f32, dy: f32),
+    set_pan_mm => SetPanMM(dx_mm: f32, dy_mm: f32),
+    set_aliasing => SetAliasing(aliasing: bool),
+    handle_view_click => ViewClick(screen_x: f32, screen_y: f32, screen_z: f32),
+    set_oblique_rotation_radians => SetObliqueRotation(horizontal_radians: f32, vertical_radians: f32, in_plane_radians: f32),
+    sync_oblique_to_3d => SetObliquePlane(oblique_crop: f32, alpha: f32),
+    // Mip controls
+    set_mip_mode => SetMipMode(mode: u32),
+    set_slab_thickness => SetSlabThickness(thickness: f32),
+    set_rotation_angle_degrees => SetRotationAngleDeg(roll_deg: f32, yaw_deg: f32, pitch_deg: f32),
+    // Mesh controls
+    set_mesh_rotation_enabled => SetMeshRotationEnabled(enabled: bool),
+    set_mesh_opacity => SetMeshOpacity(alpha: f32),
+    reset_mesh => ResetMesh(),
+    set_rotation_degrees => SetRotationDeg(degrees_x: f32, degrees_y: f32),
+    set_mesh_roi => SetMeshRoi(sx: f32,sy: f32, sz: f32, lx: f32, ly: f32,lz: f32),
+    set_mesh_mode => SetMeshMode(mode: usize),
+    set_ball_enabled => SetMeshBallEnabled(enabled: bool),
+    set_ball => SetBall(id: usize, x: f32, y: f32, z: f32),
+    set_mesh_needle_enabled => SetMeshNeedleEnabled(enabled: f32),
+    set_new_needle => SetMeshNeedleTrajectory(id: u32, x: f32, y: f32, z: f32, lx: f32, ly: f32, lz: f32, r:f32, g:f32, b:f32),
+    set_needle_position => SetMeshNeedlePosition(id: u32, x: f32, y: f32, z: f32),
+    set_needle_radius => SetMeshNeedleRadius(id: u32, radius: f32),
+    set_needle_angle => SetMeshNeedleAngle(id: u32, angle: f32),
+}

@@ -123,6 +123,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     let tex_coords_3d = (current_mat * vec4<f32>(local_x, in.tex_coords.y, depth, 1.0)).xyz;
 
+    let filtered_sample = textureSample(t_diffuse, s_diffuse, tex_coords_3d);
+
     // Component-wise comparison for out-of-bounds check
     let out_of_bounds = any(tex_coords_3d < vec3<f32>(0.0)) || any(tex_coords_3d > vec3<f32>(1.0));
 
@@ -134,7 +136,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     // Sample the texture using the 3D coordinates
     var sampled_value: vec4<f32>;
     if (u_uniform_frag.aliasing == 0) {
-        sampled_value = textureSample(t_diffuse, s_diffuse, tex_coords_3d);
+        sampled_value = filtered_sample;
     } else {
         let tex_size = vec3<f32>(textureDimensions(t_diffuse));
         let coord = vec3<i32>(tex_coords_3d * tex_size);
@@ -142,15 +144,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
 
     // Conditionally decode depending on texture format
-    var value: f32;
-    if (u_uniform_frag.is_packed_rg8 > 0.5) {
-        let low = sampled_value.r * 255.0;
-        let high = sampled_value.g * 255.0;
-        let u16_val = low + high * 256.0;
-        value = u16_val - u_uniform_frag.bias;
-    } else {
-        value = sampled_value.r;
-    }
+    let value = decode_volume_sample(sampled_value, u_uniform_frag.is_packed_rg8, u_uniform_frag.bias);
 
     // DICOM PS3.3 C.11.2 Window/Level mapping
     let center = u_uniform_frag.level;

@@ -314,6 +314,7 @@ pub async fn parse_common_files_wasm(
     let mut mha_files = Vec::new();
     let mut mhd_files = Vec::new();
     let mut raw_files = Vec::new();
+    let mut nii_files = Vec::new();
     let len = files.length() as usize;
 
     for idx in 0..len {
@@ -325,20 +326,19 @@ pub async fn parse_common_files_wasm(
             mha_files.push(file);
         } else if file_name.ends_with(".mhd") {
             mhd_files.push(file);
+        } else if file_name.ends_with(".nii.gz") || file_name.ends_with(".nii") {
+            nii_files.push(file);
         } else if file_name.ends_with(".raw") || file_name.ends_with(".zraw") {
             raw_files.push(file);
         } else {
             // Check using the extension parser for other formats
             match get_extension(&file.name()) {
-                Ok(ImageFormat::NIfTI) | Ok(ImageFormat::DICOM) => {
+                Ok(ImageFormat::DICOM) => {
                     log::warn!(
-                        "Format {:?} not yet supported in WASM",
-                        get_extension(&file.name()).unwrap()
+                        "Format {:?} not yet supported in WASM", get_extension(&file.name()).unwrap()
                     );
                 }
-                _ => {
-                    log::debug!("Skipping unsupported file: {}", file.name());
-                }
+                _ => log::debug!("Skipping unsupported file: {}", file.name()),
             }
         }
     }
@@ -351,6 +351,32 @@ pub async fn parse_common_files_wasm(
         let bytes = read_file_as_bytes(first_mha).await?;
         let ct_volume = parse_mha_and_generate_ct(bytes, None, slope, intercept).await?;
         Ok(ct_volume)
+    } else if !nii_files.is_empty() {
+        log::info!("Processing {} NIfTI file(s)", nii_files.len());
+        let first_nii = nii_files.into_iter().next().unwrap();
+        let bytes = read_file_as_bytes(first_nii).await?;
+        let mv = NiftiParser::parse_bytes(&bytes)
+            .map_err(|e| JsValue::from_str(&format!("NIfTI parse error: {}", e)))?;
+        let mut dimensions = mv.metadata.dimensions;
+        let mut spacing = mv.metadata.spacing;
+        let mut offset = mv.metadata.offset;
+        if dimensions.len() != 3 {
+            dimensions.push(1);
+            spacing.push(1.0);
+            offset.push(0.0);
+        }
+        let orientation = mv.metadata.orientation.concat();
+        MedicalVolume::generate_ct_volume_mha(
+            [dimensions[0], dimensions[1], dimensions[2]],
+            mv.pixel_data.as_bytes().to_vec(),
+            mv.metadata.pixel_type,
+            spacing,
+            offset,
+            orientation,
+            slope,
+            intercept,
+        )
+        .map_err(|e| JsValue::from_str(&e))
     } else if !mhd_files.is_empty() && !raw_files.is_empty() {
         // Process MHD files (require separate data files)
         log::info!(
@@ -433,7 +459,7 @@ pub async fn parse_mha_and_generate_ct(
 ) -> Result<CTVolume, JsValue> {
     if data_bytes.is_none() {
         // MHA file: parse metadata first, then extract raw data without creating intermediate MedicalVolume
-        let metadata = MhaParser::parse_metadata_only(&header_bytes).map_err(|e| JsValue::from_str(&format!("MHA metadata parse error: {}", e)))?;
+        let metadata = MetaimageParser::parse_metadata_only(&header_bytes, true).map_err(|e| JsValue::from_str(&format!("MHA metadata parse error: {}", e)))?;
 
         let start_offset = metadata.data_offset.unwrap_or(0);
         if start_offset >= header_bytes.len() {
@@ -480,7 +506,7 @@ pub async fn parse_mha_and_generate_ct(
     } else {
         // MHD path: data already separated
         let pixel_data = PixelData::UInt8(data_bytes.unwrap());
-        let metadata = MhdParser::parse_metadata_only(&header_bytes)
+        let metadata =  MetaimageParser::parse_metadata_only(&header_bytes, false)
             .map_err(|e| JsValue::from_str(&format!("MHD parse error: {}", e)))?;
         let medical_volume = MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
             .map_err(|e| JsValue::from_str(&format!("Volume creation error: {}", e)))?;

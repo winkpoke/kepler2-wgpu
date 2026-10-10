@@ -27,8 +27,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
+#[cfg(windows)]
+use ort::ep;
 use ort::{
-    ep,
     session::Session,
     session::builder::{GraphOptimizationLevel, SessionBuilder},
     value::{Tensor, ValueType},
@@ -132,6 +133,7 @@ impl OnnxSegmentator {
         // Try DirectML (GPU) first; fall back to CPU-only if the DirectML
         // runtime is missing or no DX12 GPU is available. The fallback keeps
         // kepler.exe functional on machines without a compatible GPU.
+        #[cfg(windows)]
         let session = {
             let try_gpu = || -> Result<Session> {
                 SessionBuilder::new()
@@ -162,6 +164,14 @@ impl OnnxSegmentator {
             }
         };
 
+        #[cfg(not(windows))]
+        let session = SessionBuilder::new()
+            .map_err(|e| anyhow!("session builder: {e}"))?
+            .with_optimization_level(GraphOptimizationLevel::Level3)
+            .map_err(|e| anyhow!("optimization level: {e}"))?
+            .commit_from_file(model_path)
+            .map_err(|e| anyhow!("commit_from_file (CPU fallback): {e}"))?;
+
         let model_info = Self::extract_model_info(&session, model_path)?;
 
         Ok(Self {
@@ -174,8 +184,16 @@ impl OnnxSegmentator {
     fn extract_model_info(session: &Session, model_path: &str) -> Result<ModelInfo> {
         let inputs = session.inputs();
         let outputs = session.outputs();
-        anyhow::ensure!(inputs.len() == 1, "model must have exactly 1 input, got {}", inputs.len());
-        anyhow::ensure!(outputs.len() == 1, "model must have exactly 1 output, got {}", outputs.len());
+        anyhow::ensure!(
+            inputs.len() == 1,
+            "model must have exactly 1 input, got {}",
+            inputs.len()
+        );
+        anyhow::ensure!(
+            outputs.len() == 1,
+            "model must have exactly 1 output, got {}",
+            outputs.len()
+        );
 
         let input = &inputs[0];
         let output = &outputs[0];
@@ -241,7 +259,9 @@ impl OnnxSegmentator {
         let (depth, height, width) = volume_shape;
         log::info!(
             "Starting ONNX segmentation for task {} (model={}) volume={:?}",
-            task_id, req.model, volume_shape
+            task_id,
+            req.model,
+            volume_shape
         );
 
         // Pad each spatial axis to a multiple of 64. The nnU-Net backbone
@@ -298,7 +318,10 @@ impl OnnxSegmentator {
         let total = coords.len();
         log::info!(
             "[AI/ONNX] sliding-window: {} patches of {:?} (step {}) on padded {:?}",
-            total, patch, TILE_STEP_SIZE, (pd, ph, pw)
+            total,
+            patch,
+            TILE_STEP_SIZE,
+            (pd, ph, pw)
         );
 
         // Parallel inference: each patch is independently forwarded. The
@@ -331,7 +354,10 @@ impl OnnxSegmentator {
                     Err(e) => {
                         log::error!(
                             "[AI/ONNX] patch ({},{},{}) inference failed: {}",
-                            z0, y0, x0, e
+                            z0,
+                            y0,
+                            x0,
+                            e
                         );
                         None
                     }
@@ -367,7 +393,15 @@ impl OnnxSegmentator {
         anyhow::ensure!(
             fd + depth <= pd && fh + height <= ph && fw + width <= pw,
             "padded volume {}x{}x{} too small for original {}x{}x{} + front {},{},{}",
-            pd, ph, pw, depth, height, width, fd, fh, fw
+            pd,
+            ph,
+            pw,
+            depth,
+            height,
+            width,
+            fd,
+            fh,
+            fw
         );
 
         // Compact the blended, weight-normalised logits into an unpadded
@@ -453,7 +487,9 @@ impl OnnxSegmentator {
         anyhow::ensure!(
             volume_data.len() == expected,
             "volume_data length {} != expected {} (D,H,W={:?})",
-            volume_data.len(), expected, (depth, height, width)
+            volume_data.len(),
+            expected,
+            (depth, height, width)
         );
 
         // nnU-Net CTNormalization, matching the Python TotalSegmentator
@@ -482,11 +518,17 @@ impl OnnxSegmentator {
         // CPU-bound patch extraction + normalisation in the rayon loop
         // overlaps across workers.
         let mut session = self.session.lock();
-        let outputs = session.run(ort::inputs![self.model_info.input_name.as_str() => input_tensor])?;
+        let outputs =
+            session.run(ort::inputs![self.model_info.input_name.as_str() => input_tensor])?;
 
         let output_value = outputs
             .get(self.model_info.output_name.as_str())
-            .ok_or_else(|| anyhow!("output `{}` not produced by session", self.model_info.output_name))?;
+            .ok_or_else(|| {
+                anyhow!(
+                    "output `{}` not produced by session",
+                    self.model_info.output_name
+                )
+            })?;
 
         let (shape, data) = output_value.try_extract_tensor::<f32>()?;
         Ok((shape.to_vec(), data.to_vec()))
@@ -502,7 +544,6 @@ impl OnnxSegmentator {
         let tensor = self.build_input_tensor(patch_data, (pd, ph, pw))?;
         self.run_inference(tensor)
     }
-
 }
 
 /// Extract the `i64` shape from an `Outlet`'s `ValueType`.
@@ -553,7 +594,9 @@ fn pad_volume_to_multiple(
     anyhow::ensure!(
         data.len() == d * h * w,
         "volume_data length {} != expected {} (D,H,W={:?})",
-        data.len(), d * h * w, (d, h, w)
+        data.len(),
+        d * h * w,
+        (d, h, w)
     );
 
     let pd = ((d + m - 1) / m) * m;
@@ -572,7 +615,13 @@ fn pad_volume_to_multiple(
             let yo = yc as isize - fh as isize;
             for xc in 0..pw {
                 let xo = xc as isize - fw as isize;
-                if zo >= 0 && zo < d as isize && yo >= 0 && yo < h as isize && xo >= 0 && xo < w as isize {
+                if zo >= 0
+                    && zo < d as isize
+                    && yo >= 0
+                    && yo < h as isize
+                    && xo >= 0
+                    && xo < w as isize
+                {
                     out[(zc * ph + yc) * pw + xc] =
                         data[(zo as usize * h + yo as usize) * w + xo as usize];
                 }
@@ -675,7 +724,9 @@ impl ModelManager {
         })
     }
 
-    pub fn model_dir(&self) -> &Path { &self.model_dir }
+    pub fn model_dir(&self) -> &Path {
+        &self.model_dir
+    }
 
     /// Cheap probe used by the handler to dispatch ONNX-direct vs
     /// Python-proxy without actually loading the session.
@@ -686,7 +737,9 @@ impl ModelManager {
     pub async fn get_model(&self, model_name: &str) -> Result<Arc<OnnxSegmentator>> {
         {
             let models = self.models.read().await;
-            if let Some(m) = models.get(model_name) { return Ok(m.clone()); }
+            if let Some(m) = models.get(model_name) {
+                return Ok(m.clone());
+            }
         }
         let path = self.model_dir.join(format!("{}.onnx", model_name));
         let segmentator = Arc::new(OnnxSegmentator::new(path.to_str().unwrap())?);
@@ -702,7 +755,11 @@ impl ModelManager {
             if self.model_dir.join(format!("{}.onnx", name)).exists() {
                 self.get_model(name).await?;
             } else {
-                log::warn!("Skipping preload: {}.onnx not found in {}", name, self.model_dir.display());
+                log::warn!(
+                    "Skipping preload: {}.onnx not found in {}",
+                    name,
+                    self.model_dir.display()
+                );
             }
         }
         Ok(())

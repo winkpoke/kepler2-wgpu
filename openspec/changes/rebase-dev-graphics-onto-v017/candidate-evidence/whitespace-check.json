@@ -1,0 +1,22 @@
+{
+  "full_staged_check_exit": 2,
+  "findings": 1497,
+  "paths": [
+    "openspec/changes/rebase-dev-graphics-onto-v017/baseline/clippy.log",
+    "openspec/changes/rebase-dev-graphics-onto-v017/baseline/format.log",
+    "openspec/changes/rebase-dev-graphics-onto-v017/baseline/native-tests.log",
+    "openspec/changes/rebase-dev-graphics-onto-v017/baseline/sources/src/application/gl_canvas.rs",
+    "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/browser-logger.log",
+    "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/clippy.log",
+    "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/compute-owner.log",
+    "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/format.log",
+    "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/offline-native-backend.log",
+    "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/production-gpu-tests.log",
+    "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/range-diff.log",
+    "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/recreated-merge-review.log",
+    "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/release-native-platform-normalization.patch",
+    "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/uniform-layout.log"
+  ],
+  "production_or_current_doc_findings": [],
+  "reason": "Preserve byte-exact frozen release sources, logs and unified diff context; production and current documentation whitespace checks pass."
+}

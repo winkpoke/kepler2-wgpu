@@ -1,4 +1,4 @@
-use crate::core::timing::Instant;
+use crate::core::timing::{DurationExt, Instant};
 use std::collections::HashMap;
 /// Render pass management system for separating 2D and 3D rendering
 ///
@@ -193,20 +193,20 @@ impl PassRegistry {
 }
 
 /// Render pass execution context
-pub struct PassContext<'a> {
-    /// The render pass being executed
-    pub pass: &'a mut wgpu::RenderPass<'a>,
+pub struct PassContext<'pass, 'encoder> {
+    /// The render pass being executed; its short borrow does not shorten the encoder guard.
+    pub pass: &'pass mut wgpu::RenderPass<'encoder>,
     /// The pass descriptor
-    pub descriptor: &'a PassDescriptor,
+    pub descriptor: &'pass PassDescriptor,
     /// The pass ID
     pub pass_id: PassId,
 }
 
-impl<'a> PassContext<'a> {
-    /// Create a new pass context
+impl<'pass, 'encoder> PassContext<'pass, 'encoder> {
+    /// Create a new pass context with independent borrow and encoder lifetimes.
     pub fn new(
-        pass: &'a mut wgpu::RenderPass<'a>,
-        descriptor: &'a PassDescriptor,
+        pass: &'pass mut wgpu::RenderPass<'encoder>,
+        descriptor: &'pass PassDescriptor,
         pass_id: PassId,
     ) -> Self {
         Self {
@@ -365,7 +365,7 @@ impl PassExecutor {
         }
 
         // Re-enable mesh pass if it was disabled and we've had some successful frames
-        if self.mesh_pass_disabled && self.stats.total_frames % 300 == 0 {
+        if self.mesh_pass_disabled && self.stats.total_frames.is_multiple_of(300) {
             // Try every 5 seconds at 60fps
             log::info!("Attempting to re-enable mesh pass after recovery period");
             self.mesh_pass_disabled = false;
@@ -402,13 +402,42 @@ impl PassExecutor {
         F: FnMut(PassContext) -> Result<(), Box<dyn std::error::Error>>,
     {
         let frame_start_time = Instant::now();
+        log::trace!("[FRAME_EXEC] Starting frame execution - Surface: {}x{}, Has mesh view: {}, Has MIP view: {}, Has MPR view: {}",
+                    surface_width, surface_height, has_mesh_view, has_mip_view, has_mpr_view);
+
+        {
+            let _clear = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Frame Background"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: frame_view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.1,
+                            b: 0.1,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                multiview_mask: None,
+                occlusion_query_set: None,
+            });
+        }
         log::trace!("[FRAME_EXEC] Starting frame execution - Surface: {}x{}, Has mesh view: {}, Has MIP view: {}, Has MPR view: {}", 
                     surface_width, surface_height, has_mesh_view, has_mip_view, has_mpr_view);
 
         // Build the pass plan for this frame
         let effective_has_mesh_view = has_mesh_view && !self.mesh_pass_disabled;
-        let plan =self.registry.build_pass_plan(effective_has_mesh_view, has_mip_view, has_mpr_view);
+        let plan =
+            self.registry
+                .build_pass_plan(effective_has_mesh_view, has_mip_view, has_mpr_view);
         let mut frame_success = true;
+        let mut first_failure = None;
 
         log::trace!(
             "[FRAME_EXEC] Pass plan: {} passes scheduled, Effective mesh view enabled: {}",
@@ -492,14 +521,17 @@ impl PassExecutor {
                         error
                     );
                     frame_success = false;
+                    let contextual_error = PassExecutionError::RenderingFailed(format!(
+                        "{pass_name} pass '{}': {error}",
+                        descriptor.name
+                    ));
+                    first_failure.get_or_insert(contextual_error.clone());
                     self.handle_pass_error(pass_id, error.clone());
 
                     // For slice pass errors, we still try to continue since 2D rendering is critical
                     if matches!(pass_id, PassId::SlicePass) {
                         log::error!("Critical slice pass failure - this may affect 2D rendering");
-                        return Err(Box::new(PassExecutionError::RenderingFailed(
-                            "Slice pass failed".to_string(),
-                        )));
+                        return Err(Box::new(contextual_error));
                     }
                 }
             }
@@ -509,13 +541,17 @@ impl PassExecutor {
             self.record_success();
             log::trace!(
                 "[FRAME_EXEC] Frame execution completed successfully in {:.2}ms",
-                frame_start_time.elapsed().as_millis_f64()
+                DurationExt::as_millis_f64(&frame_start_time.elapsed())
             );
         } else {
             log::warn!(
                 "[FRAME_EXEC] Frame execution completed with errors in {:.2}ms",
-                frame_start_time.elapsed().as_millis_f64()
+                DurationExt::as_millis_f64(&frame_start_time.elapsed())
             );
+            // A partial frame must not acknowledge pending view changes as presented.
+            return Err(Box::new(
+                first_failure.expect("failed frame has a pass error"),
+            ));
         }
 
         Ok(())
@@ -539,37 +575,17 @@ impl PassExecutor {
         use crate::rendering::core::pipeline::get_mesh_depth_format;
 
         let start_time = Instant::now();
-        log::trace!("[MESH_PASS] Starting execution - Pass: '{}', Size: {}x{}, Target: Surface (direct), Depth: {}", 
+        log::trace!("[MESH_PASS] Starting execution - Pass: '{}', Size: {}x{}, Target: Surface (direct), Depth: {}",
                     descriptor.name, surface_width, surface_height, descriptor.uses_depth);
 
-        // Prepare depth texture if needed (only depth, no offscreen color texture)
         let depth_view_opt = if descriptor.uses_depth {
-            let texture_start = Instant::now();
-            texture_pool.ensure_textures(
+            texture_pool.ensure_depth(
                 device,
                 surface_width,
                 surface_height,
-                descriptor.uses_depth,
-            );
-            log::trace!(
-                "[MESH_PASS] Depth texture preparation completed in {:.2}ms",
-                texture_start.elapsed().as_millis_f64()
-            );
-
-            let view_start = Instant::now();
-            // Get just the depth view from get_mesh_views, ignoring the color view
-            let (_, depth_view_opt) = texture_pool.get_mesh_views(
-                device,
-                surface_width,
-                surface_height,
-                wgpu::TextureFormat::Bgra8UnormSrgb,
-                true,
-            );
-            log::trace!(
-                "[MESH_PASS] Depth view acquisition completed in {:.2}ms",
-                view_start.elapsed().as_millis_f64()
-            );
-            depth_view_opt
+                1,
+                get_mesh_depth_format(),
+            )
         } else {
             None
         };
@@ -588,14 +604,16 @@ impl PassExecutor {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(&descriptor.name),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                depth_slice: None,
                 view: frame_view, // Render directly to surface
+
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load, // Preserve existing content from previous passes (e.g., mesh rendering)
                     store: wgpu::StoreOp::Store,
                 },
             })],
-            depth_stencil_attachment: depth_view_opt.as_ref().map(|depth_view| {
+            depth_stencil_attachment: depth_view_opt.map(|depth_view| {
                 wgpu::RenderPassDepthStencilAttachment {
                     view: depth_view,
                     depth_ops: Some(wgpu::Operations {
@@ -609,19 +627,20 @@ impl PassExecutor {
                     stencil_ops: None,
                 }
             }),
+            multiview_mask: None,
             occlusion_query_set: None,
             timestamp_writes: None,
         });
         log::trace!(
             "[MESH_PASS] Render pass creation completed in {:.2}ms",
-            render_pass_start.elapsed().as_millis_f64()
+            DurationExt::as_millis_f64(&render_pass_start.elapsed())
         );
 
         // Execute rendering
         let rendering_start = Instant::now();
         let context = PassContext::new(&mut render_pass, descriptor, PassId::MeshPass);
         let render_result = render_fn(context);
-        let rendering_time = rendering_start.elapsed().as_millis_f64();
+        let rendering_time = DurationExt::as_millis_f64(&rendering_start.elapsed());
 
         match &render_result {
             Ok(_) => {
@@ -631,7 +650,7 @@ impl PassExecutor {
                 );
                 log::trace!(
                     "[MESH_PASS] Total execution time: {:.2}ms",
-                    start_time.elapsed().as_millis_f64()
+                    DurationExt::as_millis_f64(&start_time.elapsed())
                 );
             }
             Err(e) => {
@@ -674,7 +693,9 @@ impl PassExecutor {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(&descriptor.name),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                depth_slice: None,
                 view: frame_view,
+
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load, // Preserve existing mesh content
@@ -682,12 +703,13 @@ impl PassExecutor {
                 },
             })],
             depth_stencil_attachment: None, // No depth for 2D slice rendering
+            multiview_mask: None,
             occlusion_query_set: None,
             timestamp_writes: None,
         });
         log::trace!(
             "[SLICE_PASS] Render pass creation completed in {:.2}ms",
-            render_pass_start.elapsed().as_millis_f64()
+            DurationExt::as_millis_f64(&render_pass_start.elapsed())
         );
         log::trace!("[SLICE_PASS] Depth attachment: DISABLED (2D slice rendering)");
 
@@ -695,7 +717,7 @@ impl PassExecutor {
         let rendering_start = Instant::now();
         let context = PassContext::new(&mut render_pass, descriptor, PassId::SlicePass);
         let render_result = render_fn(context);
-        let rendering_time = rendering_start.elapsed().as_millis_f64();
+        let rendering_time = DurationExt::as_millis_f64(&rendering_start.elapsed());
 
         match &render_result {
             Ok(_) => {
@@ -705,7 +727,7 @@ impl PassExecutor {
                 );
                 log::trace!(
                     "[SLICE_PASS] Total execution time: {:.2}ms",
-                    start_time.elapsed().as_millis_f64()
+                    DurationExt::as_millis_f64(&start_time.elapsed())
                 );
             }
             Err(e) => {
@@ -748,7 +770,9 @@ impl PassExecutor {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(&descriptor.name),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                depth_slice: None,
                 view: frame_view,
+
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load,
@@ -756,12 +780,13 @@ impl PassExecutor {
                 },
             })],
             depth_stencil_attachment: None, // No depth for MIP rendering
+            multiview_mask: None,
             occlusion_query_set: None,
             timestamp_writes: None,
         });
         log::trace!(
             "[MIP_PASS] Render pass creation completed in {:.2}ms",
-            render_pass_start.elapsed().as_millis_f64()
+            DurationExt::as_millis_f64(&render_pass_start.elapsed())
         );
         log::trace!("[MIP_PASS] Depth attachment: DISABLED (MIP rendering)");
 
@@ -769,7 +794,7 @@ impl PassExecutor {
         let rendering_start = Instant::now();
         let context = PassContext::new(&mut render_pass, descriptor, PassId::MipPass);
         let render_result = render_fn(context);
-        let rendering_time = rendering_start.elapsed().as_millis_f64();
+        let rendering_time = DurationExt::as_millis_f64(&rendering_start.elapsed());
 
         match &render_result {
             Ok(_) => {
@@ -779,7 +804,7 @@ impl PassExecutor {
                 );
                 log::trace!(
                     "[MIP_PASS] Total execution time: {:.2}ms",
-                    start_time.elapsed().as_millis_f64()
+                    DurationExt::as_millis_f64(&start_time.elapsed())
                 );
             }
             Err(e) => {

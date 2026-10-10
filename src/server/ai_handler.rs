@@ -2,7 +2,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use anyhow::{anyhow, Result};
 use uuid::Uuid;
-use crate::data::medical_imaging::{MedicalVolume, MhaParser};
+use crate::data::medical_imaging::{MedicalVolume, MetaimageParser};
 use crate::server::{
     ai_model::{
         BackendPreference, CancelRequest, CancelResponse, ProgressResponse as ApiProgressResponse,
@@ -378,7 +378,7 @@ async fn load_volume_f32(
     log::info!("Loading MHA volume from {}", path.display());
 
     let bytes = tokio::fs::read(&path).await?;
-    let metadata = MhaParser::parse_metadata_only(&bytes)
+    let metadata = MetaimageParser::parse_metadata_only(&bytes, true)
         .map_err(|e| anyhow!("MHA metadata parse failed: {e}"))?;
 
     let start_offset = metadata.data_offset.unwrap_or(0);

@@ -156,3 +156,15 @@ The multi-planar reconstruction (MPR) view SHALL support rendering two orthogona
 - **THEN** both transformation matrices SHALL be uploaded to the GPU as column-major matrices
 - **AND** the shader uniforms SHALL handle both planes without exceeding memory limits or breaking alignment
 
+
+## Verification
+
+- [Native headless pipeline/pixel evidence](../../../doc/testing/headless_gpu.md)
+- [Encoding regressions](../../../tests/volume_encoding_tests.rs)
+- [Resource lifetime regressions](../../../tests/render_resource_lifetime_tests.rs)
+- [Redraw regressions](../../../tests/redraw_state_tests.rs)
+
+Native pixel/state tests do not prove browser behavior, every GPU failure path,
+wall-clock performance targets, or driver-memory leak freedom. Report those
+checks separately; active change deltas are not baseline requirements until synced.
+

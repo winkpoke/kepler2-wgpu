@@ -1,5 +1,18 @@
-use std::sync::{Arc, Mutex};
-use glam::{Mat4, Quat, Vec3};
+use super::{MprRenderContext, MprViewWgpuImpl};
+use crate::rendering::view::invalidation::ViewInvalidation;
+
+#[derive(Clone, PartialEq)]
+struct MprDisplayState {
+    slice: f32,
+    base_screen: Mat4,
+    scale: f32,
+    pan: Vec3,
+    pos: (i32, i32),
+    dim: (u32, u32),
+    window: [f32; 3],
+    overlays: Vec<u8>,
+}
+use crate::rendering::view::layout::compute_aspect_fit;
 use crate::{
     core::{
         error::{KeplerResult, MprError},
@@ -12,8 +25,8 @@ use crate::{
     },
     Renderable, View,
 };
-use super::{MprRenderContext, MprViewWgpuImpl};
-use crate::rendering::view::layout::compute_aspect_fit;
+use glam::{Mat4, Quat, Vec3};
+use std::sync::{Arc, Mutex};
 
 /// Generic Multi-Planar Reconstruction (MPR) view implementation.
 ///
@@ -38,6 +51,11 @@ use crate::rendering::view::layout::compute_aspect_fit;
 /// 5. **Final Rendering**: Outputs the processed image to the view
 pub struct MprView {
     view_id: usize,
+    target_format: wgpu::TextureFormat,
+    source_volume: Arc<CTVolume>,
+    invalidation: ViewInvalidation<MprDisplayState>,
+    segmentation_attached: bool,
+    segmentation_source: Option<(Arc<Vec<u8>>, (u32, u32, u32))>,
     /// WGPU implementation containing per-view GPU resources
     wgpu_impl: MprViewWgpuImpl,
     /// Current slice position (internal units)
@@ -45,7 +63,7 @@ pub struct MprView {
     /// Screen-space coordinate system base
     base_screen: Mat4,
     /// Original unrotated basis coordinates
-    base_screen_raw : Mat4,
+    base_screen_raw: Mat4,
     /// Oblique rotation matrix
     oblique_rotation: Quat,
     /// Oblique rotation normal
@@ -91,7 +109,206 @@ pub struct MprView {
     mesh_overlay_thickness: f32,
 }
 
+pub(crate) type RebindUploads =
+    std::collections::HashMap<(u8, usize, (u32, u32, u32)), Arc<RenderContent>>;
+fn cached_upload(
+    uploads: &mut RebindUploads,
+    key: (u8, usize, (u32, u32, u32)),
+    upload: impl FnOnce() -> anyhow::Result<RenderContent>,
+) -> crate::core::error::KeplerResult<Arc<RenderContent>> {
+    if let Some(content) = uploads.get(&key) {
+        return Ok(content.clone());
+    }
+    let content = Arc::new(upload()?);
+    uploads.insert(key, content.clone());
+    Ok(content)
+}
+pub(crate) struct PreparedMprGpu {
+    implementation: MprViewWgpuImpl,
+    mesh: Option<Arc<Mutex<MultiMeshContext>>>,
+    format: wgpu::TextureFormat,
+}
 impl MprView {
+    fn display_state(&self) -> MprDisplayState {
+        let mut overlays = bytemuck::bytes_of(&self.wgpu_impl.uniforms.frag).to_vec();
+        overlays.extend_from_slice(bytemuck::cast_slice(&self.needles));
+        overlays.extend_from_slice(bytemuck::bytes_of(&self.balls));
+        overlays.push(u8::from(self.needle_enabled));
+        overlays.push(u8::from(self.ball_enabled));
+        overlays.push(u8::from(self.mesh_overlay_enabled));
+        overlays.extend_from_slice(&self.mesh_overlay_thickness.to_ne_bytes());
+        MprDisplayState {
+            slice: self.slice,
+            base_screen: self.base_screen,
+            scale: self.scale,
+            pan: self.pan,
+            pos: self.pos,
+            dim: self.dim,
+            window: [
+                self.window_level.window_width(),
+                self.window_level.window_level(),
+                self.window_level.bias(),
+            ],
+            overlays,
+        }
+    }
+    pub fn render_context(&self) -> &Arc<MprRenderContext> {
+        &self.wgpu_impl.render_context
+    }
+    pub fn render_content(&self) -> &Arc<RenderContent> {
+        &self.wgpu_impl.render_content
+    }
+
+    /// Rebinds GPU resources without changing slice, oblique basis, or display state.
+    /// Supply new content on device replacement; reuse existing content on format changes.
+    pub fn rebuild_gpu_resources(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
+        content: Option<Arc<RenderContent>>,
+    ) {
+        self.rebuild_gpu_resources_with_context(
+            device,
+            queue,
+            format,
+            Arc::new(MprRenderContext::new_with_format(device, queue, format)),
+            content,
+        );
+    }
+
+    pub fn rebuild_gpu_resources_with_context(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
+        context: Arc<MprRenderContext>,
+        content: Option<Arc<RenderContent>>,
+    ) {
+        match self.prepare_gpu_resources(
+            device,
+            queue,
+            format,
+            context,
+            content,
+            &mut RebindUploads::new(),
+        ) {
+            Ok(prepared) => self.commit_gpu_resources(prepared),
+            Err(error) => log::error!("Failed to rebuild MPR resources: {error}"),
+        }
+    }
+
+    pub(crate) fn prepare_gpu_resources(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
+        context: Arc<MprRenderContext>,
+        content: Option<Arc<RenderContent>>,
+        uploads: &mut RebindUploads,
+    ) -> crate::core::error::KeplerResult<PreparedMprGpu> {
+        if content.is_some() && self.segmentation_attached && self.segmentation_source.is_none() {
+            return Err(crate::KeplerError::Graphics(
+                "Replacement labels have no CPU upload recipe".into(),
+            ));
+        }
+        let replacing_device = content.is_some();
+        let content = if replacing_device {
+            let encoding = content
+                .as_ref()
+                .expect("replacement content")
+                .volume_encoding;
+            let vol = &self.source_volume;
+            let dims = (
+                vol.dimensions.0 as u32,
+                vol.dimensions.1 as u32,
+                vol.dimensions.2 as u32,
+            );
+            cached_upload(
+                uploads,
+                (0, Arc::as_ptr(&self.source_volume) as usize, dims),
+                || {
+                    RenderContent::from_bytes(
+                        device,
+                        queue,
+                        &encoding.encode_volume(vol.voxel_data()),
+                        "Rebound MPR volume",
+                        dims.0,
+                        dims.1,
+                        dims.2,
+                        encoding,
+                    )
+                },
+            )?
+        } else {
+            self.wgpu_impl.render_content.clone()
+        };
+        let segmentation = if replacing_device {
+            self.segmentation_source
+                .as_ref()
+                .map(|(bytes, dims)| {
+                    cached_upload(uploads, (1, Arc::as_ptr(bytes) as usize, *dims), || {
+                        RenderContent::from_labels_r8(
+                            device,
+                            queue,
+                            bytes,
+                            "Rebound labels",
+                            dims.0,
+                            dims.1,
+                            dims.2,
+                        )
+                    })
+                })
+                .transpose()?
+        } else {
+            Some(self.wgpu_impl.seg_content.clone())
+        };
+        let uniforms = self.wgpu_impl.uniforms;
+        let mut implementation = MprViewWgpuImpl::new(
+            context,
+            device,
+            content,
+            Mat4::from_cols_array(&uniforms.frag.mat),
+        );
+        implementation.set_segmentation(device, segmentation);
+        let mesh = self.mesh_ctx.as_ref().map(|context| {
+            let rebuilt = context
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .rebuild(device, queue, format);
+            Arc::new(Mutex::new(rebuilt))
+        });
+        // Preserve uniforms while adopting the new volume's decoding parameters.
+        let decode = implementation.render_content.decode_parameters();
+        implementation.uniforms = uniforms;
+        implementation.uniforms.frag.is_packed_rg8 = decode.is_packed_flag as f32;
+        implementation.uniforms.frag.bias = decode.bias;
+        Ok(PreparedMprGpu {
+            implementation,
+            mesh,
+            format,
+        })
+    }
+
+    pub(crate) fn commit_gpu_resources(&mut self, prepared: PreparedMprGpu) {
+        self.wgpu_impl = prepared.implementation;
+        self.mesh_ctx = prepared.mesh;
+        self.target_format = prepared.format;
+        self.invalidation.invalidate();
+    }
+
+    pub(crate) fn set_target_format(&mut self, format: wgpu::TextureFormat) {
+        self.target_format = format;
+    }
+
+    pub(crate) fn retain_segmentation_source(
+        &mut self,
+        bytes: Arc<Vec<u8>>,
+        dims: (u32, u32, u32),
+    ) {
+        self.segmentation_source = Some((bytes, dims));
+    }
+
     /// Medical imaging parameter bounds for validation
     const MIN_SCALE: f32 = 0.01; // 1% zoom minimum
     const MAX_SCALE: f32 = 100.0; // 100x zoom maximum
@@ -183,11 +400,39 @@ impl MprView {
         pos: (i32, i32),
         dim: (u32, u32),
     ) -> Self {
+        Self::new_with_source(
+            render_context,
+            device,
+            texture,
+            vol,
+            orientation,
+            window_level,
+            scale,
+            translate,
+            pos,
+            dim,
+            Arc::new(vol.clone()),
+        )
+    }
+    pub(crate) fn new_with_source(
+        render_context: Arc<MprRenderContext>,
+        device: &wgpu::Device,
+        texture: Arc<RenderContent>,
+        vol: &CTVolume,
+        orientation: Orientation,
+        window_level: WindowLevel,
+        scale: f32,
+        translate: [f32; 3],
+        pos: (i32, i32),
+        dim: (u32, u32),
+        source_volume: Arc<CTVolume>,
+    ) -> Self {
         let translate_vec = Vec3::from_array(translate);
 
         // Validate and clamp all input parameters
-        let ((scale, pan), pos, dim) = Self::validate_and_clamp_params(scale, translate_vec, pos, dim);
-        
+        let ((scale, pan), pos, dim) =
+            Self::validate_and_clamp_params(scale, translate_vec, pos, dim);
+
         // Build coordinate system bases for this orientation
         let base_screen_legacy = orientation.build_base(vol);
         let base_uv_legacy = GeometryBuilder::build_uv_base(vol);
@@ -218,6 +463,12 @@ impl MprView {
         );
 
         Self {
+            target_format: crate::rendering::core::pipeline::get_swapchain_format()
+                .unwrap_or(wgpu::TextureFormat::Rgba8Unorm),
+            source_volume,
+            segmentation_source: None,
+            segmentation_attached: false,
+            invalidation: Default::default(),
             view_id: 0,
             wgpu_impl,
             slice: 0.0,
@@ -336,7 +587,9 @@ impl MprView {
 
     fn oblique_center_world(&mut self) {
         let r = Mat4::from_quat(self.oblique_rotation);
-        let center = self.base_screen_raw.transform_point3(Vec3::new(0.5, 0.5, 0.0));
+        let center = self
+            .base_screen_raw
+            .transform_point3(Vec3::new(0.5, 0.5, 0.0));
         let t1 = Mat4::from_translation(-center);
         let t2 = Mat4::from_translation(center);
         self.base_screen = t2 * r * t1 * self.base_screen_raw;
@@ -354,8 +607,12 @@ impl MprView {
         let r_uv = screen_to_uv * r_screen * screen_to_uv.inverse();
 
         // Extract basis vectors and normalize to handle non-uniform scaling
-        let right = (r_uv * glam::Vec4::new(1.0, 0.0, 0.0, 0.0)).truncate().normalize();
-        let up = (r_uv * glam::Vec4::new(0.0, 1.0, 0.0, 0.0)).truncate().normalize();
+        let right = (r_uv * glam::Vec4::new(1.0, 0.0, 0.0, 0.0))
+            .truncate()
+            .normalize();
+        let up = (r_uv * glam::Vec4::new(0.0, 1.0, 0.0, 0.0))
+            .truncate()
+            .normalize();
         let n = right.cross(up).normalize();
         n
     }
@@ -385,8 +642,12 @@ impl MprView {
         let screen_to_uv = base_uv.inverse() * base_screen;
         let r_screen = Mat4::from_quat(oblique_rotation);
         let r_uv = screen_to_uv * r_screen * screen_to_uv.inverse();
-        let right = (r_uv * glam::Vec4::new(1.0, 0.0, 0.0, 0.0)).truncate().normalize();
-        let up = (r_uv * glam::Vec4::new(0.0, 1.0, 0.0, 0.0)).truncate().normalize();
+        let right = (r_uv * glam::Vec4::new(1.0, 0.0, 0.0, 0.0))
+            .truncate()
+            .normalize();
+        let up = (r_uv * glam::Vec4::new(0.0, 1.0, 0.0, 0.0))
+            .truncate()
+            .normalize();
         let normal = right.cross(up).normalize();
 
         // UV-space position of the screen-center at the displayed depth
@@ -421,9 +682,17 @@ impl MprView {
     /// into it. Re-uploading later replaces the mesh slots. The context's
     /// pipeline uses `CompareFunction::Always` so the mesh is always drawn
     /// on top of the slice, regardless of depth-buffer state.
-    pub fn set_mesh(&mut self, id: u32, kind: u32, device: &wgpu::Device, queue: &wgpu::Queue, meshes: Arc<Vec<Mesh>>) {
+    pub fn set_mesh(
+        &mut self,
+        id: u32,
+        kind: u32,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        meshes: Arc<Vec<Mesh>>,
+    ) {
+        self.invalidation.invalidate();
         if self.mesh_ctx.is_none() {
-            let ctx = MultiMeshContext::new(device, queue);
+            let ctx = MultiMeshContext::new_with_format(device, queue, self.target_format);
             self.mesh_ctx = Some(Arc::new(Mutex::new(ctx)));
         }
         if let Some(ctx_arc) = &self.mesh_ctx {
@@ -448,17 +717,19 @@ impl MprView {
             return;
         };
 
-        let mvp = Self::compute_mesh_overlay_mvp(
-            self.base_uv,
-            self.base_screen,
-            self.scale,
-            self.pan,
-        );
+        let mvp =
+            Self::compute_mesh_overlay_mvp(self.base_uv, self.base_screen, self.scale, self.pan);
 
         let (normal, d) = self.get_slice_plane_uv();
         if let Ok(mut guard) = ctx_arc.lock() {
             guard.update_uniforms(queue, &mvp.to_cols_array_2d());
-            guard.set_slice_plane(queue, normal.to_array(), d, self.mesh_overlay_thickness, true);
+            guard.set_slice_plane(
+                queue,
+                normal.to_array(),
+                d,
+                self.mesh_overlay_thickness,
+                true,
+            );
         }
     }
 
@@ -475,7 +746,8 @@ impl MprView {
         let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
         let s_scale = Mat4::from_scale(Vec3::splat(scale).with_z(1.0));
         let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
-        let screen_to_uv = base_uv.inverse() * base_screen * t_pan * t_center * s_scale * t_uncenter;
+        let screen_to_uv =
+            base_uv.inverse() * base_screen * t_pan * t_center * s_scale * t_uncenter;
 
         // A * T(pan) * A^-1 == translation by A's linear part applied to pan.
         // Composed left of M^-1 this doubles the pan reaching the mesh:
@@ -483,7 +755,9 @@ impl MprView {
         let base = base_uv.inverse() * base_screen;
         let pan_uv = Mat4::from_translation(base.transform_vector3(pan));
 
-        y_flip * screen_to_uv.inverse() * pan_uv
+        y_flip
+            * screen_to_uv.inverse()
+            * pan_uv
             * Mat4::from_translation(Vec3::new(-1.0, -0.5, 0.0))
             * Mat4::from_scale(Vec3::splat(2.0))
     }
@@ -518,13 +792,7 @@ impl MprView {
     /// Insert or update a needle by id. Coordinates are in volume-UV space
     /// (i.e. what `mm_to_uv` returns in the application layer). Color is RGBA
     /// in linear [0,1] range.
-    pub fn set_new_needle(
-        &mut self,
-        id: u32,
-        entry: [f32; 3],
-        tip: [f32; 3],
-        color: [f32; 4],
-    ) {
+    pub fn set_new_needle(&mut self, id: u32, entry: [f32; 3], tip: [f32; 3], color: [f32; 4]) {
         if let Some(needle) = self.needles.iter_mut().find(|n| n.id == id) {
             needle.entry = entry;
             needle.tip = tip;
@@ -571,15 +839,13 @@ impl MprView {
         self.last_uploaded_needle_count = self.needles.len();
     }
 
-    /// Swap the segmentation texture for this view. 
+    /// Swap the segmentation texture for this view.
     /// Pass `None` to revert to the default empty texture and hide the overlay.
     /// The `device` is required to rebuild the per-view texture bind group
     /// after the segmentation `RenderContent` changes.
-    pub fn set_segmentation(
-        &mut self,
-        device: &wgpu::Device,
-        seg: Option<Arc<RenderContent>>,
-    ) {
+    pub fn set_segmentation(&mut self, device: &wgpu::Device, seg: Option<Arc<RenderContent>>) {
+        self.segmentation_source = None;
+        self.segmentation_attached = seg.is_some();
         self.wgpu_impl.set_segmentation(device, seg);
     }
 
@@ -617,6 +883,10 @@ impl Renderable for MprView {
     /// Updates both vertex and fragment shader uniforms with current transformation
     /// matrix, slice position, and other rendering parameters.
     fn update(&mut self, queue: &wgpu::Queue) {
+        let state = self.display_state();
+        if !self.invalidation.needs_upload(&state) {
+            return;
+        }
         // Synchronize window/level settings with WGPU implementation only if dirty
         if self.window_level.is_dirty() {
             // Upload raw window/level (HU); bias handled in shader for RG8 path
@@ -635,10 +905,12 @@ impl Renderable for MprView {
 
         // Sync needle overlay state to the GPU
         if self.needles.len() != self.last_uploaded_needle_count {
-            self.wgpu_impl.set_needles(&self.needles, self.needle_enabled);
+            self.wgpu_impl
+                .set_needles(&self.needles, self.needle_enabled);
             self.last_uploaded_needle_count = self.needles.len();
         } else if self.needle_enabled {
-            self.wgpu_impl.set_needles(&self.needles, self.needle_enabled);
+            self.wgpu_impl
+                .set_needles(&self.needles, self.needle_enabled);
         }
 
         // Push the latest MVP and slice plane into the mesh overlay.
@@ -646,6 +918,7 @@ impl Renderable for MprView {
 
         // Update GPU buffers with all current uniform values
         self.wgpu_impl.update_uniforms_buffers(queue);
+        self.invalidation.uploaded(self.display_state());
     }
 
     /// Render the MPR view to the current render pass.
@@ -661,7 +934,10 @@ impl Renderable for MprView {
     /// 3. **Resources**: Bind textures and uniform buffers
     /// 4. **Geometry**: Bind vertex and index buffers
     /// 5. **Draw**: Issue indexed draw call for the quad
-    fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
+    fn render(
+        &mut self,
+        render_pass: &mut wgpu::RenderPass,
+    ) -> crate::core::error::KeplerResult<()> {
         // Set the rendering pipeline for MPR visualization (from per-view implementation)
         render_pass.set_pipeline(&self.wgpu_impl.render_context.render_pipeline);
 
@@ -710,6 +986,14 @@ impl Renderable for MprView {
 }
 
 impl View for MprView {
+    fn needs_redraw(&self) -> bool {
+        self.invalidation.needs_redraw(&self.display_state())
+    }
+
+    fn mark_presented(&mut self) {
+        self.invalidation.presented(self.display_state());
+    }
+
     /// Get the current position of this view on screen.
     fn position(&self) -> (i32, i32) {
         log::trace!("View position: {:#?}", self.pos);
@@ -1091,7 +1375,11 @@ impl MprView {
     ) -> Option<(Quat, f32)> {
         // Covector transport: plane {n·p_uv = c} with p_w = M·p_uv becomes
         // {(M^-T n)·p_w = c}, so the world normal is M^-T · n_uv.
-        let n_world = base_uv.inverse().transpose().transform_vector3(normal_uv).normalize_or_zero();
+        let n_world = base_uv
+            .inverse()
+            .transpose()
+            .transform_vector3(normal_uv)
+            .normalize_or_zero();
         if n_world == Vec3::ZERO {
             return None;
         }
@@ -1160,7 +1448,7 @@ impl MprView {
     /// ## Transformation Order
     ///
     /// 1. **Center**: Move to coordinate system center
-    /// 2. **Scale**: Apply zoom transformation  
+    /// 2. **Scale**: Apply zoom transformation
     /// 3. **Uncenter**: Move back from center
     /// 4. **Pan**: Apply screen-space translation
     /// 5. **Project**: Transform to world millimeter coordinates
@@ -1377,7 +1665,6 @@ pub type SagittalView = MprView;
 pub type TransverseView = MprView;
 pub type CoronalView = MprView;
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1419,9 +1706,8 @@ mod tests {
         let base_uv = fake_base_uv();
         let base_screen = fake_base_screen();
         let pan = Vec3::new(0.1, -0.2, 0.3);
-        let (normal, d) = MprView::compute_slice_plane_uv(
-            base_uv, base_screen, Quat::IDENTITY, 1.0, pan, 0.0,
-        );
+        let (normal, d) =
+            MprView::compute_slice_plane_uv(base_uv, base_screen, Quat::IDENTITY, 1.0, pan, 0.0);
         // Normal must be unit-length.
         assert!((normal.length() - 1.0).abs() < 1e-5);
         // The displayed plane sits at screen z = slice - pan.z; the screen
@@ -1435,7 +1721,11 @@ mod tests {
         let screen_to_world = base_screen * t_pan * t_center * s_scale * t_uncenter;
         let uv_pt = (base_uv.inverse() * screen_to_world).transform_point3(screen_pt);
         let signed = normal.dot(uv_pt) + d;
-        assert!(signed.abs() < 1e-5, "center not on plane: signed={}", signed);
+        assert!(
+            signed.abs() < 1e-5,
+            "center not on plane: signed={}",
+            signed
+        );
     }
 
     /// Tilting the slice (non-identity `oblique_rotation`) must rotate the
@@ -1448,11 +1738,15 @@ mod tests {
         // the slice center (the world position of screen [0.5, 0.5, 0]).
         // Mirror that so the slice center is invariant under the rotation.
         let base_screen_raw = fake_base_screen();
-        let screen_center_world =
-            base_screen_raw.transform_point3(Vec3::new(0.5, 0.5, 0.0));
+        let screen_center_world = base_screen_raw.transform_point3(Vec3::new(0.5, 0.5, 0.0));
 
         let (n0, _) = MprView::compute_slice_plane_uv(
-            base_uv, base_screen_raw, Quat::IDENTITY, 1.0, Vec3::ZERO, 0.0,
+            base_uv,
+            base_screen_raw,
+            Quat::IDENTITY,
+            1.0,
+            Vec3::ZERO,
+            0.0,
         );
 
         // 90° around the world Y axis: normal should swing to ±X.
@@ -1462,9 +1756,8 @@ mod tests {
         let t2 = Mat4::from_translation(screen_center_world);
         let base_screen_rot = t2 * r_mat * t1 * base_screen_raw;
 
-        let (n1, d1) = MprView::compute_slice_plane_uv(
-            base_uv, base_screen_rot, rot_y, 1.0, Vec3::ZERO, 0.0,
-        );
+        let (n1, d1) =
+            MprView::compute_slice_plane_uv(base_uv, base_screen_rot, rot_y, 1.0, Vec3::ZERO, 0.0);
         assert!((n1.length() - 1.0).abs() < 1e-5);
         assert!(
             (n1.x.abs() - 1.0).abs() < 1e-5 && n1.y.abs() < 1e-5 && n1.z.abs() < 1e-5,
@@ -1484,10 +1777,8 @@ mod tests {
         let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
         let s_scale = Mat4::from_scale(Vec3::splat(1.0).with_z(1.0));
         let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
-        let screen_to_world =
-            base_screen_rot * t_pan * t_center * s_scale * t_uncenter;
-        let uv_pt =
-            (base_uv.inverse() * screen_to_world).transform_point3(screen_pt);
+        let screen_to_world = base_screen_rot * t_pan * t_center * s_scale * t_uncenter;
+        let uv_pt = (base_uv.inverse() * screen_to_world).transform_point3(screen_pt);
         let signed = n1.dot(uv_pt) + d1;
         assert!(
             signed.abs() < 1e-4,
@@ -1504,11 +1795,20 @@ mod tests {
         let base_uv = fake_base_uv();
         let base_screen = fake_base_screen();
         let (normal, d) = MprView::compute_slice_plane_uv(
-            base_uv, base_screen, Quat::IDENTITY, 1.0, Vec3::ZERO, 0.0,
+            base_uv,
+            base_screen,
+            Quat::IDENTITY,
+            1.0,
+            Vec3::ZERO,
+            0.0,
         );
         // Center point on the slice should have distance ≈ 0.
         let center_dist = (normal.dot(Vec3::splat(0.5)) + d).abs();
-        assert!(center_dist < 1e-5, "center distance should be 0, got {}", center_dist);
+        assert!(
+            center_dist < 1e-5,
+            "center distance should be 0, got {}",
+            center_dist
+        );
         // Point a quarter of the volume away from the slice should have
         // distance ≈ 0.25.
         let off_slice = Vec3::new(0.5, 0.5, 0.75);
@@ -1570,7 +1870,11 @@ mod tests {
             * (base_uv.inverse() * base_screen * zoom).inverse()
             * Mat4::from_translation(Vec3::new(-1.0, -0.5, 0.0))
             * Mat4::from_scale(Vec3::splat(2.0));
-        for (a, b) in pan0.to_cols_array().iter().zip(legacy.to_cols_array().iter()) {
+        for (a, b) in pan0
+            .to_cols_array()
+            .iter()
+            .zip(legacy.to_cols_array().iter())
+        {
             assert!((a - b).abs() < 1e-6, "pan=0 MVP changed: {a} vs {b}");
         }
     }
@@ -1608,12 +1912,14 @@ mod tests {
             .transform_vector3(normal_uv)
             .normalize();
         let old_error = normal_uv.cross(n_world).length().asin();
-        assert!(old_error > 0.05, "expected ~7° anisotropy error, got {old_error:.3} rad");
+        assert!(
+            old_error > 0.05,
+            "expected ~7° anisotropy error, got {old_error:.3} rad"
+        );
 
-        let (delta, pan_z) = MprView::compute_oblique_plane_from_uv(
-            base_uv, base_screen, 0.0, normal_uv, tip_uv,
-        )
-        .expect("plane computation must succeed");
+        let (delta, pan_z) =
+            MprView::compute_oblique_plane_from_uv(base_uv, base_screen, 0.0, normal_uv, tip_uv)
+                .expect("plane computation must succeed");
 
         // Rebuild the rotated frame exactly like `oblique_center_world`.
         let center = base_screen.transform_point3(Vec3::new(0.5, 0.5, 0.0));

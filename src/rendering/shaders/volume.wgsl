@@ -154,20 +154,14 @@ fn intersect_plane_quad(
 
 // Sample volume texture
 // Supports both float and packed 16-bit (RG8) formats
+var<private> volume_sample_lod: f32;
+
 fn sample_volume(coords: vec3<f32>) -> f32 {
     if (any(coords < vec3<f32>(0.0)) || any(coords > vec3<f32>(1.0))) {
         return -1024.0;
     }
-    let sampled_value = textureSample(t_volume, s_volume, coords);
-    var value: f32;
-    if (u_vol.is_packed_rg8 > 0.5) {
-        let low = sampled_value.r * 255.0;
-        let high = sampled_value.g * 255.0;
-        let u16_val = low + high * 256.0;
-        value = u16_val - u_vol.bias;
-    } else {
-        value = sampled_value.r;
-    }
+    let sampled_value = textureSampleLevel(t_volume, s_volume, coords, volume_sample_lod);
+    let value = decode_volume_sample(sampled_value, u_vol.is_packed_rg8, u_vol.bias);
     return value;
 }
 
@@ -553,6 +547,11 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let inter_vol = intersect_box(tex_origin, tex_dir, vec3<f32>(0.0), vec3<f32>(1.0));
     var t_start = inter_vol.x;
     var t_end = inter_vol.y;
+    let sample_start = tex_origin + t_start * tex_dir;
+    let texture_size = vec3<f32>(textureDimensions(t_volume));
+    let sample_dx = dpdx(sample_start) * texture_size;
+    let sample_dy = dpdy(sample_start) * texture_size;
+    volume_sample_lod = log2(max(max(length(sample_dx), length(sample_dy)), 1e-6));
     if (t_start >= t_end) {
         return FragmentOutput(vec4<f32>(0.0), 1.0);
     }

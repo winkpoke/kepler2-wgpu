@@ -42,6 +42,23 @@ impl RenderContent {
         depth: u32,
         volume_encoding: VolumeEncoding,
     ) -> Result<Self> {
+        if volume_encoding == VolumeEncoding::HuFloat {
+            return Self::from_bytes_r16f(
+                device,
+                queue,
+                bytes,
+                label,
+                width,
+                height,
+                depth,
+                volume_encoding,
+            );
+        }
+        ensure!(
+            volume_encoding.decode_bias().is_finite(),
+            "Packed offset must be finite"
+        );
+        validate_upload(device, bytes, width, height, depth, 2)?;
         let texture_format = wgpu::TextureFormat::Rg8Unorm;
         let size = wgpu::Extent3d {
             width,
@@ -60,14 +77,14 @@ impl RenderContent {
         });
 
         queue.write_texture(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 aspect: wgpu::TextureAspect::All,
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
             bytes,
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(2 * width),
                 rows_per_image: Some(height),
@@ -82,7 +99,7 @@ impl RenderContent {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..Default::default()
         });
         Ok(Self {
@@ -105,6 +122,11 @@ impl RenderContent {
         depth: u32,
         volume_encoding: VolumeEncoding,
     ) -> Result<Self> {
+        ensure!(
+            volume_encoding == VolumeEncoding::HuFloat,
+            "Expected HuFloat encoding"
+        );
+        validate_upload(device, bytes, width, height, depth, 2)?;
         let texture_format = wgpu::TextureFormat::R16Float;
         let size = wgpu::Extent3d {
             width,
@@ -123,14 +145,14 @@ impl RenderContent {
         });
 
         queue.write_texture(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 aspect: wgpu::TextureAspect::All,
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
             bytes,
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(2 * width),
                 rows_per_image: Some(height),
@@ -145,7 +167,7 @@ impl RenderContent {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
             ..Default::default()
         });
         Ok(Self {
@@ -174,6 +196,7 @@ impl RenderContent {
         height: u32,
         depth: u32,
     ) -> Result<Self> {
+        validate_upload(device, bytes, width, height, depth, 1)?;
         let texture_format = wgpu::TextureFormat::R8Unorm;
 
         let size = wgpu::Extent3d {
@@ -189,20 +212,19 @@ impl RenderContent {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D3,
             format: texture_format,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING
-                | wgpu::TextureUsages::COPY_DST,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
 
         queue.write_texture(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 aspect: wgpu::TextureAspect::All,
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
             bytes,
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(width),
                 rows_per_image: Some(height),
@@ -223,7 +245,7 @@ impl RenderContent {
             // 连续标量场使用 Linear，而不是 Nearest
             mag_filter: wgpu::FilterMode::Linear,
             min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
 
             ..Default::default()
         });
@@ -255,8 +277,13 @@ impl RenderContent {
         height: u32,
         depth: u32,
     ) -> Result<Self> {
+        validate_upload(device, bytes, width, height, depth, 1)?;
         let texture_format = wgpu::TextureFormat::R8Uint;
-        let size = wgpu::Extent3d {width, height, depth_or_array_layers: depth};
+        let size = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: depth,
+        };
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some(label),
             size,
@@ -269,14 +296,14 @@ impl RenderContent {
         });
 
         queue.write_texture(
-            wgpu::ImageCopyTexture {
+            wgpu::TexelCopyTextureInfo {
                 aspect: wgpu::TextureAspect::All,
                 texture: &texture,
                 mip_level: 0,
                 origin: wgpu::Origin3d::ZERO,
             },
             bytes,
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(width),
                 rows_per_image: Some(height),
@@ -291,7 +318,7 @@ impl RenderContent {
             address_mode_w: wgpu::AddressMode::ClampToEdge,
             mag_filter: wgpu::FilterMode::Nearest,
             min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
             ..Default::default()
         });
         Ok(Self {
@@ -307,18 +334,17 @@ impl RenderContent {
         let size = self.texture.size();
 
         let bytes_per_voxel = match self.texture_format {
-            wgpu::TextureFormat::R8Unorm => 1,
+            wgpu::TextureFormat::R8Unorm | wgpu::TextureFormat::R8Uint => 1,
             wgpu::TextureFormat::Rg8Unorm => 2,
             wgpu::TextureFormat::R16Float => 2,
             wgpu::TextureFormat::R32Float => 4,
             _ => 4,
         };
 
-        let total_bytes =
-            size.width as u64 *
-            size.height as u64 *
-            size.depth_or_array_layers as u64 *
-            bytes_per_voxel;
+        let total_bytes = size.width as u64
+            * size.height as u64
+            * size.depth_or_array_layers as u64
+            * bytes_per_voxel;
 
         (total_bytes, total_bytes, 1.0, 0.0)
     }
@@ -332,19 +358,23 @@ impl RenderContent {
         let iy = (y.clamp(0.0, 1.0) * (size.height as f32 - 1.0)).round() as u32;
         let iz = (z.clamp(0.0, 1.0) * (size.depth_or_array_layers as f32 - 1.0)).round() as u32;
 
-        let bytes_per_row = size.width as usize * match self.texture_format {
-            wgpu::TextureFormat::Rg8Unorm => 2,
-            wgpu::TextureFormat::R16Float => 2,
-            _ => 4,
-        };
+        let bytes_per_row = size.width as usize
+            * match self.texture_format {
+                wgpu::TextureFormat::Rg8Unorm => 2,
+                wgpu::TextureFormat::R16Float => 2,
+                _ => 4,
+            };
         let row_stride = bytes_per_row;
         let slice_stride = row_stride * size.height as usize;
 
-        let offset = (iz as usize * slice_stride + iy as usize * row_stride + ix as usize * match self.texture_format {
-            wgpu::TextureFormat::Rg8Unorm => 2,
-            wgpu::TextureFormat::R16Float => 2,
-            _ => 4,
-        }) as isize;
+        let offset = (iz as usize * slice_stride
+            + iy as usize * row_stride
+            + ix as usize
+                * match self.texture_format {
+                    wgpu::TextureFormat::Rg8Unorm => 2,
+                    wgpu::TextureFormat::R16Float => 2,
+                    _ => 4,
+                }) as isize;
 
         // We don't have CPU access to GPU texture directly, so return 0 as fallback.
         // A proper implementation would require a staging buffer readback.
@@ -352,4 +382,39 @@ impl RenderContent {
         let _ = offset;
         0.0
     }
+}
+
+/// Check dimensions and byte counts before constructing any GPU object.
+fn validate_upload(
+    device: &wgpu::Device,
+    bytes: &[u8],
+    width: u32,
+    height: u32,
+    depth: u32,
+    bytes_per_voxel: usize,
+) -> Result<()> {
+    ensure!(
+        width > 0 && height > 0 && depth > 0,
+        "Volume dimensions must be nonzero"
+    );
+    let limit = device.limits().max_texture_dimension_3d;
+    ensure!(
+        width <= limit && height <= limit && depth <= limit,
+        "Volume dimensions exceed device limit {limit}"
+    );
+    let expected = (width as usize)
+        .checked_mul(height as usize)
+        .and_then(|n| n.checked_mul(depth as usize))
+        .and_then(|n| n.checked_mul(bytes_per_voxel))
+        .ok_or_else(|| anyhow!("Volume byte count overflow"))?;
+    ensure!(
+        bytes.len() == expected,
+        "Volume byte count mismatch: expected {expected}, got {}",
+        bytes.len()
+    );
+    ensure!(
+        width.checked_mul(bytes_per_voxel as u32).is_some(),
+        "Volume row byte count overflow"
+    );
+    Ok(())
 }

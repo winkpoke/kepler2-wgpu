@@ -73,8 +73,7 @@ struct FragmentOutput {
     @builtin(frag_depth) depth: f32,
 };
 
-@fragment
-fn fs_main(in: VertexOutput) -> FragmentOutput {
+fn mesh_color(in: VertexOutput) -> vec4<f32> {
     // Slice clipping: keep only fragments inside the slab around the plane.
     if (uni.slice_enabled > 0.5) {
         let dist = abs(dot(in.v_uv_pos, uni.plane_normal) + uni.plane_d);
@@ -89,8 +88,19 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let wrapped = clamp((d + 0.4) / 1.4, 0.0, 1.0);
     let factor = clamp(0.35 + 0.65 * wrapped, 0.0, 1.0);
     let c = in.v_color * factor;
+    return vec4<f32>(c, lighting.opacity);
+}
+
+@fragment
+fn fs_main_no_depth(in: VertexOutput) -> @location(0) vec4<f32> {
+    return mesh_color(in);
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> FragmentOutput {
+    let color = mesh_color(in);
     let ndc_z = in.position.z / in.position.w;
     let depth = ndc_z * 0.5 + 0.5;
 
-    return FragmentOutput(vec4<f32>(c, lighting.opacity), depth);
+    return FragmentOutput(color, depth);
 }

@@ -125,7 +125,6 @@ pub fn create_texture_bind_group_layout(device: &Device) -> BindGroupLayout {
                 },
                 count: None,
             },
-
             // Sampler binding
             BindGroupLayoutEntry {
                 binding: 1,
@@ -152,7 +151,6 @@ pub fn create_texture_bind_group_layout_addseg(device: &Device) -> BindGroupLayo
                 },
                 count: None,
             },
-
             // Volume texture sampler (linear filtering)
             BindGroupLayoutEntry {
                 binding: 1,
@@ -160,7 +158,6 @@ pub fn create_texture_bind_group_layout_addseg(device: &Device) -> BindGroupLayo
                 ty: BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                 count: None,
             },
-
             // Segmentation label texture binding (R8Uint, non-filterable).
             BindGroupLayoutEntry {
                 binding: 2,
@@ -172,7 +169,6 @@ pub fn create_texture_bind_group_layout_addseg(device: &Device) -> BindGroupLayo
                 },
                 count: None,
             },
-
             // Segmentation label sampler (nearest-only, required by R8Uint).
             BindGroupLayoutEntry {
                 binding: 3,
@@ -185,7 +181,10 @@ pub fn create_texture_bind_group_layout_addseg(device: &Device) -> BindGroupLayo
 }
 
 // Create bind group layout for uniforms (group 1)
-pub fn create_uniform_bind_group_layout(device: &Device, min_binding_size: Option<NonZero<u64>>) -> BindGroupLayout {
+pub fn create_uniform_bind_group_layout(
+    device: &Device,
+    min_binding_size: Option<NonZero<u64>>,
+) -> BindGroupLayout {
     device.create_bind_group_layout(&BindGroupLayoutDescriptor {
         label: Some("Uniform Bind Group Layout"),
         entries: &[BindGroupLayoutEntry {
@@ -210,18 +209,35 @@ pub fn create_basic_mesh_pipeline_with_lighting(
     use_depth: bool,
     depth_compare: CompareFunction,
 ) -> RenderPipeline {
+    let target_format = get_swapchain_format().unwrap_or(TextureFormat::Rgba8Unorm);
+    create_basic_mesh_pipeline_with_lighting_and_format(
+        device,
+        transform_bind_group_layout,
+        lighting_bind_group_layout,
+        use_depth,
+        depth_compare,
+        target_format,
+    )
+}
+
+/// Builds the production lighting pipeline for an independently owned attachment format.
+pub fn create_basic_mesh_pipeline_with_lighting_and_format(
+    device: &Device,
+    transform_bind_group_layout: &BindGroupLayout,
+    lighting_bind_group_layout: &BindGroupLayout,
+    use_depth: bool,
+    depth_compare: CompareFunction,
+    target_format: TextureFormat,
+) -> RenderPipeline {
     // Use the basic mesh shader with lighting support
     let shader = device.create_shader_module(wgpu::include_wgsl!("../shaders/mesh_basic.wgsl"));
 
     // Create pipeline layout with two bind groups
     let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
         label: Some("Basic Mesh Pipeline Layout with Lighting"),
-        bind_group_layouts: &[transform_bind_group_layout, lighting_bind_group_layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[transform_bind_group_layout, lighting_bind_group_layout].map(Some),
+        immediate_size: 0,
     });
-
-    // Get target format
-    let target_format = get_swapchain_format().unwrap_or(TextureFormat::Rgba8Unorm);
 
     // Create the pipeline
     device.create_render_pipeline(&RenderPipelineDescriptor {
@@ -230,12 +246,16 @@ pub fn create_basic_mesh_pipeline_with_lighting(
         vertex: VertexState {
             module: &shader,
             entry_point: Some("vs_main"),
-            buffers: &[crate::rendering::mesh::mesh::MeshVertex::desc()],
+            buffers: &[crate::rendering::mesh::mesh::MeshVertex::desc()].map(Some),
             compilation_options: PipelineCompilationOptions::default(),
         },
         fragment: Some(FragmentState {
             module: &shader,
-            entry_point: Some("fs_main"),
+            entry_point: Some(if use_depth {
+                "fs_main"
+            } else {
+                "fs_main_no_depth"
+            }),
             targets: &[Some(ColorTargetState {
                 format: target_format,
                 blend: Some(BlendState::ALPHA_BLENDING),
@@ -255,8 +275,8 @@ pub fn create_basic_mesh_pipeline_with_lighting(
         depth_stencil: if use_depth {
             Some(DepthStencilState {
                 format: get_mesh_depth_format(),
-                depth_write_enabled: true,
-                depth_compare,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(depth_compare),
                 stencil: StencilState::default(),
                 bias: DepthBiasState::default(),
             })
@@ -268,7 +288,7 @@ pub fn create_basic_mesh_pipeline_with_lighting(
             mask: !0,
             alpha_to_coverage_enabled: false,
         },
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     })
 }
@@ -281,7 +301,9 @@ pub fn create_volume_pipeline(
     uniform_bind_group_layout: &BindGroupLayout,
 ) -> RenderPipeline {
     // Single shader module with both vertex and fragment entry points.
-    let shader_source = format!("{}\n{}",
+    let shader_source = format!(
+        "{}\n{}\n{}",
+        crate::rendering::shaders::VOLUME_DECODE_WGSL,
         include_str!("../shaders/common.wgsl"),
         include_str!("../shaders/volume.wgsl"),
     );
@@ -293,8 +315,8 @@ pub fn create_volume_pipeline(
     // Create pipeline layout with two bind groups
     let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
         label: Some("Volume Pipeline Layout"),
-        bind_group_layouts: &[texture_bind_group_layout, uniform_bind_group_layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[texture_bind_group_layout, uniform_bind_group_layout].map(Some),
+        immediate_size: 0,
     });
 
     // Create the pipeline
@@ -304,7 +326,7 @@ pub fn create_volume_pipeline(
         vertex: VertexState {
             module: &shader,
             entry_point: Some("vs_main"),
-            buffers: &[],
+            buffers: &[].map(Some),
             compilation_options: PipelineCompilationOptions::default(),
         },
         fragment: Some(FragmentState {
@@ -328,8 +350,8 @@ pub fn create_volume_pipeline(
         },
         depth_stencil: Some(DepthStencilState {
             format: get_mesh_depth_format(),
-            depth_write_enabled: true,
-            depth_compare: CompareFunction::LessEqual,
+            depth_write_enabled: Some(true),
+            depth_compare: Some(CompareFunction::LessEqual),
             stencil: StencilState::default(),
             bias: DepthBiasState::default(),
         }),
@@ -338,7 +360,7 @@ pub fn create_volume_pipeline(
             mask: !0,
             alpha_to_coverage_enabled: false,
         },
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     })
 }
@@ -350,7 +372,9 @@ pub fn create_mip_pipeline(
     uniform_bind_group_layout: &BindGroupLayout,
 ) -> RenderPipeline {
     // Single shader module with both vertex and fragment entry points.
-    let shader_source = format!("{}\n{}",
+    let shader_source = format!(
+        "{}\n{}\n{}",
+        crate::rendering::shaders::VOLUME_DECODE_WGSL,
         include_str!("../shaders/common.wgsl"),
         include_str!("../shaders/mip.wgsl"),
     );
@@ -362,8 +386,8 @@ pub fn create_mip_pipeline(
     // Create pipeline layout with two bind groups
     let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
         label: Some("MIP Pipeline Layout"),
-        bind_group_layouts: &[texture_bind_group_layout, uniform_bind_group_layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[texture_bind_group_layout, uniform_bind_group_layout].map(Some),
+        immediate_size: 0,
     });
 
     // Create the pipeline
@@ -373,7 +397,7 @@ pub fn create_mip_pipeline(
         vertex: VertexState {
             module: &shader,
             entry_point: Some("vs_main"),
-            buffers: &[], // fullscreen quad procedural
+            buffers: &[].map(Some), // fullscreen quad procedural
             compilation_options: PipelineCompilationOptions::default(),
         },
         fragment: Some(FragmentState {
@@ -401,7 +425,7 @@ pub fn create_mip_pipeline(
             mask: !0,
             alpha_to_coverage_enabled: false,
         },
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     })
 }
@@ -415,7 +439,9 @@ pub fn create_texture_quad_pipeline(
     target_format: TextureFormat,
 ) -> RenderPipeline {
     // Single shader module with both vertex and fragment entry points.
-    let shader_source = format!("{}\n{}",
+    let shader_source = format!(
+        "{}\n{}\n{}",
+        crate::rendering::shaders::VOLUME_DECODE_WGSL,
         include_str!("../shaders/common.wgsl"),
         include_str!("../shaders/mpr.wgsl"),
     );
@@ -427,8 +453,8 @@ pub fn create_texture_quad_pipeline(
     // Pipeline layout defines bind group layout order; must match shader binding expectations.
     let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
         label: Some("MPR Pipeline Layout"),
-        bind_group_layouts: &bind_group_layouts,
-        push_constant_ranges: &[],
+        bind_group_layouts: &bind_group_layouts.map(Some),
+        immediate_size: 0,
     });
 
     // Full pipeline descriptor. All fields annotated for clarity.
@@ -438,7 +464,7 @@ pub fn create_texture_quad_pipeline(
         vertex: VertexState {
             module: &shader,
             entry_point: Some("vs_main"), // WGSL entry point for vertex stage
-            buffers: vertex_buffers,      // Vertex buffer layouts (position, texcoord, etc.)
+            buffers: &vertex_buffers.iter().cloned().map(Some).collect::<Vec<_>>(), // Vertex buffer layouts (position, texcoord, etc.)
             compilation_options: PipelineCompilationOptions::default(),
         },
         fragment: Some(FragmentState {
@@ -466,11 +492,10 @@ pub fn create_texture_quad_pipeline(
             mask: !0,
             alpha_to_coverage_enabled: false,
         },
-        multiview: None,
+        multiview_mask: None,
         cache: None,
     })
 }
-
 
 /// Creates volume rendering pipelines.
 /// This function is responsible for setting up the MPR, MIP, and volume pipelines.
@@ -484,18 +509,8 @@ pub fn create_volume_pipelines(
     vertex_buffers: &[VertexBufferLayout<'static>],
 ) -> VolumePipelines {
     VolumePipelines {
-        mpr: create_texture_quad_pipeline(
-            device,
-            mpr_layouts,
-            vertex_buffers,
-            target_format,
-        ),
-        mip: create_mip_pipeline(
-            device,
-            target_format,
-            texture_layout,
-            volume_uniform_layout,
-        ),
+        mpr: create_texture_quad_pipeline(device, mpr_layouts, vertex_buffers, target_format),
+        mip: create_mip_pipeline(device, target_format, texture_layout, volume_uniform_layout),
         volume: create_volume_pipeline(
             device,
             target_format,

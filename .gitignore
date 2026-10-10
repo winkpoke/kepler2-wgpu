@@ -17,8 +17,11 @@
 
 # Node modules (if any JS tooling is used)
 node_modules/
-package-lock.json
 yarn.lock
+
+# Python maintenance-script caches
+__pycache__/
+*.pyc
 
 # IDE/Editor settings
 .vscode/
@@ -37,7 +40,18 @@ yarn-error.log*
 
 coverage/
 
-# AI agent workspace (memory notes, verify scripts, fixtures).
-# Keep this ignored so `git clean -fd` cannot wipe it.
+# AI agent workspace
 .workbuddy/
-models/totalsegmentator.onnx
+.trae/
+.agents/
+.pi/ 
+.cline/
+.clinerules/
+.opencode/
+# 项目的"领域术语词典"（ubiquitous language）
+CONTEXT.md
+
+.github/
+
+# onnxruntime
+models/

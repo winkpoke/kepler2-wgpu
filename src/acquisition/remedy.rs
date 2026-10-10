@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 #[cfg(target_arch = "wasm32")]
 use std::time::Duration;
 
-
 // --- Protocol Constants ---
 const ETX: u8 = 0x03;
 const NAK: u8 = 0x15;
@@ -15,10 +14,10 @@ const TIMEOUT: Duration = Duration::from_secs(9);
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum LogColor {
-    Info,   // White
-    Rx,     // Green (Routine receive)
-    Alert,  // Red (Critical status PR/XR/EL)
-    Tx,     // Blue (Send)
+    Info,  // White
+    Rx,    // Green (Routine receive)
+    Alert, // Red (Critical status PR/XR/EL)
+    Tx,    // Blue (Send)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -219,15 +218,16 @@ impl RemedyProtocol {
                     let mut reset_needed = false;
 
                     // Hand Switch PR
-                    if msg_str.starts_with("PR") {
+                    if let Some(status) = msg_str.strip_prefix("PR") {
                         reply_needed = true;
-                        let status = &msg_str[2..];
                         if status == "1" || status == "2" {
                             self.is_standby = false;
                             let log_text = if status == "1" {
-                                format!(">>> [Step 1] Hand Switch Pressed (PR1) - Waiting for Ready...")
+                                ">>> [Step 1] Hand Switch Pressed (PR1) - Waiting for Ready..."
+                                    .to_string()
                             } else {
-                                format!(">>> [Status] Anode Start Complete (PR2) - Please Press Step 2!")
+                                ">>> [Status] Anode Start Complete (PR2) - Please Press Step 2!"
+                                    .to_string()
                             };
                             events.push(RemedyEvent::Log {
                                 text: log_text,
@@ -240,77 +240,75 @@ impl RemedyProtocol {
                         } else if status == "0" {
                             self.is_standby = true;
                             events.push(RemedyEvent::Log {
-                                text: format!("<<< [Reset] Back to Standby (PR0)"),
+                                text: "<<< [Reset] Back to Standby (PR0)".to_string(),
                                 color: LogColor::Rx,
                             });
                         }
-                    }
-                    else if msg_str.starts_with("FLR") {
+                    } else if msg_str.starts_with("FLR") {
                         reply_needed = true;
                         let status = &msg_str[2..];
                         if status == "1" {
                             self.is_standby = false;
-                            let log_text = format!(">>> [Step 1] Switch Pressed (FLR1) - Waiting for Ready...");
-                            
+                            let log_text =
+                                ">>> [Step 1] Switch Pressed (FLR1) - Waiting for Ready..."
+                                    .to_string();
+
                             events.push(RemedyEvent::Log {
                                 text: log_text,
-                                color: LogColor::Rx
+                                color: LogColor::Rx,
                             });
                         } else if status == "0" {
                             self.is_standby = true;
                             events.push(RemedyEvent::Log {
-                                text: format!("<<< [Reset] Back to Standby (FLR0)"),
+                                text: "<<< [Reset] Back to Standby (FLR0)".to_string(),
                                 color: LogColor::Rx,
                             });
                         }
                     }
                     // Exposure XR
-                    else if msg_str.starts_with("XR") {
+                    else if let Some(status) = msg_str.strip_prefix("XR") {
                         reply_needed = true;
                         self.is_standby = false;
-                        let status = &msg_str[2..];
                         if status == "0" {
                             self.is_standby = true;
                             events.push(RemedyEvent::Log {
-                                text: format!("<<< [End] Exposure Complete (XR0)"),
+                                text: "<<< [End] Exposure Complete (XR0)".to_string(),
                                 color: LogColor::Rx,
                             });
                         } else if status == "2" {
                             events.push(RemedyEvent::Log {
-                                text: format!("!!! [Step 2] Exposing (XR2) !!!"),
+                                text: "!!! [Step 2] Exposing (XR2) !!!".to_string(),
                                 color: LogColor::Alert,
                             });
                         } else {
                             events.push(RemedyEvent::Log {
-                                text: format!("!!! [Step 2] Exposure Maintaining (XR1) ..."),
+                                text: "!!! [Step 2] Exposure Maintaining (XR1) ...".to_string(),
                                 color: LogColor::Alert,
                             });
                         }
-                    }
-                    else if msg_str.starts_with("FLX") {
+                    } else if msg_str.starts_with("FLX") {
                         reply_needed = true;
                         self.is_standby = false;
                         let status = &msg_str[2..];
                         if status == "0" {
                             self.is_standby = true;
                             events.push(RemedyEvent::Log {
-                                text: format!("<<< [End] Exposure Complete (FLX0)"),
+                                text: "<<< [End] Exposure Complete (FLX0)".to_string(),
                                 color: LogColor::Rx,
                             });
                         } else if status == "1" {
                             events.push(RemedyEvent::Log {
-                                text: format!("!!! [Step 2] Exposing (FLX1) !!!"),
+                                text: "!!! [Step 2] Exposing (FLX1) !!!".to_string(),
                                 color: LogColor::Alert,
                             });
                         }
                     }
                     // Error EL
-                    else if msg_str.starts_with("EL") {
+                    else if let Some(code_str) = msg_str.strip_prefix("EL") {
                         reply_needed = true;
                         reset_needed = true;
                         self.is_standby = true;
-                        
-                        let code_str = &msg_str[2..];
+
                         let desc = if let Ok(code) = code_str.parse::<u16>() {
                             super::error::get_error_message(code)
                         } else {
@@ -318,7 +316,10 @@ impl RemedyProtocol {
                         };
 
                         events.push(RemedyEvent::Log {
-                            text: format!("!!! Interlock Error {} - {} - Auto Reset", msg_str, desc),
+                            text: format!(
+                                "!!! Interlock Error {} - {} - Auto Reset",
+                                msg_str, desc
+                            ),
                             color: LogColor::Alert,
                         });
                     }
@@ -335,8 +336,7 @@ impl RemedyProtocol {
                             text: format!("!!! Error Warning {} - {}", msg_str, desc),
                             color: LogColor::Alert,
                         });
-                    }
-                    else {
+                    } else {
                         // Only log non-ST or ST with content
                         if !msg_str.starts_with("ST") || msg_str.len() > 2 {
                             events.push(RemedyEvent::Log {
@@ -348,7 +348,8 @@ impl RemedyProtocol {
                         if msg_str.len() > 2 {
                             let prefix = &msg_str[0..2];
                             let val = &msg_str[2..];
-                            events.push(RemedyEvent::DataUpdate(prefix.to_string(), val.to_string()));
+                            events
+                                .push(RemedyEvent::DataUpdate(prefix.to_string(), val.to_string()));
                             self.update_data(prefix, val);
                         }
                     }
@@ -364,7 +365,13 @@ impl RemedyProtocol {
                     // Remove processed frame from buffer
                     self.buffer.drain(0..=etx_idx + 1);
                 } else {
-                    let log_text = format!("!!! Checksum Error - RX <<< {}", frame.iter().map(|b| format!("{:02X}", b)).collect::<String>());
+                    let log_text = format!(
+                        "!!! Checksum Error - RX <<< {}",
+                        frame
+                            .iter()
+                            .map(|b| format!("{:02X}", b))
+                            .collect::<String>()
+                    );
                     events.push(RemedyEvent::Log {
                         text: log_text,
                         color: LogColor::Alert,
@@ -405,34 +412,46 @@ impl RemedyProtocol {
             "HE" => s.anode_heat = format!("{}%", val),
             "HH" => s.housing_heat = format!("{}%", val),
             "WS" => s.workstation = format!("Station {}", val),
-            "FO" => s.focus = match val {
-                "0" => "Small".to_string(),
-                "1" => "Large".to_string(),
-                "2" => "Micro".to_string(),
-                _ => val.to_string(),
-            },
-            "ET" => s.technique = match val {
-                "0" => "mA/Time".to_string(),
-                "1" => "mAs".to_string(),
-                "2" => "AEC".to_string(),
-                _ => val.to_string(),
-            },
-            "ST" => s.status = match val {
-                "001" => "Init".to_string(), // 初始化
-                "002" => "Standby".to_string(), // 待机
-                "003" => "Prep".to_string(), // RAD准备
-                "004" => "Ready".to_string(), // RAD就绪
-                "005" => "Exposure".to_string(), // RAD曝光
-                "006" => "Calibration".to_string(), // 校准
-                "007" => "HangOver".to_string(), // 验证
-                "008" => "Error".to_string(), // 错误
-                "009" => "ST_FLUORO_PREP".to_string(),// 透视准备状态
-                "010" => "ST_FLUORO".to_string(),// 透视状态
-                "011" => "ST_PULSED_FLUORO".to_string(),// 脉冲透视状态
-                _ => val.to_string(),
-            },
+            "FO" => {
+                s.focus = match val {
+                    "0" => "Small".to_string(),
+                    "1" => "Large".to_string(),
+                    "2" => "Micro".to_string(),
+                    _ => val.to_string(),
+                }
+            }
+            "ET" => {
+                s.technique = match val {
+                    "0" => "mA/Time".to_string(),
+                    "1" => "mAs".to_string(),
+                    "2" => "AEC".to_string(),
+                    _ => val.to_string(),
+                }
+            }
+            "ST" => {
+                s.status = match val {
+                    "001" => "Init".to_string(),             // 初始化
+                    "002" => "Standby".to_string(),          // 待机
+                    "003" => "Prep".to_string(),             // RAD准备
+                    "004" => "Ready".to_string(),            // RAD就绪
+                    "005" => "Exposure".to_string(),         // RAD曝光
+                    "006" => "Calibration".to_string(),      // 校准
+                    "007" => "HangOver".to_string(),         // 验证
+                    "008" => "Error".to_string(),            // 错误
+                    "009" => "ST_FLUORO_PREP".to_string(),   // 透视准备状态
+                    "010" => "ST_FLUORO".to_string(),        // 透视状态
+                    "011" => "ST_PULSED_FLUORO".to_string(), // 脉冲透视状态
+                    _ => val.to_string(),
+                }
+            }
             _ => {}
         }
+    }
+}
+
+impl Default for RemedyProtocol {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -460,12 +479,9 @@ impl RemedyWasm {
     /// Process incoming bytes from Serial Port (passed as Uint8Array from JS)
     pub fn process_input(&mut self, input: &[u8]) -> JsValue {
         let (events, replies) = self.protocol.process_input(input);
-        
-        let result = serde_wasm_bindgen::to_value(&ProcessResult {
-            events,
-            replies,
-        }).unwrap();
-        
+
+        let result = serde_wasm_bindgen::to_value(&ProcessResult { events, replies }).unwrap();
+
         result
     }
 

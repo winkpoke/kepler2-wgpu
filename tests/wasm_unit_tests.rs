@@ -9,7 +9,7 @@
 
 #[cfg(test)]
 mod wasm_mha_parsing_tests {
-    use kepler_wgpu::data::medical_imaging::formats::mha::MhaParser;
+    use kepler_wgpu::data::medical_imaging::formats::metaimage::MetaimageParser;
     use kepler_wgpu::data::medical_imaging::metadata::PixelType;
 
     fn create_test_mha_data(
@@ -64,7 +64,7 @@ mod wasm_mha_parsing_tests {
     fn test_mha_header_parsing_synchronous() {
         let mha_data = create_test_mha_data([64, 64, 10], PixelType::UInt8, [1.0, 1.0, 2.0]);
 
-        let result = MhaParser::parse_metadata_only(&mha_data);
+        let result = MetaimageParser::parse_metadata_only(&mha_data, true);
         assert!(result.is_ok(), "MHA header should parse successfully");
 
         let metadata = result.unwrap();
@@ -76,7 +76,7 @@ mod wasm_mha_parsing_tests {
     fn test_mha_data_offset_calculation() {
         let mha_data = create_test_mha_data([32, 32, 5], PixelType::UInt16, [0.5, 0.5, 1.0]);
 
-        let result = MhaParser::parse_metadata_only(&mha_data);
+        let result = MetaimageParser::parse_metadata_only(&mha_data, true);
         assert!(result.is_ok(), "Should calculate data offset correctly");
 
         let metadata = result.unwrap();
@@ -90,7 +90,7 @@ mod wasm_mha_parsing_tests {
     fn test_mha_endianness_detection() {
         let mha_data = create_test_mha_data([16, 16, 2], PixelType::UInt8, [1.0, 1.0, 1.0]);
 
-        let result = MhaParser::parse_bytes(&mha_data);
+        let result = MetaimageParser::parse_bytes(&mha_data, None);
         assert!(result.is_ok(), "Little-endian MHA should parse successfully");
     }
 
@@ -112,7 +112,7 @@ mod wasm_mha_parsing_tests {
             .to_vec();
         let mha_data = [header, vec![0u8; 512]].concat();
 
-        let result = MhaParser::parse_bytes(&mha_data);
+        let result = MetaimageParser::parse_bytes(&mha_data, None);
         assert!(result.is_ok(), "Big-endian MHA should parse");
     }
 
@@ -127,7 +127,7 @@ mod wasm_mha_parsing_tests {
 
         for pixel_type in pixel_types {
             let mha_data = create_test_mha_data([8, 8, 2], pixel_type, [1.0, 1.0, 1.0]);
-            let result = MhaParser::parse_metadata_only(&mha_data);
+            let result = MetaimageParser::parse_metadata_only(&mha_data, true);
             assert!(
                 result.is_ok(),
                 "MHA should support pixel type: {:?}",
@@ -140,7 +140,7 @@ mod wasm_mha_parsing_tests {
     fn test_mha_dimension_validation() {
         let mha_data = create_test_mha_data([64, 64, 10], PixelType::UInt8, [1.0, 1.0, 2.0]);
 
-        let result = MhaParser::parse_metadata_only(&mha_data);
+        let result = MetaimageParser::parse_metadata_only(&mha_data, true);
         assert!(result.is_ok(), "Valid dimensions should be accepted");
 
         let metadata = result.unwrap();
@@ -154,7 +154,7 @@ mod wasm_mha_parsing_tests {
     #[test]
     fn test_mha_invalid_header_rejection() {
         let invalid_data = b"Not a valid MHA file";
-        let result = MhaParser::parse_metadata_only(invalid_data);
+        let result = MetaimageParser::parse_metadata_only(invalid_data, true);
         assert!(result.is_err(), "Invalid MHA header should be rejected");
     }
 
@@ -165,7 +165,7 @@ mod wasm_mha_parsing_tests {
                                  DimSize = 64 64 10\n\
                                  ElementType = MET_UCHAR\n";
 
-        let result = MhaParser::parse_metadata_only(incomplete_header.as_bytes());
+        let result = MetaimageParser::parse_metadata_only(incomplete_header.as_bytes(), true);
         assert!(
             result.is_err(),
             "MHA without ElementDataFile should fail"
@@ -174,14 +174,14 @@ mod wasm_mha_parsing_tests {
 
     #[test]
     fn test_mha_empty_data() {
-        let result = MhaParser::parse_metadata_only(&[]);
+        let result = MetaimageParser::parse_metadata_only(&[], true);
         assert!(result.is_err(), "Empty data should be rejected");
     }
 }
 
 #[cfg(test)]
 mod wasm_mhd_parsing_tests {
-    use kepler_wgpu::data::medical_imaging::formats::mhd::MhdParser;
+    use kepler_wgpu::data::medical_imaging::formats::metaimage::MetaimageParser;
     use kepler_wgpu::data::medical_imaging::metadata::PatientPosition;
 
     fn create_test_mhd_header(data_file: &str) -> Vec<u8> {
@@ -209,7 +209,7 @@ mod wasm_mhd_parsing_tests {
         let mhd_header = create_test_mhd_header("LOCAL");
         let data = vec![0u8; 64 * 64 * 10];
 
-        let result = MhdParser::parse_by_bytes(&mhd_header, &data);
+        let result = MetaimageParser::parse_bytes(&mhd_header, Some(&data));
         assert!(result.is_ok(), "MHD header should parse successfully");
     }
 
@@ -217,7 +217,7 @@ mod wasm_mhd_parsing_tests {
     fn test_mhd_external_file_resolution() {
         let mhd_header = create_test_mhd_header("data.raw");
 
-        let result = MhdParser::parse_metadata_only(&mhd_header);
+        let result = MetaimageParser::parse_metadata_only(&mhd_header, false);
         assert!(
             result.is_ok(),
             "MHD should parse even with external file reference"
@@ -231,7 +231,7 @@ mod wasm_mhd_parsing_tests {
     fn test_mhd_transform_matrix_parsing() {
         let mhd_header = create_test_mhd_header("LOCAL");
 
-        let result = MhdParser::parse_metadata_only(&mhd_header);
+        let result = MetaimageParser::parse_metadata_only(&mhd_header, false);
         assert!(result.is_ok(), "Transform matrix should parse");
 
         let metadata = result.unwrap();
@@ -245,7 +245,7 @@ mod wasm_mhd_parsing_tests {
     fn test_mhd_anatomical_orientation_parsing() {
         let mhd_header = create_test_mhd_header("LOCAL");
 
-        let result = MhdParser::parse_metadata_only(&mhd_header);
+        let result = MetaimageParser::parse_metadata_only(&mhd_header, false);
         assert!(result.is_ok(), "Anatomical orientation should parse");
 
         let metadata = result.unwrap();
@@ -256,7 +256,7 @@ mod wasm_mhd_parsing_tests {
     fn test_mhd_missing_data_file_warning() {
         let mhd_header = create_test_mhd_header("missing.raw");
 
-        let result = MhdParser::parse_metadata_only(&mhd_header);
+        let result = MetaimageParser::parse_metadata_only(&mhd_header, false);
         assert!(
             result.is_ok(),
             "MHD should still parse metadata even with missing data file"
@@ -265,7 +265,7 @@ mod wasm_mhd_parsing_tests {
 
     #[test]
     fn test_mhd_empty_header() {
-        let result = MhdParser::parse_metadata_only(&[]);
+        let result = MetaimageParser::parse_metadata_only(&[], false);
         assert!(result.is_err(), "Empty MHD header should fail");
     }
 }

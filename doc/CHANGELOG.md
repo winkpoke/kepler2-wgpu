@@ -1,44 +1,59 @@
 # Changelog
 
-## 2026-09-23
-- **Test audit pass — unit + integration suites verified**
-  - Audited all 25 test files under `tests/` (8 unit/integration pairs and 17
-    dedicated suites). After adjusting test assertions to match the project's
-    reverted source code, every suite compiles and passes:
-    - `coordinate_precision_tests` — 5 passed, 4 ignored (NaN-propagation
-      behaviour is unavoidable in glam's SIMD `Mat4 * Vec4` because every
-      dot product touches all components; documented inline).
-    - `medical_imaging_tests` — 8 passed, 12 ignored. The 6 ignored MHA/MHD
-      tests rely on optional source-code paths that were reverted
-      (UInt8/Int32/Float64 pixel data conversion, MET_CHAR/MET_UINT/MET_LONG/
-      MET_ULONG element-type mappings, 2D→3D header padding, default
-      `Offset = (0.417, 0.417, 0.0)`). Each ignore carries an explanatory
-      message so the gap is explicit.
-    - `wasm_unit_tests` — 35 passed, 2 ignored (`window_level_clamping`,
-      `window_width_clamping`; `MAX_WINDOW_*` is `f32::MAX`, so 5000.0
-      never reaches the clamping branch and cannot equal `MAX`).
-    - `dicom_metadata_validation_tests` — 32 passed (updated the 32
-      orientation/position cases to match the reverted mapping in
-      `image_info.rs`, e.g. `LPI→HFP`, `RAI→HFS`).
-    - All remaining suites (`debug_matrix`, `mesh_view_tests`,
-      `dicom_tests`, `layout_aspect_fit`, `gpu_safety_tests`,
-      `regression_tests`, `error_handling_tests`,
-      `view_transition_integration_tests`, `property_tests`,
-      `mesh_integration_tests`, `volume_integrity_tests`,
-      `state_helper_tests`, `robustness_tests`,
-      `rendering_correctness_tests`, `performance_tests`,
-      `patient_safety_tests`, `mpr_view_validation_tests`,
-      `dicom_pixel_data_validation_tests`, `coordinate_safety_tests`,
-      `mpr_view_integration_tests`) pass cleanly with no regressions.
-  - A `cargo llvm-cov --lib --tests --summary-only` run was attempted
-    after cleaning the leftover `target/llvm-cov-target/` directory, but
-    the build fails mid-link with `os error 1455` ("页面文件太小，无法完成
-    操作" / "page file too small"). The host machine currently reports
-    0 GB available physical RAM out of 31.84 GB, so rustc cannot mmap the
-    cargo-llvm-cov-instrumented rlibs into the working set. This is an
-    environmental constraint, not a project defect. Re-run
-    `cargo llvm-cov --lib --tests --summary-only` once the build host has
-    available RAM to obtain the percentage table.
+## 2026-10-05 — Replay graphics improvements onto v0.17.0 (landed with platform deferments)
+
+- Replayed all 13 dev commits with their merge topology onto the release, retaining
+  viewer/browser controls, DVR, segmentation, DR overlays, mesh/primitive state,
+  exports, server/CLI contracts, package versions, and legacy constructors.
+- Kept public `HuPackedRg8 { offset }` / `HuFloat` and offset 1100 compatibility;
+  canonical signed uploads use exact offset 32768 packing. Preserved the distinct
+  release float/packed sampler policies and production WGSL uniform layouts.
+- Prepared layouts and GPU resources before committing replacements; shared CPU
+  upload recipes retain labels and release interaction state across rebinding.
+- Scoped ORT DirectML to Windows so macOS native validation can use CPU fallback.
+- Fixed the private browser logger filter so GPU warnings/errors remain visible
+  and verbose backend shader logging is suppressed.
+- Native Metal, browser WebGPU/WebGL2, controlled automatic fallbacks, public API
+  fixtures, uniform layouts, and offline router/compute checks passed. Existing
+  release test/quality failures and explicitly deferred Linux/manual checks are recorded in the
+  [candidate report](../openspec/changes/rebase-dev-graphics-onto-v017/execution.md).
+
+## 2026-10-04 — Complete view-layout transitions
+
+- Concentrated existing mode controls into one private prepare/commit operation. Returned upload or replacement-view errors preserve the displayed layout, interaction settings, orientation selections, mesh cache/configuration, and pending redraw state.
+- Successful recreation keeps existing defaults. Explicit state restoration and CPU-state preservation during GPU rebinding remain compatible.
+- Missing volume, unusable selections, and missing required mesh are reported before mutation; no deferred mode request is implied. Native/browser control signatures and valid mode/cache/slot semantics are retained.
+- Added production-seam synthetic headless regressions. Native/browser runtime acceptance is recorded separately in the [change verification](../openspec/changes/deepen-view-layout-transitions/verification.md); temporary old/candidate resources coexist, and fatal GPU recovery remains outside this change.
+
+## 2026-10-01 — wgpu 30.0.1 / Winit 0.30.13 migration (runtime acceptance pending)
+
+- Updated the locked graphics/window stack while retaining native backends and browser WebGPU/WebGL2.
+- Native GPU instances retain the window's display handle, preserving OpenGL startup on Linux/Wayland with wgpu 30.
+- **Rust API migration:** rendering methods now return `KeplerResult<()>`; `KeplerError::Surface` carries owned `SurfaceFailure`, and explicit `PassContext` annotations take separate borrow/encoder lifetimes. See [caller migration](rendering/wgpu30-migration.md).
+- Queue presentation acknowledges complete frames only; acquisition statuses use bounded retries, compatible surface recovery, and typed fatal GPU notifications. Mesh/pass failures retain context rather than becoming surface loss or successful partial drawing.
+- Preserved GPU-ready construction with one scoped pre-run window bridge; native `run_app` and browser `spawn_app` own lifecycle dispatch without changing JavaScript controls or their startup sequence.
+- Fixed browser WGSL derivative-uniformity rejection in MPR and MIP. MPR samples before its bounds return; MIP derives sampling LOD from a uniformly computed ray footprint. Existing linear-magnification/nearest-minification filters, signed decoding, window/level, and out-of-bounds display values are retained. Real Chrome WebGPU shader compilation and native minification/boundary pixel regressions pass.
+- Native offscreen signed-pixel/resource regressions pass on Apple M5 / Metal. Native-window/browser manual acceptance, including independent GL/fallback checks, remains pending; no clinical or performance claim is made.
+
+## 2026-10-01 — Prefer browser WebGPU with WebGL2 fallback
+
+- Enabled wgpu 23's browser WebGPU backend while retaining WebGL2 and the locked dependency versions.
+- Added bounded pre-canvas WebGL2 fallback, a fresh-page `?kepler_wgpu_backend=gl` diagnostic selector, and stage-labeled post-binding failure guidance.
+- Centralized selected-device filtered volume-format and 3D texture-limit decisions; malformed or oversized uploads are rejected without altering signed voxel data.
+- Added a synthetic signed-volume browser procedure. Browser runtime/backend acceptance remains pending; see [browser GPU verification](testing/browser_gpu.md).
+## 2026-10-01 — Stable Rust toolchain baseline
+
+- Removed the nightly duration feature gate; application/rendering timing now explicitly uses the existing portable f64/f32 helpers, with fractional-millisecond regressions.
+- Pinned Rust 1.98.0 with formatting, lint, LLVM tools, and the WASM library target; updated current build instructions. Application dependencies, timer sources/resolution, and coverage policy are unchanged.
+
+## 2026-10-01 — Agent guidance and OpenSpec maintenance
+
+- Consolidated repository policy into `AGENTS.md`, with task-specific current references and thin tool adapters.
+- Archived superseded testing plans/examples; retained legacy guide paths as redirects.
+- Corrected matrix/voxel-precision guidance and testing spec identity/window-level errors; repaired acquisition spec structure.
+- Migrated to project-local OpenSpec 1.14.0, compact config, and generated skills/commands without changing rendering code or archived changes.
+- Added documentation/delta identity checks and regression tests, plus native source-line coverage summaries with explicit medical scope. Branch/trend/browser validation remains distinct from these checks.
+
 
 ## 2026-09-01
 - **Fix DRR preview relay 404 and single-fetch passthrough**
@@ -501,6 +516,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Architecture Documentation**: Created comprehensive state structure refactoring plan (`doc/redering/state-structure-refactoring-plan.md`) outlining separation of concerns improvements for the monolithic State struct
 
 ### Removed
+
 - **Unused Mesh State Management Code**: Removed unused mesh mode state management functionality from `src/rendering/core/state.rs`
   - **Field Removal**: Eliminated `mpr_state_slot2` field from State struct that was only used for storing MPR state snapshots
   - **Method Cleanup**: Removed `save_mpr_state()` and `restore_mpr_state()` methods that were never called in production code

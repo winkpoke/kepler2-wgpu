@@ -16,8 +16,8 @@ impl Patient {
     // Function to parse the DICOM file and generate the Patient structure
     pub fn from_dicom_object(obj: &InMemDicomObject) -> Result<Patient> {
         // Retrieve required fields using `get_value`
-        let id = get_value::<String>(obj, "PatientID")
-            .ok_or_else(|| anyhow!("Missing PatientID"))?;
+        let id =
+            get_value::<String>(obj, "PatientID").ok_or_else(|| anyhow!("Missing PatientID"))?;
         let name = get_value::<String>(obj, "PatientName")
             .ok_or_else(|| anyhow!("Missing PatientName"))?;
 
@@ -37,7 +37,8 @@ impl Patient {
     // Function to parse the DICOM file and generate the Patient structure
     pub fn from_bytes(dicom_data: &[u8]) -> Result<Patient> {
         // Parse the DICOM file into a `FileDicomObject` (once), then extract.
-        let dicom_obj: FileDicomObject<InMemDicomObject> = FileDicomObject::from_reader(dicom_data)?;
+        let dicom_obj: FileDicomObject<InMemDicomObject> =
+            FileDicomObject::from_reader(dicom_data)?;
         let patient = Self::from_dicom_object(&dicom_obj).unwrap();
         patient.validate()?; // Skip strict validation to allow display of imperfect data
         Ok(patient)
@@ -71,7 +72,9 @@ impl Patient {
         // Validate birthdate format
         if let Some(date) = &self.birthdate {
             if date.len() != 8 || !date.chars().all(char::is_numeric) {
-                return Err(anyhow!("Invalid PatientBirthDate format (expected YYYYMMDD)"));
+                return Err(anyhow!(
+                    "Invalid PatientBirthDate format (expected YYYYMMDD)"
+                ));
             }
         }
 

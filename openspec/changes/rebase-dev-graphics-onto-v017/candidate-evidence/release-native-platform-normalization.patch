@@ -1,0 +1,50 @@
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -81,7 +81,7 @@
+ tokio-util = { version = "0.7", features = ["io"] }
+ # Native-only utilities
+ base64 = "0.22"
+-ort = { version = "2.0.0-rc.4", features = ["ndarray", "download-binaries", "directml"] }
++ort = { version = "2.0.0-rc.4", features = ["ndarray", "download-binaries"] }
+ tokio-modbus = {version = "0.17", default-features = false, features = ["tcp"]}
+ wgpu30 = { package = "wgpu", version = "30", default-features = false, features = ["vulkan", "metal", "gles", "wgsl"] }
+ 
+--- a/src/server/segment_engine.rs
++++ b/src/server/segment_engine.rs
+@@ -28,11 +28,12 @@
+ 
+ use anyhow::{anyhow, Result};
+ use ort::{
+-    ep,
+     session::Session,
+     session::builder::{GraphOptimizationLevel, SessionBuilder},
+     value::{Tensor, ValueType},
+ };
++#[cfg(windows)]
++use ort::ep;
+ use parking_lot::Mutex;
+ use rayon::prelude::*;
+ use serde::{Deserialize, Serialize};
+@@ -132,6 +133,7 @@
+         // Try DirectML (GPU) first; fall back to CPU-only if the DirectML
+         // runtime is missing or no DX12 GPU is available. The fallback keeps
+         // kepler.exe functional on machines without a compatible GPU.
++        #[cfg(windows)]
+         let session = {
+             let try_gpu = || -> Result<Session> {
+                 SessionBuilder::new()
+@@ -161,6 +163,14 @@
+                 }
+             }
+         };
++
++        #[cfg(not(windows))]
++        let session = SessionBuilder::new()
++            .map_err(|e| anyhow!("session builder: {e}"))?
++            .with_optimization_level(GraphOptimizationLevel::Level3)
++            .map_err(|e| anyhow!("optimization level: {e}"))?
++            .commit_from_file(model_path)
++            .map_err(|e| anyhow!("commit_from_file (CPU fallback): {e}"))?;
+ 
+         let model_info = Self::extract_model_info(&session, model_path)?;
+ 

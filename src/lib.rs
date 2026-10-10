@@ -1,18 +1,26 @@
-#![feature(duration_millis_float)]
+#[cfg(not(target_arch = "wasm32"))]
+extern crate wgpu as wgpu30;
+
+// Allow unit and integration regressions to share the same headless GPU fixture.
+#[cfg(test)]
+extern crate self as kepler_wgpu;
 
 use log::warn;
 use std::sync::Arc;
-use winit::event_loop::EventLoopBuilder;
+use winit::event_loop::EventLoop;
 
 // use wgpu::util::DeviceExt;
-use winit::{dpi::PhysicalSize, window::WindowBuilder};
+use winit::{
+    dpi::PhysicalSize,
+    window::{Window, WindowAttributes},
+};
 
 // New module organization
+pub mod acquisition;
 pub mod application;
 pub mod core;
 pub mod data;
 pub mod rendering;
-pub mod acquisition;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod server;
@@ -25,6 +33,7 @@ pub mod gpu;
 // Re-export commonly used types for backward compatibility
 pub use application::{gl_canvas::GLCanvas, render_app::RenderApp, App};
 pub use core::{coord, error::KeplerError, timing};
+pub use data::volume_encoding::{pack_i16_rg8, unpack_rg8_i16, VolumeEncoding};
 pub use data::{ct_volume, dicom};
 pub use rendering::view::{Renderable, StaticLayout, View};
 
@@ -55,16 +64,19 @@ struct WasmLogger;
 #[cfg(target_arch = "wasm32")]
 static WASM_LOGGER: WasmLogger = WasmLogger;
 
+#[cfg(any(target_arch = "wasm32", test))]
+fn browser_log_enabled(target: &str, level: log::Level) -> bool {
+    if target.starts_with("wgpu") || target.starts_with("naga") {
+        level <= log::Level::Warn
+    } else {
+        true
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 impl log::Log for WasmLogger {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
-        let t = metadata.target();
-        let is_wgpu = t.starts_with("wgpu") || t.starts_with("naga");
-        if is_wgpu {
-            metadata.level() >= log::Level::Warn
-        } else {
-            true
-        }
+        browser_log_enabled(metadata.target(), metadata.level())
     }
     fn log(&self, record: &log::Record) {
         if !self.enabled(record.metadata()) {
@@ -123,6 +135,21 @@ pub async fn init() {
     }
 }
 
+/// Compatibility bridge for the existing GPU-ready async constructor.
+/// All subsequent window creation uses the active event loop.
+#[expect(
+    deprecated,
+    reason = "preserve GPU-ready construction before run for existing native/browser callers"
+)]
+fn create_bootstrap_window(
+    event_loop: &EventLoop<UserEvent>,
+    attributes: WindowAttributes,
+) -> Result<Window, KeplerError> {
+    event_loop
+        .create_window(attributes)
+        .map_err(|error| KeplerError::Window(format!("create initial window: {error}")))
+}
+
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub async fn get_render_app() -> Result<RenderApp, KeplerError> {
     #[cfg(not(target_arch = "wasm32"))]
@@ -132,17 +159,16 @@ pub async fn get_render_app() -> Result<RenderApp, KeplerError> {
 
     warn!("Start the program ...");
 
-    let event_loop = EventLoopBuilder::<UserEvent>::with_user_event()
+    let event_loop = EventLoop::<UserEvent>::with_user_event()
         .build()
-        .unwrap();
-    let window = Arc::new(
-        WindowBuilder::new()
+        .map_err(|error| KeplerError::Window(format!("create initial event loop: {error}")))?;
+    let window = Arc::new(create_bootstrap_window(
+        &event_loop,
+        Window::default_attributes()
             .with_title("Kepler WGPU Medical Imaging")
             .with_inner_size(winit::dpi::LogicalSize::new(800, 800))
-            .with_visible(true)
-            .build(&event_loop)
-            .unwrap(),
-    );
+            .with_visible(true),
+    )?);
     // let proxy = event_loop.create_proxy();
 
     #[cfg(target_arch = "wasm32")]
@@ -159,7 +185,7 @@ pub async fn get_render_app() -> Result<RenderApp, KeplerError> {
                 dst.append_child(&canvas).ok()?;
                 Some(())
             })
-            .expect("Couldn't append canvas to document body.");
+            .ok_or_else(|| KeplerError::Window("append initial canvas to wasm-example: target, document, or canvas unavailable".into()))?;
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -178,4 +204,42 @@ pub async fn get_render_app() -> Result<RenderApp, KeplerError> {
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub fn drop_render_app(app: RenderApp) {
     drop(app);
+}
+
+#[cfg(test)]
+mod browser_logger_tests {
+    use super::browser_log_enabled;
+    use log::Level;
+
+    #[test]
+    fn gpu_filter_keeps_errors_and_warnings_and_suppresses_verbose_levels() {
+        for target in [
+            "wgpu",
+            "wgpu_core::instance",
+            "wgpu_hal::gles",
+            "naga::front",
+        ] {
+            for level in [
+                Level::Error,
+                Level::Warn,
+                Level::Info,
+                Level::Debug,
+                Level::Trace,
+            ] {
+                assert_eq!(
+                    browser_log_enabled(target, level),
+                    matches!(level, Level::Error | Level::Warn)
+                );
+            }
+        }
+        for level in [
+            Level::Error,
+            Level::Warn,
+            Level::Info,
+            Level::Debug,
+            Level::Trace,
+        ] {
+            assert!(browser_log_enabled("kepler_wgpu::application", level));
+        }
+    }
 }

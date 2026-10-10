@@ -121,6 +121,44 @@ mod tests {
     #[test]
     fn test_duration_conversion() {
         let duration = Duration::from_millis(1500);
-        assert_eq!(duration.as_millis_f64(), 1500.0);
+        assert_eq!(DurationExt::as_millis_f64(&duration), 1500.0);
+    }
+
+    #[test]
+    fn duration_milliseconds_zero() {
+        assert_eq!(DurationExt::as_millis_f64(&Duration::ZERO), 0.0);
+    }
+
+    #[test]
+    fn duration_milliseconds_preserve_submillisecond_precision() {
+        let duration = Duration::from_micros(250);
+        assert_eq!(DurationExt::as_millis_f64(&duration), 0.25);
+    }
+
+    #[test]
+    fn duration_milliseconds_preserve_multisecond_fraction() {
+        let duration = Duration::new(12, 345_678_901);
+        let milliseconds = DurationExt::as_millis_f64(&duration);
+        // Absolute tolerance in milliseconds allows f64 rounding, not truncation.
+        assert!((milliseconds - 12_345.678_901).abs() < 1e-9);
+    }
+
+    #[test]
+    fn duration_milliseconds_f32_exact_values() {
+        for (duration, expected_ms) in [
+            (Duration::ZERO, 0.0),
+            (Duration::from_micros(250), 0.25),
+            (Duration::from_millis(1500), 1500.0),
+        ] {
+            assert_eq!(DurationExt::as_millis_f32(&duration), expected_ms);
+        }
+    }
+
+    #[test]
+    fn duration_milliseconds_f32_preserve_multisecond_fraction() {
+        let duration = Duration::new(12, 345_678_901);
+        let milliseconds = DurationExt::as_millis_f32(&duration);
+        // Two microseconds of absolute error permits f32 rounding, not truncation.
+        assert!((f64::from(milliseconds) - 12_345.678_901).abs() < 0.002);
     }
 }

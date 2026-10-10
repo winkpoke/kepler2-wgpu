@@ -1,73 +1,74 @@
 # Rendering & GPU Patterns
 
-**Last Updated**: 2026-09-23
-**Verified against code**: `src/rendering/` @ dev_fu (2026-09-23)
+**Status:** Current reference, reviewed against `947b4fc` on 2026-10-01.
+For signed storage/filtering precision, use [the encoding contract](../rendering/volume-encoding.md).
 
 ## GPU Resource Management
 
 ### WebGPU Resources (device, queue, surfaces)
 
 - **Device and Queue**: Wrapped in `Arc` for cheap cloning
-- **Surface and TextureView**: Never clone these (single-use resources)
+- **Surface and TextureView**: Borrow from their owner or create the needed view; do not assume these wgpu handles implement Clone
 - **Buffers and Textures**: Reuse when possible to minimize allocations
 - **Bind Groups**: Reuse to avoid redundant GPU state changes
 
 ### Resource Lifecycle
 
-Drop order matters:
-1. Textures
-2. Buffers
-3. Bind Groups
-4. Pipelines
-
-**Rationale**: Dependent resources must be dropped after resources they reference.
+Retain resources in the owning graphics/view context and release unused caches.
+There is no project-wide textures/buffers/bind-groups/pipelines drop sequence.
+wgpu tracks resource references; follow the concrete owner's lifetime and avoid
+cross-device reuse or unbounded retention.
 
 ### Pipeline Management
 
-- Pipelines are cached per render context (`MprRenderContext`, `MipRenderContext`,
-  `BasicMeshContext`)
-- `src/rendering/core/pipeline.rs` exposes `VolumePipelines` — a struct of free pipeline
-  factory functions, **not** a `PipelineManager` type:
-  `create_volume_pipeline`, `create_mip_pipeline`, `create_texture_quad_pipeline`,
-  `create_basic_mesh_pipeline_with_lighting`, `select_pipeline`,
-  plus bind-group-layout factories
-- Swapchain format is cached here (`set_swapchain_format` / `get_swapchain_format`) —
-  see PITFALLS.md for the `OnceCell` staleness pitfall
+- Pipelines are cached in render contexts
+- Pass color attachment formats explicitly to pipeline/context constructors; never use process-wide surface format state
 - Always check device capabilities before creating pipelines
 - Use `pollster` to block on async operations in native code
 
 ### Pipeline Recreation
 
-Recreate pipelines when:
-- Surface format changes (after window resize)
-- Shader code changes
-- Bind group layouts change
+`GraphicsContext::surface_format()` reads the authoritative `SurfaceConfiguration.format`.
+`DefaultViewFactory` passes that format to MPR, MIP, mesh, and orientation-cube contexts.
 
-```rust
-// Example: Update surface format after resize
-PassExecutor::update_surface_format(&new_format);
+| Event | Resources updated |
+|---|---|
+| Ordinary resize, unchanged format | Surface configuration and layout; the persistent depth cache replaces size-dependent targets on the next mesh frame. No pipeline rebuild. |
+| Same-device surface format change | Pass descriptors, view factory, and existing view GPU contexts; volume textures are reused. |
+| Device replacement via `App::swap_graphics` | Volume textures re-uploaded and all existing view GPU resources rebuilt, including orientation gizmos. |
 
-// Recreate DefaultViewFactory after graphics swap
-view_factory = DefaultViewFactory::new(graphics.clone());
-```
+`App` synchronizes format-dependent resources before rendering and after resize.
+`swap_graphics` returns a `Result`; upload failures leave the previous context intact.
+GPU rebinding preserves CPU view state (slice/oblique basis, window/level, pan/zoom,
+projection settings, and mesh rotation/opacity). Rebuild pipelines also when shaders
+or bind group layouts change.
+
+The complete bulk operation is `AppView::rebind_gpu_resources`: it receives a borrowed
+device/queue/attachment-format configuration, selects a compatible factory internally,
+and rebuilds existing views using its shared MPR context. `App` prepares replacement
+volume uploads before this operation; `None` retains same-device volume content.
+Standalone per-view rebuilding methods retain their existing interfaces. See the
+[production bulk-rebinding regression](../../src/application/appview_tests.rs) for
+context/texture reuse, CPU state, pending presentation, and headless pixel evidence.
+
+Headless regressions in `tests/rendering_correctness_tests.rs` validate independent
+factory formats and existing-view rebinding across BGRA/RGBA formats and two devices.
 
 ## Coordinate Systems
 
-### Four Conceptual Spaces
+### Four Coordinate Systems
 
 1. **World**: 3D world coordinates (millimeters from volume origin)
 2. **Screen**: 2D screen coordinates (pixels, origin at top-left)
 3. **Voxel**: 3D voxel indices (integer indices into volume array)
-4. **Base**: `struct Base { label: String, matrix: Mat4 }` — a named coordinate frame
-   (`src/core/coord/base.rs`). There are **no** `WorldCoord`/`ScreenCoord`/`VoxelCoord`
-   wrapper types; only `Base` is concrete.
+4. **Base**: Named basis/transform stored in `glam::Mat4`
 
 ### Transformations
 
 Use `glam::Mat4` (column-major) for all 3D transformations:
 
 ```rust
-use glam::{Mat4, Vec3};
+use glam::Mat4, Vec3;
 
 // Translation
 let translate = Mat4::from_translation(Vec3::new(x, y, z));
@@ -84,69 +85,30 @@ let transform = translate * scale * rotate;
 
 ### Coordinate Transformations
 
-Transformations between coordinate spaces are handled with `glam` matrices plus the
-`Base` frame in `src/core/coord/`:
+Transformations between coordinate systems are managed in `src/core/coord/`:
 - World ↔ Screen: View/projection matrices
 - World ↔ Voxel: Volume spacing and dimensions
-- Voxel ↔ Base: Direct mapping (1:1 for CT volumes)
+- Voxel ↔ Base: Use the volume's basis and spacing; do not assume an identity or one-to-one physical mapping
 
 ## Volume Rendering
 
-### Volume Texture Formats
-
-Two texture format options for CT volumes:
-
-#### R16Float
-- **Pros**: Full Hounsfield Unit precision, direct float conversion
-- **Cons**: Not all GPUs support filtering on R16Float
-- **Use when**: GPU supports it, need maximum precision
-
-#### Rg8Unorm
-- **Pros**: Broad GPU support, hardware filtering
-- **Cons**: Packed Hounsfield Units (8-bit integer), precision loss
-- **Use when**: GPU doesn't support R16Float, performance critical
-
-### Format Selection
-
-Check GPU capability before choosing format:
-
-```rust
-fn device_supports_r16float(adapter: &wgpu::Adapter) -> bool {
-    let features = adapter.features();
-    features.contains(wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES)
-        // Additional checks may be needed
-}
-```
-
-### Volume Encoding
-
-See `src/data/volume_encoding.rs` for format selection logic:
-- Automatic fallback from R16Float to Rg8Unorm
-- Conversion utilities for Hounsfield Units
+The authoritative [signed voxel encoding contract](../rendering/volume-encoding.md)
+describes exact packed-i16 RG8 storage, half-float rounding, affine decode/filtering,
+and the separation from window/level. `src/data/volume_encoding.rs` owns the byte representation and format mapping;
+`Graphics` snapshots capabilities for its selected device. A volume format is
+usable only when the enabled device supports `TEXTURE_BINDING | COPY_DST` and
+`FILTERABLE`. R16Float is preferred when usable; otherwise exact packed RG8 is
+selected. A device without either usable format is rejected. Do not infer support
+from backend identity or one feature bit. See the encoding guide for per-axis
+3D texture limits and pre-allocation upload validation.
 
 ## View System
 
 ### View Trait
 
-Geometry/layout is separated from drawing. `View` (`src/rendering/view/view.rs`) covers
-placement only; actual rendering comes from the `Renderable` supertrait.
-
-```rust
-pub trait View: Renderable + Any {
-    fn position(&self) -> (i32, i32);
-    fn dimensions(&self) -> (u32, u32);
-    fn move_to(&mut self, pos: (i32, i32));
-    fn resize(&mut self, dim: (u32, u32));
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-}
-```
-
-Optional state snapshot/restore lives in `StatefulView: View`
-(`save_state` / `restore_state`). Implementations: `MprView`, `MipView`, `MeshView`.
-
-> The `PassExecutor` drives frames; a `View` does **not** receive a
-> `wgpu::CommandEncoder` — it goes through `Renderable` + render contexts instead.
+The current [`View` trait](../../src/rendering/view/view.rs) includes rendering,
+layout, GPU rebinding, state, and invalidation hooks. Read that interface instead
+of copying a simplified trait declaration into new code.
 
 ### View Types
 
@@ -160,6 +122,10 @@ Optional state snapshot/restore lives in `StatefulView: View`
 - Manages `RenderContent` for each view
 - Handles texture loading and buffer creation
 - Coordinates with `AppModel` for data
+- Lazily owns one `Arc<MprRenderContext>` per device/attachment-format configuration
+- Shares immutable MPR pipeline/layout/quad buffers across creation and bulk GPU rebinding
+- Keeps uniforms and bind groups per view; the volume sampler remains shared in `RenderContent`
+- Uses device-owned filtered-volume capability and texture-limit decisions; validate uploads before texture allocation
 
 ## Shader Management
 
@@ -188,9 +154,16 @@ Common uniform structures:
 
 ### Texture Pools
 
-Use per-frame texture pools to avoid fragmentation:
-- `MeshTexturePool` for 3D mesh rendering
-- Clear pools between frames or when swapping contexts
+`GraphicsContext` owns a persistent, depth-only `MeshTexturePool`:
+- Reuse the texture **and cached view** for `(width, height, sample_count, depth_format)`.
+- Keep at most one attachment; replace it on key changes and never allocate for zero sizes.
+- Release the attachment when mesh views are removed; drop the pool with its graphics context.
+- Never share a pool across devices. Graphics replacement constructs an empty pool.
+- Mesh color attaches directly to the surface; no temporary color target is allocated.
+
+The obsolete offscreen helpers `get_mesh_views`, `get_color_view`, and
+`ensure_mesh_offscreen_texture` have been removed. Use `ensure_depth`/`depth_view`;
+`ensure_textures`, `set_depth`, and `clear_depth_view` remain for compatibility.
 
 ### Buffer Management
 
@@ -202,8 +175,7 @@ Use per-frame texture pools to avoid fragmentation:
 
 - Explicitly drop unused GPU resources
 - Use weak references where circular dependencies exist
-- Profile GPU memory usage with platform tools (see Profiling below) — `wgpu-profiler` is
-  **not** a dependency of this crate
+- Profile GPU memory usage with tools like `wgpu-profiler`
 
 ## Rendering Pipeline
 
@@ -218,7 +190,7 @@ PassExecutor::execute_frame()
     ├─ Begin render pass (wgpu::CommandEncoder::begin_render_pass)
     ├─ Render each view (View::render)
     ├─ Submit commands (wgpu::Queue::submit)
-    └─ Present (wgpu::Surface::present)
+    └─ Present (wgpu::Queue::present after submission)
 ```
 
 ### Multi-Pass Rendering
@@ -236,11 +208,32 @@ The system uses multiple render passes for different view types:
 
 ## Performance Optimization
 
+### Event-Driven Frames
+
+Built-in views compare small CPU state snapshots to their last uniform upload and
+successful presentation. This catches setters and direct configuration edits without
+invalidating on getters or no-op controls. Uploading does not consume pending presentation.
+`View::mark_presented` is called only after the complete frame succeeds.
+
+`RenderApp`'s owned `ApplicationHandler` translates events into the private
+[viewer lifecycle operation](../../src/application/viewer_lifecycle.rs), which orders
+complete frames and scheduling effects in `about_to_wait`.
+Static idle viewers use `ControlFlow::Wait`; animation, surface retries, and deferred
+mesh recovery use bounded deadlines. Initial display, visual changes, layout clearing,
+resize, unocclusion, and graphics replacement trigger frames. Minimized/occluded windows
+wait without acquisition, retaining pending work for restoration.
+
+Every acquired surface image is cleared once and **all visible views are drawn**, even
+when only one view's uniforms changed. Surface images are not a retained backing store;
+per-view draw skipping requires a separate cached-output/compositing design.
+Custom `View` implementations retain continuous rendering by default; implement
+`needs_redraw`/`mark_presented` to opt into invalidation-aware scheduling.
+
 ### GPU Synchronization
 
 - Minimize CPU-GPU synchronization points
 - Use asynchronous operations where possible
-- Profile to identify bottlenecks — see Profiling below
+- Profile with `wgpu-profiler` to identify bottlenecks
 
 ### Texture Filtering
 
@@ -251,10 +244,8 @@ The system uses multiple render passes for different view types:
 ### Vertex Buffer Optimization
 
 - Use `BufferUsages::VERTEX | BufferUsages::COPY_DST` for dynamic meshes
-- Consider a storage buffer (`BufferUsages::STORAGE`) for large dynamic data
-  (no `StorageBuffer` wrapper type exists in this crate — use `wgpu::Buffer` directly)
-- Use an instanced draw (`BufferUsages::VERTEX` + `@builtin(instance_index)`) for
-  repeated geometry (no `InstanceBuffer` type exists either)
+- Consider using `StorageBuffer` for large dynamic data
+- Use `InstanceBuffer` pattern for repeated geometry
 
 ## Canvas and Window Handling
 
@@ -262,7 +253,7 @@ The system uses multiple render passes for different view types:
 
 - Window size controlled by Winit
 - Canvas ID: `wasm-example` (see `src/lib.rs`)
-- Resize events trigger pipeline recreation
+- Resize events reconfigure the surface; pipelines are rebuilt only if the attachment format changes
 
 ### WASM (Web)
 
@@ -284,6 +275,31 @@ The system uses multiple render passes for different view types:
 }
 ```
 
+### Browser backend selection
+
+The WASM build enables wgpu 30's `webgpu` and `webgl` backends. With no query
+selector, initialization prefers browser WebGPU and makes one WebGL2 attempt if
+WebGPU detection or pre-canvas adapter/device/capability negotiation fails. A
+fresh page load with `?kepler_wgpu_backend=gl` selects WebGL2 directly for
+compatibility diagnosis. Unknown selector values warn and use automatic selection.
+
+Selection and capability checks use a disposable candidate canvas before the
+application canvas is bound. Once the real Winit canvas has acquired a context,
+surface/device/pipeline errors are reported with backend/stage context; do not
+attempt another API on that canvas. A forced-GL diagnostic requires a fresh page
+load. The selected device owns the volume format and 3D-dimension capability
+snapshot used for upload validation. See the [manual browser procedure](../testing/browser_gpu.md);
+a successful WASM build does not prove runtime selection or rendering parity.
+
+## Rendering-error and lifecycle migration
+
+See [wgpu 30 / Winit 0.30 caller migration](../rendering/wgpu30-migration.md) for
+`KeplerResult<()>`, owned surface failure classifications, separate pass-context
+lifetimes, queue presentation, validation guards, surface/device recovery limits,
+and the single GPU-ready bootstrap bridge. Known hidden/suspended/zero-size viewers
+wait; an acquisition-only occlusion uses a bounded retry probe. Fatal GPU callbacks
+wake the idle owner through the existing quit transport.
+
 ## Debugging Rendering
 
 ### Common Issues
@@ -291,7 +307,7 @@ The system uses multiple render passes for different view types:
 **Problem**: Surface errors on startup
 ```bash
 # Check backend selection
-KEPLER_WGPU_BACKEND=vulkan cargo run
+KEPLER_WGPU_BACKEND=vulkan cargo run --locked
 
 # Enable validation layers
 KEPLER_WGPU_VALIDATION=true cargo run
@@ -319,14 +335,18 @@ Use `wgpu-profiler` or platform-specific tools:
 
 ## Related Documentation
 
-- **Master doc index**: `doc/README.md`
 - **Quick Reference**: `QUICK_REFERENCE.md` - Common rendering tasks
 - **Architecture**: `ARCHITECTURE.md` - View system and modules
 - **Conventions**: `CONVENTIONS.md` - Coding patterns
 - **Pitfalls**: `PITFALLS.md` - Common rendering mistakes
-- **View design notes**: `doc/views/mpr-view-design.md`, `doc/views/mip-view-design.md`,
-  `doc/views/mesh-view-design.md`
-- **Unified architecture**: `doc/rendering/unified-render-architecture.md` —
-  ⚠️ **Status: Proposed, only partially implemented.** `VolumeUniforms` was created but lives
-  in `view/mesh/mesh.rs` (not `core/volume_uniforms.rs`); `RenderBackend` / `VolumeView` /
-  `VolumeRenderContext` do **not** exist. Do not treat it as current-state documentation.
+- **Current architecture**: [Ownership map](../architecture/ARCHITECTURE.md)
+- **Verification**: [Headless rendering checks](../testing/headless_gpu.md)
+- **Historical designs**: `doc/rendering/unified-render-architecture.md` (not current policy)
+
+## Release paths retained during replay
+
+`MeshView` renders DVR and retains separate spine/needle MultiMeshContext owners.
+MPR retains segmentation and mesh overlays, needle/ball markers, aliasing, and
+oblique controls. Dirty tracking includes their visual state. Legacy format and
+texture-pool helpers retain their public signatures; production owners pass
+explicit formats and use the bounded persistent depth cache.

@@ -1,239 +1,121 @@
-# Kepler WGPU Architecture
+# Current architecture
 
-**Last Updated:** 2026-09-23
-**Version:** 2.2
-**Status:** Active
-**Verified against code:** `src/` @ dev_fu (2026-09-23) — see `doc/DOC_CODE_SYNC_AUDIT_2026-09-23.md`
+**Status:** Current reference, reviewed against `947b4fc` on 2026-10-01.
+Dependency versions and features are authoritative in `Cargo.toml` / `Cargo.lock`.
+This map describes ownership, not an assertion that Rust enforces strict layer rules.
 
-## 1. Overview
+## Subsystems and source anchors
 
-Kepler WGPU is a comprehensive medical imaging framework built with Rust and WGPU. It is designed to run natively (Windows, macOS, Linux) and in the browser (WebAssembly). The system focuses on CT reconstruction, MPR (Multi-Planar Reconstruction), MIP (Maximum Intensity Projection), 3D visualization, and medical AI integration, with strict requirements for medical accuracy (e.g., Hounsfield unit preservation).
+| Subsystem | Responsibility | Source anchors |
+| --- | --- | --- |
+| Core | Geometry, coordinate bases, errors, window/level, timing | [core](../../src/core/mod.rs), [Base](../../src/core/coord/base.rs), [geometry](../../src/core/geometry.rs) |
+| Data | Patient/study/series/image hierarchy, volume construction, MHA/MHD | [data](../../src/data/mod.rs), [DICOM repository](../../src/data/dicom/dicom_repo.rs), [CTVolume](../../src/data/ct_volume.rs) |
+| Rendering | GPU context, pipelines/passes, views, shaders, mesh resources | [graphics](../../src/rendering/core/graphics.rs), [passes](../../src/rendering/core/render_pass.rs), [view factory](../../src/rendering/view/view_factory.rs) |
+| Application | Data state, view orchestration, event loop, external controls | [App](../../src/application/app.rs), [AppModel](../../src/application/app_model.rs), [AppView](../../src/application/appview.rs), [RenderApp](../../src/application/render_app.rs) |
+| Server (native) | HTTP/WebSocket, volume and mesh export, AI segmentation | [server](../../src/server/mod.rs), [routes](../../src/server/routes.rs) |
+| Compute GPU (native) | Independent device owner mounted on ServerState.gpu | [compute](../../src/gpu/mod.rs) |
+| Acquisition | Remedy framing/state, retries, native/browser bindings | [protocol](../../src/acquisition/remedy.rs), [reference](../acquisition/remedy-serial-web.md) |
 
-### Key Architectural Principles
-- **Cross-Platform**: Unified codebase for Native and WASM targets with feature-gated components
-- **Modular Design**: Clear separation between Core, Data, Rendering, Application, and Acquisition layers
-- **Data-Driven**: `AppModel` serves as the single source of truth for application state
-- **Performance**: Zero-cost abstractions, efficient GPU resource management, and minimized CPU-GPU synchronization
-- **Extensible**: Plugin architecture for AI/ML integration and specialized processing workflows
+The native binary starts at [main.rs](../../src/main.rs); the library/browser API
+and logger start at [lib.rs](../../src/lib.rs). `GLCanvas` sends external controls
+through application events. Target guards isolate native runtime/filesystem paths
+from browser bindings. Mesh lives under `src/rendering/view/mesh/` and is always
+available, not behind a `mesh` Cargo feature.
 
-## 2. System Layering
+## State and ownership
 
-The codebase is organized into five distinct layers with strict dependency rules:
+- `AppModel` owns application data/configuration, including the canonical volume.
+- `AppView` owns view composition, layout, and saved CPU view state.
+- `App` coordinates model/view state and graphics, and executes complete frames.
+- `RenderApp` starts one initialized `ApplicationHandler` with native `run_app` or
+  browser `spawn_app`. The private [viewer lifecycle](../../src/application/viewer_lifecycle.rs)
+  owns complete lifecycle ordering and borrows Winit/application effects;
+  [redraw.rs](../../src/application/redraw.rs) retains readiness and scheduling policy.
+  [frame.rs](../../src/application/frame.rs) owns the private
+  presented/skipped transaction; public `App::render` retains unit success.
+- GPU faults use a private notifier and the existing quit transport to wake an idle
+  owner; no new public control event or general device reconstruction is added.
+- `GraphicsContext` owns its device/queue/surface configuration and persistent
+  mesh depth texture/view pool. Device resources do not cross graphics owners.
+- `DefaultViewFactory` lazily shares immutable MPR resources for compatible
+  device/attachment-format configurations; uniforms and bind groups stay per view.
+- `RenderContent` holds uploaded view data/resources. The [volume encoding contract](../rendering/volume-encoding.md)
+  separates signed voxel storage from medical display parameters.
 
-```
-src/
-├── core/           # Fundamental types, math, and error handling (No dependencies)
-├── data/           # Domain models, DICOM parsing, Volume data (Depends on Core)
-├── rendering/      # WGPU rendering engine, Views, Shaders (Depends on Core, Data)
-├── acquisition/    # Medical data acquisition and processing (Depends on Core, Data)
-├── application/    # UI orchestration, Event handling, App lifecycle (Depends on all)
-├── gpu/            # Native-only GPU compute backend, wgpu 30 as `wgpu30` (Native only)
-└── server/         # Native-only server components (Not available in WASM)
-```
+## View-layout transitions
 
-`gpu/` and `server/` carry `#[cfg(not(target_arch = "wasm32"))]` and are excluded from the
-WASM build. `gpu/` is a **second, headless wgpu stack (v30)** used only by the server — it
-shares no GPU objects with `rendering/` (which stays on **wgpu 23**).
+The existing `App::set_render_mode` controls enter the private
+[view-layout transition module](../../src/application/view_layout_transition.rs).
+It borrows `AppModel`'s canonical volume, `AppView`'s concrete factory/layout,
+and `App`'s mesh cache and view-slot orientations. These owners remain unchanged;
+captured CPU interaction state in `AppView` is distinct from orientation selection.
 
-### 2.1 Core Layer (`src/core/`)
-Provides foundational utilities used across the entire application.
-- **`coord/`**: Coordinate systems and transformations (3D matrices, orientations)
-- **`error.rs`**: Centralized error handling (`KeplerError`) using `thiserror` and `anyhow`
-- **`geometry.rs`**: Basic geometric primitives and spatial calculations
-- **`timing.rs`**: Performance timing utilities and profiling support
-- **`window_level.rs`**: Window/Level adjustment algorithms for medical imaging
+The operation validates used selections, uploads content, prepares any candidate
+mesh and all replacement views, then commits the complete collection and related
+state. `DynamicLayout::replace_all_views` places incoming views with the retained
+parent dimensions and retained or new strategy before replacing displayed views.
+Returned preparation failures leave the old views, cache/configuration, volume,
+and clean or pending presentation state intact. A successful replacement becomes
+pending for a complete frame and uses existing view defaults without automatic
+state restoration. Explicit capture/restore and GPU rebinding retain their contracts.
 
-### 2.2 Data Layer (`src/data/`)
-Handles medical imaging domain logic and data structures.
-- **`ct_volume.rs`**: Core data structure for CT volumes with Hounsfield unit preservation
-- **`dicom/`**: Comprehensive DICOM parsing (Series, Study, Patient modules)
-- **`medical_imaging/`**: Formats (MHD/MHA) and metadata validation
-- **Design**: Immutable data structures where possible; clear separation from presentation
+Old and candidate resources coexist temporarily; one candidate is dropped on
+failure or committed on success. Compatible lazy factory caches may be populated
+during preparation. This operation does not recover panics or asynchronous fatal
+GPU faults, redesign volume loading, or add mesh-cache identity/invalidation.
+Requests without a volume fail without mutation or deferred application.
+Production-seam tests live in [AppView tests](../../src/application/appview_tests.rs).
 
-### 2.3 Rendering Layer (`src/rendering/`)
-The heart of the visualization engine, built on top of `wgpu`.
+## Frame and rebinding contracts
 
-#### Core Infrastructure (`rendering/core/`)
-- **`graphics.rs`**: Manages `wgpu::Device`, `Queue`, and `Surface`
-- **`pipeline.rs`**: Pipeline state management and caching
-- **`texture.rs`**: GPU texture abstractions and format validation
+Winit dispatch translates lifecycle events into `ViewerLifecycle::handle` after
+the existing active-window and input-consumption gate. The operation acknowledges
+redraw, checks readiness, updates, executes the existing complete frame, and records
+the outcome before later scheduling effects. It also orders replacement swap,
+fault-wake attachment, old-request reset, resize, and supplied-volume enqueue.
+Failed swaps perform no follow-on effects. The same lifecycle owner retains
+suspension and fatal stop across replacement. Fatal frame errors stop automatic
+rendering; explicit Quit clears views and exits, while Close/Escape exit without
+clearing. Explicit shutdown silences subsequent dispatch.
 
-#### View System (`rendering/view/`)
-- **`View` Trait**: Abstract interface for renderable components (MPR, MIP, Mesh)
-- **`RenderContent`**: Manages resources (buffers, bind groups) for a specific view
-- **`Layout`**: Dynamic layout management for multi-view arrangements
-- **`mesh/`**: 3D Mesh rendering subsystem (feature-gated logic)
+[Recording lifecycle tests](../../src/application/viewer_lifecycle_tests.rs) cross
+the production operation with deterministic time and primitive effects. They cover
+sequencing and policy integration, not Winit callback delivery, pre-run control
+ordering, or native/browser graphics acceptance.
 
-#### Shaders (`rendering/shaders/`)
-WGSL only (`common.wgsl`, `volume.wgsl`, `mpr.wgsl`, `mip.wgsl`, `mesh_basic.wgsl`).
-There is no GLSL and no `rendering/shaders/mesh.wgsl` (mesh shading uses `mesh_basic.wgsl`).
+An acquired surface image is cleared once and all visible views are drawn. Upload
+invalidation and successful presentation are separate states; failed frames retain
+pending work. Ordinary same-format resize updates layout/size-dependent targets,
+not pipelines. A format change rebuilds format-dependent resources. Device
+replacement reuploads volume data and rebuilds device-owned resources while
+preserving CPU view state. See [rendering contracts](../agents/RENDERING.md).
 
-### 2.4 Acquisition Layer (`src/acquisition/`)
-Handles medical data acquisition, processing, and specialized workflows.
-- **`process.rs`**: Medical image processing pipeline and algorithms
-- **`remedy.rs`**: REMEDY serial workflow implementation for medical device integration
-- **`error.rs`**: Acquisition-specific error handling and validation
+`AppView::rebind_gpu_resources` accepts a borrowed device/queue/format configuration
+and any prepared replacement volume content. It selects or refreshes its compatible
+factory before rebuilding all existing views from that factory's shared MPR context.
+Callers no longer coordinate factory replacement separately. `App` retains upload
+validation and graphics/depth ownership; same-format resize avoids this operation.
 
-### 2.5 Application Layer (`src/application/`)
-Orchestrates the application lifecycle and user interaction.
-- **`App`**: Main entry point and orchestrator
-- **`AppModel`**: Application state container (holds `CTVolume`, configuration)
-- **`AppView`**: Manages the UI layout and view composition
-- **`RenderApp`**: Winit event loop integration and WASM support
-- **`GLCanvas`**: Cross-platform canvas abstraction for rendering
+Regression anchors: [rendering correctness](../../tests/rendering_correctness_tests.rs),
+[resource lifetimes](../../tests/render_resource_lifetime_tests.rs),
+[redraw scheduling](../../tests/redraw_state_tests.rs), and
+[voxel encoding](../../tests/volume_encoding_tests.rs).
 
-### 2.6 Server Layer (`src/server/`)
-Native-only server components for advanced workflows and AI integration (Not available in WASM).
-- **`handlers.rs`**: Request handlers for medical imaging workflows
-- **`state.rs`**: Server state management and session handling
-- **`ai_handler.rs`**: AI/ML integration handlers
-- **`ai_model.rs`**: AI model abstractions and management
-- **`ai_task.rs`**: AI task orchestration and execution
-- **`navcomputer.rs`**: Navigation and guidance system
-- **`ws.rs`**: WebSocket support for real-time communication
-- **`routes.rs`**: REST API routes for medical imaging endpoints
+## Boundaries, evidence, and proposed work
 
-### 2.7 GPU Compute Layer (`src/gpu/`) — native only
-A headless wgpu **30** compute backend (aliased `wgpu30` in `Cargo.toml`), deliberately
-isolated from the wgpu 23 render stack.
-- **`native.rs`**: `GpuState` (a lazily-initialized `Mutex<Option<Arc<GpuContext>>>`) and `GpuContext`
-- **`compute.rs`**: `run_double` smoke test; `prepare_volume_upload` (sync) +
-  `run_volume_compute` (async) for the pass-through volume kernel
-- Mounted on `ServerState.gpu`; reached only via `POST /api/gpu/test` and
-  `POST /api/gpu/volume/test`. No surface, no render pipeline, no `MprView`.
+Use [repository policy](../../AGENTS.md) for safety and approval, [build procedures](../agents/BUILD.md)
+for executable checks, and [baseline specs](../../openspec/specs/) for intended
+behavior. Discrepancies between source and requirements require an explicit decision;
+the existence of a spec is not proof that every scenario is implemented.
 
-**Invariant**: never pass a `wgpu30` device/buffer into the wgpu 23 render stack
-(and vice versa) — the two versions are not type-compatible.
+Roadmaps and dependency-upgrade investigations belong in [active changes](../../openspec/changes/)
+and [dated research](../research/), not in the current ownership map. Older
+`doc/redering/`, view designs, and architecture analyses remain historical references.
 
-## 3. Application Model
+## Release viewer features
 
-The application follows a Model-View-Controller (MVC) inspired pattern:
-
-### Model (`AppModel`)
-- Holds the authoritative state of the loaded data (e.g., `CTVolume`)
-- Manages data-centric settings (e.g., `enable_float_volume_texture`)
-- Provides methods to extract render-ready data (e.g., `get_volume_render_data`)
-- Coordinates with acquisition layer for data processing
-
-### View (`AppView`)
-- Defines the visual layout (Grid, Split)
-- Manages the collection of active `View` instances (e.g., Transverse, Sagittal, Coronal)
-- Handles window resizing and layout updates
-
-### Controller (`App` / `RenderApp`)
-- `RenderApp` handles the `winit` event loop
-- `App` coordinates between input events, the `AppModel`, and the rendering system
-- Bridges native and WASM platforms through feature gates
-
-## 4. Rendering Pipeline
-
-1.  **Initialization**: `GraphicsContext` sets up the WGPU device and surface
-2.  **Resource Loading**: `AppModel` loads data; `ViewFactory` creates GPU resources (`RenderContent`)
-3.  **Update Loop**: Input events modify `AppModel` or View state (e.g., window/level, slice position)
-4.  **Render Loop**:
-    - `PassExecutor` begins a frame
-    - Active Views record render passes via the `View` trait
-    - Command buffers are submitted to the queue
-
-## 5. Acquisition Integration
-
-### Medical Data Processing Pipeline
-1. **Data Ingestion**: DICOM files loaded through `data/dicom/`
-2. **Validation**: Medical imaging standards compliance checked
-3. **Processing**: `acquisition/process.rs` applies medical algorithms
-4. **Storage**: Processed data stored in optimized GPU formats
-5. **Rendering**: Results visualized through the rendering pipeline
-
-### REMEDY Integration
-- **`acquisition/remedy.rs`**: Implementation of REMEDY serial workflow
-- Device integration for medical imaging equipment
-- Real-time data streaming and processing
-- Quality control and validation
-
-### AI/ML Integration (Native-only)
-- **`server/ai_handler.rs`**: AI model inference orchestration and result rendering
-- **`server/segment_engine.rs`**: segmentation backends (ONNX primary via `ort`)
-- **`server/navcomputer.rs`**: navigation / trajectory computing
-- **Python Integration**: **optional HTTP fallback only** — a standalone Python
-  TotalSegmentator service reached through `KEPLER_AI_URL` (default
-  `http://localhost:8001`). The embedded PyO3 path (`python_runtime.rs`, `.pyembed/`) is
-  **deprecated — do not revive it**.
-- **WebSocket Support**: real-time AI processing results (`server/ws.rs`)
-
-## 6. Cross-Platform Architecture
-
-### Native Platform (Windows, macOS, Linux)
-- Full server functionality with AI integration
-- Advanced medical device connectivity
-- Local file system access
-- Multi-threaded processing capabilities
-
-### WebAssembly Platform
-- Core medical imaging functionality
-- Web-based DICOM viewing
-- GPU-accelerated rendering in browser
-- Limited server functionality (file loading only)
-
-### Feature Gate Pattern
-```rust
-#[cfg(not(target_arch = "wasm32"))]
-pub mod server;  // Native-only components
-
-#[cfg(not(target_arch = "wasm32"))]
-pub mod gpu;     // Native-only GPU compute (wgpu30)
-```
-
-Cargo features actually declared: `default = []`, `trace-logging = []`
-(`Cargo.toml [features]`). There is **no** `mesh` feature — mesh rendering is always compiled.
-
-## 7. Roadmap & Future Architecture
-
-### 7.1 WGPU / Winit Upgrade (Pending)
-The **render stack** is currently on `wgpu 23.0` and `winit 0.29`. A migration is planned to:
-- Upgrade the renderer to a newer `wgpu` and `winit 0.30+`
-- Adopt `raw-window-handle` 0.6
-- Refactor the event loop to use the new `winit` trait-based API
-- Update surface creation to use `wgpu::SurfaceTarget`
-
-> **Current state of the wgpu 30 experiment**: `wgpu 30` is *already* in `Cargo.toml` as the
-> native-only alias `wgpu30`, used **only** by `src/gpu/` (server compute). It is **not** the
-> render stack. Unifying both onto one version is a separate, larger milestone — see
-> `doc/DOC_CODE_SYNC_AUDIT_2026-09-23.md` and `doc/rendering/` upgrade notes.
-
-### 7.2 Enhanced AI Integration
-- **Model Management**: Advanced AI model lifecycle management
-- **Real-time Processing**: Stream-based AI inference for medical imaging
-- **Integration Framework**: Standardized interfaces for AI/ML components
-
-### 7.3 Performance & Reliability
-- **Trace Logging**: Implement `trace-logging` feature flag for detailed diagnostics
-- **Error Recovery**: Enhance GPU context loss recovery and shader compilation error handling
-- **Testing**: Expand test coverage for WASM targets and property-based testing for medical algorithms
-
-### 7.4 Feature Enhancements
-- **Async Loading**: Move data loading to a fully asynchronous pipeline to prevent UI blocking
-- **Advanced Visualization**: Implement advanced transfer functions and overlays for medical analysis
-- **Collaboration**: Multi-user collaboration features for medical image review
-
-## 8. Development Guidelines
-
-### Module Organization
-- **Feature Flags**: Use `mesh` for 3D mesh capabilities; `trace-logging` for debugging
-- **WASM Compatibility**: All core logic must be WASM-compatible. Avoid blocking threads
-- **Documentation**: Keep architecture docs updated in `doc/architecture/`
-
-### Error Handling
-- **Centralized Error Types**: Use `KeplerError` for consistent error handling
-- **Medical Safety**: Critical medical operations must validate inputs and provide clear error messages
-- **Graceful Degradation**: System should continue operating with reduced functionality on errors
-
-### Performance Considerations
-- **GPU Resource Management**: Efficient texture and buffer lifecycle management
-- **Memory Optimization**: Minimize CPU-GPU synchronization and memory allocations
-- **Medical Accuracy**: Ensure all processing preserves Hounsfield units and medical data integrity
-
-### Testing Strategy
-- **Unit Tests**: Comprehensive testing for core functionality
-- **Integration Tests**: End-to-end testing for medical imaging workflows
-- **Regression Tests**: Prevent regression in medical accuracy and functionality
-- **Cross-Platform Testing**: Ensure consistent behavior across native and WASM platforms
+The viewer retains multi-oblique MPR, shared camera controls, DR-to-PRO volumes,
+R8Uint segmentation overlays, DVR, spine/needle meshes, mesh overlays, marker
+controls, and OBJ exports. HTTP/WebSocket/CLI and browser bindings are separate
+contracts. The native compute owner and viewer renderer do not share devices.
+Release guidance snapshots are retained in `doc/archive/v017-guidance/`.

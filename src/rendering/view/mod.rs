@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+mod invalidation;
 
 mod view;
 pub use view::*;
@@ -39,14 +40,8 @@ pub use mpr::*;
 pub use render_content::*;
 
 pub const LABEL_NAMES: [&str; 8] = [
-    "",       // index 0 unused
-    "L1",
-    "L2",
-    "L3",
-    "L4",
-    "L5",
-    "S1",
-    "Sacrum",
+    "", // index 0 unused
+    "L1", "L2", "L3", "L4", "L5", "S1", "Sacrum",
 ];
 
 // Colour palette for the segmentation overlay in the MPR / MIP / 3D views.

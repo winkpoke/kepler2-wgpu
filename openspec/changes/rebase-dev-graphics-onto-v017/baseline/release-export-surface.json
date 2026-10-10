@@ -1,0 +1,1414 @@
+{
+  "source_ref": "a39ca528a55be7f7fe565a7fa7ed20b2251826e4",
+  "review_date": "2026-10-05",
+  "scope": "Source module visibility/re-export edges and reviewed macro-generated interfaces supplement release-public-api.json. Nearby attributes are context, not evaluated cfg reachability. Generated WASM declarations are separately captured; candidate API conformance is still pending.",
+  "root_native_only_modules": [
+    "server",
+    "gpu"
+  ],
+  "module_edges": [
+    {
+      "path": "src/acquisition/mod.rs",
+      "line": 1,
+      "declaration": "pub mod remedy;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/acquisition/mod.rs",
+      "line": 2,
+      "declaration": "pub mod error;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/acquisition/mod.rs",
+      "line": 3,
+      "declaration": "pub mod process;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/application/mod.rs",
+      "line": 7,
+      "declaration": "pub mod app;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/application/mod.rs",
+      "line": 8,
+      "declaration": "pub mod app_model;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/application/mod.rs",
+      "line": 9,
+      "declaration": "pub mod appview;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/application/mod.rs",
+      "line": 10,
+      "declaration": "pub mod gl_canvas;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/application/mod.rs",
+      "line": 11,
+      "declaration": "pub mod render_app;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/application/mod.rs",
+      "line": 14,
+      "declaration": "pub use app::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/application/mod.rs",
+      "line": 15,
+      "declaration": "pub use app_model::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/application/mod.rs",
+      "line": 16,
+      "declaration": "pub use appview::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/application/mod.rs",
+      "line": 17,
+      "declaration": "pub use gl_canvas::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/application/mod.rs",
+      "line": 18,
+      "declaration": "pub use render_app::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/core/coord/mod.rs",
+      "line": 1,
+      "declaration": "mod base;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/core/coord/mod.rs",
+      "line": 2,
+      "declaration": "pub use base::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/core/coord/mod.rs",
+      "line": 5,
+      "declaration": "mod tests { ... }",
+      "nearby_attributes": [
+        "#[cfg(test)]"
+      ]
+    },
+    {
+      "path": "src/core/geometry.rs",
+      "line": 287,
+      "declaration": "mod tests { ... }",
+      "nearby_attributes": [
+        "#[cfg(test)]"
+      ]
+    },
+    {
+      "path": "src/core/mod.rs",
+      "line": 5,
+      "declaration": "pub mod coord;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/core/mod.rs",
+      "line": 6,
+      "declaration": "pub mod error;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/core/mod.rs",
+      "line": 7,
+      "declaration": "pub mod geometry;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/core/mod.rs",
+      "line": 8,
+      "declaration": "pub mod timing;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/core/mod.rs",
+      "line": 9,
+      "declaration": "pub mod window_level;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/core/mod.rs",
+      "line": 12,
+      "declaration": "pub use coord::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/core/mod.rs",
+      "line": 13,
+      "declaration": "pub use error::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/core/mod.rs",
+      "line": 14,
+      "declaration": "pub use geometry::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/core/mod.rs",
+      "line": 15,
+      "declaration": "pub use timing::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/core/mod.rs",
+      "line": 16,
+      "declaration": "pub use window_level::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/core/timing.rs",
+      "line": 111,
+      "declaration": "mod tests { ... }",
+      "nearby_attributes": [
+        "#[cfg(test)]"
+      ]
+    },
+    {
+      "path": "src/core/window_level.rs",
+      "line": 317,
+      "declaration": "mod tests { ... }",
+      "nearby_attributes": [
+        "#[cfg(test)]"
+      ]
+    },
+    {
+      "path": "src/data/dicom/export_dicom.rs",
+      "line": 312,
+      "declaration": "mod tests { ... }",
+      "nearby_attributes": [
+        "#[cfg(test)]"
+      ]
+    },
+    {
+      "path": "src/data/dicom/mod.rs",
+      "line": 9,
+      "declaration": "pub mod fileio;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/dicom/mod.rs",
+      "line": 12,
+      "declaration": "mod dicom_helper;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/dicom/mod.rs",
+      "line": 14,
+      "declaration": "mod patient;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/dicom/mod.rs",
+      "line": 15,
+      "declaration": "pub use patient::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/dicom/mod.rs",
+      "line": 17,
+      "declaration": "mod studyset;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/dicom/mod.rs",
+      "line": 18,
+      "declaration": "pub use studyset::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/dicom/mod.rs",
+      "line": 20,
+      "declaration": "mod image_series;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/dicom/mod.rs",
+      "line": 21,
+      "declaration": "pub use image_series::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/dicom/mod.rs",
+      "line": 23,
+      "declaration": "mod ct_image;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/dicom/mod.rs",
+      "line": 24,
+      "declaration": "pub use ct_image::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/dicom/mod.rs",
+      "line": 26,
+      "declaration": "mod dicom_repo;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/dicom/mod.rs",
+      "line": 27,
+      "declaration": "pub use dicom_repo::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/dicom/mod.rs",
+      "line": 29,
+      "declaration": "mod export_dicom;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/dicom/mod.rs",
+      "line": 30,
+      "declaration": "pub use export_dicom::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/formats/mod.rs",
+      "line": 3,
+      "declaration": "pub mod common;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/formats/mod.rs",
+      "line": 4,
+      "declaration": "pub mod mha;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/formats/mod.rs",
+      "line": 5,
+      "declaration": "pub mod mhd;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/formats/mod.rs",
+      "line": 7,
+      "declaration": "pub use common::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/formats/mod.rs",
+      "line": 8,
+      "declaration": "pub use mha::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/formats/mod.rs",
+      "line": 9,
+      "declaration": "pub use mhd::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/metadata/mod.rs",
+      "line": 1,
+      "declaration": "pub mod image_info;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/metadata/mod.rs",
+      "line": 4,
+      "declaration": "pub mod pixel_data;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/metadata/mod.rs",
+      "line": 5,
+      "declaration": "pub mod volume;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/metadata/mod.rs",
+      "line": 7,
+      "declaration": "pub use image_info::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/metadata/mod.rs",
+      "line": 8,
+      "declaration": "pub use pixel_data::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/metadata/mod.rs",
+      "line": 9,
+      "declaration": "pub use volume::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/mod.rs",
+      "line": 4,
+      "declaration": "pub mod error;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/mod.rs",
+      "line": 5,
+      "declaration": "pub mod formats;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/mod.rs",
+      "line": 6,
+      "declaration": "pub mod metadata;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/mod.rs",
+      "line": 7,
+      "declaration": "pub mod validation;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/mod.rs",
+      "line": 10,
+      "declaration": "pub use error::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/mod.rs",
+      "line": 11,
+      "declaration": "pub use formats::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/mod.rs",
+      "line": 12,
+      "declaration": "pub use metadata::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/medical_imaging/mod.rs",
+      "line": 13,
+      "declaration": "pub use validation::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/mod.rs",
+      "line": 7,
+      "declaration": "pub mod ct_volume;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/mod.rs",
+      "line": 8,
+      "declaration": "pub mod dicom;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/mod.rs",
+      "line": 9,
+      "declaration": "pub mod dicom_;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/mod.rs",
+      "line": 10,
+      "declaration": "pub mod medical_imaging;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/mod.rs",
+      "line": 11,
+      "declaration": "pub mod volume_encoding;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/mod.rs",
+      "line": 14,
+      "declaration": "pub use ct_volume::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/data/mod.rs",
+      "line": 16,
+      "declaration": "pub use crate::application::app_model::AppModel;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/gpu/compute.rs",
+      "line": 312,
+      "declaration": "mod tests { ... }",
+      "nearby_attributes": [
+        "#[cfg(test)]"
+      ]
+    },
+    {
+      "path": "src/gpu/mod.rs",
+      "line": 15,
+      "declaration": "mod native;",
+      "nearby_attributes": [
+        "#[cfg(not(target_arch = \"wasm32\"))]"
+      ]
+    },
+    {
+      "path": "src/gpu/mod.rs",
+      "line": 17,
+      "declaration": "mod compute;",
+      "nearby_attributes": [
+        "#[cfg(not(target_arch = \"wasm32\"))]",
+        "#[cfg(not(target_arch = \"wasm32\"))]"
+      ]
+    },
+    {
+      "path": "src/gpu/mod.rs",
+      "line": 20,
+      "declaration": "pub use native::{GpuContext, GpuState, GpuVolume};",
+      "nearby_attributes": [
+        "#[cfg(not(target_arch = \"wasm32\"))]",
+        "#[cfg(not(target_arch = \"wasm32\"))]"
+      ]
+    },
+    {
+      "path": "src/gpu/mod.rs",
+      "line": 22,
+      "declaration": "pub use compute::{run_double, run_volume_upload, prepare_volume_upload, run_volume_compute};",
+      "nearby_attributes": [
+        "#[cfg(not(target_arch = \"wasm32\"))]",
+        "#[cfg(not(target_arch = \"wasm32\"))]"
+      ]
+    },
+    {
+      "path": "src/lib.rs",
+      "line": 11,
+      "declaration": "pub mod application;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/lib.rs",
+      "line": 12,
+      "declaration": "pub mod core;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/lib.rs",
+      "line": 13,
+      "declaration": "pub mod data;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/lib.rs",
+      "line": 14,
+      "declaration": "pub mod rendering;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/lib.rs",
+      "line": 15,
+      "declaration": "pub mod acquisition;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/lib.rs",
+      "line": 18,
+      "declaration": "pub mod server;",
+      "nearby_attributes": [
+        "#[cfg(not(target_arch = \"wasm32\"))]"
+      ]
+    },
+    {
+      "path": "src/lib.rs",
+      "line": 21,
+      "declaration": "pub mod gpu;",
+      "nearby_attributes": [
+        "#[cfg(not(target_arch = \"wasm32\"))]",
+        "#[cfg(not(target_arch = \"wasm32\"))]"
+      ]
+    },
+    {
+      "path": "src/lib.rs",
+      "line": 26,
+      "declaration": "pub use application::{gl_canvas::GLCanvas, render_app::RenderApp, App};",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/lib.rs",
+      "line": 27,
+      "declaration": "pub use core::{coord, error::KeplerError, timing};",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/lib.rs",
+      "line": 28,
+      "declaration": "pub use data::{ct_volume, dicom};",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/lib.rs",
+      "line": 29,
+      "declaration": "pub use rendering::view::{Renderable, StaticLayout, View};",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/lib.rs",
+      "line": 32,
+      "declaration": "pub use rendering::mesh;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/core/mod.rs",
+      "line": 7,
+      "declaration": "pub mod graphics;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/core/mod.rs",
+      "line": 8,
+      "declaration": "pub mod pipeline;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/core/mod.rs",
+      "line": 9,
+      "declaration": "pub mod render_pass;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/core/mod.rs",
+      "line": 10,
+      "declaration": "pub mod texture;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/core/mod.rs",
+      "line": 13,
+      "declaration": "pub use graphics::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/core/mod.rs",
+      "line": 14,
+      "declaration": "pub use pipeline::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/core/mod.rs",
+      "line": 15,
+      "declaration": "pub use render_pass::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/core/mod.rs",
+      "line": 16,
+      "declaration": "pub use texture::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/core/pipeline.rs",
+      "line": 524,
+      "declaration": "mod tests { ... }",
+      "nearby_attributes": [
+        "#[cfg(test)]"
+      ]
+    },
+    {
+      "path": "src/rendering/core/render_pass.rs",
+      "line": 798,
+      "declaration": "mod tests { ... }",
+      "nearby_attributes": [
+        "#[cfg(test)]"
+      ]
+    },
+    {
+      "path": "src/rendering/mod.rs",
+      "line": 7,
+      "declaration": "pub mod core;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/mod.rs",
+      "line": 8,
+      "declaration": "pub mod shaders;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/mod.rs",
+      "line": 9,
+      "declaration": "pub mod view;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/mod.rs",
+      "line": 12,
+      "declaration": "pub use core::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/mod.rs",
+      "line": 13,
+      "declaration": "pub use view::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/camera.rs",
+      "line": 249,
+      "declaration": "mod tests { ... }",
+      "nearby_attributes": [
+        "#[cfg(test)]"
+      ]
+    },
+    {
+      "path": "src/rendering/view/mesh/mesh_view.rs",
+      "line": 935,
+      "declaration": "mod tests { ... }",
+      "nearby_attributes": [
+        "#[cfg(test)]"
+      ]
+    },
+    {
+      "path": "src/rendering/view/mesh/mod.rs",
+      "line": 6,
+      "declaration": "pub mod mesh;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mesh/mod.rs",
+      "line": 7,
+      "declaration": "pub mod mesh_view;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mesh/mod.rs",
+      "line": 8,
+      "declaration": "pub mod basic_mesh_context;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mesh/mod.rs",
+      "line": 9,
+      "declaration": "pub mod mesh_texture_pool;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mesh/mod.rs",
+      "line": 10,
+      "declaration": "pub mod performance;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mesh/mod.rs",
+      "line": 13,
+      "declaration": "pub use basic_mesh_context::MultiMeshContext;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mesh/mod.rs",
+      "line": 14,
+      "declaration": "pub use mesh_view::{MeshRenderError, MeshView};",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mesh/mod.rs",
+      "line": 15,
+      "declaration": "pub use performance::QualityLevel;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mesh/mod.rs",
+      "line": 16,
+      "declaration": "pub use mesh::Mesh;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mip/mod.rs",
+      "line": 594,
+      "declaration": "mod tests { ... }",
+      "nearby_attributes": [
+        "#[cfg(test)]"
+      ]
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 3,
+      "declaration": "mod view;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 4,
+      "declaration": "pub use view::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 6,
+      "declaration": "mod view_factory;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 7,
+      "declaration": "pub use view_factory::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 9,
+      "declaration": "pub use crate::rendering::mesh::mesh_view::MeshView;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 11,
+      "declaration": "mod renderable;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 12,
+      "declaration": "pub use renderable::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 14,
+      "declaration": "mod layout;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 15,
+      "declaration": "pub use layout::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 17,
+      "declaration": "pub mod view_manager;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 18,
+      "declaration": "pub use view_manager::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 21,
+      "declaration": "pub mod mip;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 24,
+      "declaration": "pub mod mesh;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 27,
+      "declaration": "pub mod camera;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 30,
+      "declaration": "pub mod mpr;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 33,
+      "declaration": "pub mod render_content;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 36,
+      "declaration": "pub use mesh::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 37,
+      "declaration": "pub use mip::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 38,
+      "declaration": "pub use mpr::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "line": 39,
+      "declaration": "pub use render_content::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mpr/mod.rs",
+      "line": 7,
+      "declaration": "pub mod mpr_render_context;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mpr/mod.rs",
+      "line": 8,
+      "declaration": "pub mod mpr_view_wgpu_impl;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mpr/mod.rs",
+      "line": 11,
+      "declaration": "pub mod mpr_view;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mpr/mod.rs",
+      "line": 15,
+      "declaration": "pub use mpr_render_context::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mpr/mod.rs",
+      "line": 16,
+      "declaration": "pub use mpr_view::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mpr/mod.rs",
+      "line": 17,
+      "declaration": "pub use mpr_view_wgpu_impl::*;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/rendering/view/mpr/mpr_view.rs",
+      "line": 1382,
+      "declaration": "mod tests { ... }",
+      "nearby_attributes": [
+        "#[cfg(test)]"
+      ]
+    },
+    {
+      "path": "src/rendering/view/mpr/mpr_view_wgpu_impl.rs",
+      "line": 483,
+      "declaration": "mod tests { ... }",
+      "nearby_attributes": [
+        "#[cfg(test)]"
+      ]
+    },
+    {
+      "path": "src/rendering/view/view_manager.rs",
+      "line": 280,
+      "declaration": "mod tests { ... }",
+      "nearby_attributes": [
+        "#[cfg(test)]"
+      ]
+    },
+    {
+      "path": "src/server/mod.rs",
+      "line": 1,
+      "declaration": "pub mod handlers;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/server/mod.rs",
+      "line": 2,
+      "declaration": "pub mod routes;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/server/mod.rs",
+      "line": 3,
+      "declaration": "pub mod navcomputer;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/server/mod.rs",
+      "line": 4,
+      "declaration": "pub mod state;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/server/mod.rs",
+      "line": 5,
+      "declaration": "pub mod ai;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/server/mod.rs",
+      "line": 6,
+      "declaration": "pub mod ai_task;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/server/mod.rs",
+      "line": 7,
+      "declaration": "pub mod ai_model;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/server/mod.rs",
+      "line": 8,
+      "declaration": "pub mod ai_handler;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/server/mod.rs",
+      "line": 9,
+      "declaration": "pub mod segment_engine;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/server/mod.rs",
+      "line": 10,
+      "declaration": "pub mod model_manager;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/server/mod.rs",
+      "line": 11,
+      "declaration": "pub mod backend;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/server/mod.rs",
+      "line": 12,
+      "declaration": "pub mod resample;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/server/mod.rs",
+      "line": 13,
+      "declaration": "pub mod orientation;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/server/mod.rs",
+      "line": 14,
+      "declaration": "mod ws;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/server/mod.rs",
+      "line": 16,
+      "declaration": "pub use routes::create_router;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/server/mod.rs",
+      "line": 17,
+      "declaration": "pub use state::ServerState;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/server/mod.rs",
+      "line": 18,
+      "declaration": "pub use ws::WsMessage;",
+      "nearby_attributes": []
+    },
+    {
+      "path": "src/server/orientation.rs",
+      "line": 191,
+      "declaration": "mod tests { ... }",
+      "nearby_attributes": [
+        "#[cfg(test)]"
+      ]
+    },
+    {
+      "path": "src/server/resample.rs",
+      "line": 645,
+      "declaration": "mod tests { ... }",
+      "nearby_attributes": [
+        "#[cfg(test)]"
+      ]
+    }
+  ],
+  "exported_macros": [
+    "define_dicom_struct",
+    "impl_user_event_senders_for_glcanvas"
+  ],
+  "dicom_macro_expansions": [
+    {
+      "name": "CTImage",
+      "external_path": "data::dicom::CTImage",
+      "invocation_path": "src/data/dicom/ct_image.rs",
+      "fields": [
+        {
+          "name": "CTImage",
+          "type": "{\n    (uid, String",
+          "dicom_tag": "(0008,0018) SOPInstanceUID",
+          "visibility": "pub"
+        },
+        {
+          "name": "series_uid",
+          "type": "String",
+          "dicom_tag": "(0020,000E) SeriesInstanceUID",
+          "visibility": "pub"
+        },
+        {
+          "name": "rows",
+          "type": "u16",
+          "dicom_tag": "(0028,0010) Rows",
+          "visibility": "pub"
+        },
+        {
+          "name": "columns",
+          "type": "u16",
+          "dicom_tag": "(0028,0011) Columns",
+          "visibility": "pub"
+        },
+        {
+          "name": "pixel_spacing",
+          "type": "Option<(f32, f32)>",
+          "dicom_tag": "(0028,0030) PixelSpacing",
+          "visibility": "pub"
+        },
+        {
+          "name": "slice_thickness",
+          "type": "Option<f32>",
+          "dicom_tag": "(0018,0050) SliceThickness",
+          "visibility": "pub"
+        },
+        {
+          "name": "spacing_between_slices",
+          "type": "Option<f32>",
+          "dicom_tag": "(0018,0088) SpacingBetweenSlices",
+          "visibility": "pub"
+        },
+        {
+          "name": "image_position_patient",
+          "type": "Option<(f32, f32, f32)>",
+          "dicom_tag": "(0020,0032) ImagePositionPatient",
+          "visibility": "pub"
+        },
+        {
+          "name": "image_orientation_patient",
+          "type": "Option<(f32, f32, f32, f32, f32, f32)>",
+          "dicom_tag": "(0020,0037) ImageOrientationPatient",
+          "visibility": "pub"
+        },
+        {
+          "name": "patient_position",
+          "type": "Option<String>",
+          "dicom_tag": "(0018,5100) PatientPosition",
+          "visibility": "pub"
+        },
+        {
+          "name": "rescale_slope",
+          "type": "Option<f32>",
+          "dicom_tag": "(0028,1053) RescaleSlope",
+          "visibility": "pub"
+        },
+        {
+          "name": "rescale_intercept",
+          "type": "Option<f32>",
+          "dicom_tag": "(0028,1052) RescaleIntercept",
+          "visibility": "pub"
+        },
+        {
+          "name": "window_center",
+          "type": "Option<f32>",
+          "dicom_tag": "(0028,1050) WindowCenter",
+          "visibility": "pub"
+        },
+        {
+          "name": "window_width",
+          "type": "Option<f32>",
+          "dicom_tag": "(0028,1051) WindowWidth",
+          "visibility": "pub"
+        },
+        {
+          "name": "pixel_representation",
+          "type": "u16",
+          "dicom_tag": "(0028,0103) PixelRepresentation",
+          "visibility": "pub"
+        },
+        {
+          "name": "Mandatory",
+          "type": "but important for interpretation)\n    (pixel_data, Vec<u8>",
+          "dicom_tag": "(7FE0,0010) PixelData",
+          "visibility": "pub"
+        }
+      ],
+      "constructor": "pub fn new(CTImage: {\n    (uid, String, series_uid: String, rows: u16, columns: u16, pixel_spacing: Option<(f32, f32)>, slice_thickness: Option<f32>, spacing_between_slices: Option<f32>, image_position_patient: Option<(f32, f32, f32)>, image_orientation_patient: Option<(f32, f32, f32, f32, f32, f32)>, patient_position: Option<String>, rescale_slope: Option<f32>, rescale_intercept: Option<f32>, window_center: Option<f32>, window_width: Option<f32>, pixel_representation: u16, Mandatory: but important for interpretation)\n    (pixel_data, Vec<u8>) -> Self",
+      "formatter": "pub fn format_tags(&self) -> String",
+      "derives": [
+        "Debug",
+        "Clone",
+        "serde::Serialize"
+      ]
+    },
+    {
+      "name": "ImageSeries",
+      "external_path": "data::dicom::ImageSeries",
+      "invocation_path": "src/data/dicom/image_series.rs",
+      "fields": [
+        {
+          "name": "ImageSeries",
+          "type": "{\n    (uid, String",
+          "dicom_tag": "(0020,000E) SeriesInstanceUID",
+          "visibility": "pub"
+        },
+        {
+          "name": "study_uid",
+          "type": "String",
+          "dicom_tag": "(0020,000D) StudyInstanceUID",
+          "visibility": "pub"
+        },
+        {
+          "name": "modality",
+          "type": "String",
+          "dicom_tag": "(0008,0060) Modality",
+          "visibility": "pub"
+        },
+        {
+          "name": "description",
+          "type": "Option<String>",
+          "dicom_tag": "(0008,103E) SeriesDescription",
+          "visibility": "pub"
+        }
+      ],
+      "constructor": "pub fn new(ImageSeries: {\n    (uid, String, study_uid: String, modality: String, description: Option<String>) -> Self",
+      "formatter": "pub fn format_tags(&self) -> String",
+      "derives": [
+        "Debug",
+        "Clone",
+        "serde::Serialize"
+      ]
+    },
+    {
+      "name": "Patient",
+      "external_path": "data::dicom::Patient",
+      "invocation_path": "src/data/dicom/patient.rs",
+      "fields": [
+        {
+          "name": "Patient",
+          "type": "{\n    (patient_id, String",
+          "dicom_tag": "(0010,0020) PatientID",
+          "visibility": "pub"
+        },
+        {
+          "name": "name",
+          "type": "String",
+          "dicom_tag": "(0010,0010) PatientName",
+          "visibility": "pub"
+        },
+        {
+          "name": "birthdate",
+          "type": "Option<String>",
+          "dicom_tag": "(0010,0030) PatientBirthDate",
+          "visibility": "pub"
+        },
+        {
+          "name": "sex",
+          "type": "Option<String>",
+          "dicom_tag": "(0010,0040) PatientSex",
+          "visibility": "pub"
+        }
+      ],
+      "constructor": "pub fn new(Patient: {\n    (patient_id, String, name: String, birthdate: Option<String>, sex: Option<String>) -> Self",
+      "formatter": "pub fn format_tags(&self) -> String",
+      "derives": [
+        "Debug",
+        "Clone",
+        "serde::Serialize"
+      ]
+    },
+    {
+      "name": "StudySet",
+      "external_path": "data::dicom::StudySet",
+      "invocation_path": "src/data/dicom/studyset.rs",
+      "fields": [
+        {
+          "name": "StudySet",
+          "type": "{\n    (study_id, String",
+          "dicom_tag": "(0020,0010) StudyID",
+          "visibility": "pub"
+        },
+        {
+          "name": "uid",
+          "type": "String",
+          "dicom_tag": "(0020,000D) StudyInstanceUID",
+          "visibility": "pub"
+        },
+        {
+          "name": "patient_id",
+          "type": "String",
+          "dicom_tag": "(0010,0020) PatientID",
+          "visibility": "pub"
+        },
+        {
+          "name": "date",
+          "type": "String",
+          "dicom_tag": "(0008,0020) StudyDate",
+          "visibility": "pub"
+        },
+        {
+          "name": "description",
+          "type": "Option<String>",
+          "dicom_tag": "(0008,1030) StudyDescription",
+          "visibility": "pub"
+        }
+      ],
+      "constructor": "pub fn new(StudySet: {\n    (study_id, String, uid: String, patient_id: String, date: String, description: Option<String>) -> Self",
+      "formatter": "pub fn format_tags(&self) -> String",
+      "derives": [
+        "Debug",
+        "Clone",
+        "serde::Serialize"
+      ]
+    }
+  ],
+  "glcanvas_macro_senders": [
+    {
+      "name": "set_window_level",
+      "event": "SetWindowLevel",
+      "signature": "pub fn set_window_level(&self, index: usize, window_level: f32)"
+    },
+    {
+      "name": "set_window_width",
+      "event": "SetWindowWidth",
+      "signature": "pub fn set_window_width(&self, index: usize, window_width: f32)"
+    },
+    {
+      "name": "set_slice_mm",
+      "event": "SetSliceMM",
+      "signature": "pub fn set_slice_mm(&self, index: usize, slice: f32)"
+    },
+    {
+      "name": "set_scale",
+      "event": "SetScale",
+      "signature": "pub fn set_scale(&self, index: usize, scale: f32)"
+    },
+    {
+      "name": "set_translate_in_screen_coord",
+      "event": "SetTranslateInScreenCoord",
+      "signature": "pub fn set_translate_in_screen_coord(&self, index: usize, x: f32, y: f32, z: f32)"
+    },
+    {
+      "name": "set_pan",
+      "event": "SetPan",
+      "signature": "pub fn set_pan(&self, index: usize, dx: f32, dy: f32)"
+    },
+    {
+      "name": "set_pan_mm",
+      "event": "SetPanMM",
+      "signature": "pub fn set_pan_mm(&self, index: usize, dx_mm: f32, dy_mm: f32)"
+    },
+    {
+      "name": "set_aliasing",
+      "event": "SetAliasing",
+      "signature": "pub fn set_aliasing(&self, index: usize, aliasing: bool)"
+    },
+    {
+      "name": "handle_view_click",
+      "event": "ViewClick",
+      "signature": "pub fn handle_view_click(&self, index: usize, screen_x: f32, screen_y: f32, screen_z: f32)"
+    },
+    {
+      "name": "set_oblique_rotation_radians",
+      "event": "SetObliqueRotation",
+      "signature": "pub fn set_oblique_rotation_radians(&self, index: usize, horizontal_radians: f32, vertical_radians: f32, in_plane_radians: f32)"
+    },
+    {
+      "name": "sync_oblique_to_3d",
+      "event": "SetObliquePlane",
+      "signature": "pub fn sync_oblique_to_3d(&self, index: usize, oblique_crop: f32, alpha: f32)"
+    },
+    {
+      "name": "set_mip_mode",
+      "event": "SetMipMode",
+      "signature": "pub fn set_mip_mode(&self, index: usize, mode: u32)"
+    },
+    {
+      "name": "set_slab_thickness",
+      "event": "SetSlabThickness",
+      "signature": "pub fn set_slab_thickness(&self, index: usize, thickness: f32)"
+    },
+    {
+      "name": "set_rotation_angle_degrees",
+      "event": "SetRotationAngleDeg",
+      "signature": "pub fn set_rotation_angle_degrees(&self, index: usize, roll_deg: f32, yaw_deg: f32, pitch_deg: f32)"
+    },
+    {
+      "name": "set_mesh_rotation_enabled",
+      "event": "SetMeshRotationEnabled",
+      "signature": "pub fn set_mesh_rotation_enabled(&self, index: usize, enabled: bool)"
+    },
+    {
+      "name": "set_mesh_opacity",
+      "event": "SetMeshOpacity",
+      "signature": "pub fn set_mesh_opacity(&self, index: usize, alpha: f32)"
+    },
+    {
+      "name": "reset_mesh",
+      "event": "ResetMesh",
+      "signature": "pub fn reset_mesh(&self, index: usize)"
+    },
+    {
+      "name": "set_rotation_degrees",
+      "event": "SetRotationDeg",
+      "signature": "pub fn set_rotation_degrees(&self, index: usize, degrees_x: f32, degrees_y: f32)"
+    },
+    {
+      "name": "set_mesh_roi",
+      "event": "SetMeshRoi",
+      "signature": "pub fn set_mesh_roi(&self, index: usize, sx: f32,sy: f32, sz: f32, lx: f32, ly: f32,lz: f32)"
+    },
+    {
+      "name": "set_mesh_mode",
+      "event": "SetMeshMode",
+      "signature": "pub fn set_mesh_mode(&self, index: usize, mode: usize)"
+    },
+    {
+      "name": "set_ball_enabled",
+      "event": "SetMeshBallEnabled",
+      "signature": "pub fn set_ball_enabled(&self, index: usize, enabled: bool)"
+    },
+    {
+      "name": "set_ball",
+      "event": "SetBall",
+      "signature": "pub fn set_ball(&self, index: usize, id: usize, x: f32, y: f32, z: f32)"
+    },
+    {
+      "name": "set_mesh_needle_enabled",
+      "event": "SetMeshNeedleEnabled",
+      "signature": "pub fn set_mesh_needle_enabled(&self, index: usize, enabled: f32)"
+    },
+    {
+      "name": "set_new_needle",
+      "event": "SetMeshNeedleTrajectory",
+      "signature": "pub fn set_new_needle(&self, index: usize, id: u32, x: f32, y: f32, z: f32, lx: f32, ly: f32, lz: f32, r:f32, g:f32, b:f32)"
+    },
+    {
+      "name": "set_needle_position",
+      "event": "SetMeshNeedlePosition",
+      "signature": "pub fn set_needle_position(&self, index: usize, id: u32, x: f32, y: f32, z: f32)"
+    },
+    {
+      "name": "set_needle_radius",
+      "event": "SetMeshNeedleRadius",
+      "signature": "pub fn set_needle_radius(&self, index: usize, id: u32, radius: f32)"
+    },
+    {
+      "name": "set_needle_angle",
+      "event": "SetMeshNeedleAngle",
+      "signature": "pub fn set_needle_angle(&self, index: usize, id: u32, angle: f32)"
+    }
+  ],
+  "direct_snapshot_omissions": {
+    "src/main.rs": "Native binary entry point, not a library public item; bare server selection is inventoried.",
+    "src/rendering/shaders/mod.rs": "Documentation-only container; no declared public Rust items."
+  }
+}

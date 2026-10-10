@@ -1,35 +1,79 @@
-#![allow(dead_code)]
-
-/// Minimal texture pool that can hold onto a depth texture and view for reuse.
-use std::collections::HashMap;
-
-pub struct MeshTexturePool {
+/// Attachment compatibility within a single device's graphics context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DepthKey {
     width: u32,
     height: u32,
-    /// Offscreen color views keyed by pass id (e.g., "mesh_offscreen")
-    color_views: HashMap<String, wgpu::TextureView>,
-    /// Offscreen color textures to keep GPU resources alive
-    color_textures: HashMap<String, wgpu::Texture>,
-    /// Holds the depth texture to keep GPU resource alive.
-    depth_texture: Option<wgpu::Texture>,
-    /// Cached view derived from the depth texture for render pass attachments.
-    depth_view: Option<wgpu::TextureView>,
+    sample_count: u32,
+    format: wgpu::TextureFormat,
+}
+
+struct CachedDepth {
+    key: DepthKey,
+    _texture: wgpu::Texture,
+    view: wgpu::TextureView,
+}
+
+/// A bounded, device-scoped cache for the mesh pass's full-surface depth attachment.
+/// Discard the pool when replacing the device. Mesh color is rendered directly to the surface.
+#[derive(Default)]
+pub struct MeshTexturePool {
+    depth: Option<CachedDepth>,
+    allocations: u64,
+    legacy_color: Option<(wgpu::Texture, wgpu::TextureView)>,
 }
 
 impl MeshTexturePool {
-    /// Creates a new empty texture pool.
+    /// Creates an empty pool belonging to the current graphics device.
     pub fn new() -> Self {
-        Self {
-            width: 0,
-            height: 0,
-            depth_texture: None,
-            depth_view: None,
-            color_views: HashMap::new(),
-            color_textures: HashMap::new(),
-        }
+        Self::default()
     }
 
-    /// Ensures that the color and depth textures are created and correctly sized.
+    /// Reuses both texture and view until the attachment key changes.
+    /// Zero-sized requests do not allocate or return an attachment.
+    pub fn ensure_depth(
+        &mut self,
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+        sample_count: u32,
+        format: wgpu::TextureFormat,
+    ) -> Option<&wgpu::TextureView> {
+        if width == 0 || height == 0 {
+            return None;
+        }
+        let key = DepthKey {
+            width,
+            height,
+            sample_count,
+            format,
+        };
+        if self.depth.as_ref().map(|depth| depth.key) != Some(key) {
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("Mesh Cached Depth"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            });
+            let view = texture.create_view(&Default::default());
+            self.depth = Some(CachedDepth {
+                key,
+                _texture: texture,
+                view,
+            });
+            self.allocations += 1;
+        }
+        self.depth_view()
+    }
+
+    /// Compatibility helper for single-sample mesh depth preparation.
     pub fn ensure_textures(
         &mut self,
         device: &wgpu::Device,
@@ -37,89 +81,51 @@ impl MeshTexturePool {
         height: u32,
         use_depth: bool,
     ) {
-        // Update size if it has changed
-        if self.width != width || self.height != height {
-            self.width = width;
-            self.height = height;
-            self.color_textures.clear(); // Re-create all textures
-            self.color_views.clear();
-            self.depth_texture = None; // Re-create depth texture
-            self.depth_view = None;
-        }
-
-        // Ensure depth texture is created if required
-        if use_depth && self.depth_texture.is_none() {
-            let depth_texture = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("depth_texture"),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: crate::rendering::core::pipeline::get_mesh_depth_format(),
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
-            });
-            self.depth_view =
-                Some(depth_texture.create_view(&wgpu::TextureViewDescriptor::default()));
-            self.depth_texture = Some(depth_texture);
+        if use_depth {
+            self.ensure_depth(
+                device,
+                width,
+                height,
+                1,
+                crate::rendering::core::pipeline::get_mesh_depth_format(),
+            );
         }
     }
 
-    /// Sets the depth texture and its view (for backward compatibility)
+    /// Adopts an externally created depth attachment on the pool's device.
     pub fn set_depth(&mut self, texture: wgpu::Texture, view: wgpu::TextureView) {
-        self.depth_texture = Some(texture);
-        self.depth_view = Some(view);
+        let key = DepthKey {
+            width: texture.width(),
+            height: texture.height(),
+            sample_count: texture.sample_count(),
+            format: texture.format(),
+        };
+        self.depth = Some(CachedDepth {
+            key,
+            _texture: texture,
+            view,
+        });
     }
 
-    /// Gets a reference to the current depth view.
+    /// Cached attachment view; borrowing this does not create another GPU object.
     pub fn depth_view(&self) -> Option<&wgpu::TextureView> {
-        self.depth_view.as_ref()
+        self.depth.as_ref().map(|depth| &depth.view)
     }
 
-    /// Gets a reference to an offscreen color view by key if present.
+    /// Number of depth texture/view pairs allocated by this pool, for diagnostics.
+    pub fn allocation_count(&self) -> u64 {
+        self.allocations
+    }
+
+    /// Legacy offscreen access. Production passes draw directly to the surface.
     pub fn get_color_view(&self, key: &str) -> Option<&wgpu::TextureView> {
-        self.color_views.get(key)
-    }
-
-    /// Gets both the mesh offscreen color view and depth view as owned values.
-    /// This avoids borrow checker issues when both views are needed.
-    pub fn get_mesh_views(
-        &mut self,
-        device: &wgpu::Device,
-        width: u32,
-        height: u32,
-        format: wgpu::TextureFormat,
-        use_depth: bool,
-    ) -> (Option<wgpu::TextureView>, Option<wgpu::TextureView>) {
-        // Ensure both color and depth textures exist
-        self.ensure_textures(device, width, height, use_depth);
-        self.ensure_mesh_offscreen_texture(device, width, height, format);
-
-        // Create a new color view from the texture
-        let color_view = self
-            .color_textures
-            .get("mesh_offscreen")
-            .map(|texture| texture.create_view(&wgpu::TextureViewDescriptor::default()));
-
-        // Create a new depth view from the depth texture if needed
-        let depth_view = if use_depth {
-            self.depth_texture
-                .as_ref()
-                .map(|texture| texture.create_view(&wgpu::TextureViewDescriptor::default()))
+        if key == "mesh_offscreen" {
+            self.legacy_color.as_ref().map(|(_, v)| v)
         } else {
             None
-        };
-
-        (color_view, depth_view)
+        }
     }
 
-    /// Creates or updates the mesh pass offscreen texture for the given size.
-    /// Returns the texture view for use in render passes.
     pub fn ensure_mesh_offscreen_texture(
         &mut self,
         device: &wgpu::Device,
@@ -130,20 +136,17 @@ impl MeshTexturePool {
         if width == 0 || height == 0 {
             return None;
         }
-
-        let key = "mesh_offscreen";
-
-        // Check if we need to recreate the texture (size change or doesn't exist)
-        if self.color_textures.get(key).is_none() {
-            let size = wgpu::Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            };
-
+        let matches = self.legacy_color.as_ref().is_some_and(|(texture, _)| {
+            texture.width() == width && texture.height() == height && texture.format() == format
+        });
+        if !matches {
             let texture = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("Mesh Offscreen Color Texture"),
-                size,
+                label: Some("Legacy mesh offscreen"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
@@ -152,19 +155,38 @@ impl MeshTexturePool {
                     | wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             });
-
-            let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-            let key_str: String = key.into();
-            self.color_textures.insert(key_str.clone(), texture);
-            self.color_views.insert(key_str, view);
+            let view = texture.create_view(&Default::default());
+            self.legacy_color = Some((texture, view));
         }
-
-        self.get_color_view(key)
+        self.get_color_view("mesh_offscreen")
     }
 
-    /// Function-level comment: Clear depth texture and view to prevent stale references when graphics context changes.
+    pub fn get_mesh_views(
+        &mut self,
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+        use_depth: bool,
+    ) -> (Option<wgpu::TextureView>, Option<wgpu::TextureView>) {
+        self.ensure_textures(device, width, height, use_depth);
+        self.ensure_mesh_offscreen_texture(device, width, height, format);
+        let color = self
+            .legacy_color
+            .as_ref()
+            .map(|(t, _)| t.create_view(&Default::default()));
+        let depth = if use_depth {
+            self.depth
+                .as_ref()
+                .map(|d| d._texture.create_view(&Default::default()))
+        } else {
+            None
+        };
+        (color, depth)
+    }
+
+    /// Releases the cached attachment, including when no mesh views remain.
     pub fn clear_depth_view(&mut self) {
-        self.depth_texture = None;
-        self.depth_view = None;
+        self.depth = None;
     }
 }

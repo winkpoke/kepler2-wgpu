@@ -1,7 +1,7 @@
 #[derive(Debug, Clone, PartialEq)]
 pub enum ErrorType {
     LatchingError(u16),    // 锁定错误，包含错误代码
-    NonLatchingError(u16),  // 非锁定错误，包含错误代码
+    NonLatchingError(u16), // 非锁定错误，包含错误代码
     Warning(u16),          // 警告，包含警告代码
 }
 
@@ -77,7 +77,7 @@ impl ErrorValidator {
 
     pub fn get_error_status(&self) -> Vec<String> {
         let mut status = Vec::new();
-        
+
         for error in &self.errors {
             let error_code = match &error.error_type {
                 ErrorType::LatchingError(code) => format!("EL{:03}", code),
@@ -86,8 +86,14 @@ impl ErrorValidator {
             };
             status.push(format!("{}: {}", error_code, error.description));
         }
-        
+
         status
+    }
+}
+
+impl Default for ErrorValidator {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

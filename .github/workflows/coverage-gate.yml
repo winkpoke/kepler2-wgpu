@@ -3,64 +3,101 @@ name: Coverage Gate
 on:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   coverage_gate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # Required by the existing coverage-comment step.
 
     steps:
-      - uses: actions/checkout@v3
-
-      - name: Install Rust
-        uses: actions-rs/toolchain@v1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          toolchain: stable
-          override: true
+          persist-credentials: false
+
+      - name: Install repository Rust toolchain
+        id: rust
+        uses: ./.github/actions/setup-rust
 
       - name: Install cargo-llvm-cov
+        env:
+          CARGO_LLVM_COV_VERSION: ${{ steps.rust.outputs.coverage-cli-version }}
         run: |
-          cargo install cargo-llvm-cov
+          cargo install cargo-llvm-cov \
+            --version "$CARGO_LLVM_COV_VERSION" --locked
 
-      - name: Generate coverage report
+      - name: Install native dependencies and headless GPU driver
         run: |
-          cargo llvm-cov --lcov --output-dir coverage
+          sudo apt-get update
+          sudo apt-get install -y libudev-dev libxkbcommon-dev \
+            libwayland-dev libvulkan1 mesa-vulkan-drivers vulkan-tools
+          icd=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
+          test -n "$icd"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
+          runtime="$RUNNER_TEMP/kepler-gpu-runtime"
+          mkdir -p "$runtime"
+          chmod 700 "$runtime"
+          printf '%s\n' "WGPU_BACKEND=vulkan" \
+            "KEPLER_REQUIRE_GPU_TESTS=1" "XDG_RUNTIME_DIR=$runtime" \
+            >> "$GITHUB_ENV"
 
-      - name: Check medical path coverage
+      - name: Record measurement tools and export one coverage run
         run: |
-          COVERAGE=$(cargo llvm-cov --quiet | grep -oP '\d+(?=%)' || echo "0%")
-          echo "Medical path coverage: $COVERAGE%"
+          mkdir -p coverage
+          git rev-parse HEAD > coverage/revision.txt
+          rustc -Vv | tee coverage/toolchain.txt
+          cargo llvm-cov --version | tee coverage/tool.txt
+          printf '%s\n' "features=default" "target=native" \
+            "backend=vulkan" "coverage-scope=doc/testing/coverage-scope.json" \
+            > coverage/configuration.txt
+          cp doc/testing/coverage-scope.json coverage/coverage-scope.json
+          icd=$(find /usr/share/vulkan/icd.d -name 'lvp_icd*.json' -print -quit)
+          VK_ICD_FILENAMES="$icd" \
+            XDG_RUNTIME_DIR="$RUNNER_TEMP/kepler-gpu-runtime" \
+            vulkaninfo --summary > coverage/adapter.txt 2>&1
+          set +e
+          cargo llvm-cov test --locked --json \
+            --output-path coverage/coverage.json > coverage/test-run.log 2>&1
+          result=$?
+          set -e
+          cat coverage/test-run.log
+          {
+            echo "exit_code=$result"
+            grep '^test result:' coverage/test-run.log || true
+          } > coverage/test-outcome.txt
+          exit "$result"
 
-          if (( $(echo "$COVERAGE < 80" | bc -l) )); then
-            echo "ERROR: Medical path coverage $COVERAGE% is below 80% threshold"
-            exit 1
-          fi
+      - name: Export LCOV from the same instrumented run
+        if: success()
+        run: cargo llvm-cov report --lcov --output-path coverage/lcov.info
 
-      - name: Check overall coverage gate
+      - name: Check native source-line coverage scopes
         run: |
-          COVERAGE=$(cargo llvm-cov --quiet | grep -oP '\d+(?=%)' || echo "0%")
-          echo "Overall coverage: $COVERAGE%"
+          python3 scripts/coverage_summary.py coverage/coverage.json \
+            --output coverage/summary.json --medical-min 80 --overall-min 45
 
-          MIN_COVERAGE=45
-          if (( $(echo "$COVERAGE < $MIN_COVERAGE" | bc -l) )); then
-            echo "ERROR: Coverage $COVERAGE% is below $MIN_COVERAGE% threshold"
-            exit 1
-          fi
-
-      - name: Check coverage regression
+      - name: Report trend evidence limitation
+        if: always()
         run: |
-          CURRENT=$(cargo llvm-cov --quiet | grep -oP '\d+(?=%)' || echo "0%")
-          BASELINE=$(git show HEAD~1:coverage_report.txt 2>/dev/null || echo "0%")
+          echo "::warning::Trend enforcement needs a comparable JSON baseline."
+          echo "Legacy coverage_report.txt lacks scope/metric provenance."
+          echo "See doc/testing/coverage.md. Trend evidence is pending."
 
-          if [ -n "$BASELINE" ]; then
-            DECREASE=$(echo "$BASELINE - $CURRENT" | bc -l)
-
-            if (( $(echo "$DECREASE > 5" | bc -l) )); then
-              echo "ERROR: Coverage decreased by $DECREASE% (baseline: $BASELINE%, current: $CURRENT%)"
-              exit 1
-            fi
-          fi
+      - name: Retain coverage measurement and provenance
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-line-coverage
+          path: coverage/
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Comment coverage in PR
-        uses: romeovs/lcov-reporter-action@v0.3.1
+        uses: >-
+          romeovs/lcov-reporter-action@dda1c9b1fa1622b225e9acd87a248751dbcc6ada
         with:
           lcov-file: ./coverage/lcov.info
           github-token: ${{ secrets.GITHUB_TOKEN }}

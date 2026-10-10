@@ -39,31 +39,41 @@ impl PixelData {
             PixelType::UInt8 => Ok(Self::UInt8(bytes.to_vec())),
             PixelType::UInt16 => Ok(Self::UInt16(
                 bytes
-                    .chunks_exact(2)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
                     .map(|c| u16::from_le_bytes([c[0], c[1]]))
                     .collect(),
             )),
             PixelType::Int16 => Ok(Self::Int16(
                 bytes
-                    .chunks_exact(2)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
                     .map(|c| i16::from_le_bytes([c[0], c[1]]))
                     .collect(),
             )),
             PixelType::Int32 => Ok(Self::Int32(
                 bytes
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                     .collect(),
             )),
             PixelType::Float32 => Ok(Self::Float32(
                 bytes
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                     .collect(),
             )),
             PixelType::Float64 => Ok(Self::Float64(
                 bytes
-                    .chunks_exact(8)
+                    .as_chunks::<8>()
+                    .0
+                    .iter()
                     .map(|c| f64::from_le_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
                     .collect(),
             )),
@@ -106,7 +116,7 @@ impl PixelData {
         let mut voxel_data = Vec::with_capacity(voxel_count);
         match pixel_type {
             PixelType::Int16 => {
-                for chunk in raw_data.chunks_exact(2).take(voxel_count) {
+                for chunk in raw_data.as_chunks::<2>().0.iter().take(voxel_count) {
                     let val = i16::from_le_bytes([chunk[0], chunk[1]]);
                     voxel_data.push(val);
                 }
@@ -119,7 +129,7 @@ impl PixelData {
                 }
             }
             PixelType::Float32 => {
-                for chunk in raw_data.chunks_exact(4).take(voxel_count) {
+                for chunk in raw_data.as_chunks::<4>().0.iter().take(voxel_count) {
                     let val = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
                     // let val = (val - 0.27) / 0.27 * 1000.0;
                     // let val = (val - 0.019) / 0.019 * 1000.0;
@@ -149,31 +159,41 @@ impl PixelData {
             PixelType::UInt8 => Ok(Self::UInt8(bytes.to_vec())),
             PixelType::UInt16 => Ok(Self::UInt16(
                 bytes
-                    .chunks_exact(2)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
                     .map(|c| u16::from_be_bytes([c[0], c[1]]))
                     .collect(),
             )),
             PixelType::Int16 => Ok(Self::Int16(
                 bytes
-                    .chunks_exact(2)
+                    .as_chunks::<2>()
+                    .0
+                    .iter()
                     .map(|c| i16::from_be_bytes([c[0], c[1]]))
                     .collect(),
             )),
             PixelType::Int32 => Ok(Self::Int32(
                 bytes
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .map(|c| i32::from_be_bytes([c[0], c[1], c[2], c[3]]))
                     .collect(),
             )),
             PixelType::Float32 => Ok(Self::Float32(
                 bytes
-                    .chunks_exact(4)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
                     .map(|c| f32::from_be_bytes([c[0], c[1], c[2], c[3]]))
                     .collect(),
             )),
             PixelType::Float64 => Ok(Self::Float64(
                 bytes
-                    .chunks_exact(8)
+                    .as_chunks::<8>()
+                    .0
+                    .iter()
                     .map(|c| f64::from_be_bytes([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]]))
                     .collect(),
             )),

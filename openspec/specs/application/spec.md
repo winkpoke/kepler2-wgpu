@@ -12,7 +12,7 @@ The application layer SHALL have comprehensive test coverage for state managemen
 
 #### Scenario: Test Fixture Usage
 - **WHEN** tests are written that require valid application state or configuration
-- **THEN** reusable test fixtures SHALL be available via `tests/common/test_fixtures.rs`
+- **THEN** reusable test fixtures SHALL be available via the shared `tests/common/` modules
 - **AND** fixtures SHALL generate valid `AppModel`, `AppView`, and view configurations
 - **AND** fixtures SHALL provide malformed data for validation tests
 
@@ -52,3 +52,14 @@ Application-level errors SHALL be handled gracefully without crashing and SHALL 
 - **WHEN** application state validation detects invalid invariants
 - **THEN** the application SHALL prevent unsafe operations
 - **AND** the error SHALL be logged with enough detail to diagnose the issue
+
+## Verification
+
+- [Shared fixtures](../../../tests/common/mod.rs)
+- [View transition tests](../../../tests/view_transition_integration_tests.rs)
+- [Application view unit tests](../../../src/application/appview_tests.rs)
+- [Scheduling regressions](../../../tests/redraw_state_tests.rs)
+- [Current testing map and limits](../../../doc/testing/README.md)
+
+These sources provide scoped evidence, not proof of every concurrent/error-recovery
+scenario or manual native/browser interaction.

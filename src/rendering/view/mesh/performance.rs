@@ -1,4 +1,4 @@
-use crate::core::timing::Instant;
+use crate::core::timing::{DurationExt, Instant};
 /// Performance monitoring and automatic quality adjustment for mesh rendering
 use std::time::Duration;
 
@@ -30,24 +30,19 @@ impl Default for PerformanceTargets {
 }
 
 /// Function-level comment: Quality levels for automatic adjustment
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum QualityLevel {
     /// Minimum quality - wireframe only
     Minimal = 0,
     /// Low quality - reduced geometry, simple shading
     Low = 1,
     /// Medium quality - normal geometry, basic lighting
+    #[default]
     Medium = 2,
     /// High quality - full geometry, advanced lighting
     High = 3,
     /// Maximum quality - all features enabled
     Maximum = 4,
-}
-
-impl Default for QualityLevel {
-    fn default() -> Self {
-        QualityLevel::Medium
-    }
 }
 
 impl QualityLevel {
@@ -175,7 +170,7 @@ impl FrameTimer {
 
     /// Function-level comment: End frame timing and record the duration
     pub fn end_frame(&mut self) -> f32 {
-        let frame_time = self.frame_start.elapsed().as_millis_f32();
+        let frame_time = DurationExt::as_millis_f32(&self.frame_start.elapsed());
 
         if self.frame_times.len() < self.max_samples {
             self.frame_times.push(frame_time);

@@ -1,12 +1,11 @@
 #![allow(dead_code)]
 
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use super::mesh::{Mesh, BasicLightingUniforms};
+use super::mesh::{BasicLightingUniforms, Mesh};
 use crate::rendering::core::pipeline::{
-    create_basic_lighting_bind_group_layout, 
-    create_basic_mesh_pipeline_with_lighting,
+    create_basic_lighting_bind_group_layout, create_basic_mesh_pipeline_with_lighting_and_format,
 };
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 use wgpu::util::DeviceExt;
 use wgpu::{Device, Queue};
 
@@ -98,6 +97,7 @@ pub struct MeshUpload<'a> {
 /// - visibility by `label_id`
 /// - filtering by `MeshKind`
 struct MeshSlot {
+    source: Mesh,
     /// Stable logical identity.
     id: u32,
     /// Semantic mesh category.
@@ -133,6 +133,7 @@ impl MeshSlot {
         });
 
         Self {
+            source: upload.mesh.clone(),
             id: upload.id,
             kind: upload.kind,
             label_id: upload.label_id,
@@ -177,47 +178,63 @@ pub struct MultiMeshContext {
     lighting_bind_group: wgpu::BindGroup,
     /// Cached CPU-side uniforms.
     cached_uniforms: BasicUniforms,
+    cached_lighting: Mutex<BasicLightingUniforms>,
 }
 
 impl MultiMeshContext {
     pub fn new(device: &Device, queue: &Queue) -> Self {
+        let target_format = crate::rendering::core::pipeline::get_swapchain_format()
+            .unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
+        Self::new_with_format(device, queue, target_format)
+    }
+
+    /// Creates multi-mesh pipelines for this owner's color attachment format.
+    pub fn new_with_format(
+        device: &Device,
+        queue: &Queue,
+        target_format: wgpu::TextureFormat,
+    ) -> Self {
         let default_uniforms = BasicUniforms::default();
         let lighting = BasicLightingUniforms::default();
-        let bind_group_layout = device.create_bind_group_layout(
-            &wgpu::BindGroupLayoutDescriptor {
-                label: Some("MultiMesh MVP Layout"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-            },
-        );
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("MultiMesh MVP Layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
         let lighting_layout = create_basic_lighting_bind_group_layout(device);
 
-        let pipeline = Arc::new(create_basic_mesh_pipeline_with_lighting(
-            device, &bind_group_layout, &lighting_layout, true,
+        let pipeline = Arc::new(create_basic_mesh_pipeline_with_lighting_and_format(
+            device,
+            &bind_group_layout,
+            &lighting_layout,
+            true,
             wgpu::CompareFunction::LessEqual,
+            target_format,
         ));
 
-        let pipeline_no_depth = Arc::new(create_basic_mesh_pipeline_with_lighting(
-            device, &bind_group_layout, &lighting_layout, false,
+        let pipeline_no_depth = Arc::new(create_basic_mesh_pipeline_with_lighting_and_format(
+            device,
+            &bind_group_layout,
+            &lighting_layout,
+            false,
             wgpu::CompareFunction::Always,
+            target_format,
         ));
 
-        let uniform_buffer =
-            device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("MultiMesh Uniform Buffer"),
-                size: std::mem::size_of::<BasicUniforms>() as u64,
-                usage: wgpu::BufferUsages::UNIFORM
-                    | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
+        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("MultiMesh Uniform Buffer"),
+            size: std::mem::size_of::<BasicUniforms>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
 
         queue.write_buffer(
             &uniform_buffer,
@@ -225,24 +242,21 @@ impl MultiMeshContext {
             bytemuck::cast_slice(&[default_uniforms]),
         );
 
-        let bind_group =
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("MultiMesh Uniform Bind Group"),
-                layout: &bind_group_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform_buffer.as_entire_binding(),
-                }],
-            });
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("MultiMesh Uniform Bind Group"),
+            layout: &bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform_buffer.as_entire_binding(),
+            }],
+        });
 
-        let lighting_uniform_buffer =
-            device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("MultiMesh Lighting Uniform Buffer"),
-                size: std::mem::size_of::<BasicLightingUniforms>() as u64,
-                usage: wgpu::BufferUsages::UNIFORM
-                    | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
+        let lighting_uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("MultiMesh Lighting Uniform Buffer"),
+            size: std::mem::size_of::<BasicLightingUniforms>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
 
         queue.write_buffer(
             &lighting_uniform_buffer,
@@ -250,16 +264,14 @@ impl MultiMeshContext {
             bytemuck::cast_slice(&[lighting]),
         );
 
-        let lighting_bind_group =
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("MultiMesh Lighting Bind Group"),
-                layout: &lighting_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource:
-                        lighting_uniform_buffer.as_entire_binding(),
-                }],
-            });
+        let lighting_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("MultiMesh Lighting Bind Group"),
+            layout: &lighting_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: lighting_uniform_buffer.as_entire_binding(),
+            }],
+        });
 
         Self {
             pipeline,
@@ -270,7 +282,48 @@ impl MultiMeshContext {
             lighting_uniform_buffer,
             lighting_bind_group,
             cached_uniforms: default_uniforms,
+            cached_lighting: Mutex::new(lighting),
         }
+    }
+
+    pub(crate) fn rebuild(
+        &self,
+        device: &Device,
+        queue: &Queue,
+        format: wgpu::TextureFormat,
+    ) -> Self {
+        let mut next = Self::new_with_format(device, queue, format);
+        for slot in self.slots.values() {
+            next.slots.insert(
+                slot.id,
+                MeshSlot::from_upload(
+                    device,
+                    MeshUpload {
+                        id: slot.id,
+                        kind: slot.kind,
+                        label_id: slot.label_id,
+                        label_name: slot.label_name.as_deref(),
+                        revision: slot.uploaded_revision,
+                        mesh: &slot.source,
+                    },
+                    slot.visible,
+                ),
+            );
+        }
+        next.cached_uniforms = self.cached_uniforms;
+        queue.write_buffer(
+            &next.uniform_buffer,
+            0,
+            bytemuck::bytes_of(&next.cached_uniforms),
+        );
+        next.update_lighting(
+            queue,
+            *self
+                .cached_lighting
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()),
+        );
+        next
     }
 
     // ---------------------------------------------------------------------
@@ -293,9 +346,7 @@ impl MultiMeshContext {
     fn sync_mesh(&mut self, device: &Device, upload: MeshUpload<'_>) {
         let id = upload.id;
         match self.slots.get(&id) {
-            Some(slot)
-                if slot.uploaded_revision == upload.revision =>
-            {
+            Some(slot) if slot.uploaded_revision == upload.revision => {
                 // Geometry is already current.
                 // Metadata may still change independently, so update it without touching GPU buffers.
                 let slot = self.slots.get_mut(&id).expect("slot must still exist");
@@ -327,11 +378,7 @@ impl MultiMeshContext {
     ///
     /// Use [`Self::sync_meshes_replace`] when the supplied collection should
     /// exactly replace the current registry.
-    pub fn sync_meshes<'a, I>(
-        &mut self,
-        device: &Device,
-        uploads: I,
-    )
+    pub fn sync_meshes<'a, I>(&mut self, device: &Device, uploads: I)
     where
         I: IntoIterator<Item = MeshUpload<'a>>,
     {
@@ -346,22 +393,15 @@ impl MultiMeshContext {
     ///
     /// Use this when the caller's CPU mesh list represents the complete
     /// desired state.
-    pub fn sync_meshes_replace<'a, I>(
-        &mut self,
-        device: &Device,
-        uploads: I,
-    )
+    pub fn sync_meshes_replace<'a, I>(&mut self, device: &Device, uploads: I)
     where
         I: IntoIterator<Item = MeshUpload<'a>>,
     {
-        let uploads: Vec<MeshUpload<'a>> =
-            uploads.into_iter().collect();
+        let uploads: Vec<MeshUpload<'a>> = uploads.into_iter().collect();
 
-        let incoming_ids: HashSet<u32> =
-            uploads.iter().map(|upload| upload.id).collect();
+        let incoming_ids: HashSet<u32> = uploads.iter().map(|upload| upload.id).collect();
 
-        self.slots
-            .retain(|id, _| incoming_ids.contains(id));
+        self.slots.retain(|id, _| incoming_ids.contains(id));
 
         for upload in uploads {
             self.sync_mesh(device, upload);
@@ -467,15 +507,30 @@ impl MultiMeshContext {
 
     /// Configure the slice plane used to clip all meshes.
     /// The plane is expressed in `[0, 1]^3` volume-UV space.
-    pub fn set_slice_plane(&mut self, queue: &Queue, plane_normal: [f32; 3], plane_d: f32, thickness: f32, enabled: bool) {
+    pub fn set_slice_plane(
+        &mut self,
+        queue: &Queue,
+        plane_normal: [f32; 3],
+        plane_d: f32,
+        thickness: f32,
+        enabled: bool,
+    ) {
         self.cached_uniforms.plane_normal = plane_normal;
         self.cached_uniforms.plane_d = plane_d;
         self.cached_uniforms.slice_thickness = thickness.max(0.0);
         self.cached_uniforms.slice_enabled = if enabled { 1.0 } else { 0.0 };
-        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[self.cached_uniforms]));
+        queue.write_buffer(
+            &self.uniform_buffer,
+            0,
+            bytemuck::cast_slice(&[self.cached_uniforms]),
+        );
     }
 
     pub fn update_lighting(&self, queue: &Queue, lighting: BasicLightingUniforms) {
+        *self
+            .cached_lighting
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = lighting;
         queue.write_buffer(
             &self.lighting_uniform_buffer,
             0,
@@ -488,7 +543,7 @@ impl MultiMeshContext {
     // ---------------------------------------------------------------------
 
     /// Render all visible meshes using the depth-enabled pipeline.
-    pub fn render(&self,render_pass: &mut wgpu::RenderPass<'_>) {
+    pub fn render(&self, render_pass: &mut wgpu::RenderPass<'_>) {
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &self.bind_group, &[]);
         render_pass.set_bind_group(1, &self.lighting_bind_group, &[]);
@@ -505,7 +560,7 @@ impl MultiMeshContext {
     }
 
     /// Render all visible meshes using the pipeline without a depth attachment.
-    pub fn render_no_depth(&self,render_pass: &mut wgpu::RenderPass<'_>) {
+    pub fn render_no_depth(&self, render_pass: &mut wgpu::RenderPass<'_>) {
         render_pass.set_pipeline(&self.pipeline_no_depth);
         render_pass.set_bind_group(0, &self.bind_group, &[]);
         render_pass.set_bind_group(1, &self.lighting_bind_group, &[]);
@@ -527,15 +582,14 @@ impl MultiMeshContext {
 
     /// Returns total GPU buffer usage:`(vertex_bytes, index_bytes)`
     pub fn get_memory_stats(&self) -> (u64, u64) {
-        self.slots.values().fold(
-            (0, 0),
-            |(vertex_total, index_total), slot| {
+        self.slots
+            .values()
+            .fold((0, 0), |(vertex_total, index_total), slot| {
                 (
                     vertex_total + slot.vertex_buffer.size(),
                     index_total + slot.index_buffer.size(),
                 )
-            },
-        )
+            })
     }
 
     /// Returns the number of visible meshes.

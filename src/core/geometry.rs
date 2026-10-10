@@ -79,7 +79,7 @@ impl<'a> GeometryBuilder<'a> {
             matrix: base_uv_matrix_glam,
         };
         // println!("UV Base:\n{:?}", base_uv);
-        return base_uv;
+        base_uv
     }
 
     pub fn build_transverse_base(vol: &CTVolume) -> Base {
@@ -125,11 +125,10 @@ impl<'a> GeometryBuilder<'a> {
         ])
         .transpose();
 
-        let base_screen = Base {
+        Base {
             label: "CT Volume: screen".to_string(),
             matrix: matrix_screen_glam,
-        };
-        base_screen
+        }
     }
 
     pub fn build_coronal_base(vol: &CTVolume) -> Base {
@@ -174,11 +173,10 @@ impl<'a> GeometryBuilder<'a> {
         ])
         .transpose();
 
-        let base_screen = Base {
+        Base {
             label: "CT Volume: screen".to_string(),
             matrix: matrix_screen_glam,
-        };
-        base_screen
+        }
     }
 
     pub fn build_sagittal_base(vol: &CTVolume) -> Base {
@@ -226,11 +224,10 @@ impl<'a> GeometryBuilder<'a> {
         ])
         .transpose();
 
-        let base_screen = Base {
+        Base {
             label: "CT Volume: screen".to_string(),
             matrix: matrix_screen_glam,
-        };
-        base_screen
+        }
     }
 
     pub fn build_oblique_base(vol: &CTVolume) -> Base {
@@ -275,11 +272,16 @@ impl<'a> GeometryBuilder<'a> {
         // Original was: matrix_rot * matrix_screen
         let final_matrix = matrix_rot_glam * matrix_screen_glam;
 
-        let base_screen = Base {
+        Base {
             label: "CT Volume: screen".to_string(),
             matrix: final_matrix,
-        };
-        base_screen
+        }
+    }
+}
+
+impl<'a> Default for GeometryBuilder<'a> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

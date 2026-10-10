@@ -1,20 +1,21 @@
 #![allow(dead_code)]
+use crate::rendering::view::invalidation::ViewInvalidation;
 
+use crate::core::{KeplerResult, WindowLevel};
 use crate::data::volume_encoding::VolumeEncoding;
+use crate::rendering::pipeline::*;
 use crate::rendering::view::layout::compute_aspect_fit;
 use crate::rendering::view::render_content::RenderContent;
-use crate::rendering::view::{Renderable, View};
-use crate::core::{WindowLevel,KeplerResult};
-use crate::rendering::pipeline::*;
 use crate::rendering::view::NeedleUniform;
-use glam::{Mat4, Vec3, Quat};
+use crate::rendering::view::{Renderable, View};
+use glam::{Mat4, Quat, Vec3};
 use std::{any::Any, sync::Arc};
 use wgpu::{BindGroup, BindGroupLayout, Buffer, BufferUsages, Device, Queue, RenderPipeline};
 
 /// Configuration for Maximum Intensity Projection (MIP) rendering.
 /// Provides fixed quality settings for the MVP implementation to minimize complexity
 /// while delivering core MIP functionality.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MipConfig {
     /// Step size for ray marching in mm
     pub ray_step_size: f32,
@@ -62,7 +63,7 @@ pub struct MipUniforms {
 
     // Texture format parameters
     pub is_packed_rg8: f32,
-    /// Bias used to decode packed RG8 back to raw HU
+    /// Storage offset supplied by VolumeEncoding, independent of window/level.
     pub bias: f32,
 
     // Window/Level for medical imaging
@@ -74,7 +75,7 @@ pub struct MipUniforms {
     pub mip_mode: f32,
     pub lower_threshold: f32,
     pub upper_threshold: f32,
-    pub needle_enabled:f32,
+    pub needle_enabled: f32,
     pub needle_count: u32,
     pub _pad: f32,
     pub ball_enabled: f32,
@@ -89,7 +90,7 @@ impl Default for MipUniforms {
             ray_step_size: 0.01,
             max_steps: 512.0,
             is_packed_rg8: 1.0, // Default to packed format
-            bias: VolumeEncoding::DEFAULT_HU_OFFSET,
+            bias: VolumeEncoding::for_float_support(false).decode_bias(),
             window: 1500.0,
             level: 400.0,
             pan_x: 0.0,
@@ -124,14 +125,14 @@ impl MipRenderContext {
     pub fn new(device: &Device, surface_format: wgpu::TextureFormat) -> Self {
         // Create bind group layout for texture resources (group 0)
         let texture_bind_group_layout = create_texture_bind_group_layout(device);
-        
+
         // Create bind group layout for uniforms (group 1)
-        let min_binding_size = std::num::NonZeroU64::new(std::mem::size_of::<MipUniforms>() as u64,);
+        let min_binding_size = std::num::NonZeroU64::new(std::mem::size_of::<MipUniforms>() as u64);
         let uniform_bind_group_layout = create_uniform_bind_group_layout(device, min_binding_size);
 
         // Create render pipeline
         let pipeline = Arc::new(create_mip_pipeline(
-            device, 
+            device,
             surface_format,
             &texture_bind_group_layout,
             &uniform_bind_group_layout,
@@ -237,7 +238,20 @@ impl MipViewWgpuImpl {
 }
 
 /// MIP view that integrates with the existing RenderContent architecture.
+#[derive(Clone, PartialEq)]
+struct MipDisplayState {
+    config: MipConfig,
+    position: (i32, i32),
+    dimensions: (u32, u32),
+    scale: f32,
+    pan: [f32; 3],
+    rotation: [f32; 4],
+    window: [f32; 2],
+    overlays: Vec<u8>,
+}
+
 pub struct MipView {
+    invalidation: ViewInvalidation<MipDisplayState>,
     view_id: usize,
     /// WGPU implementation details
     wgpu_impl: Arc<MipViewWgpuImpl>,
@@ -264,9 +278,52 @@ pub struct MipView {
 }
 
 impl MipView {
-    /// Create a new MIP view with the given WGPU implementation.
+    fn display_state(&self) -> MipDisplayState {
+        let mut overlays = bytemuck::cast_slice(&self.needles).to_vec();
+        overlays.extend_from_slice(bytemuck::bytes_of(&self.balls));
+        overlays.extend_from_slice(bytemuck::bytes_of(&self.needle_enabled));
+        overlays.push(u8::from(self.ball_enabled));
+        MipDisplayState {
+            config: self.config.clone(),
+            position: self.position,
+            dimensions: self.dimensions,
+            scale: self.scale,
+            pan: self.pan,
+            rotation: self.rotation_quat.to_array(),
+            window: self.get_window_level(),
+            overlays,
+        }
+    }
+
+    /// Recreates GPU bindings and pipeline while preserving all CPU display parameters.
+    /// New content is required when the device changes.
+    pub fn rebuild_gpu_resources(
+        &mut self,
+        device: &Device,
+        format: wgpu::TextureFormat,
+        content: Option<Arc<RenderContent>>,
+    ) {
+        let prepared = self.prepare_gpu_resources(device, format, content);
+        self.commit_gpu_resources(prepared);
+    }
+
+    pub(crate) fn prepare_gpu_resources(
+        &self,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        content: Option<Arc<RenderContent>>,
+    ) -> Arc<MipViewWgpuImpl> {
+        let content = content.unwrap_or_else(|| self.wgpu_impl.render_content().clone());
+        Arc::new(MipViewWgpuImpl::new(content, device, format))
+    }
+    pub(crate) fn commit_gpu_resources(&mut self, prepared: Arc<MipViewWgpuImpl>) {
+        self.wgpu_impl = prepared;
+        self.invalidation.invalidate();
+    }
+
     pub fn new(wgpu_impl: Arc<MipViewWgpuImpl>) -> Self {
         Self {
+            invalidation: Default::default(),
             view_id: 0,
             wgpu_impl,
             config: MipConfig::default(),
@@ -367,15 +424,15 @@ impl MipView {
     /// Function-level comment: Set the current rotation angle using degrees for convenience.
     /// This directly sets the orientation without affecting rotation speed.
     pub fn set_rotation_angle_degrees(&mut self, degrees_x: f32, degrees_y: f32) {
-    let right = self.rotation_quat * Vec3::X;
-    let up = self.rotation_quat * Vec3::Y;
-    let dx = degrees_x.to_radians();
-    let dy = degrees_y.to_radians();
-    let qx = Quat::from_axis_angle(right.normalize(), dx);
-    let qy = Quat::from_axis_angle(up.normalize(), dy);
-    let delta = qy * qx;
-    self.rotation_quat = (delta * self.rotation_quat).normalize();
-}
+        let right = self.rotation_quat * Vec3::X;
+        let up = self.rotation_quat * Vec3::Y;
+        let dx = degrees_x.to_radians();
+        let dy = degrees_y.to_radians();
+        let qx = Quat::from_axis_angle(right.normalize(), dx);
+        let qy = Quat::from_axis_angle(up.normalize(), dy);
+        let delta = qy * qx;
+        self.rotation_quat = (delta * self.rotation_quat).normalize();
+    }
 
     /// Set MIP rotation angles in degrees around X, Y, Z axes.
     pub fn set_rotation_degrees(&mut self, roll_deg: f32, yaw_deg: f32, pitch_deg: f32) {
@@ -384,7 +441,8 @@ impl MipView {
             yaw_deg.to_radians(),
             pitch_deg.to_radians(),
         );
-        let rot = Mat4::from_rotation_x(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(pitch);
+        let rot =
+            Mat4::from_rotation_x(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(pitch);
         self.rotation_quat = Quat::from_mat4(&rot);
     }
 
@@ -407,7 +465,10 @@ impl MipView {
     }
 
     pub fn get_window_level(&self) -> [f32; 2] {
-        [self.window_level.window_level(), self.window_level.window_width()]
+        [
+            self.window_level.window_level(),
+            self.window_level.window_width(),
+        ]
     }
 
     pub fn set_needle_enabled(&mut self, enabled: f32) {
@@ -432,12 +493,13 @@ impl MipView {
             needle.entry = entry;
             needle.tip = pos;
         } else {
-            self.needles.push(NeedleUniform { 
-                entry, 
-                tip: pos, 
-                radius: NeedleUniform::default().radius, 
-                id, 
-                color});
+            self.needles.push(NeedleUniform {
+                entry,
+                tip: pos,
+                radius: NeedleUniform::default().radius,
+                id,
+                color,
+            });
         }
     }
 
@@ -458,6 +520,9 @@ impl MipView {
 
 impl Renderable for MipView {
     fn update(&mut self, queue: &Queue) {
+        if !self.invalidation.needs_upload(&self.display_state()) {
+            return;
+        }
         log::trace!("[MIP_UPDATE] Starting MIP update");
 
         // Derive texture format flag for shader decoding
@@ -497,7 +562,7 @@ impl Renderable for MipView {
                 radius: needle.radius,
                 tip: needle.tip,
                 id: needle.id,
-                color: needle.color
+                color: needle.color,
             };
         }
 
@@ -512,8 +577,8 @@ impl Renderable for MipView {
             pan_y: self.pan[1],
             scale: self.scale,
             mip_mode: self.config.mip_mode as f32,
-            lower_threshold : self.config.lower_threshold,
-            upper_threshold : self.config.upper_threshold,
+            lower_threshold: self.config.lower_threshold,
+            upper_threshold: self.config.upper_threshold,
             needle_enabled: self.needle_enabled,
             needle_count: self.needles.len().min(32) as u32,
             _pad: 0.0,
@@ -525,14 +590,23 @@ impl Renderable for MipView {
 
         // Upload uniforms to GPU buffer
         self.wgpu_impl.update_uniforms(queue, &uniforms);
+        // Mode defaults above mutate config; record the effective post-update state.
+        self.invalidation.uploaded(self.display_state());
 
         log::trace!(
             "[MIP_UPDATE] Uniforms set: mip_mode={}, window={}, level={}, lower={}, upper={}",
-            uniforms.mip_mode, uniforms.window, uniforms.level, uniforms.lower_threshold, uniforms.upper_threshold
+            uniforms.mip_mode,
+            uniforms.window,
+            uniforms.level,
+            uniforms.lower_threshold,
+            uniforms.upper_threshold
         );
     }
 
-    fn render(&mut self, render_pass: &mut wgpu::RenderPass) -> Result<(), wgpu::SurfaceError> {
+    fn render(
+        &mut self,
+        render_pass: &mut wgpu::RenderPass,
+    ) -> crate::core::error::KeplerResult<()> {
         log::trace!("[MIP_RENDER] Starting MIP render");
 
         // Set the MIP render pipeline
@@ -553,8 +627,8 @@ impl Renderable for MipView {
         }
 
         // Bind resources
-        render_pass.set_bind_group(0, &*self.wgpu_impl.bind_groups().0, &[]);
-        render_pass.set_bind_group(1, &*self.wgpu_impl.bind_groups().1, &[]);
+        render_pass.set_bind_group(0, self.wgpu_impl.bind_groups().0, &[]);
+        render_pass.set_bind_group(1, self.wgpu_impl.bind_groups().1, &[]);
 
         // Draw fullscreen quad
         render_pass.draw(0..4, 0..1);
@@ -565,6 +639,14 @@ impl Renderable for MipView {
 }
 
 impl View for MipView {
+    fn needs_redraw(&self) -> bool {
+        self.invalidation.needs_redraw(&self.display_state())
+    }
+
+    fn mark_presented(&mut self) {
+        self.invalidation.presented(self.display_state());
+    }
+
     fn position(&self) -> (i32, i32) {
         self.position
     }

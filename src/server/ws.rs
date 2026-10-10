@@ -1,7 +1,7 @@
+use crate::server::ai_model::BackendPreference;
+use crate::server::handlers::{CalibrationResult, Circle};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::server::handlers::{Circle, CalibrationResult};
-use crate::server::ai_model::BackendPreference;
 
 /// WebSocket message types sent from server to client.
 /// 服务器返回 / 推送给客户端的消息
@@ -137,4 +137,39 @@ pub enum WsClientCommand {
         circle: Circle,
     },
     RunCalibration,
+}
+
+#[cfg(test)]
+mod compatibility_tests {
+    use super::{WsClientCommand, WsMessage};
+    use serde_json::json;
+    #[test]
+    fn release_websocket_discriminators_and_command_defaults_survive() {
+        assert_eq!(
+            serde_json::to_value(WsMessage::SegmentProgress {
+                task_id: "task-1".into(),
+                value: 42,
+            })
+            .unwrap(),
+            json!({"type":"segment_progress","task_id":"task-1","value":42})
+        );
+        assert_eq!(
+            serde_json::to_value(WsMessage::ServerStatus {
+                loaded_volumes: 0,
+                message: "Connected".into(),
+            })
+            .unwrap(),
+            json!({"type":"server_status","loaded_volumes":0,"message":"Connected"})
+        );
+        assert!(matches!(
+            serde_json::from_value::<WsClientCommand>(json!({
+                "type":"segment", "model":"synthetic", "series":"series-1"
+            }))
+            .unwrap(),
+            WsClientCommand::Segment { .. }
+        ));
+        assert!(matches!(serde_json::from_value::<WsClientCommand>(json!({
+        "type":"segment_cancel", "task_id":"task-1"
+    })).unwrap(), WsClientCommand::SegmentCancel { task_id } if task_id == "task-1"));
+    }
 }

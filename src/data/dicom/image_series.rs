@@ -19,12 +19,12 @@ impl ImageSeries {
             .ok_or_else(|| anyhow!("Missing SeriesInstanceUID"))?;
         let studyset_uid = get_value::<String>(obj, "StudyInstanceUID")
             .ok_or_else(|| anyhow!("Missing StudyInstanceUID"))?;
-        let modality = get_value::<String>(obj, "Modality")
-            .ok_or_else(|| anyhow!("Missing Modality"))?;
+        let modality =
+            get_value::<String>(obj, "Modality").ok_or_else(|| anyhow!("Missing Modality"))?;
 
         // Ensure the modality is "CT"
         if modality != "CT" {
-           return Err(anyhow!("Expected CT image, but got {} image", modality).into());
+            return Err(anyhow!("Expected CT image, but got {} image", modality));
         }
 
         // Optional fields

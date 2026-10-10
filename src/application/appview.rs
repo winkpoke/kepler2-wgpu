@@ -50,6 +50,14 @@ pub struct AppView {
     pub(crate) saved_states: Vec<CapturedViewState>,
 }
 
+/// Borrowed device/attachment configuration for one complete bulk rebinding operation.
+pub(super) struct ViewGpuConfiguration<'a> {
+    pub device: &'a Arc<wgpu::Device>,
+    pub queue: &'a Arc<wgpu::Queue>,
+    pub format: wgpu::TextureFormat,
+    pub use_float_volume_texture: bool,
+}
+
 impl AppView {
     /// Construct a new AppView from a layout and a view factory.
     ///
@@ -61,6 +69,111 @@ impl AppView {
             view_factory,
             saved_states: Vec::new(),
         }
+    }
+
+    /// Draws a complete pass, including clean views in the fresh surface image.
+    /// View state only controls uniform uploads, not whether its pixels are drawn.
+    pub(crate) fn render_pass(
+        &mut self,
+        context: crate::rendering::core::PassContext<'_, '_>,
+    ) -> crate::core::error::KeplerResult<()> {
+        use crate::rendering::core::PassId;
+        for view in self.layout.views_mut() {
+            let belongs_to_pass = match context.pass_id {
+                PassId::MeshPass => view.as_any().is::<MeshView>(),
+                PassId::MipPass => view.as_any().is::<MipView>(),
+                PassId::SlicePass => {
+                    !view.as_any().is::<MeshView>() && !view.as_any().is::<MipView>()
+                }
+            };
+            if belongs_to_pass {
+                view.render(context.pass)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Selects a compatible factory and rebinds all existing views together.
+    /// Passing content replaces volume GPU textures; `None` keeps same-device textures.
+    /// App validates any replacement upload before calling this operation.
+    pub(super) fn rebind_gpu_resources(
+        &mut self,
+        configuration: ViewGpuConfiguration<'_>,
+        content: Option<Arc<RenderContent>>,
+    ) -> crate::core::error::KeplerResult<()> {
+        let ViewGpuConfiguration {
+            device,
+            queue,
+            format,
+            use_float_volume_texture,
+        } = configuration;
+        let next_factory = (!self.view_factory.is_compatible(device, format)).then(|| {
+            DefaultViewFactory::new(
+                Arc::clone(device),
+                Arc::clone(queue),
+                format,
+                use_float_volume_texture,
+            )
+        });
+        let factory = next_factory.as_ref().unwrap_or(&self.view_factory);
+        enum Prepared {
+            Mpr(crate::rendering::view::mpr::mpr_view::PreparedMprGpu),
+            Mip(Arc<crate::rendering::view::mip::MipViewWgpuImpl>),
+            Mesh(crate::rendering::view::mesh::mesh_view::PreparedMeshGpu),
+            Other,
+        }
+        let mut prepared = Vec::with_capacity(self.layout.views().len());
+        let mut uploads = crate::rendering::view::mpr::mpr_view::RebindUploads::new();
+        for view in self.layout.views() {
+            prepared.push(if let Some(mpr) = view.as_any().downcast_ref::<MprView>() {
+                Prepared::Mpr(mpr.prepare_gpu_resources(
+                    device,
+                    queue,
+                    format,
+                    factory.mpr_render_context(),
+                    content.clone(),
+                    &mut uploads,
+                )?)
+            } else if let Some(mip) = view.as_any().downcast_ref::<MipView>() {
+                Prepared::Mip(mip.prepare_gpu_resources(device, format, content.clone()))
+            } else if let Some(mesh) = view.as_any().downcast_ref::<MeshView>() {
+                Prepared::Mesh(mesh.prepare_gpu_resources(device, queue, format, content.clone()))
+            } else if content.is_some() {
+                return Err(crate::KeplerError::Graphics(
+                    "Custom view cannot be rebound to the replacement device".into(),
+                ));
+            } else {
+                Prepared::Other
+            });
+        }
+        // All returned-error preparation completes before replacing any owner or resource.
+        if let Some(factory) = next_factory {
+            self.view_factory = factory;
+        }
+        self.view_factory
+            .set_float_volume_texture(use_float_volume_texture);
+        for (view, prepared) in self.layout.views_mut().iter_mut().zip(prepared) {
+            match prepared {
+                Prepared::Mpr(p) => view
+                    .as_any_mut()
+                    .downcast_mut::<MprView>()
+                    .unwrap()
+                    .commit_gpu_resources(p),
+                Prepared::Mip(p) => view
+                    .as_any_mut()
+                    .downcast_mut::<MipView>()
+                    .unwrap()
+                    .commit_gpu_resources(p),
+                Prepared::Mesh(p) => view
+                    .as_any_mut()
+                    .downcast_mut::<MeshView>()
+                    .unwrap()
+                    .commit_gpu_resources(p),
+                Prepared::Other => {}
+            }
+            view.update(queue);
+        }
+        Ok(())
     }
 
     /// Capture and save the state of all compatible views (MPR, MIP, Mesh).
@@ -404,7 +517,7 @@ impl AppView {
         texture: Arc<RenderContent>,
         vol: &CTVolume,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.remove_all();
+        let mut views = Vec::with_capacity(4);
         // Default layout uses orientations: Transverse, Coronal, Sagittal, Transverse
         // Corresponds to ALL_ORIENTATIONS indices [0, 1, 2, 0]
         let orientations = [
@@ -422,8 +535,9 @@ impl AppView {
                 (0, 0),
                 (0, 0),
             )?;
-            LayoutContainer::add_view(&mut self.layout, view);
+            views.push(view);
         }
+        self.layout.replace_all_views(views, None);
         Ok(())
     }
 
@@ -438,36 +552,22 @@ impl AppView {
         mip: Option<usize>,
         mesh_index: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.set_grid_layout(2, 2, 2);
-        self.remove_all();
-
-        // Add 4 MPR views based on indices
-        for &index in indices.iter() {
-            let orientation = ALL_ORIENTATIONS[index];
-            let view = self.view_factory.create_mpr_view_with_content(
-                texture.clone(),
-                vol,
-                orientation,
-                (0, 0),
-                (0, 0),
-            )?;
-            LayoutContainer::add_view(&mut self.layout, view);
-        }
-
-        if mip.is_some() {
-            let mip_view =
-                self.view_factory
-                    .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))?;
-            LayoutContainer::replace_view_at(&mut self.layout, mip.unwrap(), mip_view);
-        }
-
-        if mesh_index.is_some() {
-            let mesh_view =
-                self.view_factory
-                    .create_mesh_view_with_content(texture.clone(), (0, 0), (0, 0))?;
-            LayoutContainer::replace_view_at(&mut self.layout, mesh_index.unwrap(), mesh_view);
-        }
-
+        let request = super::view_layout_transition::TransitionRequest {
+            mode: 3,
+            mesh_index: mesh_index,
+            orientation_slot: None,
+            mip_index: mip,
+            orientation_index: 0,
+        };
+        let (views, strategy) =
+            super::view_layout_transition::prepare(vol, indices, &request, |input| {
+                super::view_layout_transition::build_view(
+                    &self.view_factory,
+                    texture.clone(),
+                    input,
+                )
+            })?;
+        self.layout.replace_all_views(views, Some(strategy));
         Ok(())
     }
 
@@ -477,12 +577,9 @@ impl AppView {
         index: usize,
         vol: &CTVolume,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let view = self.view_factory.create_mpr_view(
-            vol,
-            Orientation::Transverse,
-            (0, 0),
-            (0, 0),
-        )?;
+        let view =
+            self.view_factory
+                .create_mpr_view(vol, Orientation::Transverse, (0, 0), (0, 0))?;
         if index < self.layout.views().len() {
             self.layout.replace_view_at(index, view);
         } else {
@@ -505,53 +602,22 @@ impl AppView {
         mode: usize,
         orientation_index: usize,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.set_one_cell_layout();
-        self.remove_all();
-
-        match mode {
-            0 => {
-                // MPR
-                let orientation = ALL_ORIENTATIONS[orientation_index];
-                let view = self.view_factory.create_mpr_view_with_content(
+        let request = super::view_layout_transition::TransitionRequest {
+            mode: if mode <= 2 { mode } else { 0 },
+            mesh_index: None,
+            orientation_slot: None,
+            mip_index: None,
+            orientation_index: orientation_index,
+        };
+        let (views, strategy) =
+            super::view_layout_transition::prepare(vol, [0, 1, 2, 0], &request, |input| {
+                super::view_layout_transition::build_view(
+                    &self.view_factory,
                     texture.clone(),
-                    vol,
-                    orientation,
-                    (0, 0),
-                    (0, 0),
-                )?;
-                LayoutContainer::add_view(&mut self.layout, view);
-            }
-            1 => {
-                // MIP
-                let mip_view = self.view_factory.create_mip_view_with_content(
-                    texture.clone(),
-                    (0, 0),
-                    (0, 0),
-                )?;
-                LayoutContainer::add_view(&mut self.layout, mip_view);
-            }
-            2 => {
-                // Mesh
-                let mesh_view = self.view_factory.create_mesh_view_with_content(
-                    texture.clone(),
-                    (0, 0),
-                    (0, 0),
-                )?;
-                LayoutContainer::add_view(&mut self.layout, mesh_view);
-            }
-            _ => {
-                // Default to MPR for unsupported modes
-                let orientation = ALL_ORIENTATIONS[orientation_index];
-                let view = self.view_factory.create_mpr_view_with_content(
-                    texture.clone(),
-                    vol,
-                    orientation,
-                    (0, 0),
-                    (0, 0),
-                )?;
-                LayoutContainer::add_view(&mut self.layout, view);
-            }
-        }
+                    input,
+                )
+            })?;
+        self.layout.replace_all_views(views, Some(strategy));
         Ok(())
     }
 
@@ -563,49 +629,22 @@ impl AppView {
         mip_index: Option<usize>,
         mesh_index: Option<usize>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // check layout mode
-        self.set_three_layout(1, 3, 0);
-        self.remove_all();
-
-        // layout main view (MPR)
-        let main_orientation = ALL_ORIENTATIONS[indices[0]];
-        let main_view = self.view_factory.create_mpr_view_with_content(
-            texture.clone(),
-            vol,
-            main_orientation,
-            (0, 0),
-            (0, 0),
-        )?;
-        LayoutContainer::add_view(&mut self.layout, main_view);
-
-        // layout small views (MPR)
-        for i in 1..4 {
-            let orientation = ALL_ORIENTATIONS[indices[i]];
-            let view = self.view_factory.create_mpr_view_with_content(
-                texture.clone(),
-                vol,
-                orientation,
-                (0, 0),
-                (0, 0),
-            )?;
-            LayoutContainer::add_view(&mut self.layout, view);
-        }
-
-        // optional extra view replacement (MIP or Mesh)
-        if mip_index.is_some() {
-            let mip_view =
-                self.view_factory
-                    .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))?;
-            LayoutContainer::replace_view_at(&mut self.layout, mip_index.unwrap(), mip_view);
-        }
-
-        if mesh_index.is_some() {
-            let mesh_view =
-                self.view_factory
-                    .create_mesh_view_with_content(texture.clone(), (0, 0), (0, 0))?;
-            LayoutContainer::replace_view_at(&mut self.layout, mesh_index.unwrap(), mesh_view);
-        }
-
+        let request = super::view_layout_transition::TransitionRequest {
+            mode: 4,
+            mesh_index: mesh_index,
+            orientation_slot: None,
+            mip_index: mip_index,
+            orientation_index: 0,
+        };
+        let (views, strategy) =
+            super::view_layout_transition::prepare(vol, indices, &request, |input| {
+                super::view_layout_transition::build_view(
+                    &self.view_factory,
+                    texture.clone(),
+                    input,
+                )
+            })?;
+        self.layout.replace_all_views(views, Some(strategy));
         Ok(())
     }
 
@@ -867,3 +906,7 @@ impl AppView {
         }
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "appview_tests.rs"]
+mod tests;
