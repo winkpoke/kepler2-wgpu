@@ -15,6 +15,7 @@ use crate::data::dicom::Patient;
 use crate::data::dicom::StudySet;
 use crate::data::ct_volume::CTVolume;
 use crate::gpu::GpuState;
+use crate::device::hv::HvDevice;
 
 /// Represents a stored volume in server memory
 #[derive(Clone, Serialize)]
@@ -71,6 +72,7 @@ pub struct ServerState {
     pub onnx_models: Arc<Mutex<Option<Arc<ModelManager>>>>,
     /// Native GPU backend (wgpu 30) for future compute workloads. Lazily initialized.
     pub gpu: Arc<GpuState>,
+    pub hv: Arc<Mutex<HvDevice>>,
 }
 
 impl ServerState {
@@ -92,7 +94,15 @@ impl ServerState {
         if let Err(e) = std::fs::create_dir_all(&output_root) {
             log::error!("failed to create output root {:?}: {}", output_root, e);
         }
-        
+
+        let port = std::env::var("HV_PORT").unwrap_or_else(|_| "COM6".to_string());
+        let baud = std::env::var("HV_BAUD").ok().and_then(|s| s.parse().ok()).unwrap_or(19200);
+
+        let mut hv = HvDevice::new();
+        if let Err(e) = hv.connect(&port, baud) {
+            println!("error connect {port} hv device: {e}");
+        }
+    
         Self {
             ai: Arc::new(AiService::new()),
             tasks: TaskManager::new(),
@@ -109,6 +119,7 @@ impl ServerState {
             nav: Arc::new(NavState::new()),
             onnx_models: Arc::new(Mutex::new(None)),
             gpu: Arc::new(GpuState::new()),
+            hv: Arc::new(Mutex::new(hv)),
         }
     }
 

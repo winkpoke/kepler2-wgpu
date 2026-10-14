@@ -101,6 +101,10 @@ pub enum WsMessage {
         result: CalibrationResult,
     },
     Finished,
+    #[serde(rename = "hv_frame")]
+    HvFrame {
+        line: String,
+    },
 }
 
 /// Client → server WebSocket commands. The discriminator lives in `type`.
@@ -137,6 +141,14 @@ pub enum WsClientCommand {
         circle: Circle,
     },
     RunCalibration,
+    /// Kick off an HV device calibration run
+    #[serde(rename = "start_calib")]
+    StartCalib,
+    /// Forward an intent-level command to the HV device.
+    #[serde(rename = "send_cmd")]
+    SendCmd {
+        payload: String,
+    },
 }
 
 #[cfg(test)]

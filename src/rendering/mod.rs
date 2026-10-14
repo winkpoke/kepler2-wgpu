@@ -7,6 +7,7 @@
 pub mod core;
 pub mod shaders;
 pub mod view;
+pub mod process;
 
 // Re-exports for convenience
 pub use core::*;

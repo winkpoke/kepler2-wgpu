@@ -1,28 +1,57 @@
+//! HTTP and WebSocket request handlers for the Kepler Axum server.
+//!
+//! Every item here is either a route handler (bound in [`crate::server::routes`]),
+//! a shared request/response type, or a helper used by the WebSocket loop.
+//! The file is organised top-to-bottom by feature area:
+//!
+//! 1. Health check
+//! 2. GPU smoke tests (native only)
+//! 3. Volume upload & DICOM export
+//! 4. Needle parameters (position / orientation / offset)
+//! 5. AI segmentation endpoints
+//! 6. Mask-picker & CBCT calibration data types
+//! 7. WebSocket connection, command dispatch and calibration pipeline
+//! 8. HV serial device control
+
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::Arc;
+use std::time::Instant;
+
 use axum::{
-    extract::{ConnectInfo, Multipart, Path, Query, State, WebSocketUpgrade},
-    extract::ws::{WebSocket, Message},
+    extract::{
+        ws::{Message, WebSocket},
+        ConnectInfo, Multipart, Path, Query, State, WebSocketUpgrade,
+    },
     http::StatusCode,
     response::IntoResponse,
     Json,
     body::Bytes,
 };
+use glam::{Mat3, Mat4, Vec3, Vec4};
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 
+use crate::device::hv::HvDevice;
 use crate::server::ai_handler;
 use crate::server::ai_model::{CancelRequest, SegmentRequest, SegmentResponse};
 use crate::data::dicom::{build_ct_dicom, FsSink, generate_uid, Patient, StudySet};
 use crate::server::state::{ServerState, StoredVolume};
 use crate::server::ws::{WsMessage, WsClientCommand};
-use glam::{Vec3, Vec4, Mat4, Mat3};
 
-/// Client WebSocket message
-#[derive(serde::Deserialize)]
-pub struct ClientMessage {
-    #[serde(default)]
-    pub kind: String,
+/// Broadcast a [`WsMessage`] to every connected WebSocket client.
+///
+/// Errors are intentionally swallowed: the broadcast channel may legitimately
+/// have zero subscribers (e.g. no browser is connected yet).
+pub fn broadcast_message(state: &ServerState, msg: WsMessage) {
+    let _ = state.ws_tx.send(msg);
 }
 
+// ============================================================================
+// 1. Health check
+// ============================================================================
+
+/// Response body for `GET /api/health`.
 #[derive(Serialize)]
 pub struct HealthResponse {
     pub status: String,
@@ -30,6 +59,7 @@ pub struct HealthResponse {
     pub uptime: String,
 }
 
+/// `GET /api/health` — liveness probe reporting loaded volume count and uptime.
 pub async fn health_check(State(state): State<ServerState>) -> Json<HealthResponse> {
     let count = state.volume_count().await; // 从 ServerState 获取已加载体积数量
     Json(HealthResponse {
@@ -39,51 +69,63 @@ pub async fn health_check(State(state): State<ServerState>) -> Json<HealthRespon
     })
 }
 
-/// Request/response for the native GPU compute smoke test.
-#[derive(serde::Deserialize)]
+// ============================================================================
+// 2. GPU smoke tests (native only)
+// ============================================================================
+
+/// Request body for [`gpu_test`].
+#[derive(Deserialize)]
 pub struct GpuTestRequest {
     pub data: Vec<f32>,
 }
 
-#[derive(serde::Serialize)]
+/// Response body for [`gpu_test`].
+#[derive(Serialize)]
 pub struct GpuTestResponse {
     pub data: Vec<f32>,
 }
 
-/// POST /api/gpu/test
+/// `POST /api/gpu/test`
 ///
-/// Native-only smoke test for the future `wgpu` 30 compute backend. Multiplies
-/// every input value by `2.0` on the GPU and returns the result. Returns 503 if
-/// no usable GPU / `wgpu` 30 backend is available on this host.
+/// Native-only smoke test for the `wgpu` 30 compute backend. Multiplies every
+/// input value by `2.0` on the GPU and returns the result. Returns `503` if no
+/// usable GPU / `wgpu` 30 backend is available on this host.
 pub async fn gpu_test(
     State(state): State<ServerState>,
     Json(req): Json<GpuTestRequest>,
 ) -> Result<Json<GpuTestResponse>, (StatusCode, String)> {
-    let ctx = state.gpu.context().await
+    let ctx = state
+        .gpu
+        .context()
+        .await
         .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, format!("GPU unavailable: {e}")))?;
-    let result = crate::gpu::run_double(&*ctx, &req.data).await
+    let result = crate::gpu::run_double(&*ctx, &req.data)
+        .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("GPU compute failed: {e}")))?;
     Ok(Json(GpuTestResponse { data: result }))
 }
 
-/// Response for the native GPU volume smoke test.
-#[derive(serde::Serialize)]
+/// Response body for [`gpu_volume_test`].
+#[derive(Serialize)]
 pub struct GpuVolumeTestResponse {
     pub voxel_count: usize,
     pub sample: Vec<i16>,
 }
 
-/// POST /api/gpu/volume/test
+/// `POST /api/gpu/volume/test`
 ///
 /// Native-only smoke test that pushes an already-loaded `CTVolume`'s voxel data
 /// to the `wgpu` 30 compute backend **without cloning the voxel buffer** — the
 /// slice is borrowed straight out of `ServerState::ct_volume`. The bytes run
 /// through a pass-through compute shader and a small prefix is read back to prove
-/// the upload/compute/readback path. Returns 404 if no volume is loaded.
+/// the upload/compute/readback path. Returns `404` if no volume is loaded.
 pub async fn gpu_volume_test(
     State(state): State<ServerState>,
 ) -> Result<Json<GpuVolumeTestResponse>, (StatusCode, String)> {
-    let ctx = state.gpu.context().await
+    let ctx = state
+        .gpu
+        .context()
+        .await
         .map_err(|e| (StatusCode::SERVICE_UNAVAILABLE, format!("GPU unavailable: {e}")))?;
 
     // Borrow the volume in place and upload synchronously. The `MutexGuard` is held
@@ -94,12 +136,20 @@ pub async fn gpu_volume_test(
         let Some(ct) = guard.as_ref() else {
             return Err((StatusCode::NOT_FOUND, "no CTVolume loaded".to_string()));
         };
-        crate::gpu::prepare_volume_upload(&*ctx, ct.voxel_data())
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("GPU volume upload failed: {e}")))?
+        crate::gpu::prepare_volume_upload(&*ctx, ct.voxel_data()).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("GPU volume upload failed: {e}"),
+            )
+        })?
     };
 
-    let result = crate::gpu::run_volume_compute(&*ctx, handle).await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("GPU volume compute failed: {e}")))?;
+    let result = crate::gpu::run_volume_compute(&*ctx, handle).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("GPU volume compute failed: {e}"),
+        )
+    })?;
 
     Ok(Json(GpuVolumeTestResponse {
         voxel_count: result.voxel_count,
@@ -107,121 +157,11 @@ pub async fn gpu_volume_test(
     }))
 }
 
-/// WebSocket handler for real-time events
-pub async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<ServerState>,
-) -> impl IntoResponse {
-    ws.on_upgrade(|socket| handle_socket(socket, state))
-}
+// ============================================================================
+// 3. Volume upload & DICOM export
+// ============================================================================
 
-async fn handle_socket(mut socket: WebSocket, state: ServerState) {
-    let mut rx = state.ws_tx.subscribe();
-    let count = state.volume_count().await;
-    let msg = WsMessage::ServerStatus {
-        loaded_volumes: count,
-        message: "Connected".to_string(),
-    };
-    if let Ok(json) = serde_json::to_string(&msg) {
-        let _ = socket.send(Message::Text(json)).await;
-    }
-
-    loop {
-        tokio::select! {
-            ws_msg = rx.recv() => {
-                match ws_msg {
-                    Ok(msg) => {
-                        if let Ok(json) = serde_json::to_string(&msg) {
-                            if socket.send(Message::Text(json)).await.is_err() {
-                                break;
-                            }
-                        }
-                    }
-                    Err(broadcast::error::RecvError::Closed) => break,
-                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
-                }
-            }
-            result = socket.recv() => {
-                match result {
-                    Some(Ok(msg)) => match msg {
-                        Message::Text(text) => {
-                            if let Ok(cmd) = serde_json::from_str::<WsClientCommand>(&text) {
-                                match cmd {
-                                    WsClientCommand::Segment { model, series, backend } => {
-                                        log::info!("WS: start segment model={} series={} backend={:?}", model, series, backend);
-                                        let req = SegmentRequest {
-                                            series_id: series,
-                                            model,
-                                            backend,
-                                        };
-                                        if let Err(e) = ai_handler::handle_segment(state.clone(), req).await {
-                                            log::error!("WS segment dispatch failed: {e}");
-                                        }
-                                    }
-                                    WsClientCommand::SegmentCancel { task_id } => {
-                                        log::info!("WS: cancel segment task_id={}", task_id);
-                                        if let Err(e) = ai_handler::handle_cancel(
-                                            state.clone(),
-                                            CancelRequest { task_id: task_id.clone() },
-                                        ).await {
-                                            log::error!("WS segment cancel failed: {e}");
-                                        }
-                                    }
-                                    WsClientCommand::SegmentProgressQuery { task_id } => {
-                                        if let Some(t) = state.tasks.get(&task_id).await {
-                                            let _ = state.ws_tx.send(WsMessage::SegmentProgress {
-                                                task_id: task_id.clone(),
-                                                value: t.progress,
-                                            });
-                                        }
-                                    }
-                                    WsClientCommand::LoadSlice { slice, width, height } => {
-                                        handle_load_slice(&mut socket, &state, slice, width, height).await;
-                                    }
-                                    WsClientCommand::ConfirmCircle { slice, circle } => {
-                                        handle_confirm_circle(&mut socket, &state, slice, circle).await;
-                                    }
-                                    WsClientCommand::RunCalibration => {
-                                        handle_run_calibration(&mut socket, &state).await;
-                                    }
-                                }
-                            } else if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
-                                if client_msg.kind == "ping" {
-                                    let hb = WsMessage::Heartbeat {
-                                        timestamp: chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
-                                    };
-                                    if let Ok(json) = serde_json::to_string(&hb) {
-                                        if socket.send(Message::Text(json)).await.is_err() {
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Message::Ping(bytes) => {
-                            if socket.send(Message::Pong(bytes)).await.is_err() {
-                                break;
-                            }
-                        }
-                        Message::Close(_) => break,
-                        _ => {}
-                    },
-                    Some(Err(_)) => break,
-                    None => break,
-                }
-            }
-        }
-    }
-
-    log::debug!("WebSocket client disconnected");
-}
-
-/// Send a WebSocket message to all connected clients
-pub fn broadcast_message(state: &ServerState, msg: WsMessage) {
-    let _ = state.ws_tx.send(msg);
-}
-
-/// Query parameters for volume upload
+/// Query parameters for `POST /api/volumes/upload`.
 #[derive(Deserialize)]
 pub struct UploadParams {
     #[serde(default = "default_slope")]
@@ -241,153 +181,11 @@ pub struct UploadParams {
 fn default_slope() -> f32 { 1.0 }
 fn default_intercept() -> f32 { 0.0 }
 
-/// JSON body 输入：position / orientation 嵌套结构
-#[derive(Deserialize)]
-pub struct NeedlePosition {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-    #[serde(default)]
-    pub unit: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub struct NeedleOrientation {
-    pub a: f32,
-    pub b: f32,
-    pub c: f32,
-    #[serde(default)]
-    pub unit: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub struct UploadNeedleJson {
-    #[serde(default)]
-    pub frame_sequence: Option<u32>,
-    pub position: NeedlePosition,
-    pub orientation: NeedleOrientation,
-    #[serde(default)]
-    pub coordinate_frame: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub struct OffsetParams {
-    x: f32,
-    y: f32,
-    z: f32,
-    ptm: [f32; 16],
-}
-
-pub async fn needle_point_offset(
-    State(state): State<ServerState>,
-    Json(params): Json<OffsetParams>,
-) -> Result<Json<([f32; 3], [f32; 16])>, StatusCode> {
-    log::info!(
-        "needle_point_offset: offset=({:.3},{:.3},{:.3}) ptm_cols={:?}",
-        params.x, params.y, params.z,
-        params.ptm
-    );
-    state.set_offset([params.x, params.y, params.z]);
-    state.set_ptm(Mat4::from_cols_array(&params.ptm));
-    Ok(Json((state.get_offset(), state.get_ptm().to_cols_array())))
-}
-
-pub async fn upload_needle_params(
-    State(state): State<ServerState>,
-    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
-    parts: axum::http::request::Parts,
-    body: Option<Json<UploadNeedleJson>>,
-) -> StatusCode {
-    let started = std::time::Instant::now();
-    let (pos, dir, id) = if let Some(Json(b)) = body {
-        (
-            (b.position.x, b.position.y, b.position.z),
-            (b.orientation.a, b.orientation.b, b.orientation.c),
-            b.frame_sequence.unwrap_or(0),
-        )
-    } else {
-        return StatusCode::BAD_REQUEST;
-    };
-    
-    static LAST_ARRIVAL_MS: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
-    let now_ms = chrono::Local::now().timestamp_millis();
-    let prev_ms = LAST_ARRIVAL_MS.swap(now_ms, std::sync::atomic::Ordering::Relaxed);
-    let gap_ms = now_ms - prev_ms;
-    log::debug!("Needle JSON from {peer}: pos: {:?}, dir: {:?}, gap={}ms", pos, dir, gap_ms);
-    if prev_ms != 0 && gap_ms > 500 {
-        log::warn!("Needle stream gap {gap_ms}ms from {peer} — request arrived late (send-side or network)");
-    }
-
-    // Keep-alive diagnostic: the server (hyper) keeps HTTP/1.1 connections open by
-    // default; if the needle device opens a new TCP conn per POST it is client-side.
-    let conn_hdr = parts.headers.get(axum::http::header::CONNECTION).and_then(|v| v.to_str().ok()).unwrap_or("").to_ascii_lowercase();
-    let reusable = conn_hdr.contains("keep-alive")|| (parts.version >= axum::http::Version::HTTP_11 && !conn_hdr.contains("close"));
-    static KA_WARNED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    if !reusable {
-        if !KA_WARNED.swap(true, std::sync::atomic::Ordering::Relaxed) {
-            log::warn!(
-                "{peer} sends non-reusable HTTP ({:?}, Connection: {:?}) — \
-                 client forces a new TCP connection per POST",
-                parts.version, conn_hdr
-            );
-        }
-        log::debug!("{peer} non-reusable HTTP ({:?}, Connection: {:?})", parts.version, conn_hdr);
-    }
-
-    let len = 400.0;
-    let rx = dir.0.to_radians();
-    let ry = dir.1.to_radians();
-    let rot_y = Mat3::from_rotation_y(ry);
-    let rot_x = Mat3::from_rotation_x(rx);
-
-    let dir_m = rot_y * rot_x * Vec3::new(0.0, 0.0, -1.0);
-    let tip_m = Vec3::new(pos.0, pos.1, pos.2);
-    let end_m = tip_m + dir_m * len;
-    debug_assert!(((tip_m - end_m).length() - len).abs() < 0.001);
-
-    let ptm = state.get_ptm();
-    log::info!("upload_needle_params: using ptm_cols={:?}", ptm.to_cols_array());
-
-    let axis_transform  = Mat4::from_cols(
-        Vec4::new(-1.0, 0.0, 0.0, 0.0),
-        Vec4::new(0.0, 0.0, 1.0, 0.0),
-        Vec4::new(0.0, 1.0, 0.0, 0.0),
-        Vec4::new(0.0, 0.0, 0.0, 1.0),
-    );
-
-    let end_t = axis_transform.transform_point3(end_m);
-    let tip_t = axis_transform.transform_point3(tip_m);
-
-    let offset = state.get_offset();
-    let offset = Mat4::from_translation(Vec3::new(offset[0], offset[1], offset[2]));
-    let entry_p = offset.transform_point3(ptm.transform_point3(end_t));
-    let tip_p   = offset.transform_point3(ptm.transform_point3(tip_t));
-
-    // Broadcast to every connected browser so the wasm renderer can draw the needle.
-    let _ = state.ws_tx.send(WsMessage::NeedleSet {
-        id,
-        x: entry_p.x,
-        y: entry_p.y,
-        z: entry_p.z,
-        lx: tip_p.x,
-        ly: tip_p.y,
-        lz: tip_p.z,
-        r: 0.2,
-        g: 0.9,
-        b: 0.2,
-        dir: (dir_m.x, dir_m.y, dir_m.z),
-        len_mm: len,
-    });
-
-    log::info!(
-        "Needle params from {peer}: entry: {:?}, tip: {:?} (handler took {:.3} ms)",
-        entry_p, tip_p, started.elapsed().as_secs_f32() * 1000.0
-    );
-
-    StatusCode::OK
-}
-
-/// Upload a volume to the server (MHA binary data in POST body)
+/// `POST /api/volumes/upload`
+///
+/// Accepts a `multipart/form-data` body with an `mha` field (required) and an
+/// optional `data` field, persists the MHA to disk, and registers the volume in
+/// `ServerState`. Returns the generated series UID as a JSON string.
 pub async fn upload_volume(
     State(state): State<ServerState>,
     Query(params): Query<UploadParams>,
@@ -399,13 +197,16 @@ pub async fn upload_volume(
     let mut mha_bytes: Option<Bytes> = None;
     let mut data_bytes: Option<Bytes> = None;
 
-    while let Some(field) = multipart.next_field().await.map_err(|e| {
-        (StatusCode::BAD_REQUEST, format!("Multipart parse error: {}", e))
-    })? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Multipart parse error: {e}")))?
+    {
         let name = field.name().unwrap_or("").to_string();
-        let bytes = field.bytes().await.map_err(|e| {
-            (StatusCode::BAD_REQUEST, format!("Field read error: {}", e))
-        })?;
+        let bytes = field
+            .bytes()
+            .await
+            .map_err(|e| (StatusCode::BAD_REQUEST, format!("Field read error: {e}")))?;
 
         if name == "mha" {
             mha_bytes = Some(bytes);
@@ -418,7 +219,11 @@ pub async fn upload_volume(
         .ok_or_else(|| (StatusCode::BAD_REQUEST, "Missing 'mha' multipart field".to_string()))?;
     let data_bytes = data_bytes.unwrap_or_default();
 
-    log::info!("upload_volume called with mha={} bytes, data={} bytes", mha_bytes.len(), data_bytes.len());
+    log::info!(
+        "upload_volume called with mha={} bytes, data={} bytes",
+        mha_bytes.len(),
+        data_bytes.len()
+    );
 
     let id = generate_uid();
     let now = chrono::Local::now();
@@ -428,12 +233,7 @@ pub async fn upload_volume(
     let mha_disk_path = {
         let path = state.series_path(&id);
         if let Err(e) = tokio::fs::write(&path, &mha_bytes).await {
-            log::error!(
-                "Failed to persist MHA for volume {} to {:?}: {}",
-                id,
-                path,
-                e
-            );
+            log::error!("Failed to persist MHA for volume {} to {:?}: {}", id, path, e);
             return Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to persist MHA to {}: {}", path.display(), e),
@@ -448,7 +248,11 @@ pub async fn upload_volume(
     let stored = StoredVolume {
         id: id.clone(),
         mhx_path: Some(mha_bytes.to_vec()),
-        data_path: if data_bytes.is_empty() { None } else { Some(data_bytes.to_vec()) },
+        data_path: if data_bytes.is_empty() {
+            None
+        } else {
+            Some(data_bytes.to_vec())
+        },
         mha_disk_path,
         loaded_at: now.format("%Y-%m-%dT%H:%M:%S").to_string(),
         patient: Patient {
@@ -475,33 +279,55 @@ pub async fn upload_volume(
     let count_before = state.volume_count().await;
     let series_uid = state.store_raw_volume(stored).await;
     let count_after = state.volume_count().await;
-    broadcast_message(&state, WsMessage::ServerStatus {
-        loaded_volumes: count_after,
-        message: format!("Volume {} uploaded", id),
-    });
+    broadcast_message(
+        &state,
+        WsMessage::ServerStatus {
+            loaded_volumes: count_after,
+            message: format!("Volume {id} uploaded"),
+        },
+    );
 
     log::info!("Volume {} stored ({} -> {} volumes)", id, count_before, count_after);
     Ok(Json(series_uid))
 }
 
+/// `GET /api/dicom/build/:id`
+///
+/// Loads the stored volume `id` and writes it out as a DICOM series on disk.
 pub async fn build_ct_dicom_axum(
     State(state): State<ServerState>,
     Path(id): Path<String>,
 ) -> Result<Json<StoredVolume>, (StatusCode, String)> {
-    let stored = state.get_volume(&id).await.ok_or_else(|| (StatusCode::NOT_FOUND, format!("Volume {} not found", id)))?;
-    log::info!("Volume {} found: id={}, mhx_path_size={}, data_path_size={}", 
-        id, 
-        stored.id, 
+    let stored = state
+        .get_volume(&id)
+        .await
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Volume {id} not found")))?;
+    log::info!("Volume {} found: id={}, mhx_path_size={}, data_path_size={}",
+        id,
+        stored.id,
         stored.mhx_path.as_ref().map(|p| p.len()).unwrap_or(0),
         stored.data_path.as_ref().map(|p| p.len()).unwrap_or(0)
     );
 
-    let mhx_path = stored.mhx_path.as_ref().ok_or_else(|| (StatusCode::BAD_REQUEST, "MHX path is missing".to_string()))?;
-    let data_path = stored.data_path.as_ref().filter(|d| !d.is_empty()).map(|v| v.as_slice());
+    let mhx_path = stored
+        .mhx_path
+        .as_ref()
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "MHX path is missing".to_string()))?;
+    let data_path = stored
+        .data_path
+        .as_ref()
+        .filter(|d| !d.is_empty())
+        .map(|v| v.as_slice());
+
     let out_dir = std::path::PathBuf::from("C:\\user\\dicoms");
     let temp_dir = out_dir.join(format!("CT_{}", stored.id));
-    
-    std::fs::create_dir_all(&temp_dir).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to create temp dir: {}", e)))?;
+    std::fs::create_dir_all(&temp_dir).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to create temp dir: {e}"),
+        )
+    })?;
+
     let mut sink = FsSink {
         out_dir: temp_dir.clone(),
     };
@@ -518,28 +344,217 @@ pub async fn build_ct_dicom_axum(
         stored.patient_position.clone(),
         stored.modality.clone(),
         &mut sink,
-    ).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to build DICOM: {}", e)))?;
+    )
+    .map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to build DICOM: {e}"),
+        )
+    })?;
+
     log::info!("DICOM exported to {:?}", temp_dir);
     Ok(Json(stored))
 }
 
+// ============================================================================
+// 4. Needle parameters (position / orientation / offset)
+// ============================================================================
+
+/// Position sub-object of [`UploadNeedleJson`].
+#[derive(Deserialize)]
+pub struct NeedlePosition {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    #[serde(default)]
+    pub unit: Option<String>,
+}
+
+/// Orientation sub-object of [`UploadNeedleJson`] (rotation angles, degrees).
+#[derive(Deserialize)]
+pub struct NeedleOrientation {
+    pub a: f32,
+    pub b: f32,
+    pub c: f32,
+    #[serde(default)]
+    pub unit: Option<String>,
+}
+
+/// JSON body for `POST /api/upload_needle_params`.
+#[derive(Deserialize)]
+pub struct UploadNeedleJson {
+    #[serde(default)]
+    pub frame_sequence: Option<u32>,
+    pub position: NeedlePosition,
+    pub orientation: NeedleOrientation,
+    #[serde(default)]
+    pub coordinate_frame: Option<String>,
+}
+
+/// `POST /api/upload_needle_params`
+///
+/// Receives the needle entry point (`position`) and direction angles
+/// (`orientation`) from a remote device, transforms them through the current
+/// patient-to-model matrix (PTM) and offset, then broadcasts a
+/// [`WsMessage::NeedleSet`] so every connected renderer can draw the needle.
+pub async fn upload_needle_params(
+    State(state): State<ServerState>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
+    parts: axum::http::request::Parts,
+    body: Option<Json<UploadNeedleJson>>,
+) -> StatusCode {
+    let started = Instant::now();
+
+    let Some(Json(b)) = body else {
+        return StatusCode::BAD_REQUEST;
+    };
+    let pos = (b.position.x, b.position.y, b.position.z);
+    let dir = (b.orientation.a, b.orientation.b, b.orientation.c);
+    let id = b.frame_sequence.unwrap_or(0);
+
+    // Stream-health diagnostics: measure the arrival gap between consecutive
+    // needle packets and warn when the sender is consistently late.
+    static LAST_ARRIVAL_MS: AtomicI64 = AtomicI64::new(0);
+    let now_ms = chrono::Local::now().timestamp_millis();
+    let prev_ms = LAST_ARRIVAL_MS.swap(now_ms, Ordering::Relaxed);
+    let gap_ms = now_ms - prev_ms;
+    log::debug!("Needle JSON from {peer}: pos: {pos:?}, dir: {dir:?}, gap={gap_ms}ms");
+    if prev_ms != 0 && gap_ms > 500 {
+        log::warn!(
+            "Needle stream gap {gap_ms}ms from {peer} — request arrived late (send-side or network)"
+        );
+    }
+
+    // Keep-alive diagnostic: the server (hyper) keeps HTTP/1.1 connections open by
+    // default; if the needle device opens a new TCP conn per POST it is client-side.
+    let conn_hdr = parts
+        .headers
+        .get(axum::http::header::CONNECTION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let reusable = conn_hdr.contains("keep-alive")
+        || (parts.version >= axum::http::Version::HTTP_11 && !conn_hdr.contains("close"));
+    static KA_WARNED: AtomicBool = AtomicBool::new(false);
+    if !reusable {
+        if !KA_WARNED.swap(true, Ordering::Relaxed) {
+            log::warn!(
+                "{peer} sends non-reusable HTTP ({:?}, Connection: {:?}) — \
+                 client forces a new TCP connection per POST",
+                parts.version,
+                conn_hdr
+            );
+        }
+        log::debug!("{peer} non-reusable HTTP ({:?}, Connection: {:?})", parts.version, conn_hdr);
+    }
+
+    // Model-space needle geometry: a fixed-length segment starting at the entry
+    // point and pointing along the rotated -Z axis.
+    let len = 400.0;
+    let rot_y = Mat3::from_rotation_y(dir.1.to_radians());
+    let rot_x = Mat3::from_rotation_x(dir.0.to_radians());
+    let dir_m = rot_y * rot_x * Vec3::new(0.0, 0.0, -1.0);
+    let tip_m = Vec3::new(pos.0, pos.1, pos.2);
+    let end_m = tip_m + dir_m * len;
+    debug_assert!(((tip_m - end_m).length() - len).abs() < 0.001);
+
+    let ptm = state.get_ptm();
+    log::info!("upload_needle_params: using ptm_cols={:?}", ptm.to_cols_array());
+
+    // Axis re-mapping applied before the PTM / offset transforms.
+    let axis_transform = Mat4::from_cols(
+        Vec4::new(-1.0, 0.0, 0.0, 0.0),
+        Vec4::new(0.0, 0.0, 1.0, 0.0),
+        Vec4::new(0.0, 1.0, 0.0, 0.0),
+        Vec4::new(0.0, 0.0, 0.0, 1.0),
+    );
+
+    let end_t = axis_transform.transform_point3(end_m);
+    let tip_t = axis_transform.transform_point3(tip_m);
+
+    let offset = state.get_offset();
+    let offset = Mat4::from_translation(Vec3::new(offset[0], offset[1], offset[2]));
+    let entry_p = offset.transform_point3(ptm.transform_point3(end_t));
+    let tip_p = offset.transform_point3(ptm.transform_point3(tip_t));
+
+    // Broadcast to every connected browser so the wasm renderer can draw the needle.
+    let _ = state.ws_tx.send(WsMessage::NeedleSet {
+        id,
+        x: entry_p.x,
+        y: entry_p.y,
+        z: entry_p.z,
+        lx: tip_p.x,
+        ly: tip_p.y,
+        lz: tip_p.z,
+        r: 0.2,
+        g: 0.9,
+        b: 0.2,
+        dir: (dir_m.x, dir_m.y, dir_m.z),
+        len_mm: len,
+    });
+
+    log::info!(
+        "Needle params from {peer}: entry: {entry_p:?}, tip: {tip_p:?} (handler took {:.3} ms)",
+        started.elapsed().as_secs_f32() * 1000.0
+    );
+
+    StatusCode::OK
+}
+
+/// JSON body for `POST /api/needle_point_offset`.
+#[derive(Deserialize)]
+pub struct OffsetParams {
+    x: f32,
+    y: f32,
+    z: f32,
+    ptm: [f32; 16],
+}
+
+/// `POST /api/needle_point_offset`
+///
+/// Updates the shared entry-point offset and patient-to-model matrix, and echoes
+/// both values back so a client can confirm what the server now holds.
+pub async fn needle_point_offset(
+    State(state): State<ServerState>,
+    Json(params): Json<OffsetParams>,
+) -> Result<Json<([f32; 3], [f32; 16])>, StatusCode> {
+    log::info!(
+        "needle_point_offset: offset=({:.3},{:.3},{:.3}) ptm_cols={:?}",
+        params.x,
+        params.y,
+        params.z,
+        params.ptm
+    );
+    state.set_offset([params.x, params.y, params.z]);
+    state.set_ptm(Mat4::from_cols_array(&params.ptm));
+    Ok(Json((state.get_offset(), state.get_ptm().to_cols_array())))
+}
+
+// ============================================================================
+// 5. AI segmentation endpoints
+// ============================================================================
+
+/// `POST /api/segment` — register a new segmentation task and return its id.
 pub async fn start_segmentation(
     State(state): State<ServerState>,
     Json(req): Json<SegmentRequest>,
 ) -> Result<Json<SegmentResponse>, (StatusCode, String)> {
-    let req_clone = req.clone();
-    match ai_handler::handle_segment(state.clone(), req_clone).await {
+    match ai_handler::handle_segment(state.clone(), req).await {
         Ok(resp) => Ok(Json(resp)),
         Err(e) => {
             log::error!("start_segmentation failed: {e}");
-            broadcast_message(&state, WsMessage::Error {
-                message: format!("start_segmentation failed: {e}"),
-            });
+            broadcast_message(
+                &state,
+                WsMessage::Error {
+                    message: format!("start_segmentation failed: {e}"),
+                },
+            );
             Err((StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
         }
     }
 }
 
+/// `GET /api/segment/progress/:id` — polling endpoint for task progress.
 pub async fn segment_progress(
     State(state): State<ServerState>,
     Path(id): Path<String>,
@@ -553,6 +568,10 @@ pub async fn segment_progress(
     }
 }
 
+/// `GET /api/segment/result/:id` — metadata for a completed segmentation task.
+///
+/// Returns `409 CONFLICT` while the task is still running, and `404` if the id
+/// is unknown.
 pub async fn segment_result_meta(
     State(state): State<ServerState>,
     Path(id): Path<String>,
@@ -562,24 +581,29 @@ pub async fn segment_result_meta(
         .get(&id)
         .await
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Task {id} not found")))?;
+
     if !matches!(task.status, crate::server::ai_task::TaskStatus::Completed) {
         return Err((
             StatusCode::CONFLICT,
             format!("Task {id} is not completed ({:?})", task.status),
         ));
     }
+
     let volume = task
         .volume_id
         .clone()
         .ok_or_else(|| (StatusCode::INTERNAL_SERVER_ERROR, "Task has no volume id".into()))?;
+
     Ok(Json(crate::server::ai_model::SegmentResult {
         task_id: id,
         volume,
         labels: task.labels.clone(),
-        dimensions: (0, 0, 0), // dimensions are not tracked in AiTask; clients should rely on the original CT volume.
+        // dimensions are not tracked in AiTask; clients should rely on the original CT volume.
+        dimensions: (0, 0, 0),
     }))
 }
 
+/// `GET /api/segment/result/:id/raw` — download the raw mask bytes.
 pub async fn segment_result_raw(
     State(state): State<ServerState>,
     Path(id): Path<String>,
@@ -597,6 +621,11 @@ pub async fn segment_result_raw(
     }
 }
 
+// ============================================================================
+// 6. Mask-picker & CBCT calibration data types
+// ============================================================================
+
+/// A user-confirmed circle in an axial slice, expressed in pixel coordinates.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Circle {
     pub width: f32,
@@ -609,6 +638,7 @@ pub struct Circle {
     pub radius_2: f32,
 }
 
+/// Result of the CBCT calibration solve (coefficients + linear-algebra diagnostics).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CalibrationResult {
     pub c: [f64; 5],
@@ -619,8 +649,11 @@ pub struct CalibrationResult {
     pub singular_values: [f64; 5],
 }
 
+/// Attenuation coefficient of water, used as the reference value for the water
+/// region of the calibration mask.
 pub const WATER_MU: f32 = 0.27;
 
+/// Pixel-wise masks derived from a confirmed [`Circle`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MaskData {
     pub w: Vec<f32>,
@@ -630,26 +663,10 @@ pub struct MaskData {
     pub air_mask: Vec<bool>,
 }
 
-pub async fn handle_load_slice(
-    socket: &mut WebSocket,
-    state: &ServerState,
-    slice: usize,
-    width: usize,
-    height: usize
-) {
-    let data = match state.get_ct_slice(slice) {
-        Ok(data) => data,
-        Err(err) => {
-            send_error(socket, err.to_string()).await;
-            return;
-        }
-    };
-    let message = WsMessage::Slice { slice, width, height, data };
-    send_json(socket, &message).await;
-}
-
-/// Build a binary mask from the user's confirmed circle and stash it in
-/// `ServerState::mask_data`. Returns the mask so the caller can also
+/// Build a binary mask from the user's confirmed circle.
+///
+/// The inner disk (`radius_1`) is tagged as water, the annulus between
+/// `radius_1` and `radius_2` as air. Returns the mask so the caller can also
 /// forward it to the calibration stage.
 fn build_circle_mask(width: usize, height: usize, circle: Circle) -> MaskData {
     let len = width * height;
@@ -658,10 +675,10 @@ fn build_circle_mask(width: usize, height: usize, circle: Circle) -> MaskData {
     let mut mask = vec![0u8; len];
     let mut water_mask = vec![false; len];
     let mut air_mask = vec![false; len];
-    let water_radius = circle.radius_1;
-    let air_radius = circle.radius_2;
-    let water_radius2 = water_radius * water_radius;
-    let air_radius2 = air_radius * air_radius;
+
+    let water_radius2 = circle.radius_1 * circle.radius_1;
+    let air_radius2 = circle.radius_2 * circle.radius_2;
+
     for y in 0..height {
         for x in 0..width {
             let dx = x as f32 - circle.x1;
@@ -685,12 +702,36 @@ fn build_circle_mask(width: usize, height: usize, circle: Circle) -> MaskData {
         }
     }
 
-    MaskData { w, t, mask, water_mask, air_mask }
+    MaskData {
+        w,
+        t,
+        mask,
+        water_mask,
+        air_mask,
+    }
 }
 
-/// Serialize a `WsMessage` to JSON and push it to the client as a
-/// text WebSocket frame. Centralises the (de)serialization so every
-/// handler emits the same wire format.
+// ============================================================================
+// 7. WebSocket connection & command dispatch
+// ============================================================================
+
+/// Minimal client message used only for the `ping` keep-alive handshake.
+#[derive(Deserialize)]
+pub struct ClientMessage {
+    #[serde(default)]
+    pub kind: String,
+}
+
+/// `GET /ws` — upgrade the connection to a WebSocket.
+pub async fn ws_handler(
+    ws: WebSocketUpgrade,
+    State(state): State<ServerState>,
+) -> impl IntoResponse {
+    ws.on_upgrade(|socket| handle_socket(socket, state))
+}
+
+/// Serialize a [`WsMessage`] to JSON and push it to the client as a text frame.
+/// Centralises the (de)serialization so every handler emits the same wire format.
 pub async fn send_json(socket: &mut WebSocket, msg: &WsMessage) {
     match serde_json::to_string(msg) {
         Ok(json) => {
@@ -702,14 +743,175 @@ pub async fn send_json(socket: &mut WebSocket, msg: &WsMessage) {
     }
 }
 
-/// Convenience: send an `Error` message to the client.
+/// Convenience wrapper that sends an [`WsMessage::Error`] to the client.
 pub async fn send_error(socket: &mut WebSocket, message: String) {
     send_json(socket, &WsMessage::Error { message }).await;
 }
 
-/// Handle `ConfirmCircle { slice, circle }` from the client:
-/// stash the circle (and the mask it implies) in `ServerState`, then
-/// acknowledge the client.
+/// Drive a single WebSocket connection: push an initial status message, then
+/// multiplex broadcast events out and client commands in until either side closes.
+async fn handle_socket(mut socket: WebSocket, state: ServerState) {
+    let mut rx = state.ws_tx.subscribe();
+
+    let count = state.volume_count().await;
+    let msg = WsMessage::ServerStatus {
+        loaded_volumes: count,
+        message: "Connected".to_string(),
+    };
+    send_json(&mut socket, &msg).await;
+
+    loop {
+        tokio::select! {
+            // Server -> client: broadcast events.
+            ws_msg = rx.recv() => {
+                match ws_msg {
+                    Ok(msg) => {
+                        if let Ok(json) = serde_json::to_string(&msg) {
+                            if socket.send(Message::Text(json)).await.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                }
+            }
+            // Client -> server: commands and control frames.
+            result = socket.recv() => {
+                match result {
+                    Some(Ok(msg)) => match msg {
+                        Message::Text(text) => {
+                            dispatch_text(&mut socket, &state, &text).await;
+                        }
+                        Message::Ping(bytes) => {
+                            if socket.send(Message::Pong(bytes)).await.is_err() {
+                                break;
+                            }
+                        }
+                        Message::Close(_) => break,
+                        _ => {}
+                    },
+                    Some(Err(_)) => break,
+                    None => break,
+                }
+            }
+        }
+    }
+
+    log::debug!("WebSocket client disconnected");
+}
+
+/// Parse and dispatch a single inbound text frame.
+///
+/// Tries the typed [`WsClientCommand`] first; if that fails, falls back to the
+/// lightweight [`ClientMessage`] `ping` handshake.
+async fn dispatch_text(socket: &mut WebSocket, state: &ServerState, text: &str) {
+    if let Ok(cmd) = serde_json::from_str::<WsClientCommand>(text) {
+        match cmd {
+            WsClientCommand::Segment { model, series, backend } => {
+                log::info!("WS: start segment model={model} series={series} backend={backend:?}");
+                let req = SegmentRequest {
+                    series_id: series,
+                    model,
+                    backend,
+                };
+                if let Err(e) = ai_handler::handle_segment(state.clone(), req).await {
+                    log::error!("WS segment dispatch failed: {e}");
+                }
+            }
+            WsClientCommand::SegmentCancel { task_id } => {
+                log::info!("WS: cancel segment task_id={task_id}");
+                if let Err(e) = ai_handler::handle_cancel(
+                    state.clone(),
+                    CancelRequest { task_id: task_id.clone() },
+                )
+                .await
+                {
+                    log::error!("WS segment cancel failed: {e}");
+                }
+            }
+            WsClientCommand::SegmentProgressQuery { task_id } => {
+                if let Some(t) = state.tasks.get(&task_id).await {
+                    let _ = state.ws_tx.send(WsMessage::SegmentProgress {
+                        task_id,
+                        value: t.progress,
+                    });
+                }
+            }
+            WsClientCommand::LoadSlice { slice, width, height } => {
+                handle_load_slice(socket, state, slice, width, height).await;
+            }
+            WsClientCommand::ConfirmCircle { slice, circle } => {
+                handle_confirm_circle(socket, state, slice, circle).await;
+            }
+            WsClientCommand::RunCalibration => {
+                handle_run_calibration(socket, state).await;
+            }
+            WsClientCommand::StartCalib => {
+                // parking_lot guard lives only inside this sync block — it is released before any `.await` below.
+                let res = {
+                    let mut hv = state.hv.lock();
+                    hv.send_lin("CAL START")
+                };
+                match res {
+                    Ok(()) => {
+                        send_json(socket, &WsMessage::HvFrame { line: "CALIB_START".into() })
+                            .await
+                    }
+                    Err(e) => send_error(socket, format!("CALIB_ERROR: {e}")).await,
+                }
+            }
+            WsClientCommand::SendCmd { payload } => {
+                log::info!("WS: send_cmd payload={payload}");
+                let res = {
+                    let mut hv = state.hv.lock();
+                    hv.send_lin(&payload)
+                };
+                if let Err(e) = res {
+                    send_error(socket, format!("CMD_ERROR: {e}")).await;
+                }
+            }
+        }
+        return;
+    }
+
+    if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(text) {
+        if client_msg.kind == "ping" {
+            let hb = WsMessage::Heartbeat {
+                timestamp: chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
+            };
+            send_json(socket, &hb).await;
+        }
+    }
+}
+
+/// Handle `LoadSlice { slice, width, height }`: read the requested axial slice
+/// out of the cached CT volume and send it back as a [`WsMessage::Slice`].
+pub async fn handle_load_slice(
+    socket: &mut WebSocket,
+    state: &ServerState,
+    slice: usize,
+    width: usize,
+    height: usize,
+) {
+    let data = match state.get_ct_slice(slice) {
+        Ok(data) => data,
+        Err(err) => {
+            send_error(socket, err.to_string()).await;
+            return;
+        }
+    };
+    let message = WsMessage::Slice {
+        slice,
+        width,
+        height,
+        data,
+    };
+    send_json(socket, &message).await;
+}
+
+/// Handle `ConfirmCircle { slice, circle }`: stash the circle (and the mask it
+/// implies) in `ServerState`, then acknowledge the client.
 pub async fn handle_confirm_circle(
     socket: &mut WebSocket,
     state: &ServerState,
@@ -724,9 +926,8 @@ pub async fn handle_confirm_circle(
     send_json(socket, &WsMessage::CircleAccepted { slice, circle }).await;
 }
 
-/// Handle `RunCalibration` from the client. The actual computation is
-/// spawned onto a Tokio task so that the WebSocket receive loop keeps
-/// processing other commands while the calibration runs.
+/// Handle `RunCalibration`: spawn the calibration pipeline onto a Tokio task so
+/// the WebSocket receive loop keeps processing other commands while it runs.
 pub async fn handle_run_calibration(socket: &mut WebSocket, state: &ServerState) {
     // Pull the current mask / circle out of shared state up front so the
     // spawned task can run with a self-contained snapshot.
@@ -758,10 +959,10 @@ pub async fn handle_run_calibration(socket: &mut WebSocket, state: &ServerState)
     });
 }
 
-/// Calibration pipeline executed on a background Tokio task. The real
-/// algorithm lives behind `compute_calibration` below; this wrapper just
-/// turns its progress into `WsMessage::Progress` updates on the broadcast
-/// channel so every connected client can observe them.
+/// Calibration pipeline executed on a background Tokio task. The real algorithm
+/// lives behind [`compute_calibration`]; this wrapper just turns its progress
+/// into [`WsMessage::Progress`] updates on the broadcast channel so every
+/// connected client can observe them.
 async fn run_calibration_pipeline(
     tx: broadcast::Sender<WsMessage>,
     circle: Circle,
@@ -801,12 +1002,17 @@ async fn run_calibration_pipeline(
 
 /// Placeholder for the actual CBCT calibration. Returns a zero-initialised
 /// result so the wire protocol is fully exercised end-to-end. The real
-/// algorithm (water/air regression, SVD, etc.) will replace this body in
-/// a follow-up change.
+/// algorithm (water/air regression, SVD, etc.) will replace this body in a
+/// follow-up change.
 fn compute_calibration(circle: &Circle, _mask: &MaskData) -> Result<CalibrationResult, String> {
     log::info!(
         "compute_calibration(stub): circle=(x1={:.2}, y1={:.2}, r1={:.2}, x2={:.2}, y2={:.2}, r2={:.2})",
-        circle.x1, circle.y1, circle.radius_1, circle.x2, circle.y2, circle.radius_2
+        circle.x1,
+        circle.y1,
+        circle.radius_1,
+        circle.x2,
+        circle.y2,
+        circle.radius_2
     );
     Ok(CalibrationResult {
         c: [0.0; 5],
@@ -816,4 +1022,108 @@ fn compute_calibration(circle: &Circle, _mask: &MaskData) -> Result<CalibrationR
         determinant: 0.0,
         singular_values: [0.0; 5],
     })
+}
+
+// ============================================================================
+// 8. HV serial device control
+// ============================================================================
+
+/// JSON body for `POST /hv/connect`.
+#[derive(Deserialize)]
+pub struct ConnectReq {
+    pub port: String,
+    pub baud: Option<u32>,
+}
+
+/// JSON body for `POST /hv/send`.
+#[derive(Deserialize)]
+pub struct SendReq {
+    pub cmd: String,
+}
+
+/// `POST /hv/connect` — open (or re-open) the HV serial port.
+///
+/// `ServerState::hv` is guarded by a `parking_lot::Mutex`, so the guard is
+/// acquired synchronously and never held across an `.await`.
+pub async fn hv_connect(
+    State(state): State<ServerState>,
+    Json(req): Json<ConnectReq>,
+) -> Json<serde_json::Value> {
+    let baud = req.baud.unwrap_or(19200);
+    let result = {
+        let mut hv = state.hv.lock();
+        hv.connect(&req.port, baud)
+    };
+    match result {
+        Ok(()) => {
+            log::info!("[hv] connected {} @ {}", req.port, baud);
+            Json(serde_json::json!({ "ok": true, "port": req.port, "baud": baud }))
+        }
+        Err(e) => Json(serde_json::json!({ "ok": false, "error": e })),
+    }
+}
+
+/// `POST /hv/disconnect` — release the HV serial port.
+pub async fn hv_disconnect(State(state): State<ServerState>) -> Json<serde_json::Value> {
+    state.hv.lock().disconnect();
+    log::info!("[hv] disconnected");
+    Json(serde_json::json!({ "ok": true }))
+}
+
+/// `GET /hv/status` — report connection state, port name and baud rate.
+pub async fn hv_status(State(state): State<ServerState>) -> Json<serde_json::Value> {
+    let hv = state.hv.lock();
+    let (port, baud) = hv.info();
+    Json(serde_json::json!({
+        "connected": hv.is_connected(),
+        "port": port,
+        "baud": baud,
+    }))
+}
+
+/// `POST /hv/send` — transmit a LIN frame body to the HV device.
+pub async fn hv_send(
+    State(state): State<ServerState>,
+    Json(req): Json<SendReq>,
+) -> Json<serde_json::Value> {
+    let result = {
+        let mut hv = state.hv.lock();
+        hv.send_lin(&req.cmd)
+    };
+    match result {
+        Ok(()) => Json(serde_json::json!({ "ok": true, "sent": req.cmd })),
+        Err(e) => Json(serde_json::json!({ "ok": false, "error": e })),
+    }
+}
+
+/// Spawn the HV serial RX pump 
+///
+/// [`HvDevice::update`] performs a *blocking* port read (10 ms timeout), so it
+/// must not run on the async executor. A dedicated OS thread therefore polls
+/// `update()`, drains `HvDevice::event_queue` and re-broadcasts every line as a
+/// strongly-typed [`WsMessage::HvFrame`] over the *existing* `ws_tx` channel —
+/// no second byte channel and no change to `handle_socket`.
+///
+/// Draining the queue each tick also fixes the unbounded growth of
+/// `event_queue`, which previously had no consumer at all.
+///
+/// Taking `hv` / `ws_tx` by value (rather than a whole [`ServerState`]) keeps the
+/// thread independent of `ServerState: Send` and of the async runtime.
+pub fn spawn_hv_pump(hv: Arc<Mutex<HvDevice>>, ws_tx: broadcast::Sender<WsMessage>) {
+    std::thread::Builder::new().name("hv-rx-pump".to_string()).spawn(move || loop {
+        let (lines, connected) = {
+            let mut dev = hv.lock();
+            dev.update();
+            (std::mem::take(&mut dev.event_queue), dev.is_connected())
+        };
+
+        for line in lines {
+            log::debug!("[hv] rx/tx {line}");
+            let _ = ws_tx.send(WsMessage::HvFrame { line });
+        }
+
+        if !connected {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }).expect("failed to spawn hv-rx-pump thread");
 }

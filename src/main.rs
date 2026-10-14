@@ -29,6 +29,9 @@ async fn start_server(port: u16) {
     use kepler_wgpu::server::{create_router, ServerState};
     let state = ServerState::new();
 
+    // Bring the HV serial RX pump online
+    kepler_wgpu::server::handlers::spawn_hv_pump(state.hv.clone(), state.ws_tx.clone());
+
     match kepler_wgpu::server::model_manager::initialize_ai_services().await {
         Ok(manager) => {
             state.onnx_models.lock().replace(manager);

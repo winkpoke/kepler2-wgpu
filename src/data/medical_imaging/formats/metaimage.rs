@@ -14,7 +14,9 @@ use crate::data::medical_imaging::{
 use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs::File;
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::Read;
 
 /// Unified parser for the MetaImage format family (MHA and MHD).

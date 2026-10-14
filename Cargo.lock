@@ -2283,6 +2283,7 @@ dependencies = [
  "env_logger 0.11.8",
  "flate2",
  "futures",
+ "futures-util",
  "getrandom 0.2.15",
  "glam",
  "half",

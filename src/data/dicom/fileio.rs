@@ -178,7 +178,7 @@ use crate::data::ct_volume::CTVolume;
 #[cfg(target_arch = "wasm32")]
 use crate::data::medical_imaging::formats::*;
 #[cfg(target_arch = "wasm32")]
-use crate::data::medical_imaging::metadata::{volume::MedicalVolume, PixelData};
+use crate::data::medical_imaging::metadata::{volume::MedicalVolume, ImageMetadata, PixelData};
 #[cfg(target_arch = "wasm32")]
 use js_sys::{Array, Promise, Uint8Array};
 #[cfg(target_arch = "wasm32")]
@@ -357,26 +357,12 @@ pub async fn parse_common_files_wasm(
         let bytes = read_file_as_bytes(first_nii).await?;
         let mv = NiftiParser::parse_bytes(&bytes)
             .map_err(|e| JsValue::from_str(&format!("NIfTI parse error: {}", e)))?;
-        let mut dimensions = mv.metadata.dimensions;
-        let mut spacing = mv.metadata.spacing;
-        let mut offset = mv.metadata.offset;
-        if dimensions.len() != 3 {
-            dimensions.push(1);
-            spacing.push(1.0);
-            offset.push(0.0);
-        }
-        let orientation = mv.metadata.orientation.concat();
-        MedicalVolume::generate_ct_volume_mha(
-            [dimensions[0], dimensions[1], dimensions[2]],
+        build_ct_volume_from_metadata(
+            &mv.metadata,
             mv.pixel_data.as_bytes().to_vec(),
-            mv.metadata.pixel_type,
-            spacing,
-            offset,
-            orientation,
             slope,
             intercept,
         )
-        .map_err(|e| JsValue::from_str(&e))
     } else if !mhd_files.is_empty() && !raw_files.is_empty() {
         // Process MHD files (require separate data files)
         log::info!(
@@ -449,6 +435,38 @@ pub async fn read_file_as_bytes(file: File) -> Result<Vec<u8>, JsValue> {
     Ok(Uint8Array::new(&buffer).to_vec())
 }
 
+/// Shared tail of the WASM MHA/MHD/NIfTI paths: pad the metadata to 3D and build
+/// the CT volume from already-extracted raw voxel bytes.
+#[cfg(target_arch = "wasm32")]
+fn build_ct_volume_from_metadata(
+    metadata: &ImageMetadata,
+    raw_data: Vec<u8>,
+    slope: f32,
+    intercept: f32,
+) -> Result<CTVolume, JsValue> {
+    let mut dimensions = metadata.dimensions.clone();
+    let mut spacing = metadata.spacing.clone();
+    let mut offset = metadata.offset.clone();
+    if dimensions.len() != 3 {
+        dimensions.push(1);
+        spacing.push(1.0);
+        offset.push(0.0);
+    }
+    let orientation: Vec<f32> = metadata.orientation.concat();
+
+    MedicalVolume::generate_ct_volume_mha(
+        [dimensions[0], dimensions[1], dimensions[2]],
+        raw_data,
+        metadata.pixel_type,
+        spacing,
+        offset,
+        orientation,
+        slope,
+        intercept,
+    )
+    .map_err(|e| JsValue::from_str(&e))
+}
+
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[cfg(target_arch = "wasm32")]
 pub async fn parse_mha_and_generate_ct(
@@ -468,41 +486,19 @@ pub async fn parse_mha_and_generate_ct(
             ));
         }
 
-        let mut dimensions = metadata.dimensions;
-        let mut spacing = metadata.spacing;
-        let mut offset = metadata.offset;
-        let pixel_type = metadata.pixel_type;
-        let orientation = metadata.orientation.concat();
-        
-        if dimensions.len()!= 3 {
-            dimensions.push(1);
-            spacing.push(1.0);
-            offset.push(0.0);
-        }
-
         log::info!(
             "MHA direct path: offset={}, raw_size={} bytes, dim={:?}, orientation={:?}",
             start_offset,
             header_bytes.len() - start_offset,
-            dimensions,
-            orientation
+            metadata.dimensions,
+            metadata.orientation
         );
 
         // Remove header portion in-place (no extra allocation, avoids 2x memory spike)
         let mut raw_data = header_bytes;
         raw_data.drain(..start_offset);
 
-        MedicalVolume::generate_ct_volume_mha(
-            [dimensions[0], dimensions[1], dimensions[2]],
-            raw_data,
-            pixel_type,
-            spacing,
-            offset,
-            orientation,
-            slope,
-            intercept,
-        )
-        .map_err(|e| JsValue::from_str(&e))
+        build_ct_volume_from_metadata(&metadata, raw_data, slope, intercept)
     } else {
         // MHD path: data already separated
         let pixel_data = PixelData::UInt8(data_bytes.unwrap());
@@ -513,23 +509,7 @@ pub async fn parse_mha_and_generate_ct(
 
         match medical_volume.pixel_data {
             PixelData::UInt8(data) => {
-                let dimensions = medical_volume.metadata.dimensions;
-                let spacing = medical_volume.metadata.spacing;
-                let offset = medical_volume.metadata.offset;
-                let orientation = medical_volume.metadata.orientation;
-                let transform: Vec<f32> = orientation.into_iter().flatten().collect();
-
-                MedicalVolume::generate_ct_volume_mha(
-                    [dimensions[0], dimensions[1], dimensions[2]],
-                    data,
-                    medical_volume.metadata.pixel_type,
-                    spacing,
-                    offset,
-                    transform,
-                    slope,
-                    intercept,
-                )
-                .map_err(|e| JsValue::from_str(&e))
+                build_ct_volume_from_metadata(&medical_volume.metadata, data, slope, intercept)
             }
             _ => Err(JsValue::from_str("Unsupported pixel data type")),
         }

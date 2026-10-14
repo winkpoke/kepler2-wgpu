@@ -84,6 +84,7 @@ tokio-util = { version = "0.7", features = ["io"] }
 base64 = "0.22"
 ort = { version = "2.0.0-rc.4", features = ["ndarray", "download-binaries"] }
 tokio-modbus = {version = "0.17", default-features = false, features = ["tcp"]}
+futures-util = "0.3"
 
 # DirectML is a Windows execution provider; other native platforms keep CPU fallback.
 [target.'cfg(windows)'.dependencies]

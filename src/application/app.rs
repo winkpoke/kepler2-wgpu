@@ -4,7 +4,7 @@ use log::{info, trace, warn};
 
 // ---------------------------------------- WASM ---------------------------------------------
 use super::frame::{Acquisition, FrameDriver, FrameOutcome, RecoveryAction};
-use crate::acquisition::process::{load_average_raw_from_bytes, process_raw};
+use crate::rendering::process::{load_average_raw_from_bytes, process_raw};
 use crate::application::appview::AppView;
 use crate::core::error::{KeplerError, KeplerResult, SurfaceFailure, SurfaceFailureKind};
 use crate::data::dicom::*;
@@ -13,8 +13,6 @@ use crate::rendering::view::mesh::mesh::spine;
 use crate::rendering::view::render_content::RenderContent;
 use crate::rendering::view::*;
 use crate::rendering::{view, Graphics, GraphicsContext};
-#[cfg(target_arch = "wasm32")]
-use async_lock::Mutex;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::{fs, io};
@@ -1628,9 +1626,6 @@ impl App {
 }
 
 // ---------------------------------------- WASM ---------------------------------------------
-
-#[cfg(target_arch = "wasm32")]
-use js_sys::Array;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[cfg(target_arch = "wasm32")]

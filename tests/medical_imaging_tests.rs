@@ -250,7 +250,7 @@ mod mha_mhd_tests {
     #[ignore]
     fn test_mhd_parser_header_by_bytes() {
         let (bytes_mhd, _) = create_test_mhd();
-        let result = MhdParser::parse_metadata_only(&bytes_mhd);
+        let result = MetaimageParser::parse_metadata_only(&bytes_mhd, false);
         assert!(
             result.is_ok(),
             "Failed to parse valid MHD header: {:?}",
@@ -267,7 +267,7 @@ mod mha_mhd_tests {
     #[ignore]
     fn test_mhd_parse_by_bytes() {
         let (bytes_mhd, bytes_data) = create_test_mhd();
-        let volume = MhdParser::parse_by_bytes(&bytes_mhd, &bytes_data).unwrap();
+        let volume = MetaimageParser::parse_bytes(&bytes_mhd, Some(&bytes_data)).unwrap();
         let header = volume.metadata;
         let pixel_data = volume.pixel_data;
         println!("=== MHDHeader ===");
@@ -290,7 +290,7 @@ mod mha_mhd_tests {
     fn test_mha_parser_header_by_bytes() {
         let mha_data =
             create_test_mha_data([512, 512, 300], PixelType::Float32, [0.2, 0.2, 0.5], true);
-        let result = MhaParser::parse_metadata_only(&mha_data);
+        let result = MetaimageParser::parse_metadata_only(&mha_data, true);
         assert!(result.is_ok(), "Failed to parse MHA metadata");
 
         let metadata = result.unwrap();
@@ -304,7 +304,7 @@ mod mha_mhd_tests {
     fn test_mha_parse_by_bytes() {
         let mha_data =
             create_test_mha_data([512, 512, 300], PixelType::UInt8, [1.0, 1.0, 1.0], true);
-        let volume = MhaParser::parse_bytes(&mha_data).unwrap();
+        let volume = MetaimageParser::parse_bytes(&mha_data, None).unwrap();
         let validation_status = volume.validation_status;
         assert_eq!(validation_status.is_valid, true);
         let header = volume.metadata;
@@ -336,7 +336,7 @@ mod mha_mhd_tests {
         let mha_data = create_test_mha_data(dimensions, PixelType::UInt8, [1.0, 1.0, 1.0], true);
 
         let start = Instant::now();
-        let result = MhaParser::parse_bytes(&mha_data);
+        let result = MetaimageParser::parse_bytes(&mha_data, None);
         let parse_duration = start.elapsed();
 
         assert!(result.is_ok(), "Failed to parse large volume");
@@ -357,13 +357,13 @@ mod mha_mhd_tests {
 
         let start = Instant::now();
         for _ in 0..100 {
-            let _ = MhaParser::parse_metadata_only(&mha_data);
+            let _ = MetaimageParser::parse_metadata_only(&mha_data, true);
         }
         let duration_mha = start.elapsed();
 
         let start = Instant::now();
         for _ in 0..100 {
-            let _ = MhdParser::parse_metadata_only(&mhd_data);
+            let _ = MetaimageParser::parse_metadata_only(&mhd_data, false);
         }
         let duration_mhd = start.elapsed();
 
@@ -418,7 +418,7 @@ mod mha_mhd_tests {
             let mha_data =
                 create_test_mha_data(dimensions, PixelType::UInt8, [1.0, 1.0, 1.0], true);
 
-            let result = MhaParser::parse_bytes(&mha_data);
+            let result = MetaimageParser::parse_bytes(&mha_data, None);
             assert!(result.is_ok(), "Failed to parse volume {}", i);
 
             volumes.push(result.unwrap());
@@ -499,7 +499,7 @@ mod mha_mhd_tests {
                        DimSize = 4 4 2\n\
                        ElementDataFile = CT_new.raw\n";
 
-        let metadata = MhdParser::parse_metadata_only(header).unwrap();
+        let metadata = MetaimageParser::parse_metadata_only(header, false).unwrap();
         assert_eq!(metadata.dimensions, vec![4, 4, 2]);
         assert_eq!(metadata.pixel_type, PixelType::Int16);
         assert_eq!(metadata.spacing, vec![1.0, 1.0, 1.0]);
@@ -521,7 +521,7 @@ mod mha_mhd_tests {
                        DimSize = 8 8\n\
                        ElementDataFile = CT_new.raw\n";
 
-        let metadata = MhdParser::parse_metadata_only(header).unwrap();
+        let metadata = MetaimageParser::parse_metadata_only(header, false).unwrap();
         assert_eq!(metadata.dimensions, vec![8, 8, 1]);
         assert_eq!(metadata.spacing, vec![0.5, 0.5, 1.0]);
         assert_eq!(metadata.offset, vec![-1.5, -1.5, 0.0]);
@@ -548,7 +548,7 @@ mod mha_mhd_tests {
                 "NDims = 3\nBinaryData = True\nElementType = {}\nDimSize = 1 1 1\nElementDataFile = x.raw\n",
                 element_type
             );
-            let metadata = MhdParser::parse_metadata_only(header.as_bytes()).unwrap();
+            let metadata = MetaimageParser::parse_metadata_only(header.as_bytes(), false).unwrap();
             assert_eq!(metadata.pixel_type, expected, "{}", element_type);
         }
     }

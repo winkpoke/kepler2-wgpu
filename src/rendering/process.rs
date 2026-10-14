@@ -1,6 +1,4 @@
 use ndarray::Array2;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
 
 const WIDTH: usize = 1024;
 const HEIGHT: usize = 1024;

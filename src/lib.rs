@@ -16,7 +16,8 @@ use winit::{
 };
 
 // New module organization
-pub mod acquisition;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod device;
 pub mod application;
 pub mod core;
 pub mod data;
@@ -43,9 +44,6 @@ pub use rendering::mesh;
 // Current imports for existing functionality
 use application::gl_canvas::UserEvent;
 use data::ct_volume::CTVolume;
-
-#[cfg(target_arch = "wasm32")]
-use async_lock::Mutex;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -175,7 +173,6 @@ pub async fn get_render_app() -> Result<RenderApp, KeplerError> {
     {
         // Winit prevents sizing with CSS, so we have to set
         // the size manually when on web.
-        use winit::dpi::PhysicalSize;
         use winit::platform::web::WindowExtWebSys;
         web_sys::window()
             .and_then(|win| win.document())

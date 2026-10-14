@@ -5,7 +5,9 @@ use super::image_series::ImageSeries;
 use super::patient::Patient;
 use super::studyset::StudySet;
 use crate::core::coord::Base;
-use crate::data::ct_volume::{CTVolume, CTVolumeGenerator};
+use crate::data::ct_volume::CTVolume;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::data::ct_volume::CTVolumeGenerator;
 use anyhow::Result;
 use glam::{Mat4, Vec3, Vec4};
 use std::cmp::Ordering;

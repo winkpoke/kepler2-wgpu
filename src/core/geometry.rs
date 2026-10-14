@@ -7,9 +7,6 @@ use crate::{
 };
 use glam::{Mat4, Vec3};
 
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-
 pub struct GeometryBuilder<'a> {
     #[allow(dead_code)]
     repo: Option<&'a DicomRepo>,

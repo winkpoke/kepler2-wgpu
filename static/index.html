@@ -675,18 +675,161 @@
         .seg-id   { color:#888; font-family:monospace; min-width:14px; }
         .seg-name { color:#333; }
 
-        /* LED */
-        .led{
-            width:16px;
-            height:16px;
-            border-radius:50%;
-            background:#777;
-            display:inline-block;
-            margin-left:8px;
+        /* ==================================================================
+           设备控制台（高压 / 平板探测器 / 脚闸）
+           ================================================================== */
+
+        /* 增加到 5 个标签后让标签栏可换行，避免文字被压扁 */
+        .tab-bar { flex-wrap: wrap; }
+        .tab-btn { flex: 1 1 auto; white-space: nowrap; }
+
+        .hv-title {
+            font-size: 12px;
+            font-weight: bold;
+            color: #444;
+            margin-bottom: 6px;
         }
-        .green{ background:#00e676; box-shadow:0 0 6px #00e676;}
-        .red{ background:#ff5252; box-shadow:0 0 6px #ff5252;}
-        .yellow{ background:#ffd740; box-shadow:0 0 6px #ffd740;}
+
+        .hv-row {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 6px;
+            font-size: 12px;
+        }
+
+        .hv-row .btn { padding: 4px 10px; font-size: 12px; }
+
+        .hv-label { color: #555; font-size: 12px; }
+
+        .hv-row input[type="number"] { width: 64px; }
+
+        .hv-manual {
+            flex: 1 1 140px;
+            min-width: 110px;
+            padding: 5px 6px;
+            border: 1px solid #cfcfcf;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .hv-status {
+            border-top: 1px dashed #ddd;
+            margin-top: 8px;
+            padding-top: 8px;
+            font-size: 12px;
+            color: #333;
+        }
+
+        .hv-muted { color: #888; font-size: 11px; line-height: 1.6; }
+
+        .hv-led-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            line-height: 1.9;
+        }
+
+        .hv-led {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #c8c8c8;
+            border: 1px solid #b0b0b0;
+        }
+
+        .hv-led.green  { background: #00c853; border-color: #00a844; box-shadow: 0 0 5px rgba(0,200,83,0.6); }
+        .hv-led.red    { background: #e53935; border-color: #c62828; box-shadow: 0 0 5px rgba(229,57,53,0.6); }
+        .hv-led.yellow { background: #f9a825; border-color: #f57f17; box-shadow: 0 0 5px rgba(249,168,37,0.6); }
+
+        .hv-err-text { color: #c62828; }
+
+        .hv-log {
+            height: 220px;
+            overflow: auto;
+            border: 1px solid #cfcfcf;
+            border-radius: 4px;
+            background: #fafafa;
+            padding: 6px 8px;
+            font-family: ui-monospace, Consolas, "Courier New", monospace;
+            font-size: 11px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .hv-log-line    { color: #333; }
+        .hv-log-tx      { color: #1565c0; }
+        .hv-log-rx      { color: #2e7d32; }
+        .hv-log-warn    { color: #ef6c00; }
+        .hv-log-error   { color: #c62828; }
+        .hv-log-success { color: #2e7d32; font-weight: bold; }
+
+        /* 自动校准弹窗 */
+        .hv-modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            inset: 0;
+            background: rgba(0,0,0,0.45);
+        }
+
+        .hv-modal-content {
+            background: #fff;
+            margin: 12% auto;
+            padding: 18px 20px;
+            width: 320px;
+            border-radius: 8px;
+            box-shadow: 0 6px 24px rgba(0,0,0,0.25);
+            font-size: 13px;
+        }
+
+        .hv-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 14px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .hv-modal-title { font-size: 15px; font-weight: bold; color: #222; }
+
+        .hv-modal-close { color: #999; font-size: 22px; line-height: 1; cursor: pointer; }
+        .hv-modal-close:hover { color: #555; }
+
+        .hv-form-group { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+        .hv-form-label { width: 92px; color: #555; }
+
+        .hv-form-group input[type="text"] {
+            flex: 1;
+            padding: 4px 6px;
+            border: 1px solid #cfcfcf;
+            border-radius: 4px;
+            background: #f7f7f7;
+            color: #333;
+        }
+
+        .hv-radio-group { display: flex; gap: 14px; }
+        .hv-radio-group label { display: flex; align-items: center; gap: 4px; }
+
+        .hv-status-display {
+            flex: 1;
+            padding: 5px 8px;
+            border: 1px solid #cfcfcf;
+            border-radius: 4px;
+            background: #f7f7f7;
+        }
+
+        .hv-modal-footer {
+            text-align: center;
+            margin-top: 14px;
+            padding-top: 10px;
+            border-top: 1px solid #ddd;
+        }
     </style>
 </head>
 
@@ -700,6 +843,7 @@
                 <button class="tab-btn" data-tab="needle">Needle</button>
                 <button class="tab-btn" data-tab="oblique">Oblique</button>
                 <button class="tab-btn" data-tab="segmentation">Segmentation</button>
+                <button class="tab-btn" data-tab="device">Device</button>
             </div>
             <div id="tab-data" class="tab-content active">
                 <div id="server-status" class="server-status">
@@ -868,6 +1012,90 @@
                     <div id="seg-labels" class="seg-labels"></div>
                 </div>
             </div>
+            <div id="tab-device" class="tab-content">
+                <!-- 高压发生器 -->
+                <div class="needle-card" style="border-top:none">
+                    <div class="hv-title">高压发生器</div>
+                    <div class="hv-row">
+                        <span class="hv-label">KV</span>
+                        <input type="number" id="hv-kv" value="120">
+                        <span class="hv-label">MA</span>
+                        <input type="number" id="hv-ma" value="250">
+                        <button class="btn" id="hv-set-exposure">SET</button>
+                    </div>
+                    <div class="hv-row">
+                        <input type="text" id="hv-manual" class="hv-manual" placeholder="如 PING / STATUS">
+                        <button class="btn" id="hv-manual-send">Send</button>
+                    </div>
+                    <div class="hv-row">
+                        <button class="btn" data-hv-mode="DR">DR</button>
+                        <button class="btn" data-hv-mode="FLU">Fluoro</button>
+                        <button class="btn" data-hv-mode="CBCT">CBCT</button>
+                    </div>
+                    <div class="hv-row">
+                        <button class="btn btn-primary" id="hv-open-calib">自动校准</button>
+                        <button class="btn" id="hv-reset">重置</button>
+                        <button class="btn" id="hv-ilock">手术室门<span id="hv-ilock-text">闭合</span></button>
+                        <button class="btn"  onclick="toggleHvLink()">高压链路：<span id="hvlink_text">仿真(USART3)</span></button>
+                    </div>
+                    <div class="hv-status">
+                        <div>模式/状态 <b><span id="hv-link-state">-</span></b></div>
+                        <div class="hv-muted">安全：<span id="hv-safety-state">-</span></div>
+                        <div class="hv-led-row">准备<span id="hv-led-pr" class="hv-led"></span></div>
+                        <div class="hv-led-row">准备完成<span id="hv-led-ready" class="hv-led"></span></div>
+                        <div class="hv-led-row">曝光<span id="hv-led-xr" class="hv-led"></span></div>
+                        <div class="hv-led-row">
+                            ERROR<span id="hv-led-error" class="hv-led"></span>
+                            <b><span id="hv-err-text" class="hv-err-text"></span></b>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 平板探测器 -->
+                <div class="needle-card">
+                    <div class="hv-title">平板探测器</div>
+                    <div class="hv-led-row">LINK<span id="hv-led-link" class="hv-led"></span></div>
+                    <div class="hv-led-row">ARMED<span id="hv-led-armed" class="hv-led"></span></div>
+                    <div class="hv-led-row">EXPOSING<span id="hv-led-exp" class="hv-led"></span></div>
+                    <div class="hv-row" style="margin-top:6px">
+                        <button class="btn" data-hv-cmd="DET_ARM">ARM</button>
+                        <button class="btn" data-hv-cmd="DET_DISARM">DISARM</button>
+                    </div>
+                </div>
+
+                <!-- C-arm -->
+                <div class="needle-card">
+                    <div class="hv-title">C-arm</div>
+                    <div class="hv-row">
+                        <span class="hv-label">Angle</span>
+                        <input type="number" id="hv-angle" value="0">
+                        <button class="btn" id="hv-set-angle">SET</button>
+                    </div>
+                </div>
+
+                <!-- 脚闸（仿真） -->
+                <div class="needle-card">
+                    <div class="hv-title">脚闸（仿真）</div>
+                    <div class="hv-muted">
+                        真机上脚闸硬件直连 STM32；这三个按钮只是把脚闸动作仿真成 <code>FOOT …</code> 意图发给 MCU。
+                    </div>
+                    <div class="hv-row" style="margin-top:6px">
+                        <button class="btn" data-hv-cmd="FOOT_HALF">Half Press</button>
+                        <button class="btn" data-hv-cmd="FOOT_FULL">Full Press</button>
+                        <button class="btn" data-hv-cmd="FOOT_RELEASE">Release</button>
+                    </div>
+                </div>
+
+                <!-- 设备帧日志 -->
+                <div class="needle-card">
+                    <div class="hv-title">
+                        Device Log
+                        <button class="btn" id="hv-log-clear"
+                                style="float:right;padding:2px 8px;font-size:11px">clear</button>
+                    </div>
+                    <div id="hv-log" class="hv-log"></div>
+                </div>
+            </div>
         </aside>
 
         <!-- 右侧面板：视图与控制 -->
@@ -993,29 +1221,6 @@
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label>高压</label>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        kV<input type="number" id="kv" value="120">
-                    </div>
-                    <div class="form-group">
-                        Ma<input type="number" id="ma" value="250">
-                    </div>
-                    <div class="form-group">
-                        <button onclick="applyExposure()">SET</button>
-                        <button class="mode-btn" onclick="setMode('FLF0')">DR</button>
-                        <button class="mode-btn" onclick="setMode('FLF2')">Fluoro</button>
-                        <button class="mode-btn" onclick="setMode('FLF2')">CBCT</button>
-                    </div>
-                </div>
-                <div class="form-group">
-                    准备<span id="led_pr" class="led"></span>
-                    准备完成<span id="led_ready" class="led"></span>
-                    曝光<span id="led_xr" class="led"></span>
-                    ERROR<span id="led_error" class="led"></span>
-                </div>
-                <div class="form-group">
                     <label>Projection File (.mha, .mhd, .raw)</label>
                 </div>
                 <div class="form-group">
@@ -1064,6 +1269,49 @@
             </div>
         </div>
     </div> 
+
+
+    <!-- 自动校准弹窗：参数只读，MCU 链路下真正的状态机跑在 STM32 里 -->
+    <div id="hv-calib-modal" class="hv-modal">
+        <div class="hv-modal-content">
+            <div class="hv-modal-header">
+                <div class="hv-modal-title">Auto Calibration</div>
+                <span class="hv-modal-close" id="hv-calib-close">&times;</span>
+            </div>
+
+            <div class="hv-form-group">
+                <label class="hv-form-label">kV:</label>
+                <input id="hv-calib-kv" type="text" value="60" readonly>
+            </div>
+            <div class="hv-form-group">
+                <label class="hv-form-label">mA:</label>
+                <input id="hv-calib-ma" type="text" value="250" readonly>
+            </div>
+            <div class="hv-form-group">
+                <label class="hv-form-label">mS:</label>
+                <input id="hv-calib-ms" type="text" value="300" readonly>
+            </div>
+            <div class="hv-form-group">
+                <label class="hv-form-label">Filament(A):</label>
+                <input id="hv-calib-filament" type="text" value="0" readonly>
+            </div>
+            <div class="hv-form-group">
+                <label class="hv-form-label">Focus:</label>
+                <div class="hv-radio-group">
+                    <label><input type="radio" name="hv-focus" id="hv-focus-small" checked>Small</label>
+                    <label><input type="radio" name="hv-focus" id="hv-focus-large">Large</label>
+                </div>
+            </div>
+            <div class="hv-form-group">
+                <label class="hv-form-label">Status:</label>
+                <div class="hv-status-display" id="hv-calib-status">Ready</div>
+            </div>
+
+            <div class="hv-modal-footer">
+                <button class="btn btn-primary" id="hv-calib-run">Calibrate</button>
+            </div>
+        </div>
+    </div>
 
 
     <script type="module">
@@ -1206,6 +1454,8 @@
             ws.onopen = () => {
                 console.log('WebSocket connected');
                 ws.send(JSON.stringify({ type: 'ping' }));
+                hvLog('WebSocket connected', 'success');
+                hvCmd("STATUS");
             };
 
             ws.onmessage = (event) => {
@@ -1225,6 +1475,7 @@
                         case 'error':            // 服务器错误日志
                             log(`Server error: ${msg.message}`, 'error');
                             handleMaskWsError(msg.message);
+                            handleHvError(msg.message);
                             break;
                         case 'heartbeat':        // 心跳（忽略）
                             break;
@@ -1238,6 +1489,7 @@
                         case 'progress':         handleMaskProgress(msg); break;
                         case 'calibration_result': handleMaskCalibrationResult(msg); break;
                         case 'finished':         handleMaskFinished(msg); break;
+                        case 'hv_frame':         handleHvFrame(msg.line); break;  // HV/STM32 串口帧
                     }
                 } catch (e) {
                     // 忽略格式错误的消息
@@ -1246,6 +1498,7 @@
 
             ws.onclose = () => {
                 log('WebSocket disconnected', 'error');
+                hvLog('WebSocket disconnected', 'error');
                 byId('server-dot').className = 'server-dot disconnected';
                 byId('server-text').textContent = 'Server disconnected';
                 wsReconnectTimer = setTimeout(() => {
@@ -1253,7 +1506,10 @@
                 }, 3000);
             };
 
-            ws.onerror = () => { ws.close(); };
+            ws.onerror = () => { 
+                hvLog('WebSocket error', 'error'); 
+                ws.close(); 
+            };
         }
 
         /**
@@ -2690,10 +2946,272 @@
         }
 
         /* ====================================================================
-         十六、标签页切换
+         十六、设备控制台
+         ==================================================================== */
+        const stmState = {
+            mode: 'DR',       // DR / FLU / CBCT
+            mcu_state: '-',   // STM32 上报的 STATE
+            cal: '-',         // STM32 上报的 CAL 进度
+            fault: '-',       // ERR 故障码（已闩锁，需 RESET 清除）
+            deny: '-',        // DENY 拒绝原因（未闩锁，仅提示）
+            ilock: false,     // 互锁是否断开
+            hvlink: "SIM",    // 高压链路：SIM=USART3 走仿真器 / REAL=USART1 接真机（由 $LINK )
+        };
+
+        /** 脚闸仿真按钮 -> 实际下发的意图文本。 */
+        const HV_FOOT_INTENT = {
+            FOOT_HALF: 'FOOT HALF',
+            FOOT_FULL: 'FOOT FULL',
+            FOOT_RELEASE: 'FOOT RELEASE',
+        };
+
+        /** 设备帧日志：写进页面内的 #hv-log */
+        function hvLog(text, type = 'info') {
+            const box = document.getElementById('hv-log');
+            if (!box) return;
+            const line = document.createElement('div');
+            line.className = 'hv-log-line hv-log-' + type;
+            line.textContent = new Date().toLocaleTimeString() + '  ' + text;
+            box.appendChild(line);
+            box.scrollTop = box.scrollHeight;
+        }
+
+        /**
+         * 下发一条设备命令。后端只认两种强类型帧：
+         *   { type: 'start_calib' }                    —— 校准开始（仅 MCU 链路）
+         *   { type: 'send_cmd', payload: '<intent>' }  —— 其余意图（MODE/SET/FOOT/DET_/RESET/ILOCK）
+         * @param {string} type  'START_CALIB' 或意图文本本身
+         * @param {string|null} payload 显式 payload（缺省用 type）
+         * @returns {boolean} 是否已成功写入 socket
+         */
+        function hvCmd(type, payload = null) {
+            const frame = (type === 'START_CALIB')
+                ? { type: 'start_calib' }
+                : { type: 'send_cmd', payload: payload || type };
+
+            if (!sendWs(frame)) {
+                hvLog('WebSocket 未连接，命令未发送', 'error');
+                return false;
+            }
+            hvLog('TX: ' + (frame.payload || frame.type), 'tx');
+            return true;
+        }
+
+        /** 设置一个状态灯：'green' / 'red' / 'yellow'，传 'gray'（或空）表示熄灭。 */
+        function hvLed(id, color) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.className = 'hv-led' + (color && color !== 'gray' ? ' ' + color : '');
+        }
+
+        function hvSetErrText(t) {
+            const el = document.getElementById('hv-err-text');
+            if (el) el.textContent = t ? '[' + t + ']' : '';
+        }
+
+        function hvUpdateIlock() {
+            const el = document.getElementById('hv-ilock-text');
+            if (el) el.textContent = stmState.ilock ? '断开' : '闭合';
+        }
+
+        function toggleHvLink(){
+            cmd("LINK " + (state.hvlink === "REAL" ? "SIM" : "REAL"))
+        }
+
+        function updateHvLink(){
+            let el = document.getElementById("hvlink_text")
+            if (el) el.textContent = state.hvlink === "REAL" ? "实测(USART1)" : "仿真(USART3)"
+        }
+
+        /** 刷新「模式/状态」与「安全」两行文本。 */
+        function hvUpdateLinkState() {
+            const el = document.getElementById('hv-link-state');
+            if (el) {
+                let s = stmState.mode + ' / ' + stmState.mcu_state;
+                if (stmState.cal !== '-') s += ' / CAL:' + stmState.cal;
+                el.textContent = s;
+            }
+            const sf = document.getElementById('hv-safety-state');
+            if (sf) {
+                const parts = [stmState.ilock ? '互锁断开' : '互锁闭合'];
+                parts.push(stmState.fault === '-' ? '无故障' : ('故障:' + stmState.fault));
+                if (stmState.deny !== '-') parts.push('被拒绝:' + stmState.deny);
+                sf.textContent = parts.join(' / ');
+            }
+        }
+
+        /**
+         * 解析一条来自 STM32 的上行 BODY（后端 lin.rs 已剥掉 `$…*HH\n` 并校验过）。
+         * 支持：STATE / DENY / ERR / FAULT CLEAR / WARN / ILOCK / CAL / DET_*
+         */
+        function hvParse(line) {
+            if (line.startsWith('TX: ')) return;   // 本机下行回显，不参与状态判定
+
+            if (line.startsWith('STATE ')) {
+                const s = line.slice(6).trim();
+                stmState.mcu_state = s;
+                stmState.deny = '-';                // 状态一变，"上次被拒绝"的提示就作废
+                hvLed('hv-led-pr', 'gray');
+                hvLed('hv-led-ready', 'gray');
+                hvLed('hv-led-xr', 'gray');
+                if (s === 'PREP')         hvLed('hv-led-pr', 'green');
+                else if (s === 'READY')   hvLed('hv-led-ready', 'green');
+                else if (s === 'EXPOSE')  hvLed('hv-led-xr', 'yellow');
+                if (s === 'FAULT')        hvLed('hv-led-error', 'red');
+                else if (s === 'STANDBY') { hvLed('hv-led-error', 'gray'); hvSetErrText(''); }
+                hvUpdateLinkState();
+                return;
+            }
+            if (line.startsWith('DENY ')) {
+                // 请求被拒绝但没有闩锁（例如互锁断开时按脚闸）：只提示，
+                // 绝不能让 ERROR 灯变红 —— 否则会亮一个 RESET 清不掉的假故障。
+                stmState.deny = line.slice(5).trim();
+                hvLog('DENY ' + stmState.deny, 'warn');
+                hvUpdateLinkState();
+                return;
+            }
+            if (line.startsWith('ERR ')) {
+                // 已闩锁，必须「复位 / 清闩锁」才能继续
+                stmState.fault = line.slice(4).trim();
+                hvLed('hv-led-error', 'red');
+                hvSetErrText(stmState.fault);
+                hvUpdateLinkState();
+                return;
+            }
+            if (line.startsWith('FAULT CLEAR')) {
+                stmState.fault = '-';
+                hvSetErrText('');
+                hvLed('hv-led-error', 'gray');
+                hvUpdateLinkState();
+                return;
+            }
+            if (line.startsWith('WARN ')) {
+                hvLog('WARN ' + line.slice(5).trim(), 'warn');
+                return;
+            }
+            if (line.startsWith('ILOCK ')) {
+                stmState.ilock = line.slice(6).trim() === 'OPEN';
+                hvUpdateIlock();
+                hvUpdateLinkState();
+                return;
+            }
+            // STM32 推上来的校准进度：CA1 / TB / DOWNLOAD / PREP / EXPOSE / CYCLE / CHECK / DONE / FAIL xxx / ABORT
+            if (line.startsWith('CAL ')) {
+                const st = line.slice(4).trim();
+                stmState.cal = st;
+                const el = document.getElementById('hv-calib-status');
+                if (el) el.textContent = st;
+                hvUpdateLinkState();
+                return;
+            }
+
+            if (line.startsWith("LINK ")) {
+                stmState.hvlink = line.slice(5).trim()
+                updateHvLink()
+                updateLinkState()
+            }
+
+            if (line.includes('DET_LINK')) hvLed('hv-led-link', 'green');
+            if (line.includes('DET_ARM'))  hvLed('hv-led-armed', 'yellow');
+            if (line.includes('DET_EXP'))  hvLed('hv-led-exp', 'red');
+        }
+
+        /** 后端广播的 `hv_frame`：写日志后交给 hvParse 驱动状态灯。 */
+        function handleHvFrame(line) {
+            const isTx = line.startsWith('TX: ');
+            if (!isTx && line === 'CALIB_START') {
+                const el = document.getElementById('hv-calib-status');
+                if (el) el.textContent = 'Running';
+            }
+            hvLog(isTx ? line : 'RX: ' + line, isTx ? 'tx' : 'rx');
+            hvParse(line);
+        }
+
+        /** 后端 `error` 帧里携带的校准错误（StartCalib 的失败分支）。 */
+        function handleHvError(message) {
+            if (!message.includes('CALIB_ERROR')) return;
+            const el = document.getElementById('hv-calib-status');
+            if (el) el.textContent = 'Error';
+            hvLog(message, 'error');
+        }
+
+        // ----- 按钮绑定 -----
+        document.querySelectorAll('[data-hv-mode]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                stmState.mode = btn.dataset.hvMode;
+                hvCmd('MODE ' + stmState.mode);
+                hvUpdateLinkState();
+            });
+        });
+
+        document.querySelectorAll('[data-hv-cmd]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const raw = btn.dataset.hvCmd;
+                hvCmd(HV_FOOT_INTENT[raw] || raw);
+            });
+        });
+
+        document.getElementById('hv-set-exposure').addEventListener('click', () => {
+            const kv = document.getElementById('hv-kv').value;
+            const ma = document.getElementById('hv-ma').value;
+            hvCmd('SET KV ' + kv);
+            hvCmd('SET MA ' + ma);
+            if (stmState.mode === 'DR') hvCmd('SET MS 300');
+        });
+
+        document.getElementById('hv-manual-send').addEventListener('click', () => {
+            const c = document.getElementById('hv-manual').value.trim();
+            if (c) hvCmd(c);
+        });
+
+        document.getElementById('hv-reset').addEventListener('click', () => hvCmd('RESET'));
+
+        document.getElementById('hv-ilock').addEventListener('click', () => {
+            hvCmd('ILOCK ' + (stmState.ilock ? '0' : '1'));
+        });
+
+        document.getElementById('hv-set-angle').addEventListener('click', () => {
+            // C 臂现在接的是 PLC，参数通道待定；先不往高压链路发，避免污染 LIN 报文
+            hvLog('C-arm 角度暂不由本链路下发（C 臂接 PLC，通道待定）', 'warn');
+        });
+
+        document.getElementById('hv-log-clear').addEventListener('click', () => {
+            const box = document.getElementById('hv-log');
+            if (box) box.innerHTML = '';
+        });
+
+        // ----- 自动校准弹窗 -----
+        const hvCalibModal = document.getElementById('hv-calib-modal');
+
+        document.getElementById('hv-open-calib').addEventListener('click', () => {
+            hvCalibModal.style.display = 'block';
+        });
+
+        document.getElementById('hv-calib-close').addEventListener('click', () => {
+            hvCalibModal.style.display = 'none';
+        });
+
+        window.addEventListener('click', (e) => {
+            if (e.target === hvCalibModal) hvCalibModal.style.display = 'none';
+        });
+
+        document.getElementById('hv-calib-run').addEventListener('click', () => {
+            if (stmState.mode !== 'DR') { alert('Not in calibration mode'); return; }
+            if (!hvCmd('START_CALIB')) return;
+            const st = document.getElementById('hv-calib-status');
+            if (st) st.textContent = 'Running';
+            hvCalibModal.style.display = 'none';
+        });
+
+        hvUpdateLinkState();
+        hvUpdateIlock();
+        updateHvLink()
+
+        /* ====================================================================
+         十七、标签页切换
          ==================================================================== */
 
-        /** 切换左侧 Data / Needle / Oblique / Segmentation 标签页。 */
+        /** 切换左侧 Data / Needle / Oblique / Segmentation / Device 标签页。 */
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
