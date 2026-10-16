@@ -420,12 +420,49 @@ impl Mesh {
         }
     }
 
+    /// Hard byte-size limit for an OBJ payload
+    pub const MAX_OBJ_BYTES: usize = 64 * 1024 * 1024; // 64 MiB
+
+    /// Maximum number of `o` objects accepted by [`Self::import_obj_bytes`].
+    pub const MAX_OBJ_MODELS: usize = 1;
+
     /// Load a mesh from an in-memory OBJ buffer into the renderer's `[0,1]^3` UV space.
     pub fn import_obj_bytes(
         bytes: &[u8],
         kind: u32,
     ) -> Result<Vec<Mesh>, Box<dyn std::error::Error>> {
+        if bytes.len() > Self::MAX_OBJ_BYTES {
+            return Err(format!(
+                "OBJ file too large: {} bytes (limit is {} bytes)",
+                bytes.len(),
+                Self::MAX_OBJ_BYTES
+            )
+            .into());
+        }
+
         let mut reader = std::io::Cursor::new(bytes);
+        let mut v_count = 0usize;
+        let mut vn_count = 0usize;
+        for line in bytes.split(|&b| b == b'\n') {
+            let line = if line.ends_with(b"\r") {
+                &line[..line.len() - 1]
+            } else {
+                line
+            };
+            if line.starts_with(b"v ") {
+                v_count += 1;
+            } else if line.starts_with(b"vn ") {
+                vn_count += 1;
+            }
+        }
+        if v_count != vn_count {
+            return Err(format!(
+                "OBJ declares {} vertex positions but {} vertex normals; re-export the OBJ with per-vertex normals (vn lines)",
+                v_count, vn_count
+            )
+            .into());
+        }
+
         let (models, _materials) = tobj::load_obj_buf(
             &mut reader,
             &tobj::LoadOptions {
@@ -436,15 +473,30 @@ impl Mesh {
             |_path| Ok((Vec::new(), Default::default())),
         )?;
 
+        if models.len() > Self::MAX_OBJ_MODELS {
+            return Err(format!(
+                "OBJ contains {} objects, but at most {} object per import is supported",
+                models.len(),
+                Self::MAX_OBJ_MODELS
+            ).into());
+        }
+
         let mut result = Vec::new();
         for (obj_index, m) in models.into_iter().enumerate() {
             let mesh = &m.mesh;
             let vertex_count = mesh.positions.len() / 3;
-            let normals: Vec<f32> = if mesh.normals.len() == mesh.positions.len() {
-                mesh.normals.clone()
-            } else {
-                compute_vertex_normals(&mesh.positions, &mesh.indices)
-            };
+            if vertex_count == 0 {
+                return Err(format!("OBJ object '{}' contains no geometry", m.name).into());
+            }
+            if mesh.normals.len() != mesh.positions.len() {
+                return Err(format!(
+                    "OBJ object '{}' has {} vertex normals for {} vertices; re-export the OBJ with per-vertex normals (vn lines)",
+                    m.name,
+                    mesh.normals.len() / 3,
+                    vertex_count
+                ).into());
+            }
+            let normals: Vec<f32> = mesh.normals.clone();
 
             let label_id = match Self::label_id_for_name(&m.name) {
                 Some(id) => id,

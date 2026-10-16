@@ -243,15 +243,15 @@ pub async fn upload_volume(
         path
     };
 
-    // Only one copy of the MHA buffer is made here, when we move it into the
-    // owned `Vec<u8>` that `StoredVolume` requires.
+    // Move the refcounted `Bytes` straight into `StoredVolume` — no copy is
+    // made here; the buffer stays shared with the multipart body allocation.
     let stored = StoredVolume {
         id: id.clone(),
-        mhx_path: Some(mha_bytes.to_vec()),
+        mhx_path: Some(mha_bytes),
         data_path: if data_bytes.is_empty() {
             None
         } else {
-            Some(data_bytes.to_vec())
+            Some(data_bytes)
         },
         mha_disk_path,
         loaded_at: now.format("%Y-%m-%dT%H:%M:%S").to_string(),
@@ -309,15 +309,8 @@ pub async fn build_ct_dicom_axum(
         stored.data_path.as_ref().map(|p| p.len()).unwrap_or(0)
     );
 
-    let mhx_path = stored
-        .mhx_path
-        .as_ref()
-        .ok_or_else(|| (StatusCode::BAD_REQUEST, "MHX path is missing".to_string()))?;
-    let data_path = stored
-        .data_path
-        .as_ref()
-        .filter(|d| !d.is_empty())
-        .map(|v| v.as_slice());
+    let mhx_path = stored.mhx_path.as_deref().ok_or_else(|| (StatusCode::BAD_REQUEST, "MHX path is missing".to_string()))?;
+    let data_path = stored.data_path.as_deref().filter(|d| !d.is_empty());
 
     let out_dir = std::path::PathBuf::from("C:\\user\\dicoms");
     let temp_dir = out_dir.join(format!("CT_{}", stored.id));

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use parking_lot::Mutex;
 use serde::Serialize;
 use tokio::sync::{broadcast, RwLock};
+use axum::body::Bytes;
 
 use crate::server::ai::AiService;
 use crate::server::ai_task::TaskManager;
@@ -24,8 +25,9 @@ pub struct StoredVolume {
     pub id: String,
     /// The CT volume data
     #[serde(skip_serializing)]
-    pub mhx_path: Option<Vec<u8>>,
-    pub data_path: Option<Vec<u8>>,
+    pub mhx_path: Option<Bytes>,
+    #[serde(skip_serializing)]
+    pub data_path: Option<Bytes>,
     /// Absolute path on disk where the MHA file for this volume is persisted
     #[serde(skip_serializing)]
     pub mha_disk_path: PathBuf,

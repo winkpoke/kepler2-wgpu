@@ -39,6 +39,7 @@ fn offline_state() -> ServerState {
         nav: Arc::new(NavState::new()),
         onnx_models: Arc::new(Mutex::new(None)),
         gpu: Arc::new(GpuState::new()),
+        hv: Arc::new(Mutex::new(kepler_wgpu::device::hv::HvDevice::new())),
     }
 }
 

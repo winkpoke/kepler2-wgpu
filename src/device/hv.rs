@@ -30,12 +30,12 @@ impl HvDevice {
             .stop_bits(serialport::StopBits::One)
             .data_bits(serialport::DataBits::Eight)
             .open()
-            .map_err(|e| format!("无法打开串口: {}", e))?;
+            .map_err(|e| format!("无法打开高压串口: {}", e))?;
 
         self.port = Some(port);
         self.port_name = port_name.to_string();
         self.baud = baud;
-        println!("--- 串口 {} 已连接 ---", port_name);
+        println!("--- 高压串口 {} 已连接 ---", port_name);
         Ok(())
     }
 
@@ -73,7 +73,7 @@ impl HvDevice {
             self.event_queue.push(format!("TX: {}", shown));
             Ok(())
         } else {
-            Err("串口未连接".to_string())
+            Err("高压串口未连接".to_string())
         }
     }
 

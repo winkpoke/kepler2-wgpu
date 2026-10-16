@@ -95,7 +95,10 @@ impl CTVolume {
     }
 
     pub fn get_voxel(&self, x: usize, y: usize, z: usize) -> Option<i16> {
-        let (rows, cols, _slices) = self.dimensions;
+        let (rows, cols, slices) = self.dimensions;
+        if x >= cols || y >= rows || z >= slices {
+            return None;
+        }
         let idx = z * rows * cols + y * cols + x;
         self.voxel_data.get(idx).copied()
     }
@@ -269,4 +272,125 @@ pub struct Geometry {
 
 pub trait CTVolumeGenerator {
     fn generate_ct_volume(&self, image_series_id: &str) -> Result<CTVolume>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn volume(rows: usize, cols: usize, slices: usize, data: Vec<i16>) -> CTVolume {
+        CTVolume::new(
+            (rows, cols, slices),
+            (0.5, 0.5, 1.0),
+            data,
+            Base {
+                label: "test".to_string(),
+                matrix: Mat4::IDENTITY,
+            },
+        )
+    }
+
+    #[test]
+    fn accessors_return_constructor_values() {
+        let v = volume(2, 3, 4, vec![0; 24]);
+        assert_eq!(v.dimensions(), (2, 3, 4));
+        assert_eq!(v.voxel_spacing(), (0.5, 0.5, 1.0));
+        assert_eq!(v.voxel_data().len(), 24);
+        assert_eq!(v.base().label, "test");
+    }
+
+    #[test]
+    fn slice_returns_stride_and_maps_i16_to_u16() {
+        // 2x2x2: slice 1 holds the negative and high values.
+        let v = volume(2, 2, 2, vec![1, 2, 3, 4, -1, -2, 32767, -32768]);
+        let s1 = v.slice(1).unwrap();
+        // i16 -> u16 is a bitwise reinterpretation (two's complement wrap).
+        assert_eq!(s1, vec![(-1i16) as u16, (-2i16) as u16, 32767u16, (-32768i16) as u16]);
+        let s0 = v.slice(0).unwrap();
+        assert_eq!(s0, vec![1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn slice_out_of_range_is_rejected_with_message() {
+        let v = volume(2, 2, 2, vec![0; 8]);
+        let err = v.slice(2).unwrap_err();
+        assert!(err.contains("out of range"), "got: {err}");
+        assert!(err.contains("depth = 2"), "got: {err}");
+    }
+
+    #[test]
+    fn get_voxel_indexes_z_major_and_returns_none_out_of_bounds() {
+        // idx = z*rows*cols + y*cols + x
+        let data: Vec<i16> = (0..8).collect(); // 2x2x2, value == index
+        let v = volume(2, 2, 2, data);
+        assert_eq!(v.get_voxel(0, 0, 0), Some(0));
+        assert_eq!(v.get_voxel(1, 0, 0), Some(1));
+        assert_eq!(v.get_voxel(0, 1, 0), Some(2));
+        assert_eq!(v.get_voxel(1, 1, 1), Some(7)); // last voxel
+        assert_eq!(v.get_voxel(2, 0, 0), None); // x out of range
+        assert_eq!(v.get_voxel(0, 0, 2), None); // z out of range
+    }
+
+    #[test]
+    fn rotate_180_xy_reverses_each_slice_in_place() {
+        let v = volume(2, 2, 2, vec![1, 2, 3, 4, 5, 6, 7, 8]);
+        let mut v = v;
+        v.rotate_180_xy();
+        assert_eq!(v.voxel_data(), &[4, 3, 2, 1, 8, 7, 6, 5]);
+    }
+
+    #[test]
+    fn rotate_180_xy_on_empty_slice_len_is_noop() {
+        let mut v = volume(0, 0, 0, vec![]);
+        v.rotate_180_xy(); // must not panic
+        assert!(v.voxel_data().is_empty());
+    }
+
+    #[test]
+    fn downsample_2x_averages_blocks_including_negatives() {
+        // 4x4x1 slice with four 2x2 blocks:
+        //   block 0: 0..3        avg 1.5  -> 1 (truncation)
+        //   block 1: -4..-1      avg -2.5 -> -2 (truncation toward zero)
+        //   block 2: 100,200,... avg 250
+        //   block 3: 100,101,... avg 101
+        let v = volume(
+            4,
+            4,
+            1,
+            vec![0, 1, -4, -3, 2, 3, -2, -1, 100, 200, 100, 101, 300, 400, 102, 103],
+        );
+        let d = v.downsample_2x();
+        assert_eq!(d.dimensions(), (2, 2, 1));
+        assert_eq!(d.voxel_data(), &[1, -2, 250, 101]);
+        // Spacing doubles in-plane, z spacing is preserved.
+        assert_eq!(d.voxel_spacing(), (1.0, 1.0, 1.0));
+        // Base x/y axes are scaled by 2.
+        let m = d.base().matrix;
+        assert!((m.x_axis.x - 2.0).abs() < 1e-5);
+        assert!((m.y_axis.y - 2.0).abs() < 1e-5);
+    }
+
+    #[test]
+    fn downsample_2x_with_odd_dims_floors_and_preserves_all_slices() {
+        // 3x3x2 -> 1x1x2: only the top-left 2x2 block of each slice is used.
+        let v = volume(3, 3, 2, vec![4, 9, 0, 9, 4, 0, 0, 0, 0, 2, 3, 0, 3, 2, 0, 0, 0, 0]);
+        let d = v.downsample_2x();
+        assert_eq!(d.dimensions(), (1, 1, 2));
+        assert_eq!(d.voxel_data(), &[6, 2]); // (4+9+9+4)/4=6, (2+3+3+2)/4=2
+    }
+
+    #[test]
+    fn downsample_2x_on_tiny_volume_returns_clone() {
+        let v = volume(1, 1, 1, vec![7]);
+        let d = v.downsample_2x();
+        assert_eq!(d.dimensions(), (1, 1, 1));
+        assert_eq!(d.voxel_data(), &[7]);
+    }
+
+    #[test]
+    fn set_voxel_data_replaces_payload() {
+        let mut v = volume(2, 2, 1, vec![0, 0, 0, 0]);
+        v.set_voxel_data(vec![1, 2, 3, 4]);
+        assert_eq!(v.voxel_data(), &[1, 2, 3, 4]);
+    }
 }

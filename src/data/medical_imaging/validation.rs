@@ -528,3 +528,215 @@ impl ValidationResult {
         combined
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::data::medical_imaging::metadata::{Endianness, PatientPosition};
+
+    fn good_metadata(dims: Vec<usize>, pixel_type: PixelType) -> ImageMetadata {
+        ImageMetadata {
+            dimensions: dims,
+            spacing: vec![0.5, 0.5, 1.0],
+            offset: vec![0.0, 0.0, 0.0],
+            orientation: [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+            pixel_type,
+            endianness: Endianness::Little,
+            compression: None,
+            patient_position: PatientPosition::HFS,
+            data_offset: None,
+            element_data_file: "LOCAL".to_string(),
+        }
+    }
+
+    // ---------- DataSizeChecker ----------
+
+    #[test]
+    fn data_size_checker_accepts_within_bounds() {
+        let checker = DataSizeChecker::new(10, Some(100));
+        assert!(checker.check_integrity(&vec![0u8; 50]).is_valid);
+    }
+
+    #[test]
+    fn data_size_checker_rejects_below_minimum() {
+        let checker = DataSizeChecker::new(10, None);
+        let result = checker.check_integrity(&vec![0u8; 3]);
+        assert!(!result.is_valid);
+        assert!(matches!(result.errors[0], ValidationError::InvalidLength { .. }));
+    }
+
+    #[test]
+    fn data_size_checker_rejects_above_maximum() {
+        let checker = DataSizeChecker::new(1, Some(4));
+        let result = checker.check_integrity(&vec![0u8; 5]);
+        assert!(!result.is_valid);
+    }
+
+    #[test]
+    fn base_integrity_checker_rejects_empty_data() {
+        let checker = DataSizeChecker::new(1, None);
+        let result = IntegrityChecker::check_integrity(&checker, &[]);
+        assert!(!result.is_valid);
+    }
+
+    // ---------- ChecksumChecker ----------
+
+    #[test]
+    fn simple_checksum_matches_sum_of_bytes() {
+        // sum([1,2,3]) = 6
+        let checker = ChecksumChecker::new(6, ChecksumAlgorithm::Simple);
+        assert!(checker.check_integrity(&[1, 2, 3]).is_valid);
+        let bad = ChecksumChecker::new(7, ChecksumAlgorithm::Simple);
+        assert!(!bad.check_integrity(&[1, 2, 3]).is_valid);
+    }
+
+    #[test]
+    fn crc32_matches_reference_vector() {
+        // Standard CRC-32 (IEEE 802.3) check value for "123456789".
+        let data = b"123456789";
+        let checker = ChecksumChecker::new(0xCBF4_3926, ChecksumAlgorithm::Crc32);
+        assert!(checker.check_integrity(data).is_valid, "CRC-32 of \"123456789\" must equal 0xCBF43926");
+        let wrong = ChecksumChecker::new(0xDEAD_BEEF, ChecksumAlgorithm::Crc32);
+        let result = wrong.check_integrity(data);
+        assert!(!result.is_valid);
+        assert!(format!("{}", result.errors[0]).contains("CHECKSUM") || format!("{}", result.errors[0]).contains("Checksum"));
+    }
+
+    // ---------- MedicalHeaderChecker ----------
+
+    #[test]
+    fn header_checker_accepts_correct_magic_and_size() {
+        let checker = MedicalHeaderChecker::new(vec![0x1f, 0x8b], 2);
+        let data = [0x1fu8, 0x8b, 0x08, 0x00];
+        assert!(checker.check_integrity(&data).is_valid);
+    }
+
+    #[test]
+    fn header_checker_rejects_wrong_magic() {
+        let checker = MedicalHeaderChecker::new(vec![0x1f, 0x8b], 2);
+        let data = [0x00u8, 0x01, 0x02];
+        let result = checker.check_integrity(&data);
+        assert!(!result.is_valid);
+        assert!(matches!(result.errors[0], ValidationError::InvalidFormat { .. }));
+    }
+
+    #[test]
+    fn header_checker_rejects_short_data() {
+        let checker = MedicalHeaderChecker::new(vec![0x1f, 0x8b], 10);
+        let result = checker.check_integrity(&[0x1fu8, 0x8b]);
+        assert!(!result.is_valid);
+        assert!(matches!(result.errors[0], ValidationError::InvalidLength { .. }));
+    }
+
+    // ---------- MedicalImageValidator ----------
+
+    #[test]
+    fn metadata_with_all_valid_fields_passes() {
+        let validator = MedicalImageValidator::new();
+        assert!(validator.validate_metadata(&good_metadata(vec![64, 64, 32], PixelType::Int16)).is_valid);
+    }
+
+    #[test]
+    fn zero_dimension_is_rejected() {
+        let validator = MedicalImageValidator::new();
+        let result = validator.validate_metadata(&good_metadata(vec![64, 0, 32], PixelType::Int16));
+        assert!(!result.is_valid);
+        assert!(matches!(result.errors[0], ValidationError::InvalidDimension { .. }));
+    }
+
+    #[test]
+    fn non_positive_spacing_is_rejected() {
+        let validator = MedicalImageValidator::new();
+        let mut meta = good_metadata(vec![4, 4, 2], PixelType::Int16);
+        meta.spacing = vec![0.5, 0.0, 1.0];
+        let result = validator.validate_metadata(&meta);
+        assert!(!result.is_valid);
+        assert!(matches!(result.errors[0], ValidationError::InvalidSpacing { .. }));
+    }
+
+    #[test]
+    fn singular_orientation_matrix_is_rejected() {
+        let validator = MedicalImageValidator::new();
+        let mut meta = good_metadata(vec![4, 4, 2], PixelType::Int16);
+        // Rank-deficient: two identical rows -> det == 0.
+        meta.orientation = [[1.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+        let result = validator.validate_metadata(&meta);
+        assert!(!result.is_valid);
+        assert!(matches!(result.errors[0], ValidationError::InvalidOrientation { .. }));
+    }
+
+    #[test]
+    fn pixel_data_size_must_match_dimensions_times_bytes_per_voxel() {
+        let validator = MedicalImageValidator::new();
+        // 4x4x2 = 32 voxels of Int16 (2 bytes) = 64 bytes.
+        let meta = good_metadata(vec![4, 4, 2], PixelType::Int16);
+        assert!(
+            validator
+                .validate_pixel_data(&PixelData::Int16(vec![0i16; 32]), &meta)
+                .is_valid
+        );
+        let short = validator.validate_pixel_data(&PixelData::Int16(vec![0i16; 31]), &meta);
+        assert!(!short.is_valid);
+        assert!(matches!(short.errors[0], ValidationError::InvalidLength { .. }));
+
+        // Float64: 8 bytes per voxel.
+        let meta64 = good_metadata(vec![2, 2, 2], PixelType::Float64);
+        assert!(
+            validator
+                .validate_pixel_data(&PixelData::Float64(vec![0.0f64; 8]), &meta64)
+                .is_valid
+        );
+        assert!(
+            !validator
+                .validate_pixel_data(&PixelData::Float64(vec![0.0f64; 7]), &meta64)
+                .is_valid
+        );
+    }
+
+    #[test]
+    fn add_format_validator_stores_combined_result() {
+        let mut validator = MedicalImageValidator::new();
+        let meta = good_metadata(vec![2, 2, 2], PixelType::UInt8);
+        let result = validator.add_format_validator(
+            ImageFormat::MHA,
+            &meta,
+            &PixelData::UInt8(vec![0u8; 8]),
+        );
+        assert!(result.is_valid);
+        assert!(validator.format_validators.contains_key(&ImageFormat::MHA));
+
+        // Now feed mismatched data: stored result must be invalid.
+        let bad = validator.add_format_validator(
+            ImageFormat::MHD,
+            &meta,
+            &PixelData::UInt8(vec![0u8; 3]),
+        );
+        assert!(!bad.is_valid);
+        assert!(!validator.format_validators[&ImageFormat::MHD].is_valid);
+    }
+
+    #[test]
+    fn integrity_checkers_are_combined_fail_closed() {
+        let mut validator = MedicalImageValidator::new();
+        validator.add_integrity_checker(Box::new(DataSizeChecker::new(3, None)));
+        validator.add_integrity_checker(Box::new(ChecksumChecker::new(
+            6,
+            ChecksumAlgorithm::Simple,
+        )));
+        // Passes size (len 3 >= min 3) and checksum (1+2+3=6).
+        assert!(validator.run_integrity_checks(&[1, 2, 3]).is_valid);
+        // Fails size only.
+        assert!(!validator.run_integrity_checks(&[1, 2]).is_valid);
+        // Fails checksum only.
+        assert!(!validator.run_integrity_checks(&[1, 2, 3, 4]).is_valid);
+        // No checkers registered -> vacuous success.
+        assert!(MedicalImageValidator::new().run_integrity_checks(&[]).is_valid);
+    }
+
+    #[test]
+    fn validate_file_reports_missing_path() {
+        let validator = MedicalImageValidator::new();
+        let result = validator.validate_file("Z:/definitely/not/here.bin");
+        assert!(!result.is_valid);
+    }
+}

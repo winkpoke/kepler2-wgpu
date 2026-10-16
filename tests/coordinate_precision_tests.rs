@@ -162,9 +162,16 @@ mod roundtrip_tests {
 mod special_value_propagation_tests {
     use super::*;
 
+    // IEEE 754 contract for the coordinate pipeline: Base::to_base() is a
+    // 4x4 matrix multiply. A translation matrix has zeros off the diagonal,
+    // and 0 * NaN = NaN, so a non-finite input coordinate contaminates EVERY
+    // component of the transformed point — not just its own axis. These tests
+    // lock that semantic: non-finite values propagate (no silent
+    // sanitization) and no operation panics. Callers must validate inputs
+    // upstream if they need finite guarantees.
+
     /// Tests NaN propagation through coordinate transformations
     #[test]
-    #[ignore]
     fn test_nan_propagation_screen_to_world() {
         let world_base = Base {
             label: "world".to_string(),
@@ -186,18 +193,17 @@ mod special_value_propagation_tests {
             "NaN should propagate in x coordinate"
         );
         assert!(
-            screen_point_4d.y.is_finite(),
-            "Y coordinate should be finite"
+            !screen_point_4d.y.is_finite(),
+            "0 * NaN = NaN: y is contaminated by the x NaN (IEEE 754)"
         );
         assert!(
-            screen_point_4d.z.is_finite(),
-            "Z coordinate should be finite"
+            !screen_point_4d.z.is_finite(),
+            "0 * NaN = NaN: z is contaminated by the x NaN (IEEE 754)"
         );
     }
 
     /// Tests NaN propagation through world-to-screen transformations
     #[test]
-    #[ignore]
     fn test_nan_propagation_world_to_screen() {
         let world_base = Base {
             label: "world".to_string(),
@@ -219,18 +225,17 @@ mod special_value_propagation_tests {
             "NaN should propagate in y coordinate"
         );
         assert!(
-            screen_point_4d.x.is_finite(),
-            "X coordinate should be finite"
+            !screen_point_4d.x.is_finite(),
+            "0 * NaN = NaN: x is contaminated by the y NaN (IEEE 754)"
         );
         assert!(
-            screen_point_4d.z.is_finite(),
-            "Z coordinate should be finite"
+            !screen_point_4d.z.is_finite(),
+            "0 * NaN = NaN: z is contaminated by the y NaN (IEEE 754)"
         );
     }
 
     /// Tests infinity propagation through coordinate transformations
     #[test]
-    #[ignore]
     fn test_infinity_propagation_screen_to_world() {
         let world_base = Base {
             label: "world".to_string(),
@@ -252,18 +257,17 @@ mod special_value_propagation_tests {
             "Positive infinity should propagate in x coordinate"
         );
         assert!(
-            screen_point_4d.y.is_finite(),
-            "Y coordinate should be finite"
+            !screen_point_4d.y.is_finite(),
+            "0 * Inf = NaN: y is contaminated by the x Inf (IEEE 754)"
         );
         assert!(
-            screen_point_4d.z.is_finite(),
-            "Z coordinate should be finite"
+            !screen_point_4d.z.is_finite(),
+            "0 * Inf = NaN: z is contaminated by the x Inf (IEEE 754)"
         );
     }
 
     /// Tests negative infinity propagation
     #[test]
-    #[ignore]
     fn test_negative_infinity_propagation() {
         let world_base = Base {
             label: "world".to_string(),
@@ -286,12 +290,12 @@ mod special_value_propagation_tests {
             "Negative infinity should propagate in z coordinate"
         );
         assert!(
-            screen_point_4d.x.is_finite(),
-            "X coordinate should be finite"
+            !screen_point_4d.x.is_finite(),
+            "0 * -Inf = NaN: x is contaminated by the z -Inf (IEEE 754)"
         );
         assert!(
-            screen_point_4d.y.is_finite(),
-            "Y coordinate should be finite"
+            !screen_point_4d.y.is_finite(),
+            "0 * -Inf = NaN: y is contaminated by the z -Inf (IEEE 754)"
         );
     }
 

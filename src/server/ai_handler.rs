@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Instant;
 use anyhow::{anyhow, Result};
+use axum::body::Bytes;
 use uuid::Uuid;
 use crate::data::medical_imaging::{MedicalVolume, MetaimageParser};
 use crate::server::{
@@ -172,19 +173,21 @@ async fn run_segmentation(state: ServerState, task_id: String, req: ApiSegmentRe
                 let orig = plan.original_shape; // (Z, Y, X)
                 result.dimensions = (orig.2 as u32, orig.1 as u32, orig.0 as u32);
 
-                let out_dir = state.output_root.join(&task_id);
-                if let Err(e) = tokio::fs::create_dir_all(&out_dir).await {
-                    log::warn!("[AI/ONNX] create output dir {:?} failed: {e}", out_dir);
-                } else if let Err(e) =
-                    tokio::fs::write(out_dir.join("spine.raw"), &result.mask_data).await
-                {
-                    log::warn!("[AI/ONNX] spine.raw persist failed for {}: {e}", task_id);
-                } else {
-                    log::info!(
-                        "[AI/ONNX] wrote {} ({} bytes)",
-                        out_dir.join("spine.raw").display(),
-                        result.mask_data.len()
-                    );
+                if std::env::var_os("KEPLER_PERSIST_SPINE_RAW").is_some() {
+                    let out_dir = state.output_root.join(&task_id);
+                    if let Err(e) = tokio::fs::create_dir_all(&out_dir).await {
+                        log::warn!("[AI/ONNX] create output dir {:?} failed: {e}", out_dir);
+                    } else if let Err(e) =
+                        tokio::fs::write(out_dir.join("spine.raw"), &result.mask_data).await
+                    {
+                        log::warn!("[AI/ONNX] spine.raw persist failed for {}: {e}", task_id);
+                    } else {
+                        log::info!(
+                            "[AI/ONNX] wrote {} ({} bytes)",
+                            out_dir.join("spine.raw").display(),
+                            result.mask_data.len()
+                        );
+                    }
                 }
 
                 state.tasks.mark_completed(
@@ -369,15 +372,26 @@ async fn load_volume_f32(
     state: &ServerState,
     series_id: &str,
 ) -> Result<LoadedVolume> {
-    let path = state.series_path(series_id);
-    anyhow::ensure!(
-        path.exists(),
-        "volume file not found on disk: {}",
-        path.display()
-    );
-    log::info!("Loading MHA volume from {}", path.display());
-
-    let bytes = tokio::fs::read(&path).await?;
+    let bytes: Bytes = match state
+        .get_volume(&series_id.to_string())
+        .await
+        .and_then(|v| v.mhx_path)
+    {
+        Some(b) => {
+            log::info!("Using in-memory MHA bytes for series {series_id} ({} bytes)", b.len());
+            b
+        }
+        None => {
+            let path = state.series_path(series_id);
+            anyhow::ensure!(
+                path.exists(),
+                "volume file not found on disk: {}",
+                path.display()
+            );
+            log::info!("Loading MHA volume from {}", path.display());
+            Bytes::from(tokio::fs::read(&path).await?)
+        }
+    };
     let metadata = MetaimageParser::parse_metadata_only(&bytes, true)
         .map_err(|e| anyhow!("MHA metadata parse failed: {e}"))?;
 
@@ -393,9 +407,7 @@ async fn load_volume_f32(
     let header_text = String::from_utf8_lossy(&bytes[..start_offset]);
     let (slope, intercept) = read_rescale(&header_text);
 
-    // Drop the header in place; remaining bytes are raw voxel data.
-    let mut raw = bytes;
-    raw.drain(..start_offset);
+    let raw = bytes.slice(start_offset..).to_vec();
 
     let mut dimensions = metadata.dimensions;
     let mut spacing = metadata.spacing;

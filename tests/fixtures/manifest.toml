@@ -1,34 +1,50 @@
-# Test Fixture Manifest
-# Versioned DICOM datasets for reproducible testing
+# Test Fixture Manifest — kepler2-wgpu
+#
+# Strategy: ALL medical-imaging fixtures are synthesized in memory at test
+# time. No binary fixture files are committed to the repository, so the
+# manifest can never drift from the disk contents.
+#
+# Builder: tests/common/fixtures/dicom.rs::DicomFixtureBuilder (fluent API).
+# Every scenario below is produced by composing builder setters; the bytes
+# never touch the filesystem. Previous revisions of this manifest listed four
+# versioned .dcm files that never existed on disk — that drift is what this
+# rewrite removes.
 
 [manifest]
-version = "1.0.0"
-description = "Medical imaging test fixtures for Kepler2-WGPU"
+version = "2.0.0"
+description = "In-memory medical imaging fixture scenarios for Kepler2-WGPU"
+strategy = "memory-synthesized"
+builder = "tests/common/fixtures/dicom.rs::DicomFixtureBuilder"
 
 [[fixtures]]
-name = "v001_valid_dicom.dcm"
-description = "Valid CT DICOM with all mandatory fields"
+name = "valid-ct"
+description = "Valid CT DICOM with all mandatory fields present"
 format = "DICOM"
-size_bytes = 512 * 512 * 2
+builder_calls = "DicomFixtureBuilder::new() (defaults)"
+used_by = ["dicom_tests.rs", "dicom_metadata_validation_tests.rs"]
 
 [[fixtures]]
-name = "v002_invalid_uid.dcm"
-description = "DICOM missing SOPInstanceUID - should fail validation"
+name = "invalid-uid"
+description = "DICOM missing mandatory identifier fields - must fail validation"
 format = "DICOM"
-size_bytes = 512 * 512 * 2
+builder_calls = "build_series()/build_images() with empty UID fields, validated via ImageSeries/patient validators"
+used_by = ["dicom_metadata_validation_tests.rs"]
 
 [[fixtures]]
-name = "v003_invalid_rescale.dcm"
-description = "DICOM with zero rescale slope - division by zero risk"
+name = "invalid-rescale"
+description = "DICOM with zero rescale slope - exercises the divide-by-zero guard"
 format = "DICOM"
-size_bytes = 512 * 512 * 2
+builder_calls = "DicomFixtureBuilder::new().rescale_slope(0.0).rescale_intercept(100.0)"
+used_by = ["dicom_tests.rs::test_zero_rescale_slope"]
 
 [[fixtures]]
-name = "v004_malformed.dcm"
-description = "Malformed DICOM with truncated pixel data"
+name = "malformed-pixel-data"
+description = "DICOM whose pixel data is truncated / odd-length - must be rejected"
 format = "DICOM"
-size_bytes = 512 * 512
+builder_calls = "DicomFixtureBuilder::new().dimensions((4,4)) then truncate/extend pixel_data before get_pixel_data"
+used_by = ["dicom_tests.rs::test_truncated_pixel_data", "dicom_tests.rs::test_odd_sized_pixel_data"]
 
 [compatibility]
-# Minimum version of fixture format supported
-min_manifest_version = "1.0.0"
+# v1 manifests listed versioned .dcm files under this directory; none were
+# ever committed. Treat any v1 manifest as stale.
+min_manifest_version = "2.0.0"
