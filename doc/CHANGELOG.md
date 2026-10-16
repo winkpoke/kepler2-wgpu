@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-10-05 — Replay graphics improvements onto v0.17.0 (landed with platform deferments)
+
+- Replayed all 13 dev commits with their merge topology onto the release, retaining
+  viewer/browser controls, DVR, segmentation, DR overlays, mesh/primitive state,
+  exports, server/CLI contracts, package versions, and legacy constructors.
+- Kept public `HuPackedRg8 { offset }` / `HuFloat` and offset 1100 compatibility;
+  canonical signed uploads use exact offset 32768 packing. Preserved the distinct
+  release float/packed sampler policies and production WGSL uniform layouts.
+- Prepared layouts and GPU resources before committing replacements; shared CPU
+  upload recipes retain labels and release interaction state across rebinding.
+- Scoped ORT DirectML to Windows so macOS native validation can use CPU fallback.
+- Fixed the private browser logger filter so GPU warnings/errors remain visible
+  and verbose backend shader logging is suppressed.
+- Native Metal, browser WebGPU/WebGL2, controlled automatic fallbacks, public API
+  fixtures, uniform layouts, and offline router/compute checks passed. Existing
+  release test/quality failures and explicitly deferred Linux/manual checks are recorded in the
+  [candidate report](../openspec/changes/rebase-dev-graphics-onto-v017/execution.md).
+
 ## 2026-10-04 — Complete view-layout transitions
 
 - Concentrated existing mode controls into one private prepare/commit operation. Returned upload or replacement-view errors preserve the displayed layout, interaction settings, orientation selections, mesh cache/configuration, and pending redraw state.
@@ -23,7 +41,6 @@
 - Added bounded pre-canvas WebGL2 fallback, a fresh-page `?kepler_wgpu_backend=gl` diagnostic selector, and stage-labeled post-binding failure guidance.
 - Centralized selected-device filtered volume-format and 3D texture-limit decisions; malformed or oversized uploads are rejected without altering signed voxel data.
 - Added a synthetic signed-volume browser procedure. Browser runtime/backend acceptance remains pending; see [browser GPU verification](testing/browser_gpu.md).
-
 ## 2026-10-01 — Stable Rust toolchain baseline
 
 - Removed the nightly duration feature gate; application/rendering timing now explicitly uses the existing portable f64/f32 helpers, with fractional-millisecond regressions.
@@ -36,6 +53,215 @@
 - Corrected matrix/voxel-precision guidance and testing spec identity/window-level errors; repaired acquisition spec structure.
 - Migrated to project-local OpenSpec 1.14.0, compact config, and generated skills/commands without changing rendering code or archived changes.
 - Added documentation/delta identity checks and regression tests, plus native source-line coverage summaries with explicit medical scope. Branch/trend/browser validation remains distinct from these checks.
+
+
+## 2026-09-01
+- **Fix DRR preview relay 404 and single-fetch passthrough**
+  - The DRR preview route was registered as
+    `/api/nav/setup-registrations/:id/drr-previews/:frame/save` in
+    `src/server/routes.rs`, but `static/navcomputer.html` (and the
+    handler's own doc comment) call `.../drr-previews/{frame}` without
+    the `/save` suffix — the browser got a 404 from the static-file
+    fallback instead of the relay. The stray `/save` is removed; the
+    documented path is now the only one.
+  - `nav_drr_preview_save` (`src/server/navcomputer.rs`) previously
+    fetched the DRR **twice** from the Navigation Computer (once to
+    save, once to return to the browser). It now returns the bytes it
+    already fetched, preserving the remote `Content-Type`.
+  - `POST /api/nav/config` accepts `drr_preview_dir` (empty resets to
+    `C:/user/Pet/DRR`), and `GET /api/nav/config` echoes it — the
+    module docs already claimed this but it was not implemented.
+    `static/navcomputer.html` gains a "DRR 落盘目录" input in the
+    connection card (留空 = 不修改).
+  - Verified against a mock upstream: route returns 200 with the exact
+    body + Content-Type, `drr-preview-{F1,F2}.mha` lands in the
+    configured dir with identical bytes, `F3` → 400, unreachable
+    upstream → 502 without writing a partial file, and the config
+    round-trip (input → POST body → state → response) works from the
+    browser page.
+
+## 2026-08-28
+- **New nav bridge mount point: query a navigation session**
+  - `GET /api/nav/navigation-sessions/{id}` (`src/server/routes.rs`,
+    `src/server/navcomputer.rs::nav_navigation_session`) forwards to the
+    Navigation Computer's
+    `GET /api/navigation/v1/navigation-sessions/{id}` with the configured
+    Bearer token, mirroring the existing relay pattern.
+  - `static/navcomputer.html`: new card "5 · 查询导航会话" after the
+    实时导航/目标观察 card (session-ID input defaults to
+    `navigation-session-3d559e145eeb40cbb20f6dcaad03d476`); the callback
+    card is renumbered 5 → 6.
+  - Verified end-to-end against a mock upstream: forwarded method, path
+    prefix, session id and `Authorization` header are exact; the button
+    click shows the relayed response in the page log.
+
+## 2026-08-26
+- **Split DR display and DR overlay into two functions**
+  - `App::load_dr_to_pro` (`src/application/app.rs`) no longer builds the
+    pseudo-color label overlay from the processed DR volume itself; it
+    only runs dark/bright correction and configures the 2x2 DR-to-PRO
+    transverse layout.
+  - `App::overlay_dr_segmentation(&CTVolume, &CTVolume)` takes two
+    separate MHA volumes, applies the same full-range pseudo-color
+    encoding (1..255 into `RenderContent::from_labels_r8`) to each, and
+    stacks them on the DR MPR views in grid cells 0 and 1 (matching
+    `vol_1` / `vol_2` of `load_dr_to_pro`) at 50% opacity. Geometry
+    lines up only when each overlay volume shares its DR volume's voxel
+    grid.
+  - Segmentation overlay opacity is now uniform-driven: the unused
+    `_pad0` f32 in `UniformsFrag` is repurposed as `seg_alpha`
+    (byte-identical layout, no pipeline change). `mpr.wgsl` mixes both
+    the jet and label-color paths with `clamp(seg_alpha, 0, 1)`
+    (previously hardcoded 1.0 / 0.3). Default stays 0.3 so AI
+    segmentation keeps its look; new `MprView::set_segmentation_alpha`
+    sets it per view.
+  - Wired through the public chain: `UserEvent::LoadDrOverlay(CTVolume,
+    CTVolume)`, `GLCanvas::load_dr_overlay(&CTVolume, &CTVolume)`
+    (wasm-bindgen export), and the render-loop arm in
+    `src/application/render_app.rs`.
+  - `static/index.html`: `选择 Overlay 0 MHA` / `选择 Overlay 90 MHA`
+    file inputs; the DR校准 button calls `load_dr_to_pro` and, when both
+    overlay MHAs are selected, `load_dr_overlay` right after (fixed the
+    90° handler reading the 0° input's file). Requires a
+    `wasm-pack build` to regenerate `pkg/` exports.
+  - Files: `src/application/app.rs`, `src/application/gl_canvas.rs`,
+    `src/application/render_app.rs`, `src/rendering/shaders/mpr.wgsl`,
+    `src/rendering/view/mpr/mpr_view.rs`,
+    `src/rendering/view/mpr/mpr_view_wgpu_impl.rs`, `static/index.html`.
+
+## 2026-08-25
+- **Add Navigation Computer bridge mount points**
+  - Matches the real Navigation Computer contract: every outbound
+    request goes to `{base_url}/api/navigation/v1/...` and carries
+    `Authorization: Bearer <token>`. Base URL defaults to
+    `http://172.18.3.17:8765`; URL and token come from
+    `POST /api/nav/config` or the `KEPLER_NAVCOMPUTER_URL` /
+    `KEPLER_NAVCOMPUTER_TOKEN` env vars (`GET` returns the token
+    masked). Responses (status + body) are relayed verbatim; unreachable
+    upstreams map to 502 and malformed JSON fails fast with a local 400.
+  - Outbound (`/api/nav/*`) in new module `src/server/navcomputer.rs`:
+    `GET|POST /api/nav/config`, `GET /api/nav/health` and
+    `GET /api/nav/status` (forward `GET /health` / `GET /status`),
+    `POST /api/nav/prepared-ct-lookups` (JSON passthrough),
+    `POST /api/nav/prepared-cts` (ZIP upload, multipart `file` field or
+    raw body, idempotency key via `?idempotency_key=` or the
+    `Idempotency-Key` header), `POST /api/nav/setup-registrations`
+    (multipart `payload` JSON + `fixed_mha` F1 + `moving_mha` F2),
+    `POST /api/nav/navigation-sessions/:id/target-observations` and
+    `POST /api/nav/navigation-sessions/:id/completion` (JSON passthrough).
+  - Inbound callbacks the Navigation Computer pushes to:
+    `PUT /callbacks/:session/events/:sequence` (ordered, idempotent
+    BTreeMap storage, replies 204), `PUT /callbacks/:session/live-state`
+    (latest state, 204), plus `GET /api/nav/callbacks/:session` to
+    inspect and `DELETE` to clear for replay tests.
+  - `static/navcomputer.html`: a dark-themed input console that drives
+    every mount point from the browser (base URL + Bearer-token config,
+    health/status, cache lookup, ZIP upload with generated idempotency
+    key, F1/F2 MHA registration, callback simulation, target
+    observations, completion) with a color-coded response log. Served by
+    the existing static fallback at `/navcomputer.html`.
+  - Wiring: `NavState` added to `ServerState`, routes registered in
+    `src/server/routes.rs`, `reqwest` gains the `multipart` feature.
+  - Files: `src/server/navcomputer.rs` (new), `src/server/state.rs`,
+    `src/server/routes.rs`, `src/server/mod.rs`, `Cargo.toml`,
+    `static/navcomputer.html` (new).
+
+## 2026-08-24T15-48-14
+- **Refactor CBCT Mask Picker to a single WebSocket workflow**
+  - The ECC modal no longer uses `fetch` for `POST /api/mask/circle`,
+    `POST /api/circle/cancel`, or any other mask-picker REST endpoint.
+    Every interaction (load slice, confirm circle, run calibration, watch
+    progress, read the result) now travels over the existing `/ws`
+    WebSocket using the `load_slice` / `confirm_circle` / `run_calibration`
+    / `ecc_cancel` client commands and the `slice` / `circle_accepted` /
+    `progress` / `calibration_result` / `finished` server events defined
+    in `src/server/ws.rs`.
+  - Added the supporting Rust plumbing: a new `CtVolumeData` cache plus
+    `set_ct_volume` / `get_ct_slice` / `set_mask_circle` / `set_mask_data`
+    helpers in `src/server/state.rs`; `send_json` / `send_error` and the
+    `handle_confirm_circle` / `handle_run_calibration` WebSocket handlers
+    in `src/server/handlers.rs`. `handle_run_calibration` spawns the
+    calibration pipeline on a Tokio task so the WebSocket receive loop
+    keeps draining other commands.
+  - The HTML modal now exposes a slice index input, prev/next buttons, a
+    progress bar + stage text, a result panel, and a "开始计算" button.
+    On open it requests slice 100; on confirm it forwards the full
+    `Circle` (with `width`/`height`/`x1`/`y1`/`radius_1`/`x2`/`y2`/`radius_2`)
+    to the server; on run it streams progress events until the
+    `finished` event arrives.
+  - Files:
+    - `src/server/state.rs`
+    - `src/server/handlers.rs`
+    - `src/server/mod.rs`
+    - `static/index.html`
+
+## 2026-08-06T16-05-00
+- **Unify Mesh/Volume in `[0, 1]^3` UV-Space**
+  - Removed the `volume_scale` AABB remap from `MeshView::update_uniforms` and the
+    `MeshUniforms` struct. The model matrix is now the identity in `[0, 1]^3`
+    UV/world space, so the volume and the spine/needle meshes all share the
+    same `model_view_proj` (the camera's view-projection matrix).
+  - `volume.wgsl` builds ray origins/directions via the inverse of that
+    shared matrix and projects the first hit through the same matrix to
+    write `frag_depth`; `mesh_basic.wgsl` reads its clip-space position
+    through the same matrix, so the two passes produce directly comparable
+    depth values in the shared depth attachment.
+  - `instance_for_needle` and `set_needle_radius` continue to operate in
+    UV space (entry/tip/radius converted from mm on the CPU side by
+    `App::set_new_needle_mm` and `App::set_needle_radius`).
+  - `test_spine_model_matches_dvr_aabb` rewritten to assert the identity
+    model matrix and that the mesh round-trips any `[0, 1]^3` coordinate
+    unchanged, locking in the unified-space contract.
+  - Files:
+    - `src/rendering/view/mesh/mesh_view.rs`
+    - `src/rendering/view/mesh/mesh.rs`
+    - `src/rendering/view/mesh/basic_mesh_context.rs`
+    - `src/rendering/shaders/volume.wgsl`
+    - `src/rendering/shaders/mesh_basic.wgsl`
+
+## 2026-06-16T16-00-00
+- **Add Oblique Cutting Plane to 3D Mesh View (REQ-025/026/027)**
+  - Added a second plane-quad overlay to `dvr_ray_march` in `mesh.wgsl`. The new plane is driven by `u_vol.oblique_center`, `u_vol.oblique_normal`, `u_vol.oblique_visible`, and `u_vol.oblique_alpha`.
+  - The two tangent vectors spanning the plane are derived in-shader from the normal using a stable world-Y / world-X reference, so the quad stays numerically stable for any oblique angle.
+  - Color is warm yellow `(1.00, 0.85, 0.20)` to distinguish it from the green perpendicular needle plane.
+  - `MeshUniforms` (WGSL + Rust) gained the four matching fields, placed *before* the `needles` array so the array's 16-byte stride is not disturbed.
+  - `MeshView` gained a `set_oblique_plane(center, normal, visible, alpha)` API and four private state fields drained into the uniforms each frame.
+  - `MprView` gained a `get_oblique_center_world()` helper.
+  - Linkage: in `App::set_oblique_rotation_radians`, after the MprView rotation succeeds, the (center, normal) is pushed to the 3D mesh view so the dvr_ray_march overlay tracks the oblique rotation in real time.
+  - Build verified with `cargo check` — no errors, no new warnings.
+  - Files:
+    - `src/rendering/shaders/mesh.wgsl`
+    - `src/rendering/view/mesh/mesh.rs`
+    - `src/rendering/view/mesh/mesh_view.rs`
+    - `src/rendering/view/mpr/mpr_view.rs`
+    - `src/application/app.rs`
+
+## 2026-05-20T16-00-00
+- **Oblique Parallel Plane Intersection Line Fix**
+  - Fixed full-screen red rendering when oblique plane is parallel/near-parallel to a standard MPR view.
+  - Added plane normal dot product check (`> 0.99`) to detect parallel planes.
+  - When planes are parallel, intersection line is constrained to center only (single line instead of full plane fill).
+  - Files:
+    - `src/rendering/shaders/shader_tex.wgsl`
+
+## 2026-05-20T09-44-19
+- **Virtual Needle Rendering in 3D Mesh View**
+  - Added virtual needle rendering capability in the 3D volume view (`mesh.wgsl`) for surgical planning and needle insertion simulation.
+  - Needle is rendered as a cylinder segment between entry and target points within the volume coordinate space.
+  - Implemented distance-based ray marching integration with proper alpha blending.
+  - Added needle control APIs to `MeshView`: enable/disable, set entry/target points, radius, and color.
+  - Extended `MeshUniforms` struct with needle parameters (entry, target, radius, color, enabled flag).
+  - Files:
+    - `src/rendering/shaders/mesh.wgsl`
+    - `src/rendering/view/mesh/mesh.rs`
+    - `src/rendering/view/mesh/mesh_view.rs`
+
+## 2026-04-03T10-50-00
+- **Dual Orthogonal MPR Rendering**
+  - Added support for rendering two orthogonal MPR slices simultaneously within the same canvas.
+  - Updated MPR shader (`shader_tex.wgsl`) to accept two distinct transformation matrices and sample from the 3D CT volume accordingly.
+  - Implemented an intersecting indicator line to show where the two orthogonal slices meet, providing spatial correlation between planes.
+  - Added `enable_dual_mode` and `disable_dual_mode` to `MprView` and updated `AppView` and `App` to expose this functionality to the UI/WASM.
 
 ## 2026-02-26T00-00-00
 - **Oblique MPR View Rotation Controls (Slicer-style)**
@@ -184,6 +410,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Fixed
+- **MeshView Aspect Ratio Distortion**: Fixed 3D view distortion when resizing the window.
+  - Added `aspect_ratio` and padding fields to `MeshUniforms` in Rust to maintain 16-byte alignment.
+  - Updated `mesh.wgsl` to apply aspect ratio compensation to the `uv_centered` coordinates, ensuring the volume maintains correct proportions regardless of window dimensions.
+
+### Added
+- **3D Volume Rendering**: Introduced GPU volume rendering for the 3D mesh view using ray-marched volume sampling.
+  - Added a new WGSL shader `mesh.wgsl` for front-to-back accumulation of volume intensities.
+  - Added controls to toggle between mesh rendering and volume rendering in the 3D view.
 
 ### In Progress
 - 2025-11-17T17-40-00: Camera orbiting implementation in `mesh_view.rs`:
@@ -195,6 +430,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - 2025-12-17T16-10-36: Updated `doc/redering/basic-mesh-rendering.md` with current WGPU architecture notes and corrected mesh doc paths.
+- 2026-04-28T18-01-01: Consolidated ViewFactory-related view docs and added current implementation notes for `src/rendering/view/`.
+  - ViewFactory notes: `doc/views/2025-11-08T21-26-05-view-factory-extraction.md`
+  - View/layout overview: `doc/views/view-layout-refactoring-plan.md`
 
 ### Changed
 - 2025-11-17T17-50-00: Reorganized documentation folder structure:
@@ -221,7 +459,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Preserves existing behavior; public API unchanged (fields are `pub(crate)`).
   - All existing call sites continue to work via auto-deref to `&Device`/`&Queue`.
   - Verified native build succeeds; tests mostly pass (2 integration tests fail due to missing external files).
-  - Documentation: `doc/views/2025-11-08T22-27-07-default-view-factory-init-and-arc-device-queue.md`.
+  - Documentation: `doc/views/2025-11-08T21-26-05-view-factory-extraction.md`.
 
 ### Added
 - 2025-11-08T22-28-40: Declared `trace-logging` feature in `Cargo.toml` to gate heavy TRACE logs as required.
@@ -249,7 +487,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Forwarding implementation in `ViewManager` with INFO/DEBUG logging and error propagation.
   - Updated test mocks to implement the new method; all `view_transition_integration_tests` pass.
   - Verified native build (`cargo build`) and WASM build (`wasm-pack build -t web`) succeed.
-  - Documentation added in `doc/views/2025-11-08T21-32-39-mip-view-factory.md`.
+  - Documentation: `doc/views/2025-11-08T21-26-05-view-factory-extraction.md`.
 
 ### Changed
 - 2025-11-08T21-58-55: Moved `DefaultViewFactory` into `src/rendering/view/view_factory.rs` and removed separate `default_factory` module.
@@ -494,7 +732,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documentation: add `doc/window-level/2025-11-05T13-58-43-dicom-window-level-analysis.md` with detailed comparison to professional DICOM viewers, improvement suggestions, and no_run code examples.
 - Rationale: Align grayscale rendering with DICOM PS3.3 C.11.2.1 to match expected display behavior and reduce discrepancies across viewers.
 ## 2025-11-08T22-43-25
-Fix WASM panic caused by cross-device TextureView usage after Graphics swap. Reinitialize DefaultViewFactory inside State::swap_graphics with the new device/queue to ensure bind groups are created with resources from the same device. This prevents `wgpu-core` panic: `TextureView[...] does not exist` when creating bind groups on web. See doc/views/2025-11-08T22-43-25-wasm-textureview-panic-fix.md.
+Fix WASM panic caused by cross-device TextureView usage after Graphics swap. Reinitialize DefaultViewFactory inside State::swap_graphics with the new device/queue to ensure bind groups are created with resources from the same device. This prevents `wgpu-core` panic: `TextureView[...] does not exist` when creating bind groups on web. See doc/views/2025-11-08T21-26-05-view-factory-extraction.md.
 ## 2025-11-09T14-14-57
 
 - Fix wasm build failure (error E0425: cannot find value `volume`) in `src/application/render_app.rs`.

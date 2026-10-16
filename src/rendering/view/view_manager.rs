@@ -12,6 +12,7 @@
 
 use super::{StatefulView, View, ViewFactory, ViewState};
 use std::collections::HashMap;
+use crate::data::ct_volume::CTVolume;
 
 /// Centralized manager for view transitions and state preservation.
 ///
@@ -146,6 +147,7 @@ impl ViewManager {
     /// * `Err(String)` - Factory error or creation failure
     pub fn create_mesh_view(
         &self,
+        vol: &CTVolume,
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, String> {
@@ -154,11 +156,8 @@ impl ViewManager {
             pos,
             size
         );
-        // Build a default mesh if caller did not supply one via a higher-level API.
-        // Using spine_vertebra as the default demo mesh keeps existing ergonomics intact.
-        let mesh = crate::rendering::mesh::mesh::Mesh::spine_vertebra();
         self.factory
-            .create_mesh_view(&mesh, pos, size)
+            .create_mesh_view(&vol, pos, size)
             .map_err(|e| {
                 log::error!("Failed to create mesh view: {}", e);
                 format!("{}", e)
@@ -178,7 +177,7 @@ impl ViewManager {
     /// * `Err(String)` - Factory error or creation failure
     pub fn create_mpr_view(
         &self,
-        vol: &crate::data::ct_volume::CTVolume,
+        vol: &CTVolume,
         orientation: super::Orientation,
         pos: (i32, i32),
         size: (u32, u32),
@@ -209,7 +208,7 @@ impl ViewManager {
     /// * `Err(String)` - Factory error or creation failure
     pub fn create_mip_view(
         &self,
-        vol: &crate::data::ct_volume::CTVolume,
+        vol: &CTVolume,
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, String> {

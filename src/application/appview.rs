@@ -2,42 +2,44 @@
 //!
 //! Minimal AppView that owns DynamicLayout and DefaultViewFactory.
 //! State will hold AppView and forward calls, keeping existing render loop intact.
-
-use crate::rendering::view::mesh::mesh::Mesh;
 use crate::rendering::view::mesh::mesh_view::MeshView;
 use crate::rendering::view::mip::MipConfig;
 use crate::rendering::view::render_content::RenderContent;
+use crate::rendering::view::ObliquePlaneUniform;
 use crate::rendering::view::ViewFactory;
 use crate::rendering::view::{
-    DefaultViewFactory, DynamicLayout, MipView, MprView, Orientation, View, ViewState,
-    ALL_ORIENTATIONS,
+    DefaultViewFactory, DynamicLayout, GridLayout, LargeLeft3RightLayout, LayoutContainer, MipView,
+    MprView, OneCellLayout, Orientation, View, ViewState, ALL_ORIENTATIONS,
 };
 use crate::rendering::StatefulView;
-use crate::rendering::{GridLayout, LayoutContainer, OneCellLayout};
 use crate::CTVolume;
-use glam::Mat4;
+use glam::Quat;
 use std::sync::Arc;
 
 /// Encapsulated state for a view, including its orientation and rendering parameters.
 #[derive(Debug, Clone)]
 pub enum CapturedViewState {
     Mpr {
+        view_id: usize,
         view_index: usize,
         orientation: Orientation,
         state: ViewState,
     },
     Mip {
+        view_id: usize,
         config: MipConfig,
         scale: f32,
         pan: [f32; 3],
         window: [f32; 2],
-        rotation_radians: [f32; 3],
+        rotation_quat: Quat,
     },
     Mesh {
-        rotation: Mat4,
+        view_id: usize,
+        rotation: [f32; 4],
         scale: f32,
         pan: [f32; 3],
         opacity: f32,
+        oblique_planes: [ObliquePlaneUniform; 4],
     },
 }
 
@@ -98,38 +100,80 @@ impl AppView {
         &mut self,
         configuration: ViewGpuConfiguration<'_>,
         content: Option<Arc<RenderContent>>,
-    ) {
+    ) -> crate::core::error::KeplerResult<()> {
         let ViewGpuConfiguration {
             device,
             queue,
             format,
             use_float_volume_texture,
         } = configuration;
-        if self.view_factory.is_compatible(device, format) {
-            self.view_factory
-                .set_float_volume_texture(use_float_volume_texture);
-        } else {
-            self.view_factory = DefaultViewFactory::new(
+        let next_factory = (!self.view_factory.is_compatible(device, format)).then(|| {
+            DefaultViewFactory::new(
                 Arc::clone(device),
                 Arc::clone(queue),
                 format,
                 use_float_volume_texture,
-            );
+            )
+        });
+        let factory = next_factory.as_ref().unwrap_or(&self.view_factory);
+        enum Prepared {
+            Mpr(crate::rendering::view::mpr::mpr_view::PreparedMprGpu),
+            Mip(Arc<crate::rendering::view::mip::MipViewWgpuImpl>),
+            Mesh(crate::rendering::view::mesh::mesh_view::PreparedMeshGpu),
+            Other,
         }
-        for view in self.layout.views_mut() {
-            if let Some(mpr) = view.as_any_mut().downcast_mut::<MprView>() {
-                mpr.rebuild_gpu_resources_with_context(
+        let mut prepared = Vec::with_capacity(self.layout.views().len());
+        let mut uploads = crate::rendering::view::mpr::mpr_view::RebindUploads::new();
+        for view in self.layout.views() {
+            prepared.push(if let Some(mpr) = view.as_any().downcast_ref::<MprView>() {
+                Prepared::Mpr(mpr.prepare_gpu_resources(
                     device,
-                    self.view_factory.mpr_render_context(),
+                    queue,
+                    format,
+                    factory.mpr_render_context(),
                     content.clone(),
-                );
-            } else if let Some(mip) = view.as_any_mut().downcast_mut::<MipView>() {
-                mip.rebuild_gpu_resources(device, format, content.clone());
-            } else if let Some(mesh) = view.as_any_mut().downcast_mut::<MeshView>() {
-                mesh.rebuild_gpu_resources(device, queue, format);
+                    &mut uploads,
+                )?)
+            } else if let Some(mip) = view.as_any().downcast_ref::<MipView>() {
+                Prepared::Mip(mip.prepare_gpu_resources(device, format, content.clone()))
+            } else if let Some(mesh) = view.as_any().downcast_ref::<MeshView>() {
+                Prepared::Mesh(mesh.prepare_gpu_resources(device, queue, format, content.clone()))
+            } else if content.is_some() {
+                return Err(crate::KeplerError::Graphics(
+                    "Custom view cannot be rebound to the replacement device".into(),
+                ));
+            } else {
+                Prepared::Other
+            });
+        }
+        // All returned-error preparation completes before replacing any owner or resource.
+        if let Some(factory) = next_factory {
+            self.view_factory = factory;
+        }
+        self.view_factory
+            .set_float_volume_texture(use_float_volume_texture);
+        for (view, prepared) in self.layout.views_mut().iter_mut().zip(prepared) {
+            match prepared {
+                Prepared::Mpr(p) => view
+                    .as_any_mut()
+                    .downcast_mut::<MprView>()
+                    .unwrap()
+                    .commit_gpu_resources(p),
+                Prepared::Mip(p) => view
+                    .as_any_mut()
+                    .downcast_mut::<MipView>()
+                    .unwrap()
+                    .commit_gpu_resources(p),
+                Prepared::Mesh(p) => view
+                    .as_any_mut()
+                    .downcast_mut::<MeshView>()
+                    .unwrap()
+                    .commit_gpu_resources(p),
+                Prepared::Other => {}
             }
             view.update(queue);
         }
+        Ok(())
     }
 
     /// Capture and save the state of all compatible views (MPR, MIP, Mesh).
@@ -148,27 +192,31 @@ impl AppView {
                 if let Some(mpr_view) = v.as_any().downcast_ref::<MprView>() {
                     let orientation = mpr_view.get_orientation();
                     mpr_view.save_state().map(|state| CapturedViewState::Mpr {
+                        view_id: mpr_view.view_id(),
                         view_index: i,
                         orientation: *orientation,
                         state,
                     })
                 } else if let Some(mip_view) = v.as_any().downcast_ref::<MipView>() {
                     Some(CapturedViewState::Mip {
+                        view_id: mip_view.view_id(),
                         config: mip_view.config().clone(),
                         scale: mip_view.get_scale(),
                         pan: mip_view.get_pan(),
                         window: mip_view.get_window_level(),
-                        rotation_radians: mip_view.get_rotation_radians(),
+                        rotation_quat: mip_view.get_rotation_quat(),
+                    })
+                } else if let Some(mesh_view) = v.as_any().downcast_ref::<MeshView>() {
+                    Some(CapturedViewState::Mesh {
+                        view_id: mesh_view.view_id(),
+                        rotation: mesh_view.get_rotation_quat().to_array(),
+                        scale: mesh_view.get_scale_factor(),
+                        pan: mesh_view.get_pan(),
+                        opacity: mesh_view.get_opacity(),
+                        oblique_planes: mesh_view.get_oblique_planes(),
                     })
                 } else {
-                    v.as_any()
-                        .downcast_ref::<MeshView>()
-                        .map(|mesh_view| CapturedViewState::Mesh {
-                            rotation: mesh_view.get_rotation(),
-                            scale: mesh_view.get_scale_factor(),
-                            pan: mesh_view.get_pan(),
-                            opacity: mesh_view.get_opacity(),
-                        })
+                    None
                 }
             })
             .collect();
@@ -177,36 +225,35 @@ impl AppView {
         for new_state in current_states {
             match &new_state {
                 CapturedViewState::Mpr {
+                    view_id,
                     view_index: new_i,
                     orientation: new_o,
                     ..
                 } => {
                     if let Some(existing) = self.saved_states.iter_mut().find(|s| {
-                        matches!(s, CapturedViewState::Mpr { view_index: old_i, orientation: old_o, .. }
-                            if *old_i == *new_i && old_o == new_o)
+                        matches!(s, CapturedViewState::Mpr { view_id: old_id, view_index: old_i, orientation: old_o, .. }
+                            if old_id == view_id && *old_i == *new_i && old_o == new_o)
                     }) {
                         *existing = new_state;
                     } else {
                         self.saved_states.push(new_state);
                     }
                 }
-                CapturedViewState::Mip { .. } => {
-                    if let Some(existing) = self
-                        .saved_states
-                        .iter_mut()
-                        .find(|s| matches!(s, CapturedViewState::Mip { .. }))
-                    {
+                CapturedViewState::Mip { view_id,.. } => {
+                    if let Some(existing) = self.saved_states.iter_mut().find(|s|{
+                        matches!(s, CapturedViewState::Mip { view_id: old_id, .. }
+                            if old_id == view_id)
+                    }){
                         *existing = new_state;
                     } else {
                         self.saved_states.push(new_state);
                     }
                 }
-                CapturedViewState::Mesh { .. } => {
-                    if let Some(existing) = self
-                        .saved_states
-                        .iter_mut()
-                        .find(|s| matches!(s, CapturedViewState::Mesh { .. }))
-                    {
+                CapturedViewState::Mesh { view_id,.. } => {
+                    if let Some(existing) = self.saved_states.iter_mut().find(|s| {
+                        matches!(s, CapturedViewState::Mesh { view_id: old_id, .. }
+                            if old_id == view_id)
+                    }){
                         *existing = new_state;
                     } else {
                         self.saved_states.push(new_state);
@@ -228,8 +275,8 @@ impl AppView {
             if let Some(mpr_view) = view.as_any_mut().downcast_mut::<MprView>() {
                 // Match by BOTH view index and orientation
                 if let Some(CapturedViewState::Mpr { state, .. }) = states.iter().find(|s| {
-                    matches!(s, CapturedViewState::Mpr { view_index: idx, orientation: o, .. }
-                        if *idx == i && *o == *mpr_view.get_orientation())
+                    matches!(s, CapturedViewState::Mpr { view_id, view_index: idx, orientation: o, .. }
+                        if *idx == i && *view_id == mpr_view.view_id() && *o == *mpr_view.get_orientation())
                 }) {
                     mpr_view.restore_state(state);
                 }
@@ -241,22 +288,19 @@ impl AppView {
                     scale,
                     pan,
                     window,
-                    rotation_radians,
-                }) = states
-                    .iter()
-                    .find(|s| matches!(s, CapturedViewState::Mip { .. }))
-                {
+                    rotation_quat,
+                    ..
+                }) = states.iter().find(|s| {
+                    matches!(s, CapturedViewState::Mip { view_id, .. }
+                        if *view_id == mip_view.view_id())
+                }) {
                     mip_view.set_mip_mode(config.mip_mode);
                     mip_view.set_slab_thickness(config.slab_thickness);
                     mip_view.set_scale(*scale);
                     mip_view.set_pan(pan[0], pan[1]);
                     let _ = mip_view.set_window_level(window[0]);
                     let _ = mip_view.set_window_width(window[1]);
-                    mip_view.set_rotation_radians(
-                        rotation_radians[0],
-                        rotation_radians[1],
-                        rotation_radians[2],
-                    );
+                    let _ = mip_view.set_rotation_quat(rotation_quat.to_array());
                 }
             }
             // Handle Mesh Views
@@ -266,14 +310,26 @@ impl AppView {
                     scale,
                     pan,
                     opacity,
-                }) = states
-                    .iter()
-                    .find(|s| matches!(s, CapturedViewState::Mesh { .. }))
-                {
-                    mesh_view.set_rotation(*rotation);
+                    oblique_planes,
+                    ..
+                }) = states.iter().find(|s| {
+                    matches!(s, CapturedViewState::Mesh { view_id, .. }
+                        if *view_id == mesh_view.view_id())
+                }) {
+                    let _ = mesh_view.set_rotation_quat(*rotation);
                     mesh_view.set_scale_factor(*scale);
                     mesh_view.set_pan(pan[0], pan[1]);
                     mesh_view.set_opacity(*opacity);
+                    let planes = *oblique_planes;
+                    for (i, plane) in planes.iter().enumerate() {
+                        mesh_view.set_oblique_plane(
+                            plane.center,
+                            plane.normal,
+                            i,
+                            plane.visible,
+                            plane.plane_alpha,
+                        );
+                    }
                 }
             }
         }
@@ -362,11 +418,12 @@ impl AppView {
         }));
     }
 
-    /// Returns true if the current layout strategy is OneCellLayout.
-    ///
-    /// Function-level comment: Helper to gate active-view-specific operations.
-    pub fn is_one_cell_layout(&self) -> bool {
-        self.layout.strategy_id() == "OneCellLayout"
+    pub fn set_three_layout(&mut self, rows: u32, cols: u32, spacing: u32) {
+        self.layout.set_strategy(Box::new(LargeLeft3RightLayout {
+            rows,
+            cols,
+            spacing,
+        }));
     }
 
     /// Create and add an MPR view for a given volume and orientation.
@@ -405,11 +462,11 @@ impl AppView {
     /// Function-level comment: Uses DefaultViewFactory and routes addition through AppView.
     pub fn add_mesh_view(
         &mut self,
-        mesh: &Mesh,
+        vol: &CTVolume,
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let view = self.view_factory.create_mesh_view(mesh, pos, size)?;
+        let view = self.view_factory.create_mesh_view(vol, pos, size)?;
         LayoutContainer::add_view(&mut self.layout, view);
         Ok(())
     }
@@ -460,7 +517,7 @@ impl AppView {
         texture: Arc<RenderContent>,
         vol: &CTVolume,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.remove_all();
+        let mut views = Vec::with_capacity(4);
         // Default layout uses orientations: Transverse, Coronal, Sagittal, Transverse
         // Corresponds to ALL_ORIENTATIONS indices [0, 1, 2, 0]
         let orientations = [
@@ -478,8 +535,9 @@ impl AppView {
                 (0, 0),
                 (0, 0),
             )?;
-            LayoutContainer::add_view(&mut self.layout, view);
+            views.push(view);
         }
+        self.layout.replace_all_views(views, None);
         Ok(())
     }
 
@@ -493,40 +551,44 @@ impl AppView {
         indices: [usize; 4],
         mip: Option<usize>,
         mesh_index: Option<usize>,
-        cached_mesh: Option<crate::mesh::mesh::Mesh>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.remove_all();
+        let request = super::view_layout_transition::TransitionRequest {
+            mode: 3,
+            mesh_index: mesh_index,
+            orientation_slot: None,
+            mip_index: mip,
+            orientation_index: 0,
+        };
+        let (views, strategy) =
+            super::view_layout_transition::prepare(vol, indices, &request, |input| {
+                super::view_layout_transition::build_view(
+                    &self.view_factory,
+                    texture.clone(),
+                    input,
+                )
+            })?;
+        self.layout.replace_all_views(views, Some(strategy));
+        Ok(())
+    }
 
-        // Add 4 MPR views based on indices
-        for &index in indices.iter() {
-            let orientation = ALL_ORIENTATIONS[index];
-            let view = self.view_factory.create_mpr_view_with_content(
-                texture.clone(),
-                vol,
-                orientation,
-                (0, 0),
-                (0, 0),
-            )?;
+    /// Show the Transverse slice of a DR volume in one cell of the grid.
+    pub fn configure_dr_transverse_layout(
+        &mut self,
+        index: usize,
+        vol: &CTVolume,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let view =
+            self.view_factory
+                .create_mpr_view(vol, Orientation::Transverse, (0, 0), (0, 0))?;
+        if index < self.layout.views().len() {
+            self.layout.replace_view_at(index, view);
+        } else {
             LayoutContainer::add_view(&mut self.layout, view);
         }
 
-        if mip.is_some() {
-            let mip_view =
-                self.view_factory
-                    .create_mip_view_with_content(texture.clone(), (0, 0), (0, 0))?;
-            LayoutContainer::replace_view_at(&mut self.layout, mip.unwrap(), mip_view);
-        }
-
-        if mesh_index.is_some() {
-            let mesh_view = self.view_factory.create_mesh_view_with_content(
-                texture.clone(),
-                &cached_mesh.unwrap(),
-                (0, 0),
-                (0, 0),
-            )?;
-            LayoutContainer::replace_view_at(&mut self.layout, mesh_index.unwrap(), mesh_view);
-        }
-
+        let _ = self.set_window_level(index, 1500.0);
+        let _ = self.set_window_width(index, 3000.0);
+        let _ = self.set_scale(index, 1.5);
         Ok(())
     }
 
@@ -540,44 +602,49 @@ impl AppView {
         mode: usize,
         orientation_index: usize,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        self.set_one_cell_layout();
-        self.remove_all();
+        let request = super::view_layout_transition::TransitionRequest {
+            mode: if mode <= 2 { mode } else { 0 },
+            mesh_index: None,
+            orientation_slot: None,
+            mip_index: None,
+            orientation_index: orientation_index,
+        };
+        let (views, strategy) =
+            super::view_layout_transition::prepare(vol, [0, 1, 2, 0], &request, |input| {
+                super::view_layout_transition::build_view(
+                    &self.view_factory,
+                    texture.clone(),
+                    input,
+                )
+            })?;
+        self.layout.replace_all_views(views, Some(strategy));
+        Ok(())
+    }
 
-        match mode {
-            0 => {
-                // MPR
-                let orientation = ALL_ORIENTATIONS[orientation_index];
-                let view = self.view_factory.create_mpr_view_with_content(
+    pub fn set_layout_three(
+        &mut self,
+        texture: Arc<RenderContent>,
+        vol: &CTVolume,
+        indices: [usize; 4],
+        mip_index: Option<usize>,
+        mesh_index: Option<usize>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let request = super::view_layout_transition::TransitionRequest {
+            mode: 4,
+            mesh_index: mesh_index,
+            orientation_slot: None,
+            mip_index: mip_index,
+            orientation_index: 0,
+        };
+        let (views, strategy) =
+            super::view_layout_transition::prepare(vol, indices, &request, |input| {
+                super::view_layout_transition::build_view(
+                    &self.view_factory,
                     texture.clone(),
-                    vol,
-                    orientation,
-                    (0, 0),
-                    (0, 0),
-                )?;
-                LayoutContainer::add_view(&mut self.layout, view);
-            }
-            1 => {
-                // MIP
-                let mip_view = self.view_factory.create_mip_view_with_content(
-                    texture.clone(),
-                    (0, 0),
-                    (0, 0),
-                )?;
-                LayoutContainer::add_view(&mut self.layout, mip_view);
-            }
-            _ => {
-                // Default to MPR for unsupported modes
-                let orientation = ALL_ORIENTATIONS[orientation_index];
-                let view = self.view_factory.create_mpr_view_with_content(
-                    texture.clone(),
-                    vol,
-                    orientation,
-                    (0, 0),
-                    (0, 0),
-                )?;
-                LayoutContainer::add_view(&mut self.layout, view);
-            }
-        }
+                    input,
+                )
+            })?;
+        self.layout.replace_all_views(views, Some(strategy));
         Ok(())
     }
 
@@ -594,8 +661,13 @@ impl AppView {
                     .set_window_level(window_level)
                     .map_err(|e| e.to_string())?;
                 Ok(())
+            } else if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view
+                    .set_window_level(window_level)
+                    .map_err(|e| e.to_string())?;
+                Ok(())
             } else {
-                Err(format!("View {} is not an MPR view", index))
+                Err(format!("View {} is not an MPR/MIP/3D view", index))
             }
         } else {
             Err(format!("View index {} out of bounds", index))
@@ -615,8 +687,13 @@ impl AppView {
                     .set_window_width(window_width)
                     .map_err(|e| e.to_string())?;
                 Ok(())
+            } else if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view
+                    .set_window_width(window_width)
+                    .map_err(|e| e.to_string())?;
+                Ok(())
             } else {
-                Err(format!("View {} is not an MPR view", index))
+                Err(format!("View {} is not an MPR/MIP/3D view", index))
             }
         } else {
             Err(format!("View index {} out of bounds", index))
@@ -646,7 +723,11 @@ impl AppView {
                 handled = true;
             }
             if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
-                mip_view.set_scale(scale); // MipView set_scale doesn't return Result currently?
+                mip_view.set_scale(scale);
+                handled = true;
+            }
+            if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view.set_scale_factor(scale);
                 handled = true;
             }
             if handled {
@@ -689,6 +770,10 @@ impl AppView {
             }
             if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
                 mip_view.set_pan(x, y);
+                handled = true;
+            }
+            if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view.set_pan(x, y);
                 handled = true;
             }
             if handled {
@@ -740,8 +825,11 @@ impl AppView {
             if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
                 mip_view.set_slab_thickness(thickness);
                 Ok(())
+            } else if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view.set_slab_thickness(thickness);
+                Ok(())
             } else {
-                Err(format!("View {} is not a MIP view", index))
+                Err(format!("View {} is not a MIP or Mesh view", index))
             }
         } else {
             Err(format!("View index {} out of bounds", index))
@@ -762,7 +850,7 @@ impl AppView {
         }
     }
 
-    pub fn set_mip_rotation_angle_degrees(
+    pub fn set_rotation_angle_degrees(
         &mut self,
         index: usize,
         roll_deg: f32,
@@ -773,8 +861,45 @@ impl AppView {
             if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
                 mip_view.set_rotation_degrees(roll_deg, yaw_deg, pitch_deg);
                 Ok(())
+            } else if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view.set_rotation_degrees(roll_deg, yaw_deg, pitch_deg);
+                Ok(())
             } else {
-                Err(format!("View {} is not a MIP view", index))
+                Err(format!("View {} is not a MIP or Mesh view", index))
+            }
+        } else {
+            Err(format!("View index {} out of bounds", index))
+        }
+    }
+
+    pub fn set_rotation_degrees(&mut self, index: usize, dx: f32, dy: f32) -> Result<(), String> {
+        if let Some(view) = self.layout.views_mut().get_mut(index) {
+            if let Some(mip_view) = view.as_any_mut().downcast_mut::<MipView>() {
+                mip_view.set_rotation_angle_degrees(dx, dy);
+                Ok(())
+            } else if let Some(mesh_view) = view.as_any_mut().downcast_mut::<MeshView>() {
+                mesh_view.set_rotation_angle_degrees(dx, dy);
+                Ok(())
+            } else if let Some(mpr_view) = view
+                .as_any_mut()
+                .downcast_mut::<MprView>()
+                .filter(|m| matches!(m.get_orientation(), Orientation::Oblique))
+            {
+                mpr_view.set_oblique_rotation_angle_degrees(dx, dy);
+                if let Some(mesh_view) = self
+                    .layout
+                    .views_mut()
+                    .iter_mut()
+                    .find_map(|v| v.as_any_mut().downcast_mut::<MeshView>())
+                {
+                    mesh_view.set_rotation_angle_degrees(dx, dy);
+                };
+                Ok(())
+            } else {
+                Err(format!(
+                    "View {} is not a MIP, Mesh, or Oblique MPR view",
+                    index
+                ))
             }
         } else {
             Err(format!("View index {} out of bounds", index))

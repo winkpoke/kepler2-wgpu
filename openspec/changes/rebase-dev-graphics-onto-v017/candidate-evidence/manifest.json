@@ -1,0 +1,825 @@
+{
+  "release": "a39ca528a55be7f7fe565a7fa7ed20b2251826e4",
+  "source": "8e308cb3c2e047f530ddbfde690fa45d8e30d1fc",
+  "replay_head": "dda4ff0dc8f2c89b4064e632e1f9b79672025da6",
+  "toolchain": "Rust 1.98.0 native/WASM; exact release snapshots use installed nightly",
+  "supplement": "private browser logger fix plus compatibility tests/docs/evidence",
+  "files": [
+    {
+      "path": "Cargo.lock",
+      "bytes": 159208,
+      "sha256": "a9b226374c14744fdaa4bbd9065a0cec75adcd2293ca1fb6b1b7980daac74b62"
+    },
+    {
+      "path": "Cargo.toml",
+      "bytes": 3189,
+      "sha256": "2381b088db051dc73a92e8f65cefc8c9e309ce9af789eccea0b8ba3003b23f75"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/acceptance.md",
+      "bytes": 1444,
+      "sha256": "46ac874b988d70db0e5183a4633dcabf06a07c1b5de3c5f480ccec4e54887713"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/api-conflict-inventory.md",
+      "bytes": 22768,
+      "sha256": "8721f0d4a46f2fd0ca6352f077cda2b511f25f07460cc487926025a7b0b9bd8d"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/browser-build.log",
+      "bytes": 6985,
+      "sha256": "ee9f0be1bf779f076833211bf608ebcc19a7bc5960e45ad7421d217c2615f0a8"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/clippy.log",
+      "bytes": 102794,
+      "sha256": "a12c1b9fccdf720fc750d9830fc9b3e05b175cd256a80aa762c1ac61b047684e"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/consumer-native.log",
+      "bytes": 2606,
+      "sha256": "6ea919f078b24e7b383fece0a7b6b67e5677aca8d56785bb541158207f48869f"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/consumer-wasm.log",
+      "bytes": 18685,
+      "sha256": "9d9d27bd9b54c5cc1df4cd7f1cf3680caf6931a8b22ff2f28eb3a51d6ad44619"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/consumer.Cargo.lock",
+      "bytes": 150459,
+      "sha256": "353e186f78551ea69fa96b68ac76b2253e86588148aba6e07df4c395d32ef45b"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/consumer.Cargo.toml",
+      "bytes": 309,
+      "sha256": "6eec76a0ed98d5fe998a25d3edb008c33a29f06260c54a6b92568bbe9759e386"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/external-consumer-native-pinned.log",
+      "bytes": 3243,
+      "sha256": "d9dbe6e62ba7a95d4e68c9b314b0b166ddbf2df25556ca5ab86f285c9e4a780c"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/external-consumer-wasm-pinned.log",
+      "bytes": 2326,
+      "sha256": "fa77d87a1fb1b88e157b735704e75eba7f199484bf48fe2affeeb9635444bc49"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/external-consumer-wasm.log",
+      "bytes": 3917,
+      "sha256": "8ea9b8c28546380bca1bd5adc076f10e61026a8365ae1c95f270b28e3bd5bd94"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/format.log",
+      "bytes": 283727,
+      "sha256": "5c2aba2b14ee60968ef719cc2f703d0815fe6f00036c26eaf57f46985534c9c0"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/manifest.json",
+      "bytes": 19973,
+      "sha256": "7c4046c5dc59c6276ec828f8d2c59a88734d081714c1a2d7862e077c85ffb22d"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/native-tests.log",
+      "bytes": 138146,
+      "sha256": "8f3d7fe98a80932b05ae111ce96c3eb312c1960174223677d61d58e6cdcf9fee"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/passcontext-forget-lifetime.rs",
+      "bytes": 362,
+      "sha256": "f306068798620decc35b90b7ad69a6a098dfc29d675eb1c53473f9041022b73b"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/passcontext-single.rs",
+      "bytes": 344,
+      "sha256": "dd830258e152ddc12fe7d1fab96053f5458c48513e0653b92d797e8382c9304d"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/passcontext-two-lifetimes.rs",
+      "bytes": 370,
+      "sha256": "d21f7d99a2f2213e12a1954eaa1f0f88399d867d123b0d6c3a9e2f5ea220a001"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/public_api_consumer.rs",
+      "bytes": 2680,
+      "sha256": "f8abe3a7052513207f0c7b23619d1449f1dbbba6d0ef440019eca7e8a5d1dae7"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/reachable-native.json",
+      "bytes": 157672,
+      "sha256": "12b0df49c2ecc4894ce753248eb265d5d4b1bcdd8e1419c36325dc772daf6857"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/reachable-wasm.json",
+      "bytes": 112138,
+      "sha256": "6150b5f9b003952f4781ba453928ad4a5321b1a5e9b2f90b9c7085516788559b"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/reference-browser-api.d.ts",
+      "bytes": 21714,
+      "sha256": "0f1ff446314a1acf5ebd3db28d7b4c724ca0ccc01c57d8f4b832173e2f5294cf"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/release-browser-api.d.ts",
+      "bytes": 21429,
+      "sha256": "acb280724e93e3c2b762e9920dfb6c5b7b541e07f45d77ca800cd5cdda738962"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/release-export-surface.json",
+      "bytes": 37808,
+      "sha256": "a54120cb4efca3c50bbfae65101fe45e02cde04bb029876b344d22d71a7402b0"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/release-public-api.json",
+      "bytes": 307004,
+      "sha256": "e2116ad7f0c5603e4890f8ea21ee459638c1bbf2560456a90bd47c8305f4b2f7"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/release-rustdoc-native.json.gz",
+      "bytes": 563272,
+      "sha256": "b9087575fe9f4404fb2c7abe7854f000d683377ca65a6807ba125f95ddd9e0c2"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/release-rustdoc-wasm.json.gz",
+      "bytes": 352596,
+      "sha256": "ece288909ac467317ec84be165a76baa332912e258ebd78cd763fb56513e255c"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/rustdoc-native.log",
+      "bytes": 3260,
+      "sha256": "2275ccb984181a04ec56bf24156f66db6abf7095a722034a4da021bd92ecabf2"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/rustdoc-wasm.log",
+      "bytes": 3246,
+      "sha256": "43e5dfba08bf5cafff13c9c440f67b5f4a11a17370b71b8ce0bede8f4c98c86f"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/sources/src/application/gl_canvas.rs",
+      "bytes": 22551,
+      "sha256": "ebe0be9fd42458a06e98cf6ccb8bea05283d51650023bb8e2dda4e3218c08deb"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/sources/src/core/window_level.rs",
+      "bytes": 13555,
+      "sha256": "8668ceb96bb3df2b8c1b3b6f6c89a0b5b2d3b8473df1b577353b72c6f74c70f5"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/sources/src/data/dicom/dicom_helper.rs",
+      "bytes": 4741,
+      "sha256": "a81d176e27df5657c4052aa7b697e2931b4211486466fac75321b07e65ffbcde"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/sources/src/data/volume_encoding.rs",
+      "bytes": 187,
+      "sha256": "1e5887e70329f1553099a022494727f6ad8208e850b37ff4531a820fe87378c4"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/sources/src/main.rs",
+      "bytes": 2649,
+      "sha256": "178293ff3554664a94b048f2a078582725a0ae3ce599aeabb8cb8d7db05ff1f4"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/sources/src/server/ai_model.rs",
+      "bytes": 3900,
+      "sha256": "ccbf9cf47c18c6a457d4075a4dd5722c990225c84be5ddda5d305262cb3f14ff"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/sources/src/server/routes.rs",
+      "bytes": 2779,
+      "sha256": "a57073ba404296373ccea4a49c9f11bdda55fa537a76e069846da042d56b01a0"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/baseline/sources/src/server/ws.rs",
+      "bytes": 3856,
+      "sha256": "d5cc5a629c8bb95c67609cb676dd3a9508cc77694cbc7b8bc62f10ea4a9ab389"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/README.md",
+      "bytes": 1443,
+      "sha256": "fb3d82f35c7165a8be714d63fed0f34ed145e20dbcff1b71585b9dea33ec34e4"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/api-native-diff.json",
+      "bytes": 195433,
+      "sha256": "b0694b72109987dabf7146d08ee51d72bb5122a835a4d46e50a9b214179f0cba"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/api-wasm-diff.json",
+      "bytes": 195611,
+      "sha256": "ea31b4520f1393df6d37d8bfab82a49c0a2d56060d966592cbe49cb63279124a"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/audit_rustdoc.py",
+      "bytes": 4792,
+      "sha256": "1154083e7a76549a3a3238198f2e1a85e7bd08cc0fe98fc203ed10a8490966af"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/browser-api-comparison.json",
+      "bytes": 216,
+      "sha256": "da3ffce18d327efa7b6c14f850d78c6f989fee8ca7b3f4a72135d8a4d6be11c2"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/browser-api.d.ts",
+      "bytes": 23014,
+      "sha256": "dc6873ac62fe68ddbee4c14ab2e8501d5c0f502078922c102c9b935d113fdf57"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/browser-logger.log",
+      "bytes": 444,
+      "sha256": "47a813bdebc9c542a1890c51316c17edd36ab090f81fe6a59b3a83dc58730707"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/browser-results.json",
+      "bytes": 2761,
+      "sha256": "da1d5e3b1d0204ecb7ad683fa059fd232c563fce802024bfbaac8376d5bce1cc"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/browser-smoke.html",
+      "bytes": 5711,
+      "sha256": "4375f5a03843b3c4ca0e3546528f0152c1592ddcb6c9ad6a636dccee3f19dc79"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/candidate-full-tests.log",
+      "bytes": 76478,
+      "sha256": "157fa043df92b9ae161d3b0f639533d3b80b13ebf197c55c8f6815a9b494d63e"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/clippy.log",
+      "bytes": 61649,
+      "sha256": "ad63d0eea0e1132d9274c32bcf931e1897a08b1c6c41aa0b14734cf35ad8f3c0"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/compute-owner.log",
+      "bytes": 1266,
+      "sha256": "8fac29fe0cf3c41ab6abc8e448e458caa33486f34354cb7b57df1501eccc0d03"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/consumer-wasm.log",
+      "bytes": 1730,
+      "sha256": "8bee84840b02bb785e7ef7126cc161041ed9ecf90f6e3489f0a3d7c3e52ed865"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/consumer.Cargo.lock",
+      "bytes": 144489,
+      "sha256": "88c8a46414fe34a44a8d1a5a0ac1269c846815b607dacb1bed133a799a091c8c"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/consumer.Cargo.toml",
+      "bytes": 321,
+      "sha256": "d4c8c679e93711f7ba6ca81667665b322506f1470d453fc3f9e4842009c13eb9"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/docs-check.log",
+      "bytes": 33,
+      "sha256": "ef8bee1b07ed220ecd0a6ab9ca48eaee4c101cfdb4d88f01f381570bb30a897c"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/format.log",
+      "bytes": 123851,
+      "sha256": "7bce8c4b08b740cf2c543781092593709e62ac523dc0a00ab824b1f6f19b00d1"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/native-check.log",
+      "bytes": 29938,
+      "sha256": "60dfb4e6115a1669d753d54f0d6fe5ce6e671981aeb14f43c63a6299a54d8301"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/native-dependency-tree.log",
+      "bytes": 44576,
+      "sha256": "82b68a2f6251e81589388dcdcef314d06220d35db113f4e314d0babd6fbba050"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/native-smoke-consumer.rs",
+      "bytes": 4595,
+      "sha256": "8d215faf15545fed2f3d986482abe96b41034503d2db8c1ec6326b6cd9c8b94f"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/native-smoke.log",
+      "bytes": 25386,
+      "sha256": "7b6dee403bac95b8b2bf55a8197b4a4185a0617d7057a89a8ed727f8dc12308b"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/native-visibility-attempt.log",
+      "bytes": 21996,
+      "sha256": "b33e4a21205292717423d54487b4c6db58cd6c96103e4d605d78eb9654c99f39"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/offline-native-backend.log",
+      "bytes": 594,
+      "sha256": "3c265ee82689adaa095accf82991767163b596c0e79a00f9724a85adc7007e37"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/production-gpu-tests.log",
+      "bytes": 3654,
+      "sha256": "802b51929a65ddbb33783ef1facb375e8b786f81dd50f7ca896b70b269f3380a"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/public-api-consumer.rs",
+      "bytes": 2808,
+      "sha256": "8e0c56cc4dbef0153d974796f3c0e61879c6da2f5557934fe5498074afa1d8ed"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/python-tests.log",
+      "bytes": 146,
+      "sha256": "fd22bbf117d05290db3bcf43b2409c411ac1d738dcc5439138a9806ef8118111"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/range-diff.log",
+      "bytes": 859365,
+      "sha256": "3db5c0c9b61920b82d375a5e9bc11f4b337ade0d308260ae2481dc9086f5e8b0"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/recreated-merge-review.log",
+      "bytes": 25299,
+      "sha256": "5d28e63efbcfb967f1c8378edc65fb5a00030fb1772fddd59de1953d28f8c1c0"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/release-native-platform-normalization.patch",
+      "bytes": 1831,
+      "sha256": "41446cdb7924dfc4ef361c9e145fa58a056831a12463576d81f5d676c5cbbf6e"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/release-platform-normalized-full-tests.log",
+      "bytes": 71795,
+      "sha256": "be14697d7b35c9d30e10789d1ebd8cc029cf1ff5fa72cf7b9482d69ce03775f0"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/rustdoc-native.json.gz",
+      "bytes": 735178,
+      "sha256": "8ae5d8a89703a4085e6410389be21b10d9a3ab1e62ce849a5cd07767a460174f"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/rustdoc-native.log",
+      "bytes": 6124,
+      "sha256": "c69f2766b96ed437e1daec34b57034882fd80288584ec3a3ee187e64603423aa"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/rustdoc-wasm.json.gz",
+      "bytes": 431816,
+      "sha256": "3c3ce812eeefb6f517b676d8e23a2d489608704e211f27b713d9a315ca65dbc4"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/rustdoc-wasm.log",
+      "bytes": 4864,
+      "sha256": "4298bb71698b56695f0d0152e6de7163e545a7e71079ec5eee43c2db27284feb"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/spec-validation.log",
+      "bytes": 804,
+      "sha256": "f02ce59420511e8aafb8744180215abc434fa093979191acec23455c0c3bdc3f"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/test-comparison.json",
+      "bytes": 2780,
+      "sha256": "a552ddd1e1da58bcc3b449a6376650a606f551903d6f7f49707fb0264614d440"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/uniform-layout.log",
+      "bytes": 665,
+      "sha256": "9bc3a3760b522235079151340a6e7311a06709295fa7c178e278551258c1cb78"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/wasm-check.log",
+      "bytes": 3374,
+      "sha256": "5a080a2f02b4a6554bda42baf7b8ea33f10e074fded5d66029fed0f2fc1ed075"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/wasm-dependency-tree.log",
+      "bytes": 17984,
+      "sha256": "d4ad165221cf2762bf9fa4584747043ff1e5707f34e6a64f56c7fbe1ba5482b7"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/wasm-release-build.log",
+      "bytes": 1900,
+      "sha256": "b45fbf03d5fb575df941885c99eade83d3f19cd166488df02172cae49f9becb1"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/candidate-evidence/whitespace-check.json",
+      "bytes": 1540,
+      "sha256": "0a58b656ea114993f8839adb2fe51479f2d98519b309b237025b90989d02a7e1"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/design.md",
+      "bytes": 22519,
+      "sha256": "6e35ab1e3c872d1f14b4f4664865c2d07087298533d423cb050ffeff6fbdc7d8"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/execution.md",
+      "bytes": 12232,
+      "sha256": "b118f4a6ad4d4d4f902e532db2252ceedc234823aa7ec61e9f1570949cfa3f4e"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/proposal.md",
+      "bytes": 2559,
+      "sha256": "58dd5f74c79af7ea0821e9ee5f0d7c3a9e11565f25821ad5271eb6e4ef95314e"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/public-exceptions.md",
+      "bytes": 5164,
+      "sha256": "ace5e01f05732eb14c132abd21f389f0d4ec365a86ce1809f6619779785312e8"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/replay-ledger.json",
+      "bytes": 7216,
+      "sha256": "1fdefbc65f5d8f6784487a5e561eef440768f7423934f4ad93bca8537bb4d0cb"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/specs/application/spec.md",
+      "bytes": 2448,
+      "sha256": "bc2de7f2b05dfdc0904211d77e6c34c61f43bd2aaa684ea9c54b1c9a81ad9565"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/specs/rendering/spec.md",
+      "bytes": 2922,
+      "sha256": "8dd6029c466e729f00721b3ae766731000f24022c4d4841c288c6d37c5f354b9"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/specs/testing/spec.md",
+      "bytes": 2124,
+      "sha256": "9de73b8f66e6c2fea00244626f6091b1d9e2c5145e5b6544f71dc6c8b33db166"
+    },
+    {
+      "path": "openspec/changes/rebase-dev-graphics-onto-v017/tasks.md",
+      "bytes": 5391,
+      "sha256": "f54a76a22e9939a87dddbc88105346e1f6abea0b5c774c46cd594d609958b5d8"
+    },
+    {
+      "path": "rust-toolchain.toml",
+      "bytes": 145,
+      "sha256": "44f5ba11001b28b05c41ef8d3e107901db964f0dcbc53d5c598eb0fe83acbd85"
+    },
+    {
+      "path": "src/acquisition/error.rs",
+      "bytes": 6372,
+      "sha256": "c324ce2c577e1d44eedefeaba200f924dc9d12970986ab9337d403c73f3fcdeb"
+    },
+    {
+      "path": "src/acquisition/mod.rs",
+      "bytes": 48,
+      "sha256": "0edf1bf83bc58b3cc024746b793f4e4506dd252ccc0d6d772b8fd17885d6b4f8"
+    },
+    {
+      "path": "src/acquisition/remedy.rs",
+      "bytes": 18442,
+      "sha256": "a5698a54c83bd4055d790ca2d7569d2729e94878824f56ac2e785685658f49f0"
+    },
+    {
+      "path": "src/application/app.rs",
+      "bytes": 61620,
+      "sha256": "1df9025d7f523e361f7b0325f3e9e154ae16084aa4992d88f37aecd2385b786d"
+    },
+    {
+      "path": "src/application/app_model.rs",
+      "bytes": 2539,
+      "sha256": "4bad24f4220302d1d3683c17e733d960c7d8b7e082ce26ba58b1b3b62f78a10d"
+    },
+    {
+      "path": "src/application/appview.rs",
+      "bytes": 35675,
+      "sha256": "a978bbeabdbe25031239e5f7ab64d34eaef74cc531f8bc5d5bebd0d6c4658b5c"
+    },
+    {
+      "path": "src/application/appview_tests.rs",
+      "bytes": 20499,
+      "sha256": "5a02734c920f8cc166d5988b0b0140bf3ae21f3d10ea2f901e3bc89ed9e6a26c"
+    },
+    {
+      "path": "src/application/frame.rs",
+      "bytes": 10696,
+      "sha256": "322481216c081bc583273fd69b65077435fc1f7a42e7e805966d79ccb1b9fe5d"
+    },
+    {
+      "path": "src/application/gl_canvas.rs",
+      "bytes": 22913,
+      "sha256": "6804a68e23ffc59ecb6757bc681f12f03b6d1acd49c8660632059373c617fd3f"
+    },
+    {
+      "path": "src/application/mod.rs",
+      "bytes": 489,
+      "sha256": "f7727684e0af26c1536d4c061bdf1d67cdd9fc6ff9658ceb91c14314e996bcf4"
+    },
+    {
+      "path": "src/application/redraw.rs",
+      "bytes": 10800,
+      "sha256": "f0e83484a144994ae01b8f77e5087fb1c8aaf8f7bc9fb62238cf1ab4a6c78299"
+    },
+    {
+      "path": "src/application/render_app.rs",
+      "bytes": 35876,
+      "sha256": "cff76477fa714d36f0472623da5d4a64718eee86b6cde837ec08c398ef310915"
+    },
+    {
+      "path": "src/application/view_layout_transition.rs",
+      "bytes": 5707,
+      "sha256": "3fb5315ccb467b2e9540516d1830e3e3c301fbd65dc6f208b887208fb397d166"
+    },
+    {
+      "path": "src/application/viewer_lifecycle.rs",
+      "bytes": 5470,
+      "sha256": "3d3a3f8b6d5ecc2641bd1dcf881bbed57ac8a675c65247489dd7e54e636d5494"
+    },
+    {
+      "path": "src/application/viewer_lifecycle_tests.rs",
+      "bytes": 14148,
+      "sha256": "b850c8a2225645e4cf62f003b8d7fc7977e525fe2f7d4e9a760d4b5150a7a0ae"
+    },
+    {
+      "path": "src/core/coord/base.rs",
+      "bytes": 1454,
+      "sha256": "8e06013a8f0c693e4db172cde046eef81908eb832e1ed5a6a85a5c1574b09e95"
+    },
+    {
+      "path": "src/core/error.rs",
+      "bytes": 6507,
+      "sha256": "a18215e9813b97968c157bb0e85ee99ac523de368128835ecf963a174bb203bc"
+    },
+    {
+      "path": "src/core/geometry.rs",
+      "bytes": 13577,
+      "sha256": "948a3843364775c5a91386a6a31f60ea8d9a5c4afd8e88f462e0a88a43b505b7"
+    },
+    {
+      "path": "src/core/timing.rs",
+      "bytes": 4836,
+      "sha256": "b6ba521c1ced25eece4290615e9646584bad638aa3c651f8e03dacebcffc3113"
+    },
+    {
+      "path": "src/data/ct_volume.rs",
+      "bytes": 8711,
+      "sha256": "ed7b3f36197e0b2c5d3731d857912616af6cbb375f90c76bd7beeeaf7cf3917d"
+    },
+    {
+      "path": "src/data/dicom/ct_image.rs",
+      "bytes": 8768,
+      "sha256": "04db7215d36a4df00795011ba4ab0d55c31c5eea2aa9a6811adf9e424bb6ec73"
+    },
+    {
+      "path": "src/data/dicom/dicom_repo.rs",
+      "bytes": 15054,
+      "sha256": "a56f8e820e6dc12b8f4ff399bb63057aa09cfc65a50bbbeadd8c55c9bc802ec2"
+    },
+    {
+      "path": "src/data/dicom/export_dicom.rs",
+      "bytes": 20952,
+      "sha256": "f263baeacb777407f2542a9dcc8ecfd8df77e6159a8e1753de59335c42f3b4c1"
+    },
+    {
+      "path": "src/data/dicom/image_series.rs",
+      "bytes": 2082,
+      "sha256": "b1c1cd3dba808416da148c989959401babcf0c306bbb9d30f2c0d24ce6919155"
+    },
+    {
+      "path": "src/data/dicom/patient.rs",
+      "bytes": 3447,
+      "sha256": "56decf1cef4d626ffcb2897dcda5ca859872c41df0dbd2574e544c74cdeaebbf"
+    },
+    {
+      "path": "src/data/medical_imaging/metadata/pixel_data.rs",
+      "bytes": 6994,
+      "sha256": "02a66e8d530366329b40abb89afa549ccfbe5adee0de960ddce48e9fdbced304"
+    },
+    {
+      "path": "src/data/medical_imaging/metadata/volume.rs",
+      "bytes": 3816,
+      "sha256": "aa2dd8f179b6e0d0885bbd8c366cfc30c0f9f47910d078c32bf67cd76587ce10"
+    },
+    {
+      "path": "src/data/medical_imaging/validation.rs",
+      "bytes": 17217,
+      "sha256": "7f4ac7629f48f9ce31d9478d5677301058b7e0fbf93b32db36d7e98e7f268710"
+    },
+    {
+      "path": "src/data/volume_encoding.rs",
+      "bytes": 2687,
+      "sha256": "2e68e1e68b08974324d716d568797909608aa9bbec073a8face52af93782533f"
+    },
+    {
+      "path": "src/gpu/mod.rs",
+      "bytes": 785,
+      "sha256": "75d38adfcd3e8a9cf8360bdea059df26351b691f39e44a407df133eadb2f7654"
+    },
+    {
+      "path": "src/gpu/native.rs",
+      "bytes": 4473,
+      "sha256": "db0f8e9f608a20ed6de2dbc58a8bcf4c325693c44d8070871a86e1784cba3e8e"
+    },
+    {
+      "path": "src/lib.rs",
+      "bytes": 8057,
+      "sha256": "a1fef7a3a797c184f851124445ef99d00e00150218f278c7d991b8ed23673756"
+    },
+    {
+      "path": "src/rendering/core/browser_backend.rs",
+      "bytes": 9837,
+      "sha256": "820ba9a0cc030fd164fd84d15cfd83ead817761bad7ad07cbc5eadf054b65370"
+    },
+    {
+      "path": "src/rendering/core/capabilities.rs",
+      "bytes": 13235,
+      "sha256": "ceb1a65e898298da01730f1c6384390e83a017661eb53f4a40093de6ffd83515"
+    },
+    {
+      "path": "src/rendering/core/fault.rs",
+      "bytes": 5407,
+      "sha256": "ff6cc08c46858ad8177557e035ac0d8da4e84a42085a0b7727b35001cf1bd3e2"
+    },
+    {
+      "path": "src/rendering/core/graphics.rs",
+      "bytes": 25675,
+      "sha256": "8d3ec6ec8b1e9602b2a4592f47c3f62e8a6f9428494f7e10b4b7c43a0947637e"
+    },
+    {
+      "path": "src/rendering/core/mod.rs",
+      "bytes": 480,
+      "sha256": "3d6921c2badf573d5aaf74e803c1068132bbbe3cda01d2c3f594a3e43e255b3a"
+    },
+    {
+      "path": "src/rendering/core/pipeline.rs",
+      "bytes": 22445,
+      "sha256": "ee18d87de1b10710002ff530571f39f22c17f8b904426f4469a20cb4b48772e9"
+    },
+    {
+      "path": "src/rendering/core/render_pass.rs",
+      "bytes": 31419,
+      "sha256": "55021f132df692227113d130799b5c5f696be19e1ada291507c79ee4669c7797"
+    },
+    {
+      "path": "src/rendering/core/texture.rs",
+      "bytes": 2403,
+      "sha256": "0ce3afcd4973be2659c2df7a41bd930a4d9fb88b1bf2ba4e1519b2f32ebc52f4"
+    },
+    {
+      "path": "src/rendering/shaders/mesh_basic.wgsl",
+      "bytes": 3584,
+      "sha256": "a61d44a98dcc228022b1b9589a396cbbbd1a0bf4ce770fc3f91f002acf3ee90b"
+    },
+    {
+      "path": "src/rendering/shaders/mip.wgsl",
+      "bytes": 7457,
+      "sha256": "2fc611b8540bf2e6a8b2c0d0ca2249c364d727623c2022b605c9c19078f69b48"
+    },
+    {
+      "path": "src/rendering/shaders/mod.rs",
+      "bytes": 528,
+      "sha256": "3789228e632dbcdb57b7264e909b1e22852acc466b3611e806df0af097f10674"
+    },
+    {
+      "path": "src/rendering/shaders/mpr.wgsl",
+      "bytes": 9332,
+      "sha256": "88bdb888882b7e74e1526bf8634de87c25d14b34edd9bf299aba309c13a59244"
+    },
+    {
+      "path": "src/rendering/shaders/volume.wgsl",
+      "bytes": 21845,
+      "sha256": "16b0c383f89a3682eb8d7a3b869e6d9950d57973d56eda8c3c07879ac2d2294c"
+    },
+    {
+      "path": "src/rendering/shaders/volume_decode.wgsl",
+      "bytes": 396,
+      "sha256": "1f60d494ab5c0c263184d53734b2b073f3ee8b9a7c9cc89e3602afedcaa77bf5"
+    },
+    {
+      "path": "src/rendering/view/invalidation.rs",
+      "bytes": 1692,
+      "sha256": "12003f6ed2bb7957e747eb34a9b5e21d5f595225a9ed1efe553f494c5b94ccab"
+    },
+    {
+      "path": "src/rendering/view/layout.rs",
+      "bytes": 23461,
+      "sha256": "028f61b477db34b0c10c5cc9baf6a30323f14b99ce666e147c6ae14da6be7303"
+    },
+    {
+      "path": "src/rendering/view/mesh/basic_mesh_context.rs",
+      "bytes": 21215,
+      "sha256": "6ea4327245f0da7b49e6f6fa3fbfe1d74d2be5277490efc5639af7376518385f"
+    },
+    {
+      "path": "src/rendering/view/mesh/mesh.rs",
+      "bytes": 36593,
+      "sha256": "36bff4a6b75a5e1496793e2de5ad0dce1162b750fc201d14219b352bee63dd0f"
+    },
+    {
+      "path": "src/rendering/view/mesh/mesh_texture_pool.rs",
+      "bytes": 6090,
+      "sha256": "92748347291d106a9342857a2c516b64c8ee4d2687c4405cbaa8413d3df02d1c"
+    },
+    {
+      "path": "src/rendering/view/mesh/mesh_view.rs",
+      "bytes": 48936,
+      "sha256": "2204b9072b5a5790c46862bd566076de9cdfb366d7798aa56c3740b770fb9e8e"
+    },
+    {
+      "path": "src/rendering/view/mesh/mod.rs",
+      "bytes": 472,
+      "sha256": "53a86d842f9797d9d94f6af9b346f3fb03a41cdd459bfa7944e1b696985e8412"
+    },
+    {
+      "path": "src/rendering/view/mesh/performance.rs",
+      "bytes": 13343,
+      "sha256": "0254c5d04a56d77efb04597a390c4b859bb08aeca9416323aa28f45dae11f27e"
+    },
+    {
+      "path": "src/rendering/view/mip/mod.rs",
+      "bytes": 23356,
+      "sha256": "58ae11517d8e3e7c8bf3762a358bf7ecaae88d621a4e0438b13b70b279272946"
+    },
+    {
+      "path": "src/rendering/view/mod.rs",
+      "bytes": 2812,
+      "sha256": "d2068924ad26d5c56bf12d3afaa1f16a81d438ccefb4c3b24836e0e634ce8343"
+    },
+    {
+      "path": "src/rendering/view/mpr/mpr_render_context.rs",
+      "bytes": 5847,
+      "sha256": "b4657001a20bcb7a2cdb0f3382a8dcee4b00c88cd16e8613b86bada0dd1458b7"
+    },
+    {
+      "path": "src/rendering/view/mpr/mpr_view.rs",
+      "bytes": 74848,
+      "sha256": "f91331712c8d7bf91212d5a2481c80b8d45c7c7e83cc56f4f0d7ba939d898518"
+    },
+    {
+      "path": "src/rendering/view/render_content.rs",
+      "bytes": 14106,
+      "sha256": "691922256f3e93ad2c32feaeef78c6a2707576d11985b65adb14918c975e7a88"
+    },
+    {
+      "path": "src/rendering/view/renderable.rs",
+      "bytes": 197,
+      "sha256": "02aaa993f6a90379d0556b197e305ed316a762e35cec66c842ceb3d1125c86e4"
+    },
+    {
+      "path": "src/rendering/view/view.rs",
+      "bytes": 8925,
+      "sha256": "f250b29c5310d721417e6918ec9669429ce29a7c9884aaa5395563084800e247"
+    },
+    {
+      "path": "src/rendering/view/view_factory.rs",
+      "bytes": 16752,
+      "sha256": "57dd8311fca89b9b2d0dc15a37af6409a6ae0ef218f9bf144e2228c2862d8853"
+    },
+    {
+      "path": "src/server/segment_engine.rs",
+      "bytes": 30788,
+      "sha256": "13776cd9c113f3ade4e9587a6a928bc5f04a0837f5a4b439682b98cd8f8e89ff"
+    },
+    {
+      "path": "src/server/ws.rs",
+      "bytes": 5102,
+      "sha256": "1ad67ce9608b907f7e2e6ad81a38bd64d6746cbbd699593ae1f81c519b57ce69"
+    },
+    {
+      "path": "tests/common/headless_gpu.rs",
+      "bytes": 8652,
+      "sha256": "43bea09cedc766f1af345fe2e6a94f33200981957cea2a1451fe64219f3ebb87"
+    },
+    {
+      "path": "tests/error_handling_tests.rs",
+      "bytes": 8772,
+      "sha256": "0db7ad00b8688b576d0f0e0de63c55241aeaeb5d3ef42fad04c1a4669b9d74df"
+    },
+    {
+      "path": "tests/mesh_integration_tests.rs",
+      "bytes": 8464,
+      "sha256": "5d785743ec4307c180eb8f0b44bbcaa5a99a542a5f6b4a8a5e1f40b4738bdce3"
+    },
+    {
+      "path": "tests/native_backend_compatibility_tests.rs",
+      "bytes": 4216,
+      "sha256": "070a7de00b35acb7b61c73f622643d2824210d18d436bf16ef154f3a706df777"
+    },
+    {
+      "path": "tests/production_uniform_layout_tests.rs",
+      "bytes": 7186,
+      "sha256": "11a76a4112b2b762d872b1c41ab0fb1fdc99a844ab6cb533b84d2456ed7d618e"
+    },
+    {
+      "path": "tests/redraw_state_tests.rs",
+      "bytes": 3782,
+      "sha256": "25a2a41f164318487da0cb71c5f9333a488213d342be76410589bf708748e3df"
+    },
+    {
+      "path": "tests/render_resource_lifetime_tests.rs",
+      "bytes": 13763,
+      "sha256": "6ff6518a69b3c4093c16a5f661ad6f4e22be9b240079c955ca22d6b63b0ca4f0"
+    },
+    {
+      "path": "tests/rendering_correctness_tests.rs",
+      "bytes": 28717,
+      "sha256": "cf8426d6792102348b20c0b4375d5e1103548d7a9284d40386bf0f24668dba1c"
+    },
+    {
+      "path": "tests/view_transition_integration_tests.rs",
+      "bytes": 15156,
+      "sha256": "ac488b2ec62134ae3b19d09248f1f63040a985b94449b0153466541ea01c6ed9"
+    },
+    {
+      "path": "tests/volume_encoding_tests.rs",
+      "bytes": 16642,
+      "sha256": "48d487c34e187663c842ecec26ac23acfe15d50c02477d50f022d052b86716f4"
+    }
+  ],
+  "acceptance": "Named Linux/Wayland GLES and OS/browser visibility checks explicitly deferred; landing recorded in acceptance.md."
+}

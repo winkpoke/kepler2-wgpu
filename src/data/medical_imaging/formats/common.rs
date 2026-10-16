@@ -3,8 +3,8 @@
 use crate::data::medical_imaging::{
     error::{MedicalImagingError, MedicalImagingResult},
     metadata::*,
-    mha::MhaParser,
-    mhd::MhdParser,
+    metaimage::MetaimageParser,
+    nifti::NiftiParser,
 };
 use std::path::Path;
 
@@ -20,13 +20,16 @@ pub enum ImageFormat {
 
 // Function-level comment: Extracts the image format from a file path
 pub fn get_extension(file_path: &str) -> MedicalImagingResult<ImageFormat> {
+    let lower = file_path.to_lowercase();
+    if lower.ends_with(".nii.gz") || lower.ends_with(".nii") {
+        return Ok(ImageFormat::NIfTI);
+    }
     let path = Path::new(file_path);
     path.extension()
         .and_then(|ext| ext.to_str().map(|s| s.to_string()))
         .map(|ext| match ext.as_str() {
             "mha" => ImageFormat::MHA,
             "mhd" => ImageFormat::MHD,
-            "nii" => ImageFormat::NIfTI,
             "dcm" => ImageFormat::DICOM,
             _ => ImageFormat::Unknown,
         })
@@ -38,26 +41,33 @@ pub fn get_extension(file_path: &str) -> MedicalImagingResult<ImageFormat> {
 /// Function-level comment: Medical image parser trait
 /// Defines the interface that all medical image format parsers must implement
 pub trait MedicalImageParser {
-    /// Parses a medical image from raw bytes
-    fn parse_bytes(&self, path: &[u8], data: Option<&[u8]>) -> MedicalImagingResult<MedicalVolume> {
-        if let Some(data) = data {
-            MhdParser::parse_by_bytes(path, data)
-        } else {
-            MhaParser::parse_bytes(path)
+    fn parse_bytes(
+        &self,
+        format: ImageFormat,
+        header: &[u8],
+        data: Option<&[u8]>,
+    ) -> MedicalImagingResult<MedicalVolume> {
+        match format {
+            ImageFormat::MHA => MetaimageParser::parse_bytes(header, None),
+            ImageFormat::MHD => MetaimageParser::parse_bytes(header, data),
+            ImageFormat::NIfTI => NiftiParser::parse_bytes(header),
+            other => Err(MedicalImagingError::UnsupportedFormat {
+                format: format!("file extension: {:?}", other),
+            }),
         }
     }
 
-    /// Extracts metadata from a medical image file
     fn extract_metadata(
         &self,
         path: &[u8],
         format: ImageFormat,
     ) -> MedicalImagingResult<ImageMetadata> {
         match format {
-            ImageFormat::MHA => MhaParser::parse_metadata_only(path),
-            ImageFormat::MHD => MhdParser::parse_metadata_only(path),
-            _ => Err(MedicalImagingError::UnsupportedFormat {
-                format: format!("file extension: {:?}", format),
+            ImageFormat::MHA => MetaimageParser::parse_metadata_only(path, true),
+            ImageFormat::MHD => MetaimageParser::parse_metadata_only(path, false),
+            ImageFormat::NIfTI => NiftiParser::parse_metadata_only(path),
+            other => Err(MedicalImagingError::UnsupportedFormat {
+                format: format!("file extension: {:?}", other),
             }),
         }
     }

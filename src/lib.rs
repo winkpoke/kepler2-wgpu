@@ -1,3 +1,6 @@
+#[cfg(not(target_arch = "wasm32"))]
+extern crate wgpu as wgpu30;
+
 // Allow unit and integration regressions to share the same headless GPU fixture.
 #[cfg(test)]
 extern crate self as kepler_wgpu;
@@ -18,6 +21,12 @@ pub mod application;
 pub mod core;
 pub mod data;
 pub mod rendering;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod server;
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod gpu;
 
 // All modules now properly organized according to the new architecture
 
@@ -55,16 +64,19 @@ struct WasmLogger;
 #[cfg(target_arch = "wasm32")]
 static WASM_LOGGER: WasmLogger = WasmLogger;
 
+#[cfg(any(target_arch = "wasm32", test))]
+fn browser_log_enabled(target: &str, level: log::Level) -> bool {
+    if target.starts_with("wgpu") || target.starts_with("naga") {
+        level <= log::Level::Warn
+    } else {
+        true
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 impl log::Log for WasmLogger {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
-        let t = metadata.target();
-        let is_wgpu = t.starts_with("wgpu") || t.starts_with("naga");
-        if is_wgpu {
-            metadata.level() >= log::Level::Warn
-        } else {
-            true
-        }
+        browser_log_enabled(metadata.target(), metadata.level())
     }
     fn log(&self, record: &log::Record) {
         if !self.enabled(record.metadata()) {
@@ -192,4 +204,42 @@ pub async fn get_render_app() -> Result<RenderApp, KeplerError> {
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub fn drop_render_app(app: RenderApp) {
     drop(app);
+}
+
+#[cfg(test)]
+mod browser_logger_tests {
+    use super::browser_log_enabled;
+    use log::Level;
+
+    #[test]
+    fn gpu_filter_keeps_errors_and_warnings_and_suppresses_verbose_levels() {
+        for target in [
+            "wgpu",
+            "wgpu_core::instance",
+            "wgpu_hal::gles",
+            "naga::front",
+        ] {
+            for level in [
+                Level::Error,
+                Level::Warn,
+                Level::Info,
+                Level::Debug,
+                Level::Trace,
+            ] {
+                assert_eq!(
+                    browser_log_enabled(target, level),
+                    matches!(level, Level::Error | Level::Warn)
+                );
+            }
+        }
+        for level in [
+            Level::Error,
+            Level::Warn,
+            Level::Info,
+            Level::Debug,
+            Level::Trace,
+        ] {
+            assert!(browser_log_enabled("kepler_wgpu::application", level));
+        }
+    }
 }

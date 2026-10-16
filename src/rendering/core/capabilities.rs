@@ -77,7 +77,7 @@ impl GpuCapabilities {
     }
 
     pub fn default_float_encoding(&self) -> bool {
-        self.encoding_for_preference(true) == crate::data::volume_encoding::VolumeEncoding::R16Float
+        self.encoding_for_preference(true) == crate::data::volume_encoding::VolumeEncoding::HuFloat
     }
 
     pub fn volume_encoding(&self) -> crate::data::volume_encoding::VolumeEncoding {
@@ -91,9 +91,9 @@ impl GpuCapabilities {
     ) -> crate::data::volume_encoding::VolumeEncoding {
         use crate::data::volume_encoding::VolumeEncoding;
         if prefer_float && self.r16float_filterable || !self.rg8_filterable {
-            VolumeEncoding::R16Float
+            VolumeEncoding::HuFloat
         } else {
-            VolumeEncoding::PackedI16Rg8
+            VolumeEncoding::HuPackedRg8 { offset: 32768.0 }
         }
     }
 
@@ -102,8 +102,8 @@ impl GpuCapabilities {
         encoding: crate::data::volume_encoding::VolumeEncoding,
     ) -> bool {
         match encoding {
-            crate::data::volume_encoding::VolumeEncoding::R16Float => self.r16float_filterable,
-            crate::data::volume_encoding::VolumeEncoding::PackedI16Rg8 => self.rg8_filterable,
+            crate::data::volume_encoding::VolumeEncoding::HuFloat => self.r16float_filterable,
+            crate::data::volume_encoding::VolumeEncoding::HuPackedRg8 { .. } => self.rg8_filterable,
         }
     }
 }
@@ -200,7 +200,7 @@ mod tests {
     fn prefers_float_on_any_backend_and_reports_device_limit() {
         let caps = caps(usable(), usable()).unwrap();
         assert!(caps.default_float_encoding());
-        assert_eq!(caps.volume_encoding(), VolumeEncoding::R16Float);
+        assert_eq!(caps.volume_encoding(), VolumeEncoding::HuFloat);
         assert_eq!(caps.max_3d_texture_dimension(), 256);
         assert_eq!(caps.backend(), wgpu::Backend::Gl);
     }
@@ -217,7 +217,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             float_only.encoding_for_preference(false),
-            VolumeEncoding::R16Float
+            VolumeEncoding::HuFloat
         );
 
         let packed_only = caps(
@@ -230,7 +230,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             packed_only.encoding_for_preference(true),
-            VolumeEncoding::PackedI16Rg8
+            VolumeEncoding::HuPackedRg8 { offset: 32768.0 }
         );
     }
 
@@ -244,7 +244,7 @@ mod tests {
             format.allowed_usages.remove(requirement);
             assert_eq!(
                 caps(format, usable()).unwrap().volume_encoding(),
-                VolumeEncoding::PackedI16Rg8
+                VolumeEncoding::HuPackedRg8 { offset: 32768.0 }
             );
         }
         let mut format = usable();
@@ -253,7 +253,10 @@ mod tests {
             .remove(wgpu::TextureFormatFeatureFlags::FILTERABLE);
         let caps = caps(format, usable()).unwrap();
         assert!(!caps.r16float_filterable());
-        assert_eq!(caps.volume_encoding(), VolumeEncoding::PackedI16Rg8);
+        assert_eq!(
+            caps.volume_encoding(),
+            VolumeEncoding::HuPackedRg8 { offset: 32768.0 }
+        );
     }
 
     #[test]

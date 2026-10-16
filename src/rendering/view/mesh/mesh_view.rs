@@ -1,33 +1,25 @@
 #![allow(dead_code)]
-
-use super::{
-    basic_mesh_context::BasicMeshContext,
-    camera::Camera,
-    mesh::{Lighting, Mesh},
-    performance::{PerformanceStats, QualityController, QualityLevel},
-};
 use crate::rendering::view::invalidation::ViewInvalidation;
-use crate::{
-    core::timing::{DurationExt, Instant},
-    rendering::view::{Renderable, View},
-};
-use glam::{Mat4, Quat, Vec3};
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use std::time::Duration;
 
-#[derive(Clone, PartialEq)]
-struct MeshDisplayState {
-    rotation: Mat4,
-    scale: f32,
-    pan: [f32; 3],
-    opacity: f32,
-    pos: (i32, i32),
-    dim: (u32, u32),
-    lighting: [u8; 64],
-    fallback: FallbackMode,
-    rotation_enabled: bool,
-    rotation_speed: f32,
-}
-use std::f32::consts::{FRAC_PI_2, PI};
+use super::{
+    basic_mesh_context::MultiMeshContext,
+    mesh::{BasicLightingUniforms, Mesh, MeshRenderContext, VolumeUniforms},
+    performance::{PerformanceStats, QualityController, QualityLevel},
+};
+use crate::{
+    core::{
+        timing::{DurationExt, Instant},
+        KeplerResult, WindowLevel,
+    },
+    rendering::view::camera::Camera,
+    rendering::view::{NeedleUniform, ObliquePlaneUniform, Renderable, View},
+};
+use glam::{Mat4, Quat, Vec3};
+use std::f32::consts::FRAC_PI_2;
+use std::sync::{Arc, Mutex};
 
 /// Function-level comment: Error types specific to mesh rendering operations
 #[derive(Debug)]
@@ -72,10 +64,9 @@ pub struct RenderStats {
 }
 
 /// Function-level comment: Fallback rendering modes when primary rendering fails
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FallbackMode {
     /// Normal rendering with all features
-    #[default]
     Normal,
     /// Simplified rendering without complex shaders
     Simplified,
@@ -85,14 +76,20 @@ pub enum FallbackMode {
     Disabled,
 }
 
+impl Default for FallbackMode {
+    fn default() -> Self {
+        FallbackMode::Normal
+    }
+}
+
 pub struct MeshView {
-    pub mesh: Option<Mesh>,
-    // pub material: Option<Material>,
-    pub camera: Option<Camera>,
-    pub lighting: Option<Lighting>,
-    ctx: Option<std::sync::Arc<BasicMeshContext>>,
-    /// Context for the orientation cube (bottom-left gizmo)
-    orientation_cube_ctx: Option<std::sync::Arc<BasicMeshContext>>,
+    invalidation: ViewInvalidation<Vec<u8>>,
+    content_revision: AtomicU64,
+    last_recovery_attempt: Instant,
+    view_id: usize,
+    volume_ctx: Option<Arc<MeshRenderContext>>,
+    spine_ctx: Option<Arc<Mutex<MultiMeshContext>>>,
+    needle_ctx: Option<Arc<Mutex<MultiMeshContext>>>,
     pos: (i32, i32),
     dim: (u32, u32),
     /// Performance and error tracking
@@ -107,33 +104,132 @@ pub struct MeshView {
     quality_controller: QualityController,
     /// rotation state
     rotation_enabled: bool,
-    /// Current rotation state as a quaternion (supports free 3D rotation)
-    rotation_quat: Quat,
     /// Rotation speed in radians per second (default: π/2 = 90 degrees/second)
     rotation_speed: f32,
-    /// Current rotation state as a matrix (supports free 3D rotation)
-    rotation: Mat4,
     /// Last frame time for rotation calculation
     last_frame_time: Instant,
-    /// Uniform scale factor
-    scale_factor: f32,
-    /// Pan translation in world units (X, Y, Z)
-    pan: [f32; 3],
-    /// Mesh opacity (0.0 transparent .. 1.0 opaque)
     opacity: f32,
-    invalidation: ViewInvalidation<MeshDisplayState>,
-    last_recovery_attempt: Instant,
+    /// Spine mesh lighting uniforms (controls direction and color).
+    spine_lighting: BasicLightingUniforms,
+    needle_lighting: BasicLightingUniforms,
+    roi_min: [f32; 3],
+    roi_max: [f32; 3],
+    window_level: WindowLevel,
+    slab_thickness: f32,
+    mode: usize,
+    needle_enabled: f32,
+    needle_index: u32,
+    plane_rotation_angle: f32,
+    needles: Vec<NeedleUniform>,
+    needle_unit: Option<Mesh>,
+    oblique_planes: [ObliquePlaneUniform; 4],
+    camera: Camera,
+    ball_enabled: bool,
+    balls: [[f32; 4]; 4],
 }
 
-impl Default for MeshView {
-    fn default() -> Self {
+pub(crate) struct PreparedMeshGpu {
+    volume: Option<Arc<MeshRenderContext>>,
+    spine: Option<Arc<Mutex<MultiMeshContext>>>,
+    needle: Option<Arc<Mutex<MultiMeshContext>>>,
+}
+impl MeshView {
+    fn display_state(&self) -> Vec<u8> {
+        let mut state = Vec::new();
+        for value in [
+            self.camera.model_rotation_quat().to_array().to_vec(),
+            self.camera.get_pan().to_array().to_vec(),
+            vec![
+                self.camera.get_zoom(),
+                self.opacity,
+                self.window_level.window_width(),
+                self.window_level.window_level(),
+                self.slab_thickness,
+                self.needle_enabled,
+                self.plane_rotation_angle,
+                self.rotation_speed,
+            ],
+            self.roi_min.to_vec(),
+            self.roi_max.to_vec(),
+        ] {
+            state.extend_from_slice(bytemuck::cast_slice(&value));
+        }
+        state.extend_from_slice(bytemuck::bytes_of(&self.spine_lighting));
+        state.extend_from_slice(bytemuck::bytes_of(&self.needle_lighting));
+        state.extend_from_slice(bytemuck::cast_slice(&self.needles));
+        state.extend_from_slice(bytemuck::bytes_of(&self.oblique_planes));
+        state.extend_from_slice(bytemuck::bytes_of(&self.balls));
+        state.extend_from_slice(&self.content_revision.load(Ordering::Relaxed).to_ne_bytes());
+        state.extend_from_slice(bytemuck::bytes_of(&[
+            self.pos.0,
+            self.pos.1,
+            self.dim.0 as i32,
+            self.dim.1 as i32,
+        ]));
+        state.extend_from_slice(bytemuck::bytes_of(&[self.mode as u32, self.needle_index]));
+        state.push(u8::from(self.rotation_enabled));
+        state.push(u8::from(self.ball_enabled));
+        state.push(self.fallback_mode as u8);
+        state
+    }
+
+    pub fn rebuild_gpu_resources(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
+        content: Option<Arc<crate::rendering::view::RenderContent>>,
+    ) {
+        let prepared = self.prepare_gpu_resources(device, queue, format, content);
+        self.commit_gpu_resources(prepared);
+    }
+    pub(crate) fn prepare_gpu_resources(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        format: wgpu::TextureFormat,
+        content: Option<Arc<crate::rendering::view::RenderContent>>,
+    ) -> PreparedMeshGpu {
+        let volume = self.volume_ctx.as_ref().map(|ctx| {
+            Arc::new(MeshRenderContext::new(
+                device,
+                format,
+                content
+                    .clone()
+                    .unwrap_or_else(|| ctx.render_content.clone()),
+            ))
+        });
+        let rebuild = |ctx: &Option<Arc<Mutex<MultiMeshContext>>>| {
+            ctx.as_ref().map(|old| {
+                let next = old
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .rebuild(device, queue, format);
+                Arc::new(Mutex::new(next))
+            })
+        };
+        PreparedMeshGpu {
+            volume,
+            spine: rebuild(&self.spine_ctx),
+            needle: rebuild(&self.needle_ctx),
+        }
+    }
+    pub(crate) fn commit_gpu_resources(&mut self, prepared: PreparedMeshGpu) {
+        self.volume_ctx = prepared.volume;
+        self.spine_ctx = prepared.spine;
+        self.needle_ctx = prepared.needle;
+        self.invalidation.invalidate();
+    }
+
+    pub fn new() -> Self {
         Self {
-            mesh: None,
-            // material: None,
-            camera: None,
-            lighting: None,
-            ctx: None,
-            orientation_cube_ctx: None,
+            invalidation: Default::default(),
+            content_revision: AtomicU64::new(0),
+            last_recovery_attempt: Instant::now(),
+            view_id: 0,
+            volume_ctx: None,
+            spine_ctx: None,
+            needle_ctx: None,
             pos: (0, 0),
             dim: (0, 0),
             stats: RenderStats::default(),
@@ -141,79 +237,107 @@ impl Default for MeshView {
             consecutive_errors: 0,
             last_success_time: Instant::now(),
             quality_controller: QualityController::default(),
-            rotation_enabled: true,
-            rotation_quat: Quat::IDENTITY,
-            // Angles are stored in radians; 90°=FRAC_PI_2, 180°=PI
-            rotation_speed: FRAC_PI_2, // 90 degrees per second
-            rotation: Mat4::from_rotation_x(PI),
+            rotation_enabled: false,
+            rotation_speed: FRAC_PI_2, // 90 degrees per second (only used when enabled)
             last_frame_time: Instant::now(),
-            scale_factor: 1.0,
-            pan: [0.0, 0.0, 0.0],
             opacity: 1.0,
-            invalidation: Default::default(),
-            last_recovery_attempt: Instant::now(),
-        }
-    }
-}
-
-impl MeshView {
-    fn display_state(&self) -> MeshDisplayState {
-        let lighting = self
-            .lighting
-            .clone()
-            .unwrap_or_else(|| self.create_default_lighting());
-        MeshDisplayState {
-            rotation: self.rotation,
-            scale: self.scale_factor,
-            pan: self.pan,
-            opacity: self.opacity,
-            pos: self.pos,
-            dim: self.dim,
-            lighting: bytemuck::cast(lighting.to_basic_uniforms()),
-            fallback: self.fallback_mode,
-            rotation_enabled: self.rotation_enabled,
-            rotation_speed: self.rotation_speed,
+            spine_lighting: BasicLightingUniforms::default(),
+            needle_lighting: BasicLightingUniforms::default(),
+            roi_min: [0.0, 0.0, 0.0],
+            roi_max: [1.0, 1.0, 1.0],
+            window_level: WindowLevel {
+                window_level: 300.0,
+                window_width: 300.0,
+                ..Default::default()
+            },
+            slab_thickness: 1.25,
+            mode: 1,
+            needle_enabled: 0.0,
+            needle_index: 0,
+            plane_rotation_angle: 180.0,
+            needles: Vec::new(),
+            needle_unit: None,
+            oblique_planes: [ObliquePlaneUniform::default(); 4],
+            camera: Camera::new(),
+            ball_enabled: false,
+            balls: [[0.0; 4]; 4],
         }
     }
 
-    /// Recreates mesh and orientation gizmo GPU resources, retaining interaction state.
-    pub fn rebuild_gpu_resources(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        format: wgpu::TextureFormat,
-    ) {
-        self.ctx = self
-            .ctx
-            .as_ref()
-            .map(|ctx| std::sync::Arc::new(ctx.rebuild(device, queue, format)));
-        self.orientation_cube_ctx = self
-            .orientation_cube_ctx
-            .as_ref()
-            .map(|ctx| std::sync::Arc::new(ctx.rebuild(device, queue, format)));
-        self.reset_error_state();
+    pub fn view_id(&self) -> usize {
+        self.view_id
     }
 
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Function-level comment: Attaches a basic mesh render context for GPU operations
-    pub fn attach_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
-        self.ctx = Some(ctx);
+    /// Function-level comment: Attaches a volume render context for GPU operations
+    pub fn attach_context(&mut self, ctx: std::sync::Arc<MeshRenderContext>) {
         self.invalidation.invalidate();
-        log::debug!("MeshView::attach_context - Basic context attached successfully");
-        // Reset error state when new context is attached
-        self.reset_error_state();
+        self.volume_ctx = Some(ctx);
+        log::debug!("MeshView::attach_context - Volume context attached successfully");
     }
 
-    /// Function-level comment: Attaches a basic mesh render context for the orientation cube
-    pub fn attach_orientation_cube_context(&mut self, ctx: std::sync::Arc<BasicMeshContext>) {
-        self.orientation_cube_ctx = Some(ctx);
+    /// Function-level comment: Attaches a spine render context for GPU operations
+    pub fn attach_spine_context(&mut self, ctx: MultiMeshContext) {
         self.invalidation.invalidate();
-        log::debug!(
-            "MeshView::attach_orientation_cube_context - Orientation cube context attached"
-        );
+        self.spine_ctx = Some(Arc::new(Mutex::new(ctx)));
+        log::debug!("MeshView::attach_spine_context - Spine context attached successfully");
+    }
+
+    pub fn attach_needle_context(&mut self, ctx: MultiMeshContext) {
+        self.invalidation.invalidate();
+        self.needle_ctx = Some(Arc::new(Mutex::new(ctx)));
+        log::debug!("MeshView::attach_needle_context - Needle context attached successfully");
+    }
+
+    // /// Re-bake every needle's transform into vertex data and upload to the needle contex
+    // pub fn rebuild_needle_meshes(&self, device: &wgpu::Device) {
+    //     let (Some(ctx), Some(unit)) = (&self.needle_ctx, &self.needle_unit) else {
+    //         return;
+    //     };
+    //     let meshes: Vec<Mesh> = self.needles.iter().map(|n| {
+    //         log::info!("Needle: {:?}", n);
+    //         Mesh::instance_for_needle(
+    //             unit,
+    //             glam::Vec3::from(n.entry),
+    //             glam::Vec3::from(n.tip),
+    //             n.radius,
+    //             [1.0, 1.0, 1.0, 1.0]
+    //         )
+    //     }).collect();
+    //     if let Ok(mut guard) = ctx.lock() {
+    //         guard.set_meshes(device, &meshes);
+    //         log::info!(
+    //             "MeshView::rebuild_needle_meshes - uploaded {} needle instances",
+    //             meshes.len()
+    //         );
+    //     }
+    // }
+
+    pub fn set_meshes(&self, id: u32, kind: u32, device: &wgpu::Device, meshes: Arc<Vec<Mesh>>) {
+        self.content_revision.fetch_add(1, Ordering::Relaxed);
+        let ctx = match kind {
+            0 | 3 => &self.spine_ctx,
+            1 => &self.needle_ctx,
+            _ => {
+                log::warn!("MeshView::set_meshes - unknown kind {}", kind);
+                return;
+            }
+        };
+
+        if let Some(ctx) = ctx {
+            if let Ok(mut guard) = ctx.lock() {
+                guard.set_meshes(id, kind, device, &meshes);
+            }
+        }
+    }
+
+    /// Function-level comment: Toggle visibility of a single vertebra by label id.
+    pub fn set_spine_visibility(&self, label_id: u8, visible: bool) {
+        self.content_revision.fetch_add(1, Ordering::Relaxed);
+        if let Some(ctx) = &self.spine_ctx {
+            if let Ok(mut guard) = ctx.lock() {
+                guard.set_label_visibility(label_id, visible);
+            }
+        }
     }
 
     /// Function-level comment: Get current rendering statistics for performance monitoring.
@@ -258,11 +382,23 @@ impl MeshView {
 
     /// Function-level comment: Get buffer memory usage statistics for monitoring and optimization.
     pub fn get_memory_stats(&self) -> (u64, u64, f32, f32) {
-        if let Some(ctx) = &self.ctx {
-            ctx.get_memory_stats()
-        } else {
-            (0, 0, 0.0, 0.0)
+        let mut used = 0;
+        let mut total = 0;
+
+        // volume
+        if let Some(vol_ctx) = &self.volume_ctx {
+            let (u, t, _, _) = vol_ctx.get_memory_stats();
+            used += u;
+            total += t;
         }
+
+        let ratio = if total > 0 {
+            used as f32 / total as f32
+        } else {
+            0.0
+        };
+
+        (used, total, ratio, 0.0)
     }
 
     /// Function-level comment: Enable or disable rotation animation.
@@ -300,20 +436,22 @@ impl MeshView {
     /// Function-level comment: Reset the rotation angle to zero.
     /// Useful for returning to a known orientation or synchronizing multiple objects.
     pub fn reset_rotation(&mut self) {
-        self.rotation = Mat4::from_rotation_x(PI);
-        self.rotation_quat = Quat::IDENTITY;
+        self.camera
+            .set_model_rotation_quat(Quat::from_xyzw(0.0, 0.0, 1.0, 0.0));
         self.last_frame_time = Instant::now();
         log::debug!("Mesh rotation reset to identity");
     }
 
-    /// Function-level comment: Set the current rotation angle using degrees for convenience.
-    /// This directly sets the orientation without affecting rotation speed.
+    /// Apply an incremental orbit in degrees
     pub fn set_rotation_angle_degrees(&mut self, degrees_x: f32, degrees_y: f32) {
-        let rad = [degrees_x, degrees_y].map(|d| d.to_radians());
-        let rotation = Mat4::from_rotation_y(rad[1]) * Mat4::from_rotation_x(rad[0]);
-        self.rotation = rotation * self.rotation;
+        self.camera
+            .orbit_angles(degrees_y.to_radians(), degrees_x.to_radians());
         self.last_frame_time = Instant::now();
-        log::info!("Mesh rotation set to {:?}°", self.rotation);
+        log::info!(
+            "Mesh rotation set to (deg_x: {}, deg_y: {})",
+            degrees_x,
+            degrees_y
+        );
     }
 
     /// Set Mesh rotation angles in degrees around X, Y, Z axes.
@@ -323,22 +461,31 @@ impl MeshView {
             yaw_deg.to_radians(),
             pitch_deg.to_radians(),
         );
-
         let rot =
             Mat4::from_rotation_x(roll) * Mat4::from_rotation_y(yaw) * Mat4::from_rotation_z(pitch);
-        self.rotation = rot;
+        self.camera.set_model_rotation_quat(Quat::from_mat4(&rot));
         self.last_frame_time = Instant::now();
-        log::info!("Mesh rotation set to {:?}°", self.rotation);
     }
 
-    pub fn set_rotation(&mut self, rotation: Mat4) {
-        self.rotation = rotation;
+    pub fn set_rotation_quat(&mut self, rotation: [f32; 4]) -> KeplerResult<()> {
+        self.camera
+            .set_model_rotation_quat(Quat::from_array(rotation));
         self.last_frame_time = Instant::now();
-        log::info!("Mesh rotation set to {:?}", self.rotation);
+        log::info!("Mesh rotation set to {:?}", rotation);
+        Ok(())
     }
 
-    pub fn get_rotation(&self) -> Mat4 {
-        self.rotation
+    pub fn get_rotation_quat(&self) -> Quat {
+        self.camera.model_rotation_quat()
+    }
+
+    /// Shared camera accessors for external orchestration.
+    pub fn camera(&self) -> &Camera {
+        &self.camera
+    }
+
+    pub fn camera_mut(&mut self) -> &mut Camera {
+        &mut self.camera
     }
 
     /// Function-level comment: Set rotation speed using degrees per second for convenience.
@@ -347,42 +494,45 @@ impl MeshView {
         self.set_rotation_speed(degrees_per_sec.to_radians());
     }
 
-    /// Function-level comment: Set uniform scale factor applied to the mesh model.
-    /// Typical values: 0.25 (very small) .. 2.0 (double size). Default is 1.0.
+    /// Function-level comment: Set uniform zoom applied through the shared camera.
+    /// Typical values: 0.25 (zoomed out) .. 2.0 (2x magnification). Default is 1.0.
     pub fn set_scale_factor(&mut self, scale: f32) {
-        // Clamp to a reasonable range to avoid clipping or degenerate matrices
-        let clamped = scale.clamp(0.001, 100.0);
-        self.scale_factor = clamped;
-        log::info!("Mesh scale factor set to {:.3}", clamped);
+        self.camera.set_zoom(scale);
+        log::info!("Mesh scale factor set to {:.3}", self.camera.get_zoom());
     }
 
     /// Function-level comment: Get the current uniform scale factor.
     pub fn get_scale_factor(&self) -> f32 {
-        self.scale_factor
+        self.camera.get_zoom()
     }
 
-    /// Function-level comment: Reset the uniform scale factor to default (0.5).
+    /// Function-level comment: Reset the uniform scale factor to default (1.0).
     pub fn reset_scale_factor(&mut self) {
-        self.scale_factor = 1.0;
+        self.camera.set_zoom(1.0);
         log::info!("Mesh scale factor reset to default (1.0)");
     }
 
-    /// Function-level comment: Set mesh pan translation (world units) for X and Y axes.
-    /// Pan values are uploaded to the vertex shader as a uniform offset.
+    pub fn set_slab_thickness(&mut self, thickness: f32) {
+        self.slab_thickness = thickness;
+        log::info!("Mesh slab thickness set to {:.3} mm", thickness);
+    }
+
+    /// Function-level comment: Set view-plane pan (world units) through the shared camera.
+    /// Positive x moves the image right, positive y moves it up.
     pub fn set_pan(&mut self, dx: f32, dy: f32) {
-        self.pan[0] = dx;
-        self.pan[1] = dy;
+        self.camera.set_pan(dx, dy);
         log::info!("Mesh pan offset set to ({}, {})", dx, dy);
     }
 
     /// Function-level comment: Get the current pan translation offset.
     pub fn get_pan(&self) -> [f32; 3] {
-        self.pan
+        let pan = self.camera.get_pan();
+        [pan.x, pan.y, 0.0]
     }
 
     /// Function-level comment: Reset mesh pan translation to the origin.
     pub fn reset_pan(&mut self) {
-        self.pan = [0.0, 0.0, 0.0];
+        self.camera.set_pan(0.0, 0.0);
         log::info!("Mesh pan reset to (0, 0, 0)");
     }
 
@@ -401,41 +551,158 @@ impl MeshView {
         self.opacity
     }
 
-    /// Function-level comment: Create a default camera compatible with orthogonal projection
-    /// Ensures the entire unit cube is visible without clipping when using orthographic mode.
-    fn create_default_camera(&self) -> Camera {
-        // Start with orthogonal projection camera
-        let mut camera = Camera::new(); // uses Orthogonal by default
-
-        // Set standard viewing parameters
-        camera.eye = [0.0, 0.0, 3.0]; // Camera in front of the scene
-        camera.center = [0.0, 0.0, 0.0]; // Look at origin
-        camera.up = [0.0, 1.0, 0.0]; // Y-up coordinate system
-
-        // Fix clipping issues: near and far planes must include the scene
-        // For orthographic projection, near MUST be < far; negative near is allowed.
-        camera.near = -5.0; // Allow objects between camera and center
-        camera.far = 5.0; // Small range improves depth precision
-
-        // Setup orthogonal bounds to ensure a unit cube (-1..1) fits inside view
-        camera.ortho_left = -2.0;
-        camera.ortho_right = 2.0;
-        camera.ortho_bottom = -2.0;
-        camera.ortho_top = 2.0;
-
-        camera
+    pub fn set_mode(&mut self, mode: usize) {
+        self.mode = mode;
+        log::info!("Mesh mode set to {:?}", mode);
     }
 
-    /// Function-level comment: Create default lighting setup for basic mesh illumination.
-    /// Returns lighting with reasonable defaults for 3D mesh viewing.
-    fn create_default_lighting(&self) -> Lighting {
-        Lighting {
-            direction: [0.6, -0.7, 0.3],
-            light_color: [1.0, 1.0, 1.0],
-            light_intensity: 1.0,
-            ambient_color: [0.4, 0.4, 0.5],
-            ambient_intensity: 0.4,
+    pub fn set_roi(&mut self, min: [f32; 3], max: [f32; 3]) {
+        self.roi_min = min;
+        self.roi_max = max;
+    }
+
+    pub fn reset_roi(&mut self) {
+        self.roi_min = [0.0, 0.0, 0.0];
+        self.roi_max = [1.0, 1.0, 1.0];
+    }
+
+    pub fn set_needle_enabled(&mut self, enabled: f32) {
+        self.needle_enabled = enabled;
+        log::info!("[NEEDLE] Mesh needle rendering {}", enabled);
+    }
+
+    pub fn set_ball_enabled(&mut self, enabled: bool) {
+        self.ball_enabled = enabled;
+        log::info!("[BALL] Mesh ball rendering {}", enabled);
+    }
+
+    pub fn set_ball(&mut self, ball: usize, pos: [f32; 3], radius_uv: f32) {
+        if ball < 4usize {
+            self.balls[ball] = [pos[0], pos[1], pos[2], radius_uv];
+            log::info!(
+                "[BALL] Mesh ball {} position set to {:?} (radius {:.4} uv)",
+                ball,
+                pos,
+                radius_uv
+            );
+        } else {
+            log::warn!("[BALL] Invalid ball index: {}", ball);
         }
+    }
+
+    pub fn set_new_needle(&mut self, id: u32, entry: [f32; 3], pos: [f32; 3], color: [f32; 4]) {
+        let needle = self.needles.iter_mut().find(|n| n.id == id);
+        if let Some(needle) = needle {
+            needle.entry = entry;
+            needle.tip = pos;
+            needle.color = color;
+        } else {
+            self.needles.push(NeedleUniform {
+                entry,
+                tip: pos,
+                radius: NeedleUniform::default().radius,
+                id,
+                color,
+            });
+            log::info!(
+                "[NEEDLE] set_new_needle {} : entry={:?}, pos={:?}",
+                id,
+                entry,
+                pos
+            );
+        }
+    }
+
+    pub fn set_needle_position(&mut self, id: u32, pos: [f32; 3]) {
+        let needle = self.needles.iter_mut().find(|n| n.id == id);
+        if let Some(needle) = needle {
+            needle.tip = pos;
+        }
+        log::debug!("[NEEDLE]Mesh needle {} position set to {:?}", id, pos);
+    }
+
+    /// Set the visibility of the oblique cutting plane.
+    ///
+    /// # Arguments
+    /// * `center`    - world-space center of the plane
+    /// * `normal`    - world-space normal of the plane (will be normalized
+    ///                 in-shader; do not assume a unit length on the CPU side)
+    /// * `index`     - index of the plane to set
+    /// * `visible`   - whether the plane is composited this frame
+    /// * `alpha`     - 0..=1 compositing opacity shared by all 4 planes
+    pub fn set_oblique_plane(
+        &mut self,
+        center: [f32; 3],
+        normal: [f32; 3],
+        index: usize,
+        oblique_crop: f32,
+        alpha: f32,
+    ) {
+        self.oblique_planes[index] = ObliquePlaneUniform {
+            center,
+            visible: oblique_crop,
+            normal,
+            plane_alpha: alpha,
+        };
+        log::info!(
+            "[OBLIQUE→3D] View {:?} set_oblique_plane: center={:?} normal={:?} oblique_crop={} alpha={}",
+            index, center, normal, oblique_crop, alpha
+        );
+    }
+
+    pub fn get_oblique_planes(&self) -> [ObliquePlaneUniform; 4] {
+        self.oblique_planes
+    }
+
+    /// Set the slice-clip plane (UV-space `normal · x + d = 0`) used to clip
+    /// the spine mesh to a thin slab intersecting the current MPR plane.
+    pub fn set_slice_clip(
+        &self,
+        queue: &wgpu::Queue,
+        plane_normal: [f32; 3],
+        plane_d: f32,
+        enabled: bool,
+    ) {
+        if let Some(needle_ctx) = &self.needle_ctx {
+            if let Ok(mut guard) = needle_ctx.lock() {
+                guard.set_slice_plane(queue, plane_normal, plane_d, self.slab_thickness, enabled);
+            }
+        }
+    }
+
+    pub fn set_needle_radius(&mut self, id: u32, radius: f32) {
+        let needle = self.needles.iter_mut().find(|n| n.id == id);
+        if let Some(needle) = needle {
+            needle.radius = radius.clamp(0.0004, 0.04);
+        }
+        log::debug!("[NEEDLE]Mesh needle radius set to {:.6}", radius);
+    }
+
+    pub fn set_needle_angle(&mut self, id: u32, angle: f32) -> Option<(Vec3, Vec3)> {
+        if self.needle_enabled <= 1.5 {
+            return None;
+        }
+        let index = self.needles.iter().position(|n| n.id == id)?;
+        self.needle_index = index as u32;
+        self.plane_rotation_angle = angle;
+        Some(self.needles[index].plane_from_needle(angle))
+    }
+
+    pub fn set_window_level(&mut self, window: f32) -> KeplerResult<()> {
+        let _ = self.window_level.set_window_level(window);
+        log::info!("MIP window set to {:.3}", window);
+        Ok(())
+    }
+
+    pub fn set_window_width(&mut self, window_width: f32) -> KeplerResult<()> {
+        let _ = self.window_level.set_window_width(window_width);
+        log::info!("MIP window width set to {:.3}", window_width);
+        Ok(())
+    }
+
+    /// Mesh-only view projection using correct camera matrix (fixed X-axis mirror)
+    fn mesh_view_projection(&self, aspect_ratio: f32) -> Mat4 {
+        self.camera.view_projection_matrix(aspect_ratio)
     }
 
     /// Function-level comment: Update GPU uniforms for basic mesh rendering with combined MVP matrix
@@ -448,129 +715,109 @@ impl MeshView {
                 .duration_since(self.last_frame_time)
                 .as_secs_f32();
 
-            // Auto-rotate around Global Y
+            // Auto-rotate the model around the view-up axis via the shared camera
             let angle_delta = self.rotation_speed * delta_time;
-            let rot_delta = Quat::from_rotation_y(angle_delta);
-            self.rotation_quat = rot_delta * self.rotation_quat;
-            self.rotation_quat = self.rotation_quat.normalize();
-
-            #[cfg(feature = "trace-logging")]
-            log::trace!(
-                "[MESH_ROTATION] Auto-rotation delta: {:.3} rad",
-                angle_delta
-            );
-
+            self.camera.azimuth(-angle_delta);
             self.last_frame_time = current_time;
         }
 
-        if let Some(ctx) = &self.ctx {
-            let aspect_ratio = if self.dim.0 > 0 && self.dim.1 > 0 {
-                self.dim.0 as f32 / self.dim.1 as f32
-            } else {
+        // Extract volume dimensions — shared by both volume and needle transforms
+        let vol_extent = self
+            .volume_ctx
+            .as_ref()
+            .map(|ctx| ctx.render_content.texture.size())
+            .unwrap_or_default();
+        let w = vol_extent.width.max(1) as f32;
+        let h = vol_extent.height.max(1) as f32;
+        let d = vol_extent.depth_or_array_layers.max(1) as f32;
+        let phys = Vec3::new(w, h, d * self.slab_thickness);
+        let max_extent = phys.max_element().max(1e-6);
+        let volume_scale = phys / max_extent;
+
+        let aspect_ratio = if self.dim.1 > 0 && self.dim.0 > 0 {
+            self.dim.0 as f32 / self.dim.1 as f32
+        } else {
+            1.0
+        };
+
+        let view_projection = self.camera.view_projection_matrix(aspect_ratio);
+        let inv_view_projection = self.camera.inverse_view_projection_matrix(aspect_ratio);
+        let camera_position = self.camera.effective_position();
+
+        // Volume uniforms
+        if let Some(vol_ctx) = &self.volume_ctx {
+            // Extract format and bias from RenderContent decode parameters
+            let decode_params = vol_ctx.render_content.decode_parameters();
+            let is_packed_rg8 = if decode_params.is_packed_flag == 1 {
                 1.0
-            };
-
-            log::debug!(
-                "[BASIC_MESH_UNIFORMS] Viewport dimensions: {}x{}, aspect_ratio: {:.3}",
-                self.dim.0,
-                self.dim.1,
-                aspect_ratio
-            );
-
-            // Model matrix - apply persistent rotation (if any) and uniform scale
-            let rotation = self.rotation;
-
-            // Compose Model: Translation * Rotation * Scale
-            let model_matrix = Mat4::from_translation(Vec3::from(self.pan))
-                * rotation
-                * Mat4::from_scale(Vec3::splat(self.scale_factor));
-
-            // View matrix - camera positioned for optimal viewing of smaller cube
-            // Camera at (0, 0, 3.0) looking at origin, but original matrix
-            // had specific translation (0, 0, -2.0) hardcoded in the array.
-            let view_matrix = Mat4::from_translation(Vec3::new(0.0, 0.0, -2.0));
-
-            // Dynamic orthographic range adjustment
-            let base_extent = 2.0;
-            let expand_factor = 1.8;
-            let view_extent = base_extent * expand_factor;
-            let left = -view_extent;
-            let right = view_extent;
-            let bottom = -view_extent / aspect_ratio;
-            let top = view_extent / aspect_ratio;
-            let near = -view_extent * 2.0;
-            let far = view_extent * 2.0;
-
-            // Matches original OpenGL-style orthographic projection (-1 to 1 Z range)
-            let proj_matrix = Mat4::orthographic_rh(left, right, bottom, top, near, far);
-
-            // Calculate MVP: projection * view * model
-            let mvp_matrix = proj_matrix * view_matrix * model_matrix;
-
-            #[cfg(feature = "trace-logging")]
-            log::trace!("[BASIC_MESH_MATRICES] Model matrix (scale {} with rotation {:?} rad, enabled={}): {:?}", 
-                        self.scale_factor, angles, self.rotation_enabled, model_matrix.to_cols_array());
-            log::trace!(
-                "[BASIC_MESH_MATRICES] View matrix (camera at -3): {:?}",
-                view_matrix.to_cols_array()
-            );
-            log::trace!(
-                "[BASIC_MESH_MATRICES] Projection matrix (orthogonal): {:?}",
-                proj_matrix.to_cols_array()
-            );
-            log::trace!(
-                "[BASIC_MESH_MATRICES] Combined MVP matrix: {:?}",
-                mvp_matrix.to_cols_array()
-            );
-
-            // Update uniforms in BasicMeshContext with combined MVP matrix
-            // Note: The shader expects column-major matrices, and glam is column-major by default.
-
-            ctx.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
-
-            // Update lighting uniforms to ensure lighting effects are applied
-            let mut lighting_uniforms = if let Some(ref lighting) = self.lighting {
-                // Use the configured lighting and convert to BasicLightingUniforms
-                lighting.to_basic_uniforms()
             } else {
-                // Create default lighting if none is configured
-                let default_lighting = self.create_default_lighting();
-                default_lighting.to_basic_uniforms()
+                0.0
             };
-            lighting_uniforms.opacity = self.opacity;
-            ctx.update_lighting(queue, lighting_uniforms);
+
+            let mut gpu_needles = [NeedleUniform::default(); 32];
+            for (i, needle) in self.needles.iter().take(32).enumerate() {
+                gpu_needles[i] = NeedleUniform {
+                    entry: needle.entry,
+                    radius: needle.radius,
+                    tip: needle.tip,
+                    id: needle.id,
+                    color: needle.color,
+                };
+            }
+
+            let vol_uniforms = VolumeUniforms {
+                ray_step_size: 0.004,
+                max_steps: 1500.0,
+                is_packed_rg8: is_packed_rg8,
+                bias: decode_params.bias,
+                window: self.window_level.window_width(),
+                level: self.window_level.window_level(),
+                roi_min: self.roi_min,
+                roi_max: self.roi_max,
+                opacity: self.opacity,
+                light_dir: [0.5, 0.5, -1.0],
+                aspect_ratio,
+                vol_dims: [w, h, d],
+                view_proj: view_projection.to_cols_array(),
+                inv_view_proj: inv_view_projection.to_cols_array(),
+                camera_position: camera_position.to_array(),
+                volume_scale: volume_scale.to_array(),
+                needle_count: self.needles.len().min(32) as u32,
+                needle_enabled: self.needle_enabled,
+                needle_index: self.needle_index,
+                plane_rotation_angle: self.plane_rotation_angle,
+                oblique_planes: self.oblique_planes,
+                needles: gpu_needles,
+                ball_enabled: if self.ball_enabled { 1.0 } else { 0.0 },
+                balls: self.balls,
+                ..Default::default()
+            };
+
+            // update
+            vol_ctx.update_uniforms(queue, &vol_uniforms);
         }
 
-        // Update Orientation Cube Uniforms
-        if let Some(cube_ctx) = &self.orientation_cube_ctx {
-            // Model: Only Rotation (no pan, no scale from main mesh)
-            let model_matrix = self.rotation;
+        // Spine mesh uniforms and lighting. The mesh MVP carries the clip-space
+        // Y flip so meshes track the DVR volume's mirrored screen mapping.
+        let remap = Mat4::from_translation(Vec3::splat(0.5))
+            * Mat4::from_scale(Vec3::from(volume_scale))
+            * Mat4::from_translation(Vec3::splat(-0.5));
+        let mesh_mvp = self.mesh_view_projection(aspect_ratio) * remap;
+        if let Some(spine_ctx) = &self.spine_ctx {
+            if let Ok(mut guard) = spine_ctx.lock() {
+                guard.update_uniforms(queue, &mesh_mvp.to_cols_array_2d());
+                self.spine_lighting.opacity = 0.5;
+                guard.update_lighting(queue, self.spine_lighting);
+            }
+        }
 
-            // View: Standard fixed camera
-            // Place cube closer to camera (Z=5.0) than main mesh (Z=-2.0) to ensure it renders on top
-            // Orthographic range is -10 to 10, so 5.0 is well within range.
-            let view_matrix = Mat4::from_translation(Vec3::new(0.0, 0.0, 5.0));
-
-            // Proj: Fixed Ortho to fit unit cube (-1..1) with padding
-            // Unit cube diagonal is 1.73. 1.5 might clip corners if rotating.
-            let extent = 2.0;
-            let proj_matrix = Mat4::orthographic_rh(-extent, extent, -extent, extent, -10.0, 10.0);
-
-            let mvp_matrix = proj_matrix * view_matrix * model_matrix;
-
-            cube_ctx.update_uniforms(queue, &mvp_matrix.to_cols_array_2d());
-
-            // Also update lighting for cube (use same lighting)
-            let lighting_uniforms = if let Some(ref lighting) = self.lighting {
-                lighting.to_basic_uniforms()
-            } else {
-                let default_lighting = self.create_default_lighting();
-                default_lighting.to_basic_uniforms()
-            };
-            // Cube is always opaque
-            let mut cube_lighting = lighting_uniforms;
-            cube_lighting.opacity = 1.0;
-            cube_ctx.update_lighting(queue, cube_lighting);
+        // Needle mesh uniforms and lighting (same flipped MVP as the spine)
+        if let Some(needle_ctx) = &self.needle_ctx {
+            if let Ok(mut guard) = needle_ctx.lock() {
+                guard.update_uniforms(queue, &mesh_mvp.to_cols_array_2d());
+                self.needle_lighting.opacity = 1.0;
+                guard.update_lighting(queue, self.needle_lighting);
+            }
         }
     }
 
@@ -650,15 +897,16 @@ impl MeshView {
         if matches!(
             self.fallback_mode,
             FallbackMode::Simplified | FallbackMode::Wireframe
-        ) && self.stats.frame_count.is_multiple_of(60)
-        {
-            // Try to upgrade every 60 frames
-            self.fallback_mode = match self.fallback_mode {
-                FallbackMode::Wireframe => FallbackMode::Simplified,
-                FallbackMode::Simplified => FallbackMode::Normal,
-                _ => self.fallback_mode,
-            };
-            log::info!("Upgraded to fallback mode: {:?}", self.fallback_mode);
+        ) {
+            if self.stats.frame_count % 60 == 0 {
+                // Try to upgrade every 60 frames
+                self.fallback_mode = match self.fallback_mode {
+                    FallbackMode::Wireframe => FallbackMode::Simplified,
+                    FallbackMode::Simplified => FallbackMode::Normal,
+                    _ => self.fallback_mode,
+                };
+                log::info!("Upgraded to fallback mode: {:?}", self.fallback_mode);
+            }
         }
     }
 
@@ -675,18 +923,6 @@ impl MeshView {
                 "Rendering disabled due to repeated failures".to_string(),
             ));
         }
-
-        // Ensure context is available
-        let ctx = self.ctx.as_ref().ok_or_else(|| {
-            log::trace!("BasicMeshView::try_render - No context attached");
-            MeshRenderError::ContextNotAttached
-        })?;
-
-        log::trace!(
-            "BasicMeshView::try_render - Context available, vertices: {}, indices: {}",
-            ctx.num_vertices,
-            ctx.num_indices
-        );
 
         // Validate viewport dimensions
         if self.dim.0 == 0 || self.dim.1 == 0 {
@@ -708,28 +944,28 @@ impl MeshView {
             height
         );
 
-        // Use the simplified BasicMeshContext render method
-        ctx.render(render_pass);
+        // Render the translucent DVR volume
+        if let Some(vol_ctx) = &self.volume_ctx {
+            vol_ctx.render(render_pass);
+        } else {
+            return Err(MeshRenderError::ResourceError(
+                "Volume context not attached".to_string(),
+            ));
+        }
 
-        // Render Orientation Cube (if available)
-        if let Some(cube_ctx) = &self.orientation_cube_ctx {
-            let cube_size = 120.0;
-            let padding = 10.0;
+        // Render the polygonal spine mesh SECOND, as a translucent overlay.
+        if let Some(spine_ctx) = &self.spine_ctx {
+            if let Ok(guard) = spine_ctx.lock() {
+                guard.render(render_pass);
+            }
+        }
 
-            // Calculate bottom-left position within the view
-            // Assuming (x, y) is top-left of the view
-            let view_x = self.pos.0 as f32;
-            let view_y = self.pos.1 as f32;
-            let view_h = self.dim.1 as f32;
-
-            // Bottom-left relative to view
-            let cube_x = view_x + padding;
-            let cube_y = view_y + view_h - cube_size - padding;
-
-            // Ensure we don't draw outside the view if view is too small
-            if self.dim.0 > (cube_size as u32 + 20) && self.dim.1 > (cube_size as u32 + 20) {
-                render_pass.set_viewport(cube_x, cube_y, cube_size, cube_size, 0.0, 1.0);
-                cube_ctx.render(render_pass);
+        // Render OBJ-needle meshes THIRD, only when needles are enabled
+        if self.needle_enabled > 0.5 {
+            if let Some(needle_ctx) = &self.needle_ctx {
+                if let Ok(guard) = needle_ctx.lock() {
+                    guard.render(render_pass);
+                }
             }
         }
 
@@ -756,16 +992,19 @@ impl MeshView {
 
 impl Renderable for MeshView {
     fn update(&mut self, queue: &wgpu::Queue) {
+        // Function-level comment: Update mesh view state and perform health checks
+
+        // Update uniform buffers with current camera and lighting data
         if self.invalidation.needs_upload(&self.display_state()) || self.is_animating() {
             self.update_uniforms(queue);
             self.invalidation.uploaded(self.display_state());
         }
 
         // Perform periodic health checks
-        if self.stats.frame_count.is_multiple_of(300) {
+        if self.stats.frame_count % 300 == 0 {
             // Every 5 seconds at 60fps
             if !self.is_healthy() {
-                log::warn!("MeshView health check failed: consecutive_errors={}, last_success={:?}s ago, mode={:?}", 
+                log::warn!("MeshView health check failed: consecutive_errors={}, last_success={:?}s ago, mode={:?}",
                     self.consecutive_errors,
                     self.last_success_time.elapsed().as_secs_f64(),
                     self.fallback_mode
@@ -828,7 +1067,7 @@ impl View for MeshView {
     }
 
     fn is_animating(&self) -> bool {
-        self.ctx.is_some()
+        self.volume_ctx.is_some()
             && self.dim.0 > 0
             && self.dim.1 > 0
             && self.rotation_enabled
@@ -877,28 +1116,16 @@ mod tests {
 
     /// Function-level comment: Verify default rotation state and speed
     #[test]
-    fn test_rotation_api_basic_functionality() {
-        let mesh_view = MeshView::default();
+    fn test_rotation_default_identity() {
+        let mesh_view = MeshView::new();
+        assert!(mesh_view
+            .camera()
+            .model_rotation_quat()
+            .abs_diff_eq(Quat::IDENTITY, 1e-6));
 
-        // Verify default rotation is 180 degrees around X (PI radians)
-        let expected_mat = Mat4::from_rotation_x(PI);
         // Check Matrix columns
-        assert!(mesh_view
-            .rotation
-            .col(0)
-            .abs_diff_eq(expected_mat.col(0), 1e-6));
-        assert!(mesh_view
-            .rotation
-            .col(1)
-            .abs_diff_eq(expected_mat.col(1), 1e-6));
-        assert!(mesh_view
-            .rotation
-            .col(2)
-            .abs_diff_eq(expected_mat.col(2), 1e-6));
-        assert!(mesh_view
-            .rotation
-            .col(3)
-            .abs_diff_eq(expected_mat.col(3), 1e-6));
+        let mat = Mat4::from_quat(mesh_view.camera().model_rotation_quat());
+        assert!(mat.abs_diff_eq(Mat4::IDENTITY, 1e-6));
 
         // Verify default speed (90 degrees/s)
         assert!((mesh_view.rotation_speed - FRAC_PI_2).abs() < 1e-6);
@@ -907,29 +1134,29 @@ mod tests {
     /// Function-level comment: Ensure enabling/disabling rotation does not panic and preserves orientation
     #[test]
     fn test_rotation_enable_disable() {
-        let mut mesh_view = MeshView::default();
+        let mut mesh_view = MeshView::new();
 
         // Set some rotation first to ensure we aren't just testing identity or default
         // Add 45 degrees around Y to the existing default
         mesh_view.set_rotation_angle_degrees(0.0, 45.0);
 
-        let before_mat = mesh_view.rotation;
+        let before = mesh_view.camera().model_rotation_quat();
 
         mesh_view.set_rotation_enabled(false);
-        let after_disable_mat = mesh_view.rotation;
+        let after_disable = mesh_view.camera().model_rotation_quat();
 
         mesh_view.set_rotation_enabled(true);
-        let after_enable_mat = mesh_view.rotation;
+        let after_enable = mesh_view.camera().model_rotation_quat();
 
         // Rotation should be preserved through enable/disable cycles
-        assert_eq!(before_mat, after_disable_mat);
-        assert_eq!(before_mat, after_enable_mat);
+        assert_eq!(before, after_disable);
+        assert_eq!(before, after_enable);
     }
 
     /// Function-level comment: Verify rotation speed setters
     #[test]
     fn test_rotation_speed_control() {
-        let mut mesh_view = MeshView::default();
+        let mut mesh_view = MeshView::new();
         let test_speed = PI / 4.0; // 45°/s
 
         mesh_view.set_rotation_speed(test_speed);
@@ -939,33 +1166,171 @@ mod tests {
         assert!((mesh_view.get_rotation_speed() - PI).abs() < 1e-6);
     }
 
+    #[test]
+    fn test_set_rotation_degrees() {
+        let mut mesh_view = MeshView::new();
+
+        mesh_view.set_rotation_degrees(90.0, 0.0, 0.0);
+
+        let expected = Quat::from_rotation_x(90.0_f32.to_radians());
+        let q = mesh_view.camera().model_rotation_quat();
+        // A rotation quaternion is double-covered: q and -q are the same
+        // orientation, and the shared camera may return either sign.
+        assert!(
+            q.dot(expected).abs() > 0.9999,
+            "expected {:?}, got {:?}",
+            expected,
+            q
+        );
+    }
+
+    #[test]
+    fn test_rotation_accumulation() {
+        let mut mesh_view = MeshView::new();
+
+        mesh_view.set_rotation_angle_degrees(0.0, 90.0);
+
+        let q1 = mesh_view.camera().model_rotation_quat();
+
+        mesh_view.set_rotation_angle_degrees(0.0, 90.0);
+
+        let q2 = mesh_view.camera().model_rotation_quat();
+
+        // Two distinct rotations must not represent the same orientation.
+        assert!(q1.dot(q2).abs() < 0.9999);
+
+        // Should approach 180° about Y (sign-agnostic).
+        let expected = Quat::from_rotation_y(180.0_f32.to_radians());
+        assert!(
+            q2.dot(expected).abs() > 0.9999,
+            "expected {:?}, got {:?}",
+            expected,
+            q2
+        );
+    }
+
     /// Function-level comment: Reset rotation and verify default orientation (Identity)
     #[test]
     fn test_rotation_angle_reset() {
-        let mut mesh_view = MeshView::default();
+        let mut mesh_view = MeshView::new();
 
         // Apply some rotation
         mesh_view.set_rotation_angle_degrees(90.0, 45.0);
-        // Verify initial state is NOT default
-        assert_ne!(mesh_view.rotation, Mat4::from_rotation_x(PI));
 
         // Reset
         mesh_view.reset_rotation();
+        assert!(mesh_view
+            .camera()
+            .model_rotation_quat()
+            .abs_diff_eq(Quat::IDENTITY, 1e-6));
+    }
 
-        // Verify reset to default (PI around X)
-        let expected_mat = Mat4::from_rotation_x(PI);
+    /// Regression guard: the polygonal mesh `model_view_proj` must place the
+    /// `[0, 1]^3` texture box into the same world AABB the DVR uses (the
+    /// identity, since both live in the same UV/world space). If this
+    /// drifts, the mesh and DVR will display with different centers/sizes
+    /// and the shared depth buffer can no longer be used for occlusion.
+    #[test]
+    fn test_spine_model_matches_dvr_aabb() {
+        // The model matrix is the identity in the shared `[0, 1]^3` UV
+        // space — both meshes and the DVR volume live in this space, so
+        // the model transform contributes nothing.
+        let model = Mat4::IDENTITY;
 
-        assert!(mesh_view
-            .rotation
-            .col(0)
-            .abs_diff_eq(expected_mat.col(0), 1e-6));
-        assert!(mesh_view
-            .rotation
-            .col(1)
-            .abs_diff_eq(expected_mat.col(1), 1e-6));
-        assert!(mesh_view
-            .rotation
-            .col(2)
-            .abs_diff_eq(expected_mat.col(2), 1e-6));
+        // Texture origin (0,0,0) → world minimum corner (still (0,0,0)).
+        let origin = (model * Vec3::ZERO.extend(1.0)).truncate();
+        assert!(
+            origin.abs_diff_eq(Vec3::ZERO, 1e-6),
+            "origin should map to (0,0,0); got {:?}",
+            origin,
+        );
+
+        // Texture corner (1,1,1) → world maximum corner.
+        let corner = (model * Vec3::ONE.extend(1.0)).truncate();
+        assert!(
+            corner.abs_diff_eq(Vec3::ONE, 1e-6),
+            "corner expected (1,1,1), got {:?}",
+            corner,
+        );
+
+        // Texture center (0.5,0.5,0.5) → world volume center.
+        let center = (model * Vec3::splat(0.5).extend(1.0)).truncate();
+        assert!(
+            center.abs_diff_eq(Vec3::splat(0.5), 1e-6),
+            "center should map to (0.5, 0.5, 0.5); got {:?}",
+            center,
+        );
+
+        // The mesh's local coordinates are the texture coordinates directly
+        // (the model matrix is the identity), so any (tx, ty, tz) in
+        // [0, 1]^3 should round-trip through the model matrix unchanged.
+        let samples = [
+            (0.0, 0.0, 0.0),
+            (1.0, 0.0, 0.0),
+            (0.0, 1.0, 0.0),
+            (0.0, 0.0, 1.0),
+            (0.5, 0.5, 0.5),
+            (1.0, 1.0, 1.0),
+        ];
+        for (tx, ty, tz) in samples {
+            let v = Vec3::new(tx, ty, tz);
+            let world_from_mesh = (model * v.extend(1.0)).truncate();
+            assert!(
+                world_from_mesh.abs_diff_eq(v, 1e-5),
+                "tex=({tx},{ty},{tz}): mesh->{world_from_mesh:?} expected {v:?}",
+            );
+        }
+    }
+
+    /// Regression guard: the mesh MVP must share the DVR volume's screen
+    /// mapping. `volume.wgsl` samples each pixel through the vertically
+    /// mirrored NDC position (`ndc_y = 1 - 2 * uv.y`), so a world point is
+    /// displayed by the volume at `-ndc.y`. The mesh MVP therefore has to
+    /// produce exactly that NDC for the same point — otherwise mesh and
+    /// volume pan along Y in opposite directions (the bug this guards).
+    #[test]
+    fn test_mesh_mvp_matches_volume_screen_mapping() {
+        let mut mesh_view = MeshView::new();
+        let aspect = 1.0;
+        let q = Vec3::new(0.5, 0.75, 0.5); // a feature inside the volume box
+
+        let pans = [(0.0, 0.0), (0.0, 0.1), (0.0, -0.2), (0.3, 0.15)];
+        let mut prev_mesh_y = None;
+        let mut prev_vol_y = None;
+        for (dx, dy) in pans {
+            mesh_view.set_pan(dx, dy);
+
+            let vp = mesh_view.camera().view_projection_matrix(aspect);
+            let flipped = Mat4::from_scale(Vec3::new(1.0, -1.0, 1.0)) * vp;
+
+            let vol = vp * q.extend(1.0);
+            let mesh = flipped * q.extend(1.0);
+
+            // Same pixel: mesh NDC == volume's mirrored NDC.
+            assert!(
+                (mesh.y / mesh.w - -(vol.y / vol.w)).abs() < 1e-6,
+                "pan=({dx},{dy}): mesh ndc.y {} != volume ndc.y {}",
+                mesh.y / mesh.w,
+                -(vol.y / vol.w),
+            );
+            assert!((mesh.x / mesh.w - vol.x / vol.w).abs() < 1e-6);
+
+            // Depth channel untouched: occlusion against the DVR first-hit
+            // depth stays valid.
+            assert!((mesh.z / mesh.w - vol.z / vol.w).abs() < 1e-6);
+
+            // Pan response moves mesh and volume the same way (Y increases
+            // together as dy decreases from +0.1 to -0.2).
+            if let (Some(pv_m), Some(pv_v)) = (prev_mesh_y, prev_vol_y) {
+                let d_mesh = mesh.y / mesh.w - pv_m;
+                let d_vol = -(vol.y / vol.w) - pv_v;
+                assert!(
+                    d_mesh * d_vol > 0.0,
+                    "pan dy {dy}: mesh moved {d_mesh}, volume moved {d_vol} — opposite directions",
+                );
+            }
+            prev_mesh_y = Some(mesh.y / mesh.w);
+            prev_vol_y = Some(-(vol.y / vol.w));
+        }
     }
 }

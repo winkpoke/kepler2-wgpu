@@ -16,21 +16,21 @@ use crate::core::error::{KeplerError, KeplerResult, MprError};
 #[derive(Copy, Debug, Clone, PartialEq)]
 pub struct WindowLevel {
     /// Window width for contrast control (must be positive)
-    window_width: f32,
+    pub window_width: f32,
     /// Window level for brightness center
-    window_level: f32,
+    pub window_level: f32,
     /// Bias offset applied to window level
-    bias: f32,
+    pub bias: f32,
     /// Flag indicating if parameters have changed and need GPU update
-    dirty: bool,
+    pub dirty: bool,
 }
 
 impl WindowLevel {
     /// Medical imaging parameter bounds for validation
     pub const MIN_WINDOW_WIDTH: f32 = 1.0; // Minimum contrast range
-    pub const MAX_WINDOW_WIDTH: f32 = 4096.0; // Maximum contrast range for CT
+    pub const MAX_WINDOW_WIDTH: f32 = f32::MAX; // Maximum contrast range for CT
     pub const MIN_WINDOW_LEVEL: f32 = -2048.0; // Minimum brightness for CT
-    pub const MAX_WINDOW_LEVEL: f32 = 2048.0; // Maximum brightness for CT
+    pub const MAX_WINDOW_LEVEL: f32 = f32::MAX; // Maximum brightness for CT
     pub const MIN_BIAS: f32 = -2048.0; // Minimum bias offset
     pub const MAX_BIAS: f32 = 2048.0; // Maximum bias offset
 

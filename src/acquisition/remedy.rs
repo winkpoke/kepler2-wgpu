@@ -524,6 +524,7 @@ impl RemedyWasm {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct ProcessResult {
     events: Vec<RemedyEvent>,

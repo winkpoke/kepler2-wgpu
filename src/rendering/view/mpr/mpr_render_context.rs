@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use crate::rendering::pipeline::*;
+use crate::rendering::view::render_content::RenderContent;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
@@ -26,6 +28,9 @@ pub struct MprRenderContext {
 
     /// Number of indices in the index buffer
     pub num_indices: u32,
+
+    /// Default "empty" segmentation texture
+    pub default_seg_content: Arc<RenderContent>,
 }
 
 #[repr(C)]
@@ -46,72 +51,6 @@ impl Vertex {
             attributes: &Self::ATTRIBS,
         }
     }
-}
-
-/// Creates a texture quad pipeline for MPR rendering.
-/// This pipeline is specifically designed for rendering 2D texture quads in medical imaging contexts.
-pub fn create_texture_quad_pipeline(
-    device: &wgpu::Device,
-    bind_group_layouts: [&wgpu::BindGroupLayout; 3],
-    vertex_buffers: &[wgpu::VertexBufferLayout<'static>],
-    target_format: wgpu::TextureFormat,
-) -> wgpu::RenderPipeline {
-    // Single shader module with both vertex and fragment entry points.
-    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("MPR Shader"),
-        source: wgpu::ShaderSource::Wgsl(
-            crate::rendering::shaders::volume_shader_source(include_str!(
-                "../../shaders/shader_tex.wgsl"
-            ))
-            .into(),
-        ),
-    });
-    // Pipeline layout defines bind group layout order; must match shader binding expectations.
-    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("Render Pipeline Layout"),
-        bind_group_layouts: &bind_group_layouts.map(Some),
-        immediate_size: 0,
-    });
-
-    let vertex_slots: Vec<_> = vertex_buffers.iter().cloned().map(Some).collect();
-    // Preserve the public helper's ordinary vertex layouts; adapt optional slots internally.
-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("Render Pipeline"),
-        layout: Some(&pipeline_layout),
-        vertex: wgpu::VertexState {
-            module: &shader,
-            entry_point: Some("vs_main"), // WGSL entry point for vertex stage
-            buffers: &vertex_slots,       // Vertex buffer layouts (position, texcoord, etc.)
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: &shader,
-            entry_point: Some("fs_main"), // WGSL entry point for fragment stage
-            targets: &[Some(wgpu::ColorTargetState {
-                format: target_format, // Target color format (swapchain surface)
-                blend: Some(wgpu::BlendState::REPLACE), // No blending; write replaces previous value
-                write_mask: wgpu::ColorWrites::ALL,     // Write all color channels
-            })],
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        }),
-        primitive: wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleList, // Quad rendered as two triangles
-            strip_index_format: None,
-            front_face: wgpu::FrontFace::Ccw,
-            cull_mode: None, // No face culling; adjust for performance if needed
-            polygon_mode: wgpu::PolygonMode::Fill,
-            unclipped_depth: false,
-            conservative: false,
-        },
-        depth_stencil: None, // No depth testing for 2D slice rendering
-        multisample: wgpu::MultisampleState {
-            count: 1, // No MSAA; parameterize for quality improvements
-            mask: !0,
-            alpha_to_coverage_enabled: false,
-        },
-        multiview_mask: None,
-        cache: None,
-    })
 }
 
 const VERTICES: &[Vertex] = &[
@@ -140,39 +79,25 @@ impl MprRenderContext {
     /// This initializes the global state that can be shared across multiple MPR views
     ///
     /// # Arguments
+    /// * `manager` - Pipeline manager for caching render pipelines
     /// * `device` - WGPU device for creating GPU resources
     ///
     /// # Returns
     /// A new MprRenderContext with initialized shared resources
-    pub fn new(device: &wgpu::Device, target_format: wgpu::TextureFormat) -> Self {
-        Self::new_with_format(device, target_format)
+    pub fn new(device: &wgpu::Device, queue: &wgpu::Queue) -> Self {
+        let target_format = crate::rendering::core::pipeline::get_swapchain_format()
+            .unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
+        Self::new_with_format(device, queue, target_format)
     }
 
-    /// Creates shared MPR resources for an explicit color attachment format.
-    pub fn new_with_format(device: &wgpu::Device, target_format: wgpu::TextureFormat) -> Self {
+    /// Creates shared MPR resources for the owner's explicit color attachment format.
+    pub fn new_with_format(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        target_format: wgpu::TextureFormat,
+    ) -> Self {
         // Create bind group layout for 3D texture and sampler
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D3,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-                label: Some("mpr_texture_bind_group_layout"),
-            });
+        let texture_bind_group_layout = create_texture_bind_group_layout_addseg(device);
 
         // Create bind group layouts for uniforms
         let vertex_bind_group_layout =
@@ -190,20 +115,7 @@ impl MprRenderContext {
                 label: Some("mpr_vertex_uniform_bind_group_layout"),
             });
 
-        let fragment_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-                label: Some("mpr_fragment_uniform_bind_group_layout"),
-            });
+        let fragment_bind_group_layout = create_uniform_bind_group_layout(device, None);
 
         // Create render pipeline directly
         let bgls: [&wgpu::BindGroupLayout; 3] = [
@@ -211,6 +123,7 @@ impl MprRenderContext {
             &vertex_bind_group_layout,
             &fragment_bind_group_layout,
         ];
+
         let render_pipeline = Arc::new(create_texture_quad_pipeline(
             device,
             bgls,
@@ -233,6 +146,14 @@ impl MprRenderContext {
         });
         let num_indices = INDICES.len() as u32;
 
+        // Build the 1x1x1 "empty" segmentation texture used as the default
+        // for binding 2/3 until an AI result has been uploaded. A single
+        // zero byte is uploaded so the texture is a valid R8Uint image.
+        let default_seg_content = Arc::new(
+            RenderContent::from_labels_r8(device, queue, &[0u8], "MPR Default Seg", 1, 1, 1)
+                .expect("failed to build default seg content"),
+        );
+
         log::info!("MprRenderContext initialized with shared GPU resources");
 
         Self {
@@ -243,6 +164,7 @@ impl MprRenderContext {
             vertex_buffer,
             index_buffer,
             num_indices,
+            default_seg_content,
         }
     }
 }

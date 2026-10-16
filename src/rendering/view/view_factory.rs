@@ -13,8 +13,8 @@ use log::{debug, info};
 use std::sync::{Arc, OnceLock};
 
 use crate::core::WindowLevel;
-use crate::rendering::view::mesh::basic_mesh_context::BasicMeshContext;
-use crate::rendering::view::mesh::mesh::Mesh;
+use crate::rendering::view::mesh::basic_mesh_context::MultiMeshContext;
+use crate::rendering::view::mesh::mesh::MeshRenderContext;
 use crate::rendering::view::mesh::mesh_view::MeshView;
 use crate::rendering::view::mip::{MipView, MipViewWgpuImpl};
 use crate::rendering::view::mpr::mpr_render_context::MprRenderContext;
@@ -40,7 +40,7 @@ pub trait ViewFactory {
     /// camera settings and rendering pipeline.
     fn create_mesh_view(
         &self,
-        mesh: &Mesh,
+        vol: &CTVolume,
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>>;
@@ -111,7 +111,6 @@ pub trait ViewFactory {
     fn create_mesh_view_with_content(
         &self,
         render_content: Arc<RenderContent>,
-        mesh: &Mesh,
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>>;
@@ -123,7 +122,7 @@ impl ViewFactory for MockViewFactory {
     /// Function-level comment: Mesh view creation stub returning an error for test scenarios
     fn create_mesh_view(
         &self,
-        _mesh: &Mesh,
+        _vol: &CTVolume,
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
@@ -186,7 +185,6 @@ impl ViewFactory for MockViewFactory {
     fn create_mesh_view_with_content(
         &self,
         _render_content: Arc<RenderContent>,
-        _mesh: &Mesh,
         _pos: (i32, i32),
         _size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
@@ -208,10 +206,10 @@ pub struct DefaultViewFactory {
     surface_format: wgpu::TextureFormat,
     use_float_volume_texture: bool,
     mpr_context: OnceLock<Arc<MprRenderContext>>,
+    mpr_source: std::sync::Mutex<Option<(usize, usize, std::sync::Weak<CTVolume>)>>,
 }
 
 impl DefaultViewFactory {
-    /// Attachment format used when constructing views for this factory's surface.
     pub fn surface_format(&self) -> wgpu::TextureFormat {
         self.surface_format
     }
@@ -229,15 +227,19 @@ impl DefaultViewFactory {
             surface_format,
             use_float_volume_texture,
             mpr_context: OnceLock::new(),
+            mpr_source: std::sync::Mutex::new(None),
         }
     }
 
     /// Immutable MPR resources shared by all views created or rebound by this factory.
     pub fn mpr_render_context(&self) -> Arc<MprRenderContext> {
-        Arc::clone(
-            self.mpr_context
-                .get_or_init(|| Arc::new(MprRenderContext::new(&self.device, self.surface_format))),
-        )
+        Arc::clone(self.mpr_context.get_or_init(|| {
+            Arc::new(MprRenderContext::new_with_format(
+                &self.device,
+                &self.queue,
+                self.surface_format,
+            ))
+        }))
     }
 
     /// Whether a refresh can reuse this factory's immutable GPU resources.
@@ -281,27 +283,20 @@ impl ViewFactory for DefaultViewFactory {
     /// Function-level comment: Create a MeshView with a fresh BasicMeshContext and default rotation enabled
     fn create_mesh_view(
         &self,
-        mesh: &Mesh,
+        vol: &CTVolume,
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        use crate::rendering::view::View as _;
-
         let mut mesh_view = MeshView::new();
         mesh_view.set_rotation_enabled(false);
         info!("[DefaultViewFactory] Mesh rotation enabled");
 
-        // Create fresh BasicMeshContext for each mesh view
-        let ctx = BasicMeshContext::new(
-            &self.device,
-            &self.queue,
-            mesh,
-            true, // Enable depth testing for proper 3D rendering
-            self.surface_format,
-        );
-        let ctx_arc = Arc::new(ctx);
-
-        mesh_view.attach_context(ctx_arc);
+        let render_content = match self.build_render_content(vol) {
+            Ok(rc) => rc,
+            Err(e) => return Err(e),
+        };
+        let vol_ctx = MeshRenderContext::new(&self.device, self.surface_format, render_content);
+        mesh_view.attach_context(Arc::new(vol_ctx));
         mesh_view.move_to(pos);
         mesh_view.resize(size);
         Ok(Box::new(mesh_view))
@@ -317,13 +312,14 @@ impl ViewFactory for DefaultViewFactory {
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
         let render_content = self.build_render_content(vol)?;
 
+        // Shared render context for MPR views
         let render_context = self.mpr_render_context();
 
         // Configure WindowLevel defaults; mirror State logic where appropriate
         let mut winlev = WindowLevel::new();
         let _ = winlev.apply_bone_preset();
 
-        let view = MprView::new(
+        let mut view = MprView::new(
             render_context,
             &self.device,
             render_content,
@@ -336,6 +332,7 @@ impl ViewFactory for DefaultViewFactory {
             size,
         );
 
+        view.set_target_format(self.surface_format);
         info!(
             "[DefaultViewFactory] Created MPR view for {:?} at {:?} size {:?}",
             orientation, pos, size
@@ -375,13 +372,26 @@ impl ViewFactory for DefaultViewFactory {
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
+        // Shared render context for MPR views
         let render_context = self.mpr_render_context();
 
         // Configure WindowLevel defaults; mirror State logic where appropriate
         let mut winlev = WindowLevel::new();
         let _ = winlev.apply_bone_preset();
 
-        let view = MprView::new(
+        let key = (
+            Arc::as_ptr(&render_content) as usize,
+            vol.voxel_data().as_ptr() as usize,
+        );
+        let mut cache = self.mpr_source.lock().unwrap_or_else(|e| e.into_inner());
+        let source = cache
+            .as_ref()
+            .filter(|(content, voxels, _)| (*content, *voxels) == key)
+            .and_then(|(_, _, source)| source.upgrade())
+            .unwrap_or_else(|| Arc::new(vol.clone()));
+        *cache = Some((key.0, key.1, Arc::downgrade(&source)));
+        drop(cache);
+        let mut view = MprView::new_with_source(
             render_context,
             &self.device,
             render_content,
@@ -392,8 +402,10 @@ impl ViewFactory for DefaultViewFactory {
             [0.0, 0.0, 0.0],
             pos,
             size,
+            source,
         );
 
+        view.set_target_format(self.surface_format);
         info!(
             "[DefaultViewFactory] Created MPR view (with_content) for {:?} at {:?} size {:?}",
             orientation, pos, size
@@ -408,8 +420,6 @@ impl ViewFactory for DefaultViewFactory {
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        use crate::rendering::view::View as _;
-
         let mip_wgpu_impl = MipViewWgpuImpl::new(render_content, &self.device, self.surface_format);
 
         let mut mip_view = MipView::new(Arc::new(mip_wgpu_impl));
@@ -425,34 +435,26 @@ impl ViewFactory for DefaultViewFactory {
 
     fn create_mesh_view_with_content(
         &self,
-        _render_content: Arc<RenderContent>,
-        mesh: &Mesh,
+        render_content: Arc<RenderContent>,
         pos: (i32, i32),
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
-        use crate::rendering::view::View as _;
-
         let mut mesh_view = MeshView::new();
         mesh_view.set_rotation_enabled(false);
         info!("[DefaultViewFactory] Mesh rotation disabled for consistent inspection");
 
-        let ctx = BasicMeshContext::new(&self.device, &self.queue, mesh, true, self.surface_format);
-        let ctx_arc = Arc::new(ctx);
-
-        mesh_view.attach_context(ctx_arc);
+        let vol_ctx = MeshRenderContext::new(&self.device, self.surface_format, render_content);
+        mesh_view.attach_context(Arc::new(vol_ctx));
         mesh_view.move_to(pos);
         mesh_view.resize(size);
 
-        // Initialize and attach orientation cube context (same as create_mesh_view)
-        let cube_mesh = crate::rendering::mesh::mesh::Mesh::unit_cube();
-        let cube_ctx = BasicMeshContext::new(
-            &self.device,
-            &self.queue,
-            &cube_mesh,
-            true,
-            self.surface_format,
-        );
-        mesh_view.attach_orientation_cube_context(Arc::new(cube_ctx));
+        let spine_ctx =
+            MultiMeshContext::new_with_format(&self.device, &self.queue, self.surface_format);
+        mesh_view.attach_spine_context(spine_ctx);
+
+        let needle_ctx =
+            MultiMeshContext::new_with_format(&self.device, &self.queue, self.surface_format);
+        mesh_view.attach_needle_context(needle_ctx);
 
         info!(
             "[DefaultViewFactory] Created Mesh view (with_content) at {:?} size {:?}",

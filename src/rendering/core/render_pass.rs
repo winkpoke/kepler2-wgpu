@@ -402,8 +402,9 @@ impl PassExecutor {
         F: FnMut(PassContext) -> Result<(), Box<dyn std::error::Error>>,
     {
         let frame_start_time = Instant::now();
-        // Each acquired surface image is fresh. Clear once, including an empty layout;
-        // later passes load this frame's content, never a previous presentation.
+        log::trace!("[FRAME_EXEC] Starting frame execution - Surface: {}x{}, Has mesh view: {}, Has MIP view: {}, Has MPR view: {}",
+                    surface_width, surface_height, has_mesh_view, has_mip_view, has_mpr_view);
+
         {
             let _clear = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Frame Background"),
@@ -574,10 +575,9 @@ impl PassExecutor {
         use crate::rendering::core::pipeline::get_mesh_depth_format;
 
         let start_time = Instant::now();
-        log::trace!("[MESH_PASS] Starting execution - Pass: '{}', Size: {}x{}, Target: Surface (direct), Depth: {}", 
+        log::trace!("[MESH_PASS] Starting execution - Pass: '{}', Size: {}x{}, Target: Surface (direct), Depth: {}",
                     descriptor.name, surface_width, surface_height, descriptor.uses_depth);
 
-        // Borrow the persistent attachment; no unused color target or per-frame view creation.
         let depth_view_opt = if descriptor.uses_depth {
             texture_pool.ensure_depth(
                 device,
@@ -604,8 +604,9 @@ impl PassExecutor {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(&descriptor.name),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: frame_view, // Render directly to surface
                 depth_slice: None,
+                view: frame_view, // Render directly to surface
+
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load, // Preserve existing content from previous passes (e.g., mesh rendering)
@@ -692,8 +693,9 @@ impl PassExecutor {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(&descriptor.name),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: frame_view,
                 depth_slice: None,
+                view: frame_view,
+
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load, // Preserve existing mesh content
@@ -768,8 +770,9 @@ impl PassExecutor {
         let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some(&descriptor.name),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: frame_view,
                 depth_slice: None,
+                view: frame_view,
+
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Load,

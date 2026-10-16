@@ -1,8 +1,7 @@
 use super::{patient::Patient, studyset::StudySet};
 use crate::data::medical_imaging::{
-    formats::mha::*,
+    formats::metaimage::*,
     metadata::{PixelData, PixelType},
-    MhdParser,
 };
 
 use anyhow::{anyhow, Result};
@@ -10,57 +9,14 @@ use chrono::Local;
 use dicom_core::{value::PrimitiveValue, DataElement, VR};
 use dicom_dictionary_std::tags;
 use dicom_object::{DefaultDicomObject, FileMetaTableBuilder, InMemDicomObject};
-use sha1::{Digest, Sha1};
 use std::path::PathBuf;
 use uuid::Uuid;
 
 /// generate dicom uid
 pub fn generate_uid() -> String {
     let uuid = Uuid::new_v4();
-    let mut hasher = Sha1::new();
-    hasher.update(uuid.as_bytes());
-    let hash = hasher.finalize();
-    let hash_num = u128::from_be_bytes([
-        hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7], hash[8], hash[9],
-        hash[10], hash[11], hash[12], hash[13], hash[14], hash[15],
-    ]);
-    format!(
-        "{}.{:03}.{:06}.{:04}.{:01}.{:01}.{:01}.{:03}.{:10}.{:10}.{:06}",
-        "1.2",
-        hash_num >> 112 & 0xFFF,
-        hash_num >> 96 & 0xFF_FF_FF,
-        hash_num >> 80 & 0xFFFF,
-        hash_num >> 64 & 0xF,
-        hash_num >> 48 & 0xF,
-        hash_num >> 32 & 0xF,
-        hash_num >> 16 & 0xFFF,
-        hash_num & 0xFF_FF_FF_FF_FF,
-        (hash_num >> 8) & 0xFF_FF_FF_FF_FF,
-        hash_num & 0xFF_FF_FF
-    )
-}
-
-/// Change DICOM UID based on a root UID
-pub fn change_dicom_uid(root: &str, twice: bool) -> String {
-    // Generate a new UUID and split the root into parts
-    let uuid = Uuid::new_v4();
     let uuid_num = uuid.as_u128();
-    let parts_root: Vec<&str> = root.split('.').collect();
-
-    let ten_digit_num = (uuid_num / 1_000_000) % 10_000_000_000;
-    let six_digit_num = uuid_num % 1_000_000;
-
-    // Combine all parts into final DICOM UID
-    if twice {
-        format!(
-            "{}.{}.{}",
-            parts_root[0..10].join("."),
-            ten_digit_num,
-            six_digit_num
-        )
-    } else {
-        format!("{}.{}", parts_root[0..11].join("."), six_digit_num)
-    }
+    format!("2.25.{}", uuid_num)
 }
 
 /// generate ct dicom
@@ -78,9 +34,10 @@ pub fn build_ct_dicom<S: DicomSink>(
     sink: &mut S,
 ) -> Result<String> {
     // generate series uid
-    let series_uid = change_dicom_uid(&study.uid, true);
+    let series_uid = generate_uid();
+    let frame_uid = generate_uid();
     let sop_class_uid = "1.2.840.10008.5.1.4.1.1.2"; // CT Image Storage
-    let sop_instance_uid = change_dicom_uid(&series_uid, false);
+    let sop_instance_uid = generate_uid();
 
     // generate meta
     let mut meta = FileMetaTableBuilder::new()
@@ -200,19 +157,17 @@ pub fn build_ct_dicom<S: DicomSink>(
 
     // generate image info
     obj.put(DataElement::new(
+        tags::FRAME_OF_REFERENCE_UID,
+        VR::UI,
+        PrimitiveValue::from(frame_uid.clone()),
+    ));
+    obj.put(DataElement::new(
         tags::PATIENT_POSITION,
         VR::CS,
         PrimitiveValue::from(patient_position.clone()),
     ));
     inject_image(
-        &mut obj,
-        &mut meta,
-        series_uid.clone(),
-        mha_path,
-        data_path,
-        slope,
-        intercept,
-        sink,
+        &mut obj, &mut meta, mha_path, data_path, slope, intercept, sink,
     )?;
 
     Ok(series_uid)
@@ -222,18 +177,13 @@ pub fn build_ct_dicom<S: DicomSink>(
 fn inject_image<S: DicomSink>(
     obj: &mut DefaultDicomObject,
     meta: &mut FileMetaTableBuilder,
-    series_uid: String,
     mha_path: &[u8],
     data_path: Option<&[u8]>,
     slope: f32,
     intercept: f32,
     sink: &mut S,
 ) -> Result<()> {
-    let medical_volume = if let Some(data_path) = data_path {
-        MhdParser::parse_by_bytes(mha_path, data_path)?
-    } else {
-        MhaParser::parse_bytes(mha_path)?
-    };
+    let medical_volume = MetaimageParser::parse_bytes(mha_path, data_path)?;
     let metadata = medical_volume.metadata;
 
     let col = metadata.dimensions[0];
@@ -259,13 +209,13 @@ fn inject_image<S: DicomSink>(
 
     // generate dicom slice
     for z in 0..depth {
-        let start = z * col * row * (16_usize / 8);
-        let end = start + col * row * (16_usize / 8);
+        let start = z * col * row * (16 as usize / 8);
+        let end = start + col * row * (16 as usize / 8);
         let buf = &buffer[start..end];
         let buf_vec: Vec<u8> = buf.to_vec();
 
         // generate sop instance uid
-        let sop_instance_uid = change_dicom_uid(&series_uid, false);
+        let sop_instance_uid = generate_uid();
 
         // calculate slice location and direction
         let dz = *spacing.get(2).unwrap_or(&1.0);
@@ -295,23 +245,6 @@ fn inject_image<S: DicomSink>(
                 ))
             }
         };
-
-        if z == 5 {
-            log::info!("➡️ CT 切片维度：col={}, row={}, depth={}", col, row, depth);
-            log::info!(
-                "➡️ CT 切片体素间距：dx={:.3}, dy={:.3}, dz={:.3}",
-                spacing[0],
-                spacing[1],
-                spacing[2]
-            );
-            log::info!(
-                "➡️ CT 切片位置：base={:?}, col_dir={:?}, row_dir={:?}",
-                base,
-                col_dir,
-                row_dir
-            );
-            log::info!("➡️ CT 切片位置起点：pos={:?}", pos);
-        }
 
         // save DICOM slice
         let filename = format!("CT_{:04}.dcm", z + 1);
@@ -364,8 +297,7 @@ fn write_ct_dicom_slice<S: DicomSink>(
         VR::UI,
         PrimitiveValue::from(sop_instance_uid.clone()),
     ));
-    let new_meta = meta
-        .clone()
+    let new_meta = FileMetaTableBuilder::from(meta.clone())
         .media_storage_sop_instance_uid(sop_instance_uid.clone())
         .build()
         .unwrap();
@@ -410,7 +342,7 @@ fn write_ct_dicom_slice<S: DicomSink>(
     )); // signed
 
     // update pixel spacing (DICOM: Row\Col = dy\dx)
-    let dx = spacing.first().copied().unwrap_or(1.0);
+    let dx = spacing.get(0).copied().unwrap_or(1.0);
     let dy = spacing.get(1).copied().unwrap_or(1.0);
     let dz = spacing.get(2).copied().unwrap_or(1.0);
 
@@ -524,15 +456,231 @@ impl MemSink {
     }
 }
 
-impl Default for MemSink {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl DicomSink for MemSink {
     fn save_slice(&mut self, filename: String, data: Vec<u8>) -> Result<()> {
         self.files.push((filename, data));
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! End-to-end tests for `build_ct_dicom`.
+    //!
+    //! The pipeline takes a MetaImage (MHA) volume in memory, lays it out
+    //! as a DICOM series, and pushes the resulting slices into a
+    //! [`DicomSink`]. The tests below build a synthetic checkerboard
+    //! pattern with 1 mm isotropic spacing, run it through the export
+    //! pipeline, and read the slices back to verify the round-trip.
+    //!
+    //! The full 512×512×512 case lives behind `#[ignore]` because it
+    //! touches ~1 GB of RAM while running. Invoke it on demand with:
+    //!
+    //! ```text
+    //! cargo test -p kepler-wgpu --lib \
+    //!     dicom::export_dicom::tests::exports_512_cube_checkerboard \
+    //!     -- --ignored --nocapture
+    //! ```
+
+    use super::*;
+    use crate::data::dicom::CTImage;
+    use std::path::PathBuf;
+
+    /// Build the header of a MetaImage (MHA) file describing an `Int16`
+    /// volume with 1.0 mm isotropic spacing and an identity transform
+    /// matrix. The pixel buffer is *not* appended; the caller is expected
+    /// to `extend` it with the raw `Int16` bytes afterwards.
+    fn build_mha_header(dim: [usize; 3]) -> Vec<u8> {
+        format!(
+            "ObjectType = Image\n\
+             NDims = 3\n\
+             DimSize = {dx} {dy} {dz}\n\
+             ElementType = MET_SHORT\n\
+             ElementSpacing = 1.0 1.0 1.0\n\
+             Offset = 0 0 0\n\
+             TransformMatrix = 1 0 0 0 1 0 0 0 1\n\
+             AnatomicalOrientation = RAI\n\
+             ElementDataFile = LOCAL\n",
+            dx = dim[0],
+            dy = dim[1],
+            dz = dim[2],
+        )
+        .into_bytes()
+    }
+
+    /// Little-endian `Int16` voxel buffer for a 1 mm checkerboard. With
+    /// the spacing above, every cell is a 1×1×1 mm cube; the parity of
+    /// `x + y + z` decides between the two HU values.
+    fn build_checkerboard_bytes(dim: [usize; 3]) -> Vec<u8> {
+        let voxels = dim[0] * dim[1] * dim[2];
+        let mut buf = Vec::with_capacity(voxels * 2);
+        let cell_size = 10;
+        for z in 0..dim[2] {
+            for y in 0..dim[1] {
+                for x in 0..dim[0] {
+                    let checker = (x / cell_size + y / cell_size + z / cell_size) % 2;
+                    let v: i16 = if checker == 0 { 0 } else { 1000 };
+                    buf.extend_from_slice(&v.to_le_bytes());
+                }
+            }
+        }
+        buf
+    }
+
+    fn sample_patient() -> Patient {
+        Patient {
+            patient_id: "TEST-001".to_string(),
+            name: "CHECKER^BOARD".to_string(),
+            birthdate: Some("19700101".to_string()),
+            sex: Some("O".to_string()),
+        }
+    }
+
+    fn sample_study() -> StudySet {
+        StudySet {
+            study_id: "STUDY-001".to_string(),
+            uid: "1.2.392.200036.9116.2.5.1.144.3437232930.1426478676.365119".to_string(),
+            patient_id: "TEST-001".to_string(),
+            date: "20260804".to_string(),
+            description: Some("1mm checkerboard".to_string()),
+        }
+    }
+
+    /// Fast CI-friendly check: a 16×16×16 checkerboard export produces
+    /// one DICOM slice per z-row, the slices carry the expected
+    /// dimensions, and the pixel buffer round-trips through the file IO
+    /// layer with the original `(x + y) % 2` pattern intact.
+    #[test]
+    fn build_ct_dicom_exports_checkerboard_volume() {
+        let dim = [16usize, 16, 16];
+        let mut mha = build_mha_header(dim);
+        mha.extend(build_checkerboard_bytes(dim));
+
+        let mut sink = MemSink::new();
+        let series_uid = build_ct_dicom(
+            &mha,
+            None,
+            &sample_patient(),
+            &sample_study(),
+            120.0,
+            200.0,
+            1.0,
+            0.0,
+            "HFS".to_string(),
+            "CT".to_string(),
+            &mut sink,
+        )
+        .expect("export should succeed");
+
+        assert_eq!(sink.files.len(), dim[2], "one slice per z-row");
+        assert!(
+            series_uid.starts_with("1.2."),
+            "series UID should keep the 1.2. root, got {series_uid}"
+        );
+
+        // Read the first slice back and verify dimensions + pattern.
+        let (_filename, bytes) = &sink.files[0];
+        let ct = CTImage::from_bytes(bytes.as_slice()).expect("slice must be a valid DICOM file");
+        assert_eq!(ct.rows as usize, dim[1]);
+        assert_eq!(ct.columns as usize, dim[0]);
+        assert_eq!(ct.pixel_data.len(), dim[0] * dim[1] * 2);
+
+        // For slice z=0 the parity reduces to (x + y) % 2.
+        let pixels = ct
+            .get_pixel_data()
+            .expect("pixels must be decodable as Int16");
+        assert_eq!(pixels.len(), dim[0] * dim[1]);
+        for y in 0..dim[1] {
+            for x in 0..dim[0] {
+                let expected = if (x + y) % 2 == 0 { 0 } else { 1000 };
+                let got = pixels[y * dim[0] + x];
+                assert_eq!(
+                    got, expected,
+                    "voxel ({x},{y},0) should be {expected}, got {got}"
+                );
+            }
+        }
+    }
+
+    /// Full 512×512×512×1 mm checkerboard export. The volume holds 134 M
+    /// voxels (~256 MB raw, ~1 GB peak while exporting) and produces
+    /// 512 DICOM slices, so the test is marked `#[ignore]` to keep
+    /// `cargo test` fast. Run on demand with:
+    ///
+    /// ```text
+    /// cargo test -p kepler-wgpu --lib \
+    ///     dicom::export_dicom::tests::exports_512_cube_checkerboard \
+    ///     -- --ignored --nocapture
+    /// ```
+    ///
+    /// The 512 slices are written to `target/dicom_export/` (relative
+    /// to the package root that `cargo test` runs in) so they can be
+    /// inspected afterwards with any DICOM viewer.
+    #[test]
+    #[ignore]
+    fn exports_512_cube_checkerboard() {
+        let dim = [512usize, 512, 512];
+        let mut mha = build_mha_header(dim);
+        mha.extend(build_checkerboard_bytes(dim));
+
+        // Write the resulting DICOM series to disk so the caller can
+        // inspect the slices after the run.
+        let out_dir = PathBuf::from(r"C:\user\dicoms\CT_test");
+        std::fs::create_dir_all(&out_dir).expect("create dicoms");
+
+        let mut sink = FsSink {
+            out_dir: out_dir.clone(),
+        };
+        let series_uid = build_ct_dicom(
+            &mha,
+            None,
+            &sample_patient(),
+            &sample_study(),
+            120.0,
+            200.0,
+            1.0,
+            0.0,
+            "HFS".to_string(),
+            "CT".to_string(),
+            &mut sink,
+        )
+        .expect("export should succeed");
+
+        // Verify 512 DICOM files were actually written to disk.
+        let written: Vec<_> = std::fs::read_dir(&out_dir)
+            .expect("read target/dicom_export")
+            .filter_map(Result::ok)
+            .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("dcm"))
+            .collect();
+        assert_eq!(
+            written.len(),
+            512,
+            "expected 512 DICOM slices on disk, found {}",
+            written.len()
+        );
+        assert!(
+            series_uid.starts_with("1.2."),
+            "series UID should keep the 1.2. root, got {series_uid}"
+        );
+
+        // Sanity-check the first slice: 512×512, 1.0 mm pixel spacing,
+        // 1 mm slice thickness, and 512×512×2 bytes of Int16 pixel data.
+        let first_path = out_dir.join("CT_0001.dcm");
+        let bytes = std::fs::read(&first_path).expect("read CT_0001.dcm from disk");
+        let ct = CTImage::from_bytes(bytes.as_slice()).expect("slice must be a valid DICOM file");
+        assert_eq!(ct.rows as usize, 512);
+        assert_eq!(ct.columns as usize, 512);
+        assert_eq!(ct.pixel_data.len(), 512 * 512 * 2);
+        let spacing = ct.pixel_spacing.expect("PixelSpacing must be set");
+        assert!((spacing.0 - 1.0).abs() < 1e-3);
+        assert!((spacing.1 - 1.0).abs() < 1e-3);
+        let thickness = ct.slice_thickness.expect("SliceThickness must be set");
+        assert!((thickness - 1.0).abs() < 1e-3);
+
+        eprintln!(
+            "512³ checkerboard DICOM series written to {} (series UID: {})",
+            out_dir.display(),
+            series_uid
+        );
     }
 }

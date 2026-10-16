@@ -1,0 +1,38 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Kepler v0.17 synthetic browser acceptance</title><style>body{font:14px sans-serif}#wasm-example,#replacement{width:800px;min-height:100px}pre{white-space:pre-wrap;max-height:300px;overflow:auto}button{margin:4px}</style></head><body>
+<h1>Synthetic Kepler browser checks</h1><button id="start">Start queued volume and run</button><button id="exercise">Exercise release controls</button><button id="advanced">Exercise meshes, overlays and resize</button><button id="replace">Replace canvas</button><button id="quit">Quit</button><p id="status">Ready</p><pre id="results"></pre><div id="wasm-example"></div><div id="replacement"></div>
+<script type="module">
+const output=document.getElementById('results'),status=document.getElementById('status');
+const record=(...v)=>{output.textContent+=v.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ')+'\n';output.scrollTop=output.scrollHeight};
+for(const kind of ['log','warn','error']){const old=console[kind];console[kind]=(...v)=>{record(kind,...v);old(...v)}}
+addEventListener('error',e=>record('ERROR',e.message));addEventListener('unhandledrejection',e=>record('REJECTION',String(e.reason)));
+record('Browser',navigator.userAgent,'GPU',!!navigator.gpu);
+const params=new URLSearchParams(location.search);
+if(params.has('no_webgpu'))Object.defineProperty(navigator,'gpu',{value:undefined,configurable:true});
+if(params.has('fail_adapter')&&navigator.gpu){const old=navigator.gpu.requestAdapter.bind(navigator.gpu);let n=0;navigator.gpu.requestAdapter=(...a)=>++n===2?Promise.reject(new Error('Synthetic adapter failure')):old(...a)}
+import init,* as K from './kepler_wgpu.js';await init();
+let app,canvas;
+const dims=[16,16,8];const voxels=new Uint8Array(4096);const v=new DataView(voxels.buffer);
+for(let z=0;z<8;z++)for(let y=0;y<16;y++)for(let x=0;x<16;x++)v.setInt16(2*(x+16*(y+16*z)),-1024+128*x+8*y+z,true);
+const header=new TextEncoder().encode(['ObjectType = Image','NDims = 3','BinaryData = True','BinaryDataByteOrderMSB = False','CompressedData = False','TransformMatrix = 1 0 0 0 1 0 0 0 1','Offset = 0 0 0','AnatomicalOrientation = HFS','ElementSpacing = 1 1 1','DimSize = 16 16 8','ElementType = MET_SHORT','ElementDataFile = LOCAL',''].join('\n'));
+const volume=()=>K.parse_mha_and_generate_ct(header,voxels,1,0);
+const action=(id,fn)=>document.getElementById(id).onclick=async()=>{try{status.textContent='Running '+id;await fn();status.textContent='Passed '+id}catch(e){record('FAIL '+id,String(e));status.textContent='Failed '+id}};
+action('start',async()=>{app=await K.get_render_app();record('GPU-ready construction resolved');canvas=app.get_glcanvas();canvas.load_data_from_ct_volume(await volume());record('Queued before run');await app.run();record('run returned to JavaScript');const wl=await canvas.get_window_level(0);record('window/level',Array.from(wl));if(wl.length!==2)throw Error('Window/level shape');const rot=JSON.parse(await canvas.get_rotation(0));record('quaternion',rot);if(rot.length!==4)throw Error('Quaternion shape');});
+action('exercise',async()=>{
+for(const mode of [0,1,2,3,4]){canvas.set_render_mode(mode,mode>2?3:undefined,mode>2?0:undefined,mode>2?2:undefined,0);record('layout',mode,Array.from(await canvas.get_window_level(0)));await new Promise(r=>setTimeout(r,200));if(mode===1){for(const projection of [0,1,2]){canvas.set_mip_mode(0,projection);await canvas.get_window_level(0);record('projection',projection)}}}
+canvas.set_render_mode(3,3,0,2,0);canvas.set_window_level(0,400);canvas.set_window_width(0,1500);canvas.set_pan(0,0.1,-0.1);canvas.set_scale(0,1.2);canvas.set_oblique_rotation_radians(0,0.1,0.2,0.3);canvas.set_ball_enabled(2,true);canvas.set_ball(2,0,0.5,0.5,0.5);canvas.apply_segmentation(new Uint8Array(2048).fill(1));canvas.set_segmentation_visibility(new Float32Array([0,1,1,1,1,1,1,1]));record('controls',Array.from(await canvas.get_window_level(0)));record('coordinates',Array.from(await canvas.get_screen_coord_in_mm(0,0.5,0.5,0)));record('OBJ split',await canvas.export_split_obj());});
+action('advanced',async()=>{
+canvas.set_render_mode(3,3,0,2,0);
+canvas.set_obj_mesh(new TextEncoder().encode('o synthetic_triangle\nv 1 1 1\nv 5 1 1\nv 1 5 1\nf 1 2 3\n'),1,0);
+canvas.set_new_needle(0,0,1,1,1,6,6,6,1,0,0);canvas.set_needle_radius(0,0,0.5);
+const labelBytes=new Uint8Array(512);for(let i=0;i<256;i++)new DataView(labelBytes.buffer).setInt16(2*i,1,true);
+const overlay=()=>K.parse_mha_and_generate_ct(new TextEncoder().encode(new TextDecoder().decode(header).replace('DimSize = 16 16 8','DimSize = 16 16 1')),labelBytes,1,0);canvas.load_dr_overlay(await overlay(),await overlay(),1);
+for(const scale of [0.1,4,1]){canvas.set_scale(0,scale);await canvas.get_window_level(0);await new Promise(r=>setTimeout(r,200));}
+canvas.resize(0,0);await canvas.get_window_level(0);canvas.resize(640,480);await canvas.get_window_level(0);
+await new Promise(r=>setTimeout(r,200));
+record('nonempty OBJ',await canvas.export_current_obj());const split=await canvas.export_split_obj();record('nonempty split',split);
+if(split.length!==2||split[0].length!==split[1].length||split[0].length<1)throw Error('nonempty parallel OBJ arrays');
+record('advanced restored getter',Array.from(await canvas.get_window_level(0)));
+});
+action('replace',async()=>{canvas.set_window_by_div_id('replacement',await volume());setTimeout(async()=>{try{record('replacement window/level',Array.from(await canvas.get_window_level(0)));status.textContent='Passed replacement getters'}catch(e){record('FAIL replacement',String(e));status.textContent='Failed replacement'}},1500);});
+action('quit',async()=>{canvas.quit();record('Quit dispatched');});
+</script></body></html>

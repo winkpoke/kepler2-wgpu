@@ -12,6 +12,8 @@ This map describes ownership, not an assertion that Rust enforces strict layer r
 | Data | Patient/study/series/image hierarchy, volume construction, MHA/MHD | [data](../../src/data/mod.rs), [DICOM repository](../../src/data/dicom/dicom_repo.rs), [CTVolume](../../src/data/ct_volume.rs) |
 | Rendering | GPU context, pipelines/passes, views, shaders, mesh resources | [graphics](../../src/rendering/core/graphics.rs), [passes](../../src/rendering/core/render_pass.rs), [view factory](../../src/rendering/view/view_factory.rs) |
 | Application | Data state, view orchestration, event loop, external controls | [App](../../src/application/app.rs), [AppModel](../../src/application/app_model.rs), [AppView](../../src/application/appview.rs), [RenderApp](../../src/application/render_app.rs) |
+| Server (native) | HTTP/WebSocket, volume and mesh export, AI segmentation | [server](../../src/server/mod.rs), [routes](../../src/server/routes.rs) |
+| Compute GPU (native) | Independent device owner mounted on ServerState.gpu | [compute](../../src/gpu/mod.rs) |
 | Acquisition | Remedy framing/state, retries, native/browser bindings | [protocol](../../src/acquisition/remedy.rs), [reference](../acquisition/remedy-serial-web.md) |
 
 The native binary starts at [main.rs](../../src/main.rs); the library/browser API
@@ -109,3 +111,11 @@ the existence of a spec is not proof that every scenario is implemented.
 Roadmaps and dependency-upgrade investigations belong in [active changes](../../openspec/changes/)
 and [dated research](../research/), not in the current ownership map. Older
 `doc/redering/`, view designs, and architecture analyses remain historical references.
+
+## Release viewer features
+
+The viewer retains multi-oblique MPR, shared camera controls, DR-to-PRO volumes,
+R8Uint segmentation overlays, DVR, spine/needle meshes, mesh overlays, marker
+controls, and OBJ exports. HTTP/WebSocket/CLI and browser bindings are separate
+contracts. The native compute owner and viewer renderer do not share devices.
+Release guidance snapshots are retained in `doc/archive/v017-guidance/`.

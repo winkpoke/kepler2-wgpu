@@ -342,3 +342,11 @@ Use `wgpu-profiler` or platform-specific tools:
 - **Current architecture**: [Ownership map](../architecture/ARCHITECTURE.md)
 - **Verification**: [Headless rendering checks](../testing/headless_gpu.md)
 - **Historical designs**: `doc/rendering/unified-render-architecture.md` (not current policy)
+
+## Release paths retained during replay
+
+`MeshView` renders DVR and retains separate spine/needle MultiMeshContext owners.
+MPR retains segmentation and mesh overlays, needle/ball markers, aliasing, and
+oblique controls. Dirty tracking includes their visual state. Legacy format and
+texture-pool helpers retain their public signatures; production owners pass
+explicit formats and use the bounded persistent depth cache.

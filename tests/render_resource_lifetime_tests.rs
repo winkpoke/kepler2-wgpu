@@ -171,6 +171,7 @@ fn failed_pass_is_not_reported_as_a_successfully_presentable_frame() {
 fn mesh_view_failure_is_not_reported_as_successful_drawing() {
     let gpu = Gpu::new();
     let mut view = MeshView::new();
+    view.resize((16, 16));
     gpu.validated("Unattached mesh view error", || {
         render_offscreen(&gpu, 16, 16, FORMAT, false, |pass| {
             let error = kepler_wgpu::Renderable::render(&mut view, pass).unwrap_err();
@@ -226,6 +227,8 @@ fn mpr_factory_shares_context_across_creation_paths_and_rebinding() {
             let mpr = view.as_any_mut().downcast_mut::<MprView>().unwrap();
             mpr.rebuild_gpu_resources_with_context(
                 &gpu.device,
+                &gpu.queue,
+                FORMAT,
                 replacement.mpr_render_context(),
                 None,
             );
@@ -303,7 +306,7 @@ fn mip_config_mut_and_mesh_controls_invalidate_without_a_setter_audit_gap() {
         assert!(mip.needs_redraw());
         let mut mesh = factory
             .create_mesh_view(
-                &kepler_wgpu::mesh::mesh::Mesh::unit_cube(),
+                &CTVolume::new((2, 2, 2), (1.0, 1.0, 1.0), vec![500; 8], Base::default()),
                 (0, 0),
                 (16, 16),
             )

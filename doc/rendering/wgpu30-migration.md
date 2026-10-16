@@ -1,8 +1,19 @@
 # wgpu 30 / Winit 0.30 caller migration
 
-**Status:** Current implementation reference. Native/browser runtime acceptance remains
-open in [the upgrade verification record](../../openspec/changes/upgrade-wgpu-winit/verification.md).
+**Status:** Current implementation reference. Release replay acceptance is recorded
+in [the candidate report](../../openspec/changes/rebase-dev-graphics-onto-v017/execution.md).
 Dependency versions/features come from `Cargo.toml` and `Cargo.lock`.
+
+The v0.17.0 viewer/browser controls, parameter order, replies, encoding variants,
+WindowLevel fields, and legacy format constructors remain compatible. The user's
+approved P2/P3 exceptions below affect low-level Rust rendering integrations.
+Public graphics fields/parameters now reference wgpu 30.0.1 and Winit 0.30.13;
+external integrations that pass those objects must align their dependencies.
+The viewer and server compute use independently owned devices.
+
+`MprRenderContext::new(device, queue)` and `MultiMeshContext::new(device, queue)`
+remain available. Production owners use additive `new_with_format` alternatives.
+The legacy global format helpers retain their published behavior.
 
 ## Rust rendering errors and pass lifetimes
 
@@ -103,10 +114,11 @@ presentation, including the `KEPLER_WGPU_BACKEND=gl` override on Wayland. Browse
 and headless instances continue to initialize without a native display handle.
 
 Browser WGSL enforces derivative uniformity more strictly than native Naga.
-MPR samples before its bounds return; MIP derives explicit sampling LOD from
-uniform ray-footprint derivatives before misses/loops. Do not suppress the
-uniformity diagnostic or force LOD zero: preserve the existing nearest
-minification and linear magnification filters. The explicit LOD also avoids
+MPR samples before its bounds return; MIP and DVR derive explicit sampling LOD from
+ray-footprint derivatives before misses/loops. Do not suppress the
+uniformity diagnostic or force LOD zero: preserve the release R16Float linear
+minification/magnification and packed RG8 nearest-minification/linear-magnification
+filters. The explicit LOD also avoids
 wgpu/Naga 30's Metal 3D-gradient lowering failure. Browser shader compilation is
 component evidence, not acceptance of the full viewer lifecycle or every backend.
 

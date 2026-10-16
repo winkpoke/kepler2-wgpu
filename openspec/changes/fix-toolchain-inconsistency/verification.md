@@ -138,10 +138,6 @@ Raw logs: `/tmp/kepler-toolchain-final-{native,lib,wasm}.log`. This is native ma
 - `npm run docs:check`: exit 0, 0 issues. `npm run specs:check`: exit 0, all 9 specs/changes validated. `npm run openspec -- validate fix-toolchain-inconsistency --strict`: exit 0. `git diff --check`: exit 0. `actionlint`: exit 0. The 11 new untracked files also passed a trailing-whitespace scan.
 - Final scope audit: changes are confined to the approved timing refactor/tests, repository toolchain and CI/setup/coverage provenance, current build/rendering/coverage docs, changelog, and this OpenSpec change. `Cargo.toml`, `Cargo.lock`, shaders, medical-domain source/spec contracts, `coverage_summary.py`, `coverage-scope.json`, 45%/80% thresholds, and `implement-test-coverage-plan` artifacts are unchanged. No archives or unrelated files were modified.
 
-## Post-merge verification on `dev`
-
-After merging with the concurrent `prefer-browser-webgpu` change, combined-tree verification also passed: `cargo check --locked --all-targets` (exit 0); `cargo test --locked --lib` (72 passed); `cargo check --locked --lib --target wasm32-unknown-unknown` (exit 0); and `KEPLER_REQUIRE_GPU_TESTS=1 WGPU_BACKEND=metal RUST_LOG=info cargo test --locked -- --nocapture` (348 passed, 0 failed, 23 ignored across 28 summaries; Apple M5 IntegratedGpu/Metal). `npm run docs:check`, Python 3.11 `npm run docs:test` (47 passed), `npm run specs:check` (10/10), `actionlint`, and diff checks also passed. Logs: `/tmp/kepler-toolchain-merged-{native,lib,wasm,full-gpu,docs-check,docs-test,specs-check,actionlint,diff-check}.log`.
-
 ## Outstanding external checks
 
 Hosted GitHub Actions have not run. The new strict-Clippy job and existing coverage gate are expected to remain red on the recorded local results (Clippy has baseline errors; valid coverage is 43.11% overall / 64.68% medical against unchanged thresholds). Manual native interaction and browser execution are unperformed. No live acquisition/device commands were sent.

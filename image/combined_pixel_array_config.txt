@@ -1,7 +1,0 @@
-row: 512
-col: 512
-intercept: 0.0
-slope: 1
-length: 10
-win: 350
-level: 40

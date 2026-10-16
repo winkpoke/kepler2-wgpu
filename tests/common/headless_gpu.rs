@@ -19,7 +19,7 @@ impl Gpu {
             flags: wgpu::InstanceFlags::VALIDATION,
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        let adapter = futures::executor::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             compatible_surface: None,
             force_fallback_adapter: false,
             power_preference: wgpu::PowerPreference::LowPower,
@@ -27,9 +27,9 @@ impl Gpu {
         }))
         .expect("Headless GPU tests require an adapter; install Mesa lavapipe on Linux and set WGPU_BACKEND=vulkan. These tests must not silently skip.");
         let adapter_info = adapter.get_info();
-        eprintln!("Headless test adapter: {adapter_info:?}");
+        log::info!("Headless test adapter: {adapter_info:?}");
         let (device, queue) =
-            pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
+            futures::executor::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
                 .unwrap_or_else(|error| panic!("Requesting device on {adapter_info:?}: {error}"));
         Self {
             device: std::sync::Arc::new(device),
@@ -45,7 +45,7 @@ impl Gpu {
         self.device
             .poll(wgpu::PollType::wait_indefinitely())
             .expect("GPU validation polling failed");
-        let error = pollster::block_on(scope.pop());
+        let error = futures::executor::block_on(scope.pop());
         assert!(
             error.is_none(),
             "{label} on {:?}: {error:?}",
@@ -130,8 +130,9 @@ pub fn render_offscreen(
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("Headless rendering correctness"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: color_view,
                 depth_slice: None,
+                view: color_view,
+
                 resolve_target: None,
                 ops: wgpu::Operations {
                     // Non-grayscale clear makes missing/partial draws visible to assertions.

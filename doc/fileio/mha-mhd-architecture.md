@@ -519,9 +519,13 @@ impl From<MedicalVolume> for CTVolume {
 The architecture supports easy addition of new medical imaging formats:
 
 1. **Implement `MedicalImageParser` trait**
-2. **Register parser in `FormatRegistry`**
+2. **Register the parser in a format registry**
 3. **Add format-specific validation**
 4. **Update documentation**
+
+> ⚠️ **Not implemented yet**: there is no `FormatRegistry` type in the codebase. Format
+> dispatch is currently explicit (MHA/MHD vs DICOM call sites), not registry-driven. Adding a
+> registry is part of this extensibility plan, not existing behaviour.
 
 ### Potential Future Formats
 - **NIfTI**: Neuroimaging Informatics Technology Initiative

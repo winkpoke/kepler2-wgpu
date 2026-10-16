@@ -150,50 +150,48 @@ impl ImageMetadata {
             }
         };
 
-        let spacing = Self::parse_floats(kv.get("ElementSpacing").ok_or_else(|| {
-            MedicalImagingError::UnsupportedFormat {
-                format: format!(
-                    "ElementSpacing: {}",
-                    kv.get("ElementSpacing").unwrap_or(&"".to_string())
-                ),
+        let spacing = match kv.get("ElementSpacing") {
+            Some(v) => Self::parse_floats(v).map_err(|e| {
+                MedicalImagingError::UnsupportedFormat {
+                    format: format!("ElementSpacing: {}", e),
+                }
+            })?,
+            None => {
+                warn!("MHA header missing ElementSpacing, defaulting spacing to (1, 1, 1)");
+                vec![1.0, 1.0, 1.0]
             }
-        })?)
-        .map_err(|e| MedicalImagingError::UnsupportedFormat {
-            format: format!("ElementSpacing: {}", e),
-        })?;
-        let offset = Self::parse_floats(kv.get("Offset").ok_or_else(|| {
-            MedicalImagingError::UnsupportedFormat {
-                format: format!("Offset: {}", kv.get("Offset").unwrap_or(&"".to_string())),
+        };
+        let offset = match kv.get("Offset") {
+            Some(v) => Self::parse_floats(v).map_err(|e| {
+                MedicalImagingError::UnsupportedFormat {
+                    format: format!("Offset: {}", e),
+                }
+            })?,
+            None => {
+                warn!("MHA header missing Offset, defaulting offset to (0, 0, 0)");
+                vec![0.417, 0.417, 0.0]
             }
-        })?)
-        .map_err(|e| MedicalImagingError::UnsupportedFormat {
-            format: format!("Offset: {}", e),
-        })?;
-        let transform = Self::parse_floats(kv.get("TransformMatrix").ok_or_else(|| {
-            MedicalImagingError::UnsupportedFormat {
-                format: format!(
-                    "TransformMatrix: {}",
-                    kv.get("TransformMatrix").unwrap_or(&"".to_string())
-                ),
+        };
+        let transform = match kv.get("TransformMatrix") {
+            Some(v) => Self::parse_floats(v).map_err(|e| {
+                MedicalImagingError::UnsupportedFormat {
+                    format: format!("TransformMatrix: {}", e),
+                }
+            })?,
+            None => {
+                warn!("MHA header missing TransformMatrix, defaulting to identity");
+                vec![1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
             }
-        })?)
-        .map_err(|e| MedicalImagingError::UnsupportedFormat {
-            format: format!("TransformMatrix: {}", e),
-        })?;
+        };
         let orientation = Self::orientation_dirs(transform);
 
-        let anatomical_orientation = kv
-            .get("AnatomicalOrientation")
-            .ok_or_else(|| MedicalImagingError::UnsupportedFormat {
-                format: format!(
-                    "AnatomicalOrientation: {}",
-                    kv.get("AnatomicalOrientation").unwrap_or(&"".to_string())
-                ),
-            })?
-            .to_string();
-
-        let anatomical_orientation = anatomical_orientation.as_str();
-        let patient_position = PatientPosition::from_str(anatomical_orientation);
+        let patient_position = match kv.get("AnatomicalOrientation") {
+            Some(v) => PatientPosition::from_str(v),
+            None => {
+                warn!("MHA header missing AnatomicalOrientation, defaulting to HFS");
+                PatientPosition::HFS
+            }
+        };
 
         let element_data_file = kv
             .get("ElementDataFile")

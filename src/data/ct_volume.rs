@@ -1,13 +1,11 @@
 #![allow(dead_code)]
 
+use crate::core::coord::Base;
 use anyhow::Result;
+use glam::Mat4;
 use std::fmt;
-
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
-
-use crate::core::coord::Base;
-use glam::Mat4;
 
 // Define the CTVolume struct to hold 3D data
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -15,8 +13,7 @@ use glam::Mat4;
 pub struct CTVolume {
     pub(crate) dimensions: (usize, usize, usize), // (rows, columns, number of slices)
     pub(crate) voxel_spacing: (f32, f32, f32),    // (spacing_x, spacing_y, spacing_z)
-    // pub(crate) voxel_data: Vec<Vec<i16>>, // 3D voxel data flattened into slices
-    pub(crate) voxel_data: Vec<i16>, // 3D voxel data
+    pub(crate) voxel_data: Vec<i16>,              // 3D voxel data
     pub(crate) base: Base,
 }
 
@@ -46,6 +43,23 @@ impl CTVolume {
         }
     }
 
+    pub fn slice(&self, slice: usize) -> Result<Vec<u16>, String> {
+        if slice >= self.dimensions.2 {
+            return Err(format!(
+                "slice index {} out of range (depth = {})",
+                slice, self.dimensions.2
+            ));
+        }
+        let stride = self.dimensions.0 * self.dimensions.1;
+        let start = slice * stride;
+        let end = start + stride;
+        let data: Vec<u16> = self.voxel_data[start..end]
+            .iter()
+            .map(|x| *x as u16)
+            .collect();
+        Ok(data)
+    }
+
     pub fn dimensions(&self) -> (usize, usize, usize) {
         self.dimensions
     }
@@ -58,8 +72,122 @@ impl CTVolume {
         &self.voxel_data
     }
 
+    pub fn set_voxel_data(&mut self, new_data: Vec<i16>) {
+        self.voxel_data = new_data;
+    }
+
+    /// Rotate the voxel data 180 degrees in the XY (in-plane) axis.
+    pub fn rotate_180_xy(&mut self) {
+        let (rows, cols, slices) = self.dimensions;
+        let slice_len = rows * cols;
+        if slice_len == 0 {
+            return;
+        }
+        for z in 0..slices {
+            let start = z * slice_len;
+            let end = start + slice_len;
+            self.voxel_data[start..end].reverse();
+        }
+    }
+
     pub fn base(&self) -> &Base {
         &self.base
+    }
+
+    pub fn get_voxel(&self, x: usize, y: usize, z: usize) -> Option<i16> {
+        let (rows, cols, _slices) = self.dimensions;
+        let idx = z * rows * cols + y * cols + x;
+        self.voxel_data.get(idx).copied()
+    }
+
+    /// Downsample XY plane by 2x using 2x2 average pooling.
+    pub fn downsample_2x(&self) -> CTVolume {
+        let (rows, cols, slices) = self.dimensions;
+
+        let new_rows = rows / 2;
+        let new_cols = cols / 2;
+
+        if new_rows == 0 || new_cols == 0 {
+            return self.clone();
+        }
+
+        let new_data_len = new_rows * new_cols * slices;
+        let mut new_data = Vec::with_capacity(new_data_len);
+
+        // new_rows = rows/2, new_cols = cols/2 (integer division) guarantee
+        // y0=2y, y1=2y+1 < rows and x0=2x, x1=2x+1 < cols for all y<x in range,
+        // so the 2x2 source block is always fully present — no per-pixel bounds checks needed.
+        for z in 0..slices {
+            let z_off = z * rows * cols;
+            for y in 0..new_rows {
+                let y0 = z_off + 2 * y * cols;
+                // One slice covers two full rows (row y and row y+1)
+                let pair = &self.voxel_data[y0..y0 + 2 * cols];
+                for x in 0..new_cols {
+                    let base = 2 * x;
+                    let sum = pair[base] as i32
+                        + pair[base + 1] as i32
+                        + pair[cols + base] as i32
+                        + pair[cols + base + 1] as i32;
+                    // Use /4 (truncation toward zero) rather than >>2 to keep correct
+                    // behavior for negative i16 averages.
+                    new_data.push((sum / 4) as i16);
+                }
+            }
+        }
+
+        let (sx, sy, sz) = self.voxel_spacing;
+
+        let mut new_base = self.base.clone();
+        let mut m = new_base.matrix;
+        m.x_axis = m.x_axis * 2.0;
+        m.y_axis = m.y_axis * 2.0;
+        new_base.matrix = m;
+
+        CTVolume::new(
+            (new_rows, new_cols, slices),
+            (sx * 2.0, sy * 2.0, sz),
+            new_data,
+            new_base,
+        )
+    }
+
+    pub fn upscale_bilinear(&self, scale: f32) -> Vec<i16> {
+        let src = &self.voxel_data;
+        let src_width = self.dimensions.0;
+        let src_height = self.dimensions.1;
+
+        let dst_width = (src_width as f32 * scale).round() as usize;
+        let dst_height = (src_height as f32 * scale).round() as usize;
+
+        let mut dst = vec![0i16; dst_width * dst_height];
+
+        for y in 0..dst_height {
+            let fy = y as f32 / scale;
+            let y0 = fy.floor() as usize;
+            let y1 = (y0 + 1).min(src_height - 1);
+            let wy = fy - y0 as f32;
+
+            for x in 0..dst_width {
+                let fx = x as f32 / scale;
+                let x0 = fx.floor() as usize;
+                let x1 = (x0 + 1).min(src_width - 1);
+                let wx = fx - x0 as f32;
+
+                let p00 = src[y0 * src_width + x0] as f32;
+                let p10 = src[y0 * src_width + x1] as f32;
+                let p01 = src[y1 * src_width + x0] as f32;
+                let p11 = src[y1 * src_width + x1] as f32;
+
+                let top = p00 * (1.0 - wx) + p10 * wx;
+                let bottom = p01 * (1.0 - wx) + p11 * wx;
+                let value = top * (1.0 - wy) + bottom * wy;
+
+                dst[y * dst_width + x] = value.round().clamp(0.0, 255.0) as i16;
+            }
+        }
+
+        dst
     }
 }
 

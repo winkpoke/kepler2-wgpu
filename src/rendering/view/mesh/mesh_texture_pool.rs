@@ -19,6 +19,7 @@ struct CachedDepth {
 pub struct MeshTexturePool {
     depth: Option<CachedDepth>,
     allocations: u64,
+    legacy_color: Option<(wgpu::Texture, wgpu::TextureView)>,
 }
 
 impl MeshTexturePool {
@@ -114,6 +115,74 @@ impl MeshTexturePool {
     /// Number of depth texture/view pairs allocated by this pool, for diagnostics.
     pub fn allocation_count(&self) -> u64 {
         self.allocations
+    }
+
+    /// Legacy offscreen access. Production passes draw directly to the surface.
+    pub fn get_color_view(&self, key: &str) -> Option<&wgpu::TextureView> {
+        if key == "mesh_offscreen" {
+            self.legacy_color.as_ref().map(|(_, v)| v)
+        } else {
+            None
+        }
+    }
+
+    pub fn ensure_mesh_offscreen_texture(
+        &mut self,
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+    ) -> Option<&wgpu::TextureView> {
+        if width == 0 || height == 0 {
+            return None;
+        }
+        let matches = self.legacy_color.as_ref().is_some_and(|(texture, _)| {
+            texture.width() == width && texture.height() == height && texture.format() == format
+        });
+        if !matches {
+            let texture = device.create_texture(&wgpu::TextureDescriptor {
+                label: Some("Legacy mesh offscreen"),
+                size: wgpu::Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                    | wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            });
+            let view = texture.create_view(&Default::default());
+            self.legacy_color = Some((texture, view));
+        }
+        self.get_color_view("mesh_offscreen")
+    }
+
+    pub fn get_mesh_views(
+        &mut self,
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+        format: wgpu::TextureFormat,
+        use_depth: bool,
+    ) -> (Option<wgpu::TextureView>, Option<wgpu::TextureView>) {
+        self.ensure_textures(device, width, height, use_depth);
+        self.ensure_mesh_offscreen_texture(device, width, height, format);
+        let color = self
+            .legacy_color
+            .as_ref()
+            .map(|(t, _)| t.create_view(&Default::default()));
+        let depth = if use_depth {
+            self.depth
+                .as_ref()
+                .map(|d| d._texture.create_view(&Default::default()))
+        } else {
+            None
+        };
+        (color, depth)
     }
 
     /// Releases the cached attachment, including when no mesh views remain.

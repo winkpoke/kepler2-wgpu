@@ -340,6 +340,62 @@ mod dicom_metadata_validation_tests {
     }
 
     #[test]
+    fn test_patient_position_anatomical_orientation_codes() {
+        // MetaImage AnatomicalOrientation: the 3-letter code follows
+        // conventions encoded in `PatientPosition::from_str`. Each
+        // orientation letter is mapped to a standard position as
+        // documented in `src/data/medical_imaging/metadata/image_info.rs`.
+        let cases = [
+            // Head First Supine (HFS)
+            ("LPS", PatientPosition::HFS),
+            ("RAI", PatientPosition::HFS),
+            ("LAI", PatientPosition::HFS),
+            ("RPS", PatientPosition::HFS),
+            ("AIL", PatientPosition::HFS),
+            ("PIL", PatientPosition::HFS),
+            ("AIR", PatientPosition::HFS),
+            ("PIR", PatientPosition::HFS),
+            // Head First Prone (HFP)
+            ("RAS", PatientPosition::HFP),
+            ("RPI", PatientPosition::HFP),
+            ("LAS", PatientPosition::HFP),
+            ("LPI", PatientPosition::HFP),
+            // Feet First Supine (FFS)
+            ("RSA", PatientPosition::FFS),
+            ("LSP", PatientPosition::FFS),
+            ("LSA", PatientPosition::FFS),
+            ("RSP", PatientPosition::FFS),
+            // Feet First Prone (FFP)
+            ("RPA", PatientPosition::FFP),
+            ("LIA", PatientPosition::FFP),
+            ("LPA", PatientPosition::FFP),
+            ("RIA", PatientPosition::FFP),
+            // Head First Decubitus Right (HFDR)
+            ("ARI", PatientPosition::HFDR),
+            ("PRI", PatientPosition::HFDR),
+            // Head First Decubitus Left (HFDL)
+            ("ALI", PatientPosition::HFDL),
+            ("PLI", PatientPosition::HFDL),
+            // Feet First Decubitus Right (FFDR)
+            ("ARS", PatientPosition::FFDR),
+            ("PRS", PatientPosition::FFDR),
+            // Feet First Decubitus Left (FFDL)
+            ("ALS", PatientPosition::FFDL),
+            ("PLS", PatientPosition::FFDL),
+        ];
+
+        for (code, expected) in cases {
+            assert_eq!(
+                PatientPosition::from_str(code),
+                expected,
+                "orientation code {} should map to {}",
+                code,
+                expected
+            );
+        }
+    }
+
+    #[test]
     fn test_missing_optional_fields() {
         let (_patient, _study, _series, images) = common::create_missing_optional_fields_fixture();
 

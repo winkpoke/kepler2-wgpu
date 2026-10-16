@@ -1,8 +1,6 @@
 use anyhow::Result;
-use std::sync::{
-    atomic::{AtomicUsize, Ordering},
-    Arc,
-};
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::Arc;
 
 #[cfg(not(target_arch = "wasm32"))]
 use tokio::fs::{self, File};
@@ -12,6 +10,7 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 
 use super::*;
+use dicom_object::{FileDicomObject, InMemDicomObject};
 
 /// Parses DICOM files from a list of directories and constructs a `DicomRepo`.
 ///
@@ -89,13 +88,11 @@ pub async fn parse_dcm_directories(directories: Vec<&str>) -> Result<DicomRepo> 
 pub async fn parse_dcm_files(file_paths: Vec<std::path::PathBuf>) -> Result<DicomRepo> {
     // Shared repository and counter tracker
     let repo = Arc::new(Mutex::new(DicomRepo::new()));
-    let count = Arc::new(AtomicUsize::new(0));
 
     // Process files concurrently
     let mut tasks = vec![];
     for file_path in file_paths {
         let repo_clone = Arc::clone(&repo);
-        let count_clone = Arc::clone(&count);
 
         let task: tokio::task::JoinHandle<Result<(), anyhow::Error>> = tokio::spawn(async move {
             // Open the file asynchronously
@@ -111,11 +108,28 @@ pub async fn parse_dcm_files(file_paths: Vec<std::path::PathBuf>) -> Result<Dico
                 anyhow::Error::new(err)
             })?;
 
-            // Parse the DICOM data outside of the lock
-            let parsed_patient = Patient::from_bytes(&buffer);
-            let parsed_study = StudySet::from_bytes(&buffer);
-            let parsed_series = ImageSeries::from_bytes(&buffer);
-            let parsed_ct_image = CTImage::from_bytes(&buffer);
+            // Parse the DICOM data outside of the lock.
+            // Parse each file ONCE into a `FileDicomObject`, then extract every
+            // domain struct from that single object. This avoids the previous
+            // 4x re-parsing (Patient/Study/Series/CTImage each called
+            // `FileDicomObject::from_reader` on the same bytes).
+            let dicom_obj: FileDicomObject<InMemDicomObject> =
+                match FileDicomObject::from_reader(&buffer[..]) {
+                    Ok(obj) => obj,
+                    Err(err) => {
+                        eprintln!(
+                            "Error parsing DICOM file {}: {}",
+                            file_path.display(),
+                            err
+                        );
+                        return Ok(());
+                    }
+                };
+
+            let parsed_patient = Patient::from_dicom_object(&dicom_obj);
+            let parsed_study = StudySet::from_dicom_object(&dicom_obj);
+            let parsed_series = ImageSeries::from_dicom_object(&dicom_obj);
+            let parsed_ct_image = CTImage::from_dicom_object(&dicom_obj);
 
             // Update the repository with parsed data
             let mut repo = repo_clone.lock().await;
@@ -132,8 +146,7 @@ pub async fn parse_dcm_files(file_paths: Vec<std::path::PathBuf>) -> Result<Dico
             if let Ok(ct_image) = parsed_ct_image {
                 repo.add_ct_image(ct_image);
             }
-
-            count_clone.fetch_add(1, Ordering::SeqCst);
+            
             Ok(())
         });
 
@@ -149,9 +162,13 @@ pub async fn parse_dcm_files(file_paths: Vec<std::path::PathBuf>) -> Result<Dico
         }
     }
 
-    // Extract the final repository and return it
-    let repo = repo.lock().await;
-    Ok((*repo).clone())
+    // Move the DicomRepo out of the Arc<Mutex<_>> without deep-cloning its pixel data.
+    // All task-local Arc clones have been dropped with their owning tasks, so the
+    // outer `repo` is the sole strong reference and try_unwrap is expected to succeed.
+    let repo = Arc::try_unwrap(repo)
+        .map_err(|_| anyhow::anyhow!("DicomRepo still has multiple strong references"))?
+        .into_inner();
+    Ok(repo)
 }
 
 //------------------------------ WASM Code -------------------------------------
@@ -178,11 +195,7 @@ use web_sys::{File, FileReader, ProgressEvent};
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[cfg(target_arch = "wasm32")]
 pub async fn parse_dcm_files_wasm(files: Array) -> Result<DicomRepo, JsValue> {
-    // use futures::channel::oneshot;
-    // use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
-    // use wasm_bindgen_futures::future_to_promise;
-    // use log::error;
 
     // Shared repository and counter
     let repo = Arc::new(Mutex::new(DicomRepo::new()));
@@ -199,40 +212,60 @@ pub async fn parse_dcm_files_wasm(files: Array) -> Result<DicomRepo, JsValue> {
             let promise = Promise::new(&mut |resolve, reject| {
                 let repo_clone = Arc::clone(&repo);
                 // The closure now correctly accepts the `ProgressEvent`
-                let closure = Closure::once_into_js(move |event: ProgressEvent| {
-                    let result: Result<(), String> = {
-                        let buffer = event
+                let closure = Closure::once_into_js(move |event: ProgressEvent| -> Result<(), String> {
+                    // Parse and store the DICOM data
+                    let parse_result: Result<(), String> = (|| {
+                        let target = event
                             .target()
-                            .ok_or_else(|| JsValue::from("Failed to retrieve target"))?
-                            .dyn_into::<FileReader>()?
-                            .result()?;
-                        // .map_err(|| JsValue::from("Failed to retrieve file result"))?;
+                            .ok_or_else(|| "Failed to retrieve target".to_string())?;
+                        let reader: FileReader = target
+                            .dyn_into::<FileReader>()
+                            .map_err(|_| "Failed to cast to FileReader".to_string())?;
+                        let buffer = reader
+                            .result()
+                            .map_err(|e| format!("Failed to retrieve file result: {:?}", e))?;
 
                         let buffer = Uint8Array::new(&buffer).to_vec();
 
                         // Parse the DICOM and update repository
+                        let dicom_obj: FileDicomObject<InMemDicomObject> = FileDicomObject::from_reader(&buffer[..]).map_err(|err| format!("Failed to parse DICOM: {}", err))?;
+                        let parsed_patient = Patient::from_dicom_object(&dicom_obj);
+                        let parsed_study = StudySet::from_dicom_object(&dicom_obj);
+                        let parsed_series = ImageSeries::from_dicom_object(&dicom_obj);
+                        let parsed_ct_image = CTImage::from_dicom_object(&dicom_obj);
+
+                        // Update repository
                         let mut repo = repo_clone.lock().unwrap();
-                        if let Ok(patient) = Patient::from_bytes(&buffer) {
+                        if let Ok(patient) = parsed_patient {
                             repo.add_patient(patient);
                         }
-                        if let Ok(study) = StudySet::from_bytes(&buffer) {
+                        if let Ok(study) = parsed_study {
                             repo.add_study(study);
                         }
-                        if let Ok(series) = ImageSeries::from_bytes(&buffer) {
+                        if let Ok(series) = parsed_series {
                             repo.add_image_series(series);
                         }
-                        if let Ok(ct_image) = CTImage::from_bytes(&buffer) {
+                        if let Ok(ct_image) = parsed_ct_image {
                             repo.add_ct_image(ct_image);
                         }
 
                         Ok(())
-                    };
+                    })();
 
-                    // Resolve or reject the promise based on the result
-                    match result {
-                        Ok(_) => resolve.call0(&JsValue::NULL),
-                        Err(err) => reject.call0(&JsValue::from(err)),
+                    // Resolve or reject the promise based on the parse result
+                    match parse_result {
+                        Ok(_) => {
+                            resolve
+                                .call0(&JsValue::NULL)
+                                .map_err(|e| format!("resolve failed: {:?}", e))?;
+                        }
+                        Err(err) => {
+                            reject
+                                .call0(&JsValue::from(err))
+                                .map_err(|e| format!("reject failed: {:?}", e))?;
+                        }
                     }
+                    Ok(())
                 });
 
                 file_reader.set_onload(Some(closure.as_ref().unchecked_ref()));
@@ -249,9 +282,14 @@ pub async fn parse_dcm_files_wasm(files: Array) -> Result<DicomRepo, JsValue> {
     let all_promise = js_sys::Promise::all(&tasks.into_iter().collect::<Array>());
     wasm_bindgen_futures::JsFuture::from(all_promise).await?;
 
-    // Return the DicomRepo directly as a JsValue
-    let repo = repo.lock().map_err(|e| JsValue::from(e.to_string()))?;
-    Ok(repo.clone())
+    // Move the DicomRepo out of the Arc<Mutex<_>> without deep-cloning its pixel data.
+    // All Promise task closures have completed, so the Arc clones they held are
+    // already dropped and the outer `repo` is the sole strong reference.
+    let repo = Arc::try_unwrap(repo)
+        .map_err(|_| JsValue::from("DicomRepo still has multiple strong references"))?
+        .into_inner()
+        .map_err(|e| JsValue::from(format!("DicomRepo mutex poisoned: {}", e)))?;
+    Ok(repo)
 }
 
 /// Function-level comment: Parses common medical imaging files (MHA, MHD, etc.) for WASM
@@ -266,28 +304,17 @@ pub async fn parse_common_files_wasm(
     // Parse info parameters once
     let mut buf = vec![0u8; info.length() as usize];
     info.copy_to(&mut buf[..]);
-    let info_json = String::from_utf8(buf)
-        .map_err(|e| JsValue::from_str(&format!("UTF8 decode error: {}", e)))?;
-    let info: serde_json::Value = serde_json::from_str(&info_json)
-        .map_err(|e| JsValue::from_str(&format!("JSON parse error: {}", e)))?;
-    let slope = info["slope"]
-        .as_f64()
-        .map(|v| v as f32)
-        .ok_or(JsValue::from_str("Missing slope in info"))?;
-    let intercept = info["intercept"]
-        .as_f64()
-        .map(|v| v as f32)
-        .ok_or(JsValue::from_str("Missing intercept in info"))?;
-    log::info!(
-        "Medical imaging info: slope = {:?}, intercept = {:?}",
-        slope,
-        intercept
-    );
+    let info_json = String::from_utf8(buf).map_err(|e| JsValue::from_str(&format!("UTF8 decode error: {}", e)))?;
+    let info: serde_json::Value = serde_json::from_str(&info_json).map_err(|e| JsValue::from_str(&format!("JSON parse error: {}", e)))?;
+    let slope = info["slope"].as_f64().map(|v| v as f32).ok_or(JsValue::from_str("Missing slope in info"))?;
+    let intercept = info["intercept"].as_f64().map(|v| v as f32).ok_or(JsValue::from_str("Missing intercept in info"))?;
+    log::info!("Medical imaging info: slope = {:?}, intercept = {:?}", slope, intercept);
 
     // Collect and categorize medical imaging files
     let mut mha_files = Vec::new();
     let mut mhd_files = Vec::new();
     let mut raw_files = Vec::new();
+    let mut nii_files = Vec::new();
     let len = files.length() as usize;
 
     for idx in 0..len {
@@ -299,20 +326,19 @@ pub async fn parse_common_files_wasm(
             mha_files.push(file);
         } else if file_name.ends_with(".mhd") {
             mhd_files.push(file);
+        } else if file_name.ends_with(".nii.gz") || file_name.ends_with(".nii") {
+            nii_files.push(file);
         } else if file_name.ends_with(".raw") || file_name.ends_with(".zraw") {
             raw_files.push(file);
         } else {
             // Check using the extension parser for other formats
             match get_extension(&file.name()) {
-                Ok(ImageFormat::NIfTI) | Ok(ImageFormat::DICOM) => {
+                Ok(ImageFormat::DICOM) => {
                     log::warn!(
-                        "Format {:?} not yet supported in WASM",
-                        get_extension(&file.name()).unwrap()
+                        "Format {:?} not yet supported in WASM", get_extension(&file.name()).unwrap()
                     );
                 }
-                _ => {
-                    log::debug!("Skipping unsupported file: {}", file.name());
-                }
+                _ => log::debug!("Skipping unsupported file: {}", file.name()),
             }
         }
     }
@@ -325,6 +351,32 @@ pub async fn parse_common_files_wasm(
         let bytes = read_file_as_bytes(first_mha).await?;
         let ct_volume = parse_mha_and_generate_ct(bytes, None, slope, intercept).await?;
         Ok(ct_volume)
+    } else if !nii_files.is_empty() {
+        log::info!("Processing {} NIfTI file(s)", nii_files.len());
+        let first_nii = nii_files.into_iter().next().unwrap();
+        let bytes = read_file_as_bytes(first_nii).await?;
+        let mv = NiftiParser::parse_bytes(&bytes)
+            .map_err(|e| JsValue::from_str(&format!("NIfTI parse error: {}", e)))?;
+        let mut dimensions = mv.metadata.dimensions;
+        let mut spacing = mv.metadata.spacing;
+        let mut offset = mv.metadata.offset;
+        if dimensions.len() != 3 {
+            dimensions.push(1);
+            spacing.push(1.0);
+            offset.push(0.0);
+        }
+        let orientation = mv.metadata.orientation.concat();
+        MedicalVolume::generate_ct_volume_mha(
+            [dimensions[0], dimensions[1], dimensions[2]],
+            mv.pixel_data.as_bytes().to_vec(),
+            mv.metadata.pixel_type,
+            spacing,
+            offset,
+            orientation,
+            slope,
+            intercept,
+        )
+        .map_err(|e| JsValue::from_str(&e))
     } else if !mhd_files.is_empty() && !raw_files.is_empty() {
         // Process MHD files (require separate data files)
         log::info!(
@@ -392,39 +444,9 @@ pub async fn parse_common_files_wasm(
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[cfg(target_arch = "wasm32")]
 pub async fn read_file_as_bytes(file: File) -> Result<Vec<u8>, JsValue> {
-    use std::sync::{Arc, Mutex};
-
-    let bytes = Arc::new(Mutex::new(Vec::new()));
-    let file_reader = FileReader::new().unwrap();
-
-    let promise = Promise::new(&mut |resolve, reject| {
-        let reject_clone = Arc::clone(&bytes);
-        let onload = Closure::once_into_js(move |e: ProgressEvent| {
-            let result: Result<(), String> = {
-                let buffer = e
-                    .target()
-                    .ok_or_else(|| JsValue::from("Failed to retrieve target"))?
-                    .dyn_into::<FileReader>()?
-                    .result()?;
-                let mut bytes = reject_clone.lock().unwrap();
-                let uint8_array = Uint8Array::new(&buffer).to_vec();
-                *bytes = uint8_array;
-                Ok(())
-            };
-            match result {
-                Ok(_) => resolve.call0(&JsValue::NULL),
-                Err(err) => reject.call0(&JsValue::from(err)),
-            }
-        });
-        file_reader.set_onload(Some(onload.as_ref().unchecked_ref()));
-        file_reader.read_as_array_buffer(&file).unwrap();
-    });
-
-    JsFuture::from(promise).await?;
-    let bytes = bytes
-        .lock()
-        .map_err(|e| JsValue::from_str(&format!("Mutex lock error: {}", e)))?;
-    Ok(bytes.clone())
+    // array_buffer() rejects on read failure — no silent hang path
+    let buffer = JsFuture::from(file.array_buffer()).await?;
+    Ok(Uint8Array::new(&buffer).to_vec())
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -435,38 +457,82 @@ pub async fn parse_mha_and_generate_ct(
     slope: f32,
     intercept: f32,
 ) -> Result<CTVolume, JsValue> {
-    let medical_volume = if data_bytes.is_none() {
-        MhaParser::parse_bytes(&header_bytes)
-            .map_err(|e| JsValue::from_str(&format!("MHA parse error: {}", e)))?
-    } else {
-        let pixel_data = PixelData::UInt8(data_bytes.unwrap());
-        let metadata = MhdParser::parse_metadata_only(&header_bytes)
-            .map_err(|e| JsValue::from_str(&format!("MHD parse error: {}", e)))?;
-        MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
-            .map_err(|e| JsValue::from_str(&format!("Volume creation error: {}", e)))?
-    };
+    if data_bytes.is_none() {
+        // MHA file: parse metadata first, then extract raw data without creating intermediate MedicalVolume
+        let metadata = MetaimageParser::parse_metadata_only(&header_bytes, true).map_err(|e| JsValue::from_str(&format!("MHA metadata parse error: {}", e)))?;
 
-    match medical_volume.pixel_data {
-        PixelData::UInt8(data) => {
-            let dimensions = medical_volume.metadata.dimensions;
-            let spacing = medical_volume.metadata.spacing;
-            let offset = medical_volume.metadata.offset;
-            let orientation = medical_volume.metadata.orientation;
-            let transform: Vec<f32> = orientation.into_iter().flatten().collect();
-
-            MedicalVolume::generate_ct_volume_mha(
-                [dimensions[0], dimensions[1], dimensions[2]],
-                data,
-                medical_volume.metadata.pixel_type,
-                spacing,
-                offset,
-                transform,
-                slope,
-                intercept,
-            )
-            .map_err(|e| JsValue::from_str(&e))
+        let start_offset = metadata.data_offset.unwrap_or(0);
+        if start_offset >= header_bytes.len() {
+            return Err(JsValue::from_str(
+                "Invalid MHA: data offset beyond file end",
+            ));
         }
-        _ => Err(JsValue::from_str("Unsupported pixel data type")),
+
+        let mut dimensions = metadata.dimensions;
+        let mut spacing = metadata.spacing;
+        let mut offset = metadata.offset;
+        let pixel_type = metadata.pixel_type;
+        let orientation = metadata.orientation.concat();
+        
+        if dimensions.len()!= 3 {
+            dimensions.push(1);
+            spacing.push(1.0);
+            offset.push(0.0);
+        }
+
+        log::info!(
+            "MHA direct path: offset={}, raw_size={} bytes, dim={:?}, orientation={:?}",
+            start_offset,
+            header_bytes.len() - start_offset,
+            dimensions,
+            orientation
+        );
+
+        // Remove header portion in-place (no extra allocation, avoids 2x memory spike)
+        let mut raw_data = header_bytes;
+        raw_data.drain(..start_offset);
+
+        MedicalVolume::generate_ct_volume_mha(
+            [dimensions[0], dimensions[1], dimensions[2]],
+            raw_data,
+            pixel_type,
+            spacing,
+            offset,
+            orientation,
+            slope,
+            intercept,
+        )
+        .map_err(|e| JsValue::from_str(&e))
+    } else {
+        // MHD path: data already separated
+        let pixel_data = PixelData::UInt8(data_bytes.unwrap());
+        let metadata =  MetaimageParser::parse_metadata_only(&header_bytes, false)
+            .map_err(|e| JsValue::from_str(&format!("MHD parse error: {}", e)))?;
+        let medical_volume = MedicalVolume::new(metadata, pixel_data, ImageFormat::MHD)
+            .map_err(|e| JsValue::from_str(&format!("Volume creation error: {}", e)))?;
+
+        match medical_volume.pixel_data {
+            PixelData::UInt8(data) => {
+                let dimensions = medical_volume.metadata.dimensions;
+                let spacing = medical_volume.metadata.spacing;
+                let offset = medical_volume.metadata.offset;
+                let orientation = medical_volume.metadata.orientation;
+                let transform: Vec<f32> = orientation.into_iter().flatten().collect();
+
+                MedicalVolume::generate_ct_volume_mha(
+                    [dimensions[0], dimensions[1], dimensions[2]],
+                    data,
+                    medical_volume.metadata.pixel_type,
+                    spacing,
+                    offset,
+                    transform,
+                    slope,
+                    intercept,
+                )
+                .map_err(|e| JsValue::from_str(&e))
+            }
+            _ => Err(JsValue::from_str("Unsupported pixel data type")),
+        }
     }
 }
 

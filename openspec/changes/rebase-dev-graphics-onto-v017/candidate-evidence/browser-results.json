@@ -1,0 +1,121 @@
+{
+  "date": "2026-10-05",
+  "evidence_kind": "Curated observed CUA browser acceptance, not an automated result export",
+  "browser": "Chrome/154.0.0.0, Codex in-app browser",
+  "platform": "macOS, Apple M5",
+  "package": "Rust 1.98.0 optimized WASM, logger correction included",
+  "data": "Synthetic CT 16x16x8 and DR 16x16x1; no patient data",
+  "webgpu": {
+    "backend": "BrowserWebGpu",
+    "surface_format": "Bgra8Unorm",
+    "console_errors": 0,
+    "passed_actions": [
+      "start",
+      "exercise",
+      "advanced",
+      "replace",
+      "quit"
+    ]
+  },
+  "webgl2": {
+    "backend": "Gl",
+    "adapter": "ANGLE Metal Renderer: Apple M5",
+    "surface_format": "Rgba8Unorm",
+    "console_errors": 0,
+    "passed_actions": [
+      "start",
+      "exercise",
+      "advanced",
+      "replace",
+      "quit"
+    ]
+  },
+  "common_capabilities": {
+    "r16float_filterable": true,
+    "rg8_filterable": true,
+    "max_3d_texture_dimension": 2048,
+    "default_encoding": "HuFloat"
+  },
+  "observed_replies": {
+    "mpr_window_level": [
+      400,
+      1500
+    ],
+    "quaternion_json": [
+      0,
+      0,
+      0,
+      1
+    ],
+    "layout_modes": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "projection_modes": [
+      0,
+      1,
+      2
+    ],
+    "mip_dvr_window_level": "NaN serialized as [null,null]; release MPR-only getter semantics",
+    "coordinates": [
+      6.384814262390137,
+      8.889060974121094,
+      4.395350456237793
+    ],
+    "obj_split_empty": [
+      [],
+      []
+    ],
+    "obj_nonempty_name": "synthetic_triangle",
+    "obj_split_nonempty_parallel_arrays": [
+      1,
+      1
+    ],
+    "restored_getter": [
+      400,
+      1500
+    ],
+    "replacement_getter": [
+      400,
+      1500
+    ]
+  },
+  "fallbacks": [
+    {
+      "injection": "navigator.gpu undefined",
+      "selected_backend": "Gl",
+      "startup_getters_and_quit": "passed",
+      "console_errors": 0
+    },
+    {
+      "injection": "second requestAdapter call rejected before canvas binding",
+      "warning": "WebGPU unavailable during pre-canvas negotiation; trying WebGL2",
+      "selected_backend": "Gl",
+      "startup_getters_and_quit": "passed",
+      "console_errors": 0
+    }
+  ],
+  "coverage": [
+    "pre-run queued CT",
+    "MPR/MIP/MinIP/AvgIP/DVR",
+    "oblique controls",
+    "window/level",
+    "pan/zoom",
+    "segmentation labels",
+    "balls/needle",
+    "OBJ import/export",
+    "valid DR overlay",
+    "zero-size then restored resize",
+    "canvas replacement",
+    "getter transport",
+    "quit"
+  ],
+  "limits": [
+    "Actual browser document visibility transitions not performed",
+    "Linux/Wayland GLES not available on macOS",
+    "Screenshots inspected inline in session, not exported as repository files"
+  ]
+}

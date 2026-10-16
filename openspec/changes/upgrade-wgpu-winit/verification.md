@@ -1,5 +1,8 @@
 # Verification record
 
+> Source-branch verification history retained by the v0.17.0 replay. It does not
+> certify this candidate; see [candidate execution](../rebase-dev-graphics-onto-v017/execution.md).
+
 Status: approved lifetime adaptation implemented; automated graphics/build verification passes. Dispatch coverage and manual native/browser acceptance remain incomplete; global format/strict-Clippy gates still fail with baseline findings. This file begins with the observed pre-upgrade baseline. Add implementation results below in dated sections; never replace failed/unavailable baseline entries with later passing results.
 
 ## Pre-upgrade baseline — 2026-10-01

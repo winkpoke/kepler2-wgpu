@@ -1,0 +1,462 @@
+{
+  "release": "a39ca528a55be7f7fe565a7fa7ed20b2251826e4",
+  "source": "8e308cb3c2e047f530ddbfde690fa45d8e30d1fc",
+  "source_base": "603bb96bb774f8a61652e9d14985a2b5046b3e75",
+  "copied_reference_artifacts": {
+    "release-public-api.json": "e2116ad7f0c5603e4890f8ea21ee459638c1bbf2560456a90bd47c8305f4b2f7",
+    "release-export-surface.json": "a54120cb4efca3c50bbfae65101fe45e02cde04bb029876b344d22d71a7402b0",
+    "reference-browser-api.d.ts": "0f1ff446314a1acf5ebd3db28d7b4c724ca0ccc01c57d8f4b832173e2f5294cf",
+    "api-conflict-inventory.md": "8721f0d4a46f2fd0ca6352f077cda2b511f25f07460cc487926025a7b0b9bd8d"
+  },
+  "release_files": {
+    "src/acquisition/error.rs": "8bde833b568c9cd6fa0ebd07d08b845d4f40c129dae41e084e147829ede0a11f",
+    "src/acquisition/mod.rs": "2c3d3d9986978d99ea7cf39ac5f94f2f09e1e1407d36f42d22318d874d7a6ef5",
+    "src/acquisition/process.rs": "2cd7f8f28d31bf5d8820ae9709d936687a21f6ca4f4787b9ea036943cb3c83cb",
+    "src/acquisition/remedy.rs": "cbbe26847e4a09232f5a95906a05dc309667f4c4a4201facfe69dc4a39996187",
+    "src/application/app.rs": "e9381762003555c36775033f0eaca9df278a2541690cd1d12081f1171ad06dc3",
+    "src/application/app_model.rs": "8fa24f696ca1eec27a4deaeb8e7a8a43bf40217331b8550941cb3233d47a1371",
+    "src/application/appview.rs": "c786d2832f8325020427633a15495b38f287698f659cea111e948715c6b56a21",
+    "src/application/gl_canvas.rs": "ebe0be9fd42458a06e98cf6ccb8bea05283d51650023bb8e2dda4e3218c08deb",
+    "src/application/mod.rs": "7038515e654fa59bf299fd76d8ed111fb7eec7265e4e4e7959657985c33bd474",
+    "src/application/render_app.rs": "424924046c7c2def4914cc7a127f3a6079f4b98f8e1a803760106eda6c042515",
+    "src/core/coord/base.rs": "0723b61b1fe084be54d7ed69e91902009f184384ff71d8bb5601733788517138",
+    "src/core/coord/mod.rs": "67e0de78e554ef3b3dad75c500518e889dc473933e444a484dca85177c66dd55",
+    "src/core/error.rs": "2d8646427e06eab5762ce08c49e1745ad729aac994e9c9c66f480247bf33ec19",
+    "src/core/geometry.rs": "eb6cbcffd31d799fc25138bc1741d929b26acde965ee1fbb0a819b154e9ec13a",
+    "src/core/mod.rs": "4dce663761f594e874dace18bdf22b085de67a4baf199afa104fa1b1d6446c36",
+    "src/core/timing.rs": "adc8efec86125d4ffe5ed7f61a2da54f25c8f413a7fc099ba436aa15997c0dab",
+    "src/core/window_level.rs": "8668ceb96bb3df2b8c1b3b6f6c89a0b5b2d3b8473df1b577353b72c6f74c70f5",
+    "src/data/ct_volume.rs": "b48d2028f66eb0f99089e073067cab79764d3ed240da9f7bda70888dfa754823",
+    "src/data/dicom/ct_image.rs": "039a15bc189701ffcac26c0d9268b47e7b790c622223b92a5fb2672941ba8b57",
+    "src/data/dicom/dicom_helper.rs": "a81d176e27df5657c4052aa7b697e2931b4211486466fac75321b07e65ffbcde",
+    "src/data/dicom/dicom_repo.rs": "fad7ed03acbddf77337fb2df3ecf7de28be12f039d9e790695840bb0fc23e93f",
+    "src/data/dicom/export_dicom.rs": "cff3f38e5559a49e1898bde7aeb6ec41e287038270c9a440481d3315ab4bb4e6",
+    "src/data/dicom/fileio.rs": "89b3a55f3a0eab8066c7b585b78d11fe874c0b395e535aec572c578e07b758d9",
+    "src/data/dicom/image_series.rs": "cf30363c50ef3bb57e506e1bb6d962f6c152b5101147b8af711cd8480f9895b8",
+    "src/data/dicom/mod.rs": "a70ae9e40200663d97262b627d957c758dfbbc9335cadd1015458026ef4c75de",
+    "src/data/dicom/patient.rs": "07bf4c661fa70a4b984ab80aa1acc678a3de353775568f16f10bfc53ef9432ee",
+    "src/data/dicom/studyset.rs": "17927face0c3e0804e8a398f27740701c16376f89e22fc026743ec6d72f1f474",
+    "src/data/dicom_.rs": "597fb32cdad1eaa6ed9fdb70400d51552a5d94f7c386f8eb3213b4535c688680",
+    "src/data/medical_imaging/error.rs": "8b8a95fe9ee8863ca6656c4b290154a749046e2f57e570acb3dfb9396db480a5",
+    "src/data/medical_imaging/formats/common.rs": "c730f230527cd4731a26e5f33dd65f039a7447e4e8da17a42a71fa9496c4594d",
+    "src/data/medical_imaging/formats/mha.rs": "02e2b77ea4c0f3683007741ab5dbfed2c5826f548bac8adcf4ea2aa53e60c6d5",
+    "src/data/medical_imaging/formats/mhd.rs": "e32db184b71295e1c0654b05f00823ebe3a924b5e6869d934d0fabb6441c5baa",
+    "src/data/medical_imaging/formats/mod.rs": "3f1028177aa346649cda2bbd79681bd3eef8f6ab6cd76d9360816538caf8ab58",
+    "src/data/medical_imaging/metadata/image_info.rs": "367f6407d3f51cf8814782c00a77cfec9d13c944e6b64db854f5e2221ef2d07f",
+    "src/data/medical_imaging/metadata/mod.rs": "25948b82075afff06bfedfb1efd836abd25cc1eb75117dfac2944e2db90bff20",
+    "src/data/medical_imaging/metadata/pixel_data.rs": "1ede01a87b418e333e0c534843118d5c220fd31d1734c979bf14a115f1b86705",
+    "src/data/medical_imaging/metadata/volume.rs": "e59ea4f8b096e477058a10bc0afff23c3945e9b211519c4563929b2cffadb5a1",
+    "src/data/medical_imaging/mod.rs": "b8b6b007497905ba57934d2e79630bd20bbc499099294fc6cff075ad6d21e200",
+    "src/data/medical_imaging/validation.rs": "c74c1d229f81a3ba6c1abd59f75159c871843ad12f5f8eab5e3761f486113ef0",
+    "src/data/mod.rs": "5d8e472a89bbbb0ddf4a5625386078f58d4c028abd6a58a8364f73fc033cd809",
+    "src/data/volume_encoding.rs": "1e5887e70329f1553099a022494727f6ad8208e850b37ff4531a820fe87378c4",
+    "src/gpu/compute.rs": "74e46afa221078b1e79d19ecb17089ce56bbbe9747637a24b3a70cc137cb30b5",
+    "src/gpu/mod.rs": "544d626c9120c0bba03f9edbebfbe386d66a3ccdefb4154119faa45faa6a91a9",
+    "src/gpu/native.rs": "e951a1dc5b63f0066f48e39745e2b2e5e1fb343e4386624021ec96682ebc2748",
+    "src/gpu/shader.wgsl": "645df2cfd7a2f828d2e3978e9429b0916af02fbd1a79323f75e7772f525a2c7d",
+    "src/lib.rs": "475151e3a4fee63ddfdf8d007002e8eb555e9a32b6adbb55c164580981517538",
+    "src/main.rs": "178293ff3554664a94b048f2a078582725a0ae3ce599aeabb8cb8d7db05ff1f4",
+    "src/rendering/core/graphics.rs": "d5d976cff56a3769b557f1c94fe5d17a66704426480c505bdf09b4bca9aa518e",
+    "src/rendering/core/mod.rs": "816a526510a214e855fb7052b3b7b4bd0c596cc7c2209bdd21f761cb6b539892",
+    "src/rendering/core/pipeline.rs": "9b1665657abf9f90ae1c2cfbcd2e44bb609bb717e1798e31ae28fa5ea14deaaa",
+    "src/rendering/core/render_pass.rs": "f0415d2de4083e57e8fdeb810ea4652fc90b803e2a5386cc5a919cc924393ab8",
+    "src/rendering/core/texture.rs": "b3b445f7b68052607584169cb3ce9e84c0c52982233f2e2f8d43a398a60c43ff",
+    "src/rendering/mod.rs": "93657c6c4dfcb92e98c7e690a39a6cfe25a6c6219e856d28c790664872fcca8a",
+    "src/rendering/shaders/common.wgsl": "74abfaeaada9309c7bee39e03b53fa89c8bb1fbe91717ebeb8432235ca69fcfb",
+    "src/rendering/shaders/mesh_basic.wgsl": "cca720be54a11c971321e626a84dbc1314b422f6cb2b263a82436fe98944c8c4",
+    "src/rendering/shaders/mip.wgsl": "6b5afe391544564bf20b8ba5154dd07409d5189588db79def67000b16122d844",
+    "src/rendering/shaders/mod.rs": "7ed839dc6b7642573db8a2a54e14df8a92dcfa73b902f9e64f1dcbcfd2ada9a4",
+    "src/rendering/shaders/mpr.wgsl": "2a11947c575c43c90aca854a929192dcd7bbf254b81ee097d96988fc5f1ef4b5",
+    "src/rendering/shaders/volume.wgsl": "74005c0d56e549ca3d51f038dd8248d4963bcd617c901e88b5f6153029b629f1",
+    "src/rendering/view/camera.rs": "c8eff5cbbbd91f3c1fe65e9283cefba7ffeb9ea643cf29ecd6fa11f2c32167a5",
+    "src/rendering/view/layout.rs": "b6646da60b2494a42ace2d939d77b2fefe823356eb220eb86eceae4490da66b9",
+    "src/rendering/view/mesh/basic_mesh_context.rs": "6fb45f0fc61a1d4e7d95676a1cee9414d361a3ceac76217680537ae59f4205a0",
+    "src/rendering/view/mesh/mesh.rs": "3a0cd5a47f708516670307221d9d4da50f7932a15ef41f68c11da288f1c0eab0",
+    "src/rendering/view/mesh/mesh_texture_pool.rs": "712e2fb2c9e33f56a20813064529a26331432d867ed13e107ec189f88a2034a3",
+    "src/rendering/view/mesh/mesh_view.rs": "44d9afffd693324dc10d539c5bb3b1870c6497ae4bb94678cea654dc63cc4be4",
+    "src/rendering/view/mesh/mod.rs": "eec16fbf357ef57de8e7c92cc51cd5e41e4f9951c353d093f0649600d7439b94",
+    "src/rendering/view/mesh/performance.rs": "77ffb8a03fac1946b5a9b6d763155a2033b8794d03d804a8686e3f3ead79772d",
+    "src/rendering/view/mip/mod.rs": "c36c2d126cfeba8658e41cea07568f568452a3989c029decfbf5db7253cc00e0",
+    "src/rendering/view/mod.rs": "0d1ba1906da800fbc2b4aa4e2e46c4e9f651ebfa5eaf1c8a04adbefc7a7f19ff",
+    "src/rendering/view/mpr/mod.rs": "6de59cf9ed4086a1ebdca78929edc21e3d5dd3c8483e99a7d9a83a29719ebd9e",
+    "src/rendering/view/mpr/mpr_render_context.rs": "29c2b7f52ddf8bdae5f947ff47570a2e980528cce2069bea08c35bf59ddf6beb",
+    "src/rendering/view/mpr/mpr_view.rs": "a6616ac452e232aca73be0bad15c14cb58432e608e168d7a6db511b61a201ec6",
+    "src/rendering/view/mpr/mpr_view_wgpu_impl.rs": "1902f792f91f4f90611893dc34d08bc8da5fb4cdfa4cf25bececa18dede84b63",
+    "src/rendering/view/render_content.rs": "177f2a3418a37f5d5b7a2961b1ba1927e71055d8a05c384d98419605410cbe5d",
+    "src/rendering/view/renderable.rs": "0be1c7a075f4c0014a0e1b6c09349914e1cba06ef1d4db9555dc3be637c56509",
+    "src/rendering/view/view.rs": "e4dcce4b3d8e8b64ec17bead2677e8e3a0e6fb5e4c673a650776e7639606da82",
+    "src/rendering/view/view_factory.rs": "c0090da5eb82c6e09886fd9ac70ad9330dda48165bb8aa09a10d9555a8af0219",
+    "src/rendering/view/view_manager.rs": "e2771c2239cd1c19c8fd63e60b12169e1ace41c9f2058bf869519f9081810be2",
+    "src/server/ai.rs": "c99015e5d9877a2058dffaa7e07751099b86ee4ee5b9f32b1d7891af4f4ccf3d",
+    "src/server/ai_handler.rs": "a7e801f8dfcf9fbd0ea210541d0d237819b7d96457406323a661161904eec038",
+    "src/server/ai_model.rs": "ccbf9cf47c18c6a457d4075a4dd5722c990225c84be5ddda5d305262cb3f14ff",
+    "src/server/ai_task.rs": "88335b0a6667c771a01b6e8634a7d20a244585f0c19da3a941c435e3f41a5384",
+    "src/server/backend.rs": "4b2cd42db339189f8ed4e6e6f2f93b4f3112e9ba75bcfb97d39bffed1a120aba",
+    "src/server/handlers.rs": "9ca48537d5f5f594c0259b91753e8b531b1f6ce4df09713e1c12686a01a1440e",
+    "src/server/mod.rs": "df9d664f498b42fb1eb50055fca197d1863e22f0d3a6107b270095eddea6249d",
+    "src/server/model_manager.rs": "47b630630b89233a835324227efaba7da5c3e1909024a7d6bde453991cf6e95d",
+    "src/server/navcomputer.rs": "d5a18ebe36fba953009a88759f6096dafee6ac4bb771db27475aab363673944c",
+    "src/server/orientation.rs": "7f5215ee9945d9e5a58b99424bd4cc303836077ecfad55b367caba0d9e29de52",
+    "src/server/python/README.md": "bec48ae02f742a8c7e042e8b0d506ec45590491ed4d5cc84f4de76dfdb11666c",
+    "src/server/python/__init__.py": "6f4151879980dd6dd9f3689a5003740370ed118b98b817cf8bbc04b7608c81e2",
+    "src/server/python/__pycache__/app.cpython-311.pyc": "793ca50fe808dbf03abd62b0e123672464369b97ba129a547b413aaf62ad59ab",
+    "src/server/python/__pycache__/inference.cpython-311.pyc": "f9db9b04c1831a21fc3c1f5c6c844f2310ae219692208d166fb8a06fbc01aa0a",
+    "src/server/python/app.py": "9b0d08447b6aa2600ae62f4b9b459c9b718021fa6648aedc220f0a8521d2d945",
+    "src/server/python/inference.py": "65bb2f0a8f98964f38fbfe873cddc632bcd8024a54ec77f462bb5658a6f91490",
+    "src/server/python/models/.gitkeep": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "src/server/python/requirements.txt": "31a743dcd28d50de97ab553a2e85636f0bd01d30d9a38282cecf246ffca2df26",
+    "src/server/resample.rs": "2d9db0303cc82a4f7facca47b8ab616c57feb197518d0c244c0461de0f127b68",
+    "src/server/routes.rs": "a57073ba404296373ccea4a49c9f11bdda55fa537a76e069846da042d56b01a0",
+    "src/server/segment_engine.rs": "f1f7ab3de2d61c57e1a9021b7231a76ae53c55784c9f338816311ba5a28786a3",
+    "src/server/state.rs": "695be3ad9af6795522ba950374d900f627aaf1bdca50975208359a2bf8004bcc",
+    "src/server/ws.rs": "d5cc5a629c8bb95c67609cb676dd3a9508cc77694cbc7b8bc62f10ea4a9ab389"
+  },
+  "declared_item_check": {
+    "total": 1089,
+    "matched": 1089,
+    "unmatched": []
+  },
+  "fresh_browser_reference": {
+    "release": "a39ca528a55be7f7fe565a7fa7ed20b2251826e4",
+    "source_patch": "none",
+    "compiler": "rustc 1.100.0-nightly (e7769602a 2026-08-24)",
+    "wasm_pack": "0.15.0",
+    "sha256": "acb280724e93e3c2b762e9920dfb6c5b7b541e07f45d77ca800cd5cdda738962",
+    "command": "CARGO_TARGET_DIR=<shared target> RUSTUP_TOOLCHAIN=nightly CARGO_NET_OFFLINE=true rtk proxy wasm-pack build --target web --dev --out-dir <temporary binding directory> -- --locked",
+    "exit_code": 0
+  },
+  "export_edge_check": {
+    "total": 163,
+    "matched_exact": 147,
+    "matched_abbreviated_test_modules": 16,
+    "unmatched": []
+  },
+  "consumer_lock_comparison": {
+    "added": [
+      [
+        "kepler-v017-external-consumer",
+        "0.0.0",
+        ""
+      ]
+    ],
+    "removed": [
+      [
+        "bit-set",
+        "0.6.0",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "bit-vec",
+        "0.7.0",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "bstr",
+        "1.12.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "camino",
+        "1.2.2",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "cargo-config2",
+        "0.1.39",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "cargo-llvm-cov",
+        "0.5.39",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "downcast",
+        "0.11.0",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "duct",
+        "0.13.7",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "env_logger",
+        "0.8.4",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "fragile",
+        "2.0.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "fs-err",
+        "2.11.0",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "glob",
+        "0.3.3",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "home",
+        "0.5.12",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "is_executable",
+        "1.0.5",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "lcov2cobertura",
+        "1.0.6",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "lexopt",
+        "0.3.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "mockall",
+        "0.13.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "mockall_derive",
+        "0.13.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "naga",
+        "22.1.0",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "normpath",
+        "1.5.0",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "opener",
+        "0.6.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "os_pipe",
+        "1.2.3",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "predicates",
+        "3.1.3",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "predicates-core",
+        "1.0.9",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "predicates-tree",
+        "1.0.12",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "proptest",
+        "1.9.0",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "quick-error",
+        "1.2.3",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "quickcheck",
+        "1.0.3",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "rand",
+        "0.9.2",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "rand_chacha",
+        "0.9.0",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "rand_core",
+        "0.9.5",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "rand_xorshift",
+        "0.4.0",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "rusty-fork",
+        "0.3.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "serde_spanned",
+        "1.0.0",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "shared_child",
+        "1.1.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "shell-escape",
+        "0.1.5",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "sigchld",
+        "0.2.4",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "signal-hook",
+        "0.3.18",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "termtree",
+        "0.5.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "toml",
+        "0.9.5",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "toml_datetime",
+        "0.7.0",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "toml_parser",
+        "1.0.6+spec-1.1.0",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "unarray",
+        "0.1.4",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "wait-timeout",
+        "0.2.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "windows-sys",
+        "0.60.2",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "windows-targets",
+        "0.53.5",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "windows_aarch64_gnullvm",
+        "0.53.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "windows_aarch64_msvc",
+        "0.53.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "windows_i686_gnu",
+        "0.53.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "windows_i686_gnullvm",
+        "0.53.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "windows_i686_msvc",
+        "0.53.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "windows_x86_64_gnu",
+        "0.53.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "windows_x86_64_gnullvm",
+        "0.53.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "windows_x86_64_msvc",
+        "0.53.1",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "winnow",
+        "0.7.14",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ]
+    ],
+    "changed_existing": [
+      [
+        "rand",
+        "0.8.5",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "kepler-wgpu",
+        "0.17.0",
+        ""
+      ],
+      [
+        "toml_edit",
+        "0.22.22",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ],
+      [
+        "windows-targets",
+        "0.52.6",
+        "registry+https://github.com/rust-lang/crates.io-index"
+      ]
+    ]
+  },
+  "rustdoc": {
+    "native": {
+      "sha256": "3c64e82db7b44bdb097d460376631796693e7bcb38232508147b1127282e9bb9",
+      "format_version": 61,
+      "root": 8400,
+      "index_items": 8059,
+      "root_export_traversal_items": 436,
+      "command": "rtk proxy cargo rustdoc --offline --locked --lib -- -Z unstable-options --output-format json",
+      "exit_code": 0
+    },
+    "wasm": {
+      "sha256": "8ca9d2c9f745f5b131a72589725abf07d6cb149012d2c96c84352c3ce3ccf328",
+      "format_version": 61,
+      "root": 5745,
+      "index_items": 5446,
+      "root_export_traversal_items": 310,
+      "command": "rtk proxy cargo rustdoc --offline --locked --lib --target wasm32-unknown-unknown -- -Z unstable-options --output-format json",
+      "exit_code": 0
+    }
+  }
+}

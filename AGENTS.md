@@ -1,7 +1,9 @@
+@/Users/philchen/.codex/RTK.md
+
 # Kepler2-WGPU agent instructions
 
 Rust medical imaging application: native desktop and WASM, DICOM/MHA/MHD data,
-MPR, MIP/MinIP/AvgIP, mesh rendering, and Remedy acquisition protocol.
+MPR, MIP/MinIP/AvgIP, DVR, DR-to-PRO, segmentation and mesh rendering, and Remedy acquisition protocol.
 
 ## Scope and authority
 
@@ -49,7 +51,7 @@ explore or draft a proposal is not approval to implement it.
 
 ## Verification and completion
 
-Use [BUILD.md](doc/agents/BUILD.md) for nightly/locked native, WASM-library, GPU,
+Use [BUILD.md](doc/agents/BUILD.md) for stable/locked native, WASM-library, GPU,
 and documentation checks. Add a regression for a bug fix where feasible.
 Report commands actually run, outcomes, and unperformed/manual checks separately.
 Keep failing tests and quality gates visible; do not mark deferred tasks complete.

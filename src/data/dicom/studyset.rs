@@ -14,23 +14,19 @@ define_dicom_struct!(StudySet, {
 
 impl StudySet {
     // Function to parse the DICOM file and generate the StudySet structure
-    pub fn from_bytes(dicom_data: &[u8]) -> Result<StudySet> {
-        // Parse the DICOM file into a `FileDicomObject`
-        let dicom_obj: FileDicomObject<InMemDicomObject> =
-            FileDicomObject::from_reader(dicom_data)?;
-
+    pub fn from_dicom_object(obj: &InMemDicomObject) -> Result<StudySet> {
         // Retrieve required fields using `get_value`
         let id =
-            get_value::<String>(&dicom_obj, "StudyID").ok_or_else(|| anyhow!("Missing StudyID"))?;
-        let uid = get_value::<String>(&dicom_obj, "StudyInstanceUID")
+            get_value::<String>(obj, "StudyID").ok_or_else(|| anyhow!("Missing StudyID"))?;
+        let uid = get_value::<String>(obj, "StudyInstanceUID")
             .ok_or_else(|| anyhow!("Missing StudyInstanceUID"))?;
-        let patient_id = get_value::<String>(&dicom_obj, "PatientID")
+        let patient_id = get_value::<String>(obj, "PatientID")
             .ok_or_else(|| anyhow!("Missing PatientID"))?;
-        let date = get_value::<String>(&dicom_obj, "StudyDate")
+        let date = get_value::<String>(obj, "StudyDate")
             .ok_or_else(|| anyhow!("Missing StudyDate"))?;
 
         // Optional fields
-        let description = get_value::<String>(&dicom_obj, "StudyDescription");
+        let description = get_value::<String>(obj, "StudyDescription");
 
         // Return the populated struct
         Ok(StudySet {
@@ -40,5 +36,13 @@ impl StudySet {
             date,
             description,
         })
+    }
+
+    // Function to parse the DICOM file and generate the StudySet structure
+    pub fn from_bytes(dicom_data: &[u8]) -> Result<StudySet> {
+        // Parse the DICOM file into a `FileDicomObject` (once), then extract.
+        let dicom_obj: FileDicomObject<InMemDicomObject> =
+            FileDicomObject::from_reader(dicom_data)?;
+        Self::from_dicom_object(&dicom_obj)
     }
 }

@@ -1,0 +1,150 @@
+{
+  "source_range": "603bb96bb774f8a61652e9d14985a2b5046b3e75..8e308cb3c2e047f530ddbfde690fa45d8e30d1fc",
+  "destination": "a39ca528a55be7f7fe565a7fa7ed20b2251826e4",
+  "candidate_branch": "codex/rebase-v017-wgpu",
+  "candidate_worktree": "/private/tmp/kepler2-wgpu-v017-rebase",
+  "replay_started": true,
+  "commits": [
+    {
+      "source_sha": "685e4197dce6e9a1eb8d92711be272d24fd4492a",
+      "source_parents": [
+        "603bb96bb774f8a61652e9d14985a2b5046b3e75"
+      ],
+      "subject": "fix(rendering): preserve full i16 range in packed volume textures",
+      "candidate_sha": "759e52c3197d4e6b60905c44f54c7e43c88a1b1c",
+      "status": "replayed",
+      "resolution": "Retain published HuPackedRg8 metadata, add signed canonical packing, validate release upload formats and production shaders."
+    },
+    {
+      "source_sha": "57d4ceee933232dafcab33045333fc74f3549c53",
+      "source_parents": [
+        "685e4197dce6e9a1eb8d92711be272d24fd4492a"
+      ],
+      "subject": "chore: apply Rust lint cleanup and document graphics upgrade assessment",
+      "candidate_sha": "01801c4f89d81c05981b4cd4b18facd6c20ced76",
+      "status": "replayed",
+      "resolution": "Port applicable lint changes without restoring obsolete camera, mesh, or UID interfaces."
+    },
+    {
+      "source_sha": "d6c044a1d674957844b168d8dda1eedf83ebbfc7",
+      "source_parents": [
+        "57d4ceee933232dafcab33045333fc74f3549c53"
+      ],
+      "subject": "test(rendering): add headless GPU correctness baseline",
+      "candidate_sha": "7c743cf62bff8e9a25b29bb42dcf74c72f105371",
+      "status": "replayed",
+      "resolution": "Adapt headless tests to release MultiMeshContext and production MPR/DVR factories."
+    },
+    {
+      "source_sha": "1edaf80a24a38e2ae30985ccb2ce89832524da66",
+      "source_parents": [
+        "d6c044a1d674957844b168d8dda1eedf83ebbfc7"
+      ],
+      "subject": "fix(rendering): scope attachment formats to graphics contexts",
+      "candidate_sha": "85448d9e36eb9e82850df9ac47f009fc9a700861",
+      "status": "replayed",
+      "resolution": "Keep legacy constructors/helpers; add explicit owner formats and release mesh/overlay rebinding."
+    },
+    {
+      "source_sha": "947b4fcbc7ead2138fd4760f1e1d573f0b2144e2",
+      "source_parents": [
+        "1edaf80a24a38e2ae30985ccb2ce89832524da66"
+      ],
+      "subject": "perf(rendering): optimize redraw scheduling and resource lifetimes",
+      "candidate_sha": "e7f8f9494292aeae9b8d8e89b4d0b58d5ebb3746",
+      "status": "replayed",
+      "resolution": "Port dirty scheduling, persistent bounded depth, shared MPR contexts; extend release overlay/camera invalidation."
+    },
+    {
+      "source_sha": "6136c46f1eb8ed177d883690931965175169cbe5",
+      "source_parents": [
+        "947b4fcbc7ead2138fd4760f1e1d573f0b2144e2"
+      ],
+      "subject": "chore(docs): consolidate agent guidance and migrate OpenSpec",
+      "candidate_sha": "20b3a9d8d491b3258517f8e15a767d28f48e097c",
+      "status": "replayed",
+      "resolution": "Consolidate tooling and archive release guidance while retaining release feature specs, version identity, and current server/compute ownership."
+    },
+    {
+      "source_sha": "b254673c65d0ced361f56d1176c96e4f5df9dd20",
+      "source_parents": [
+        "6136c46f1eb8ed177d883690931965175169cbe5"
+      ],
+      "subject": "Prefer browser WebGPU with GL fallback",
+      "candidate_sha": "82a258a605e42ac354f5141ccb9523f33f46b672",
+      "status": "replayed",
+      "resolution": "Port WebGPU preference/fallback and capabilities with legacy encoding metadata and validated release uploads."
+    },
+    {
+      "source_sha": "34bc2aa434682a404d43e8dec83798033bfc40a9",
+      "source_parents": [
+        "6136c46f1eb8ed177d883690931965175169cbe5"
+      ],
+      "subject": "Fix Rust toolchain inconsistency",
+      "candidate_sha": "e8927142c85cf5891699013d691b723afb63d178",
+      "status": "replayed",
+      "resolution": "Pin stable Rust and portable fractional timing, preserving release-only timing sites."
+    },
+    {
+      "source_sha": "37a027e20b7f0c535e037070a3396da44d4e66cd",
+      "source_parents": [
+        "b254673c65d0ced361f56d1176c96e4f5df9dd20",
+        "34bc2aa434682a404d43e8dec83798033bfc40a9"
+      ],
+      "subject": "Merge toolchain inconsistency fix into dev",
+      "candidate_sha": "d625e176a75cc78ccbab7cff7d9cf6946048995c",
+      "status": "replayed",
+      "resolution": "Recreate both parents; retain both histories and merge-specific release capability/executor fixes."
+    },
+    {
+      "source_sha": "6ff5a0e6a91fd4043977fa61152967d7b3439432",
+      "source_parents": [
+        "37a027e20b7f0c535e037070a3396da44d4e66cd"
+      ],
+      "subject": "feat(rendering)!: migrate to wgpu 30 and winit 0.30",
+      "candidate_sha": "d7f8dc99033b14c1ddad0962edb6fbfcc2e84c2a",
+      "status": "replayed",
+      "resolution": "Port wgpu 30/Winit 0.30 to release production rendering and ApplicationHandler while retaining viewer/browser/event/reply interfaces. Apply P2/P3; scope ORT DirectML to Windows for native CPU validation."
+    },
+    {
+      "source_sha": "f42fab2e039f392952d8846940a3b481ccf7a079",
+      "source_parents": [
+        "6ff5a0e6a91fd4043977fa61152967d7b3439432"
+      ],
+      "subject": "Concentrate complete view-layout transitions with failure preservation",
+      "candidate_sha": "5e5b517a4495c9458e866b23982f4e9e6a646185",
+      "status": "replayed",
+      "resolution": "Private prepare/commit layout transitions preserve release five-argument facade, slot/orientation semantics and failure state."
+    },
+    {
+      "source_sha": "918e36b6d0d4ea1c25a017cd2ab061f86d6ead47",
+      "source_parents": [
+        "f42fab2e039f392952d8846940a3b481ccf7a079"
+      ],
+      "subject": "Deepen viewer lifecycle dispatch and complete GPU rebinding",
+      "candidate_sha": "34a69f79c135e4c6cd6689cc0fc91c4352c40968",
+      "status": "replayed",
+      "resolution": "Preserve every release lifecycle event/reply; prepare all replacement resources and shared CPU-backed volume/label uploads before owner changes."
+    },
+    {
+      "source_sha": "8e308cb3c2e047f530ddbfde690fa45d8e30d1fc",
+      "source_parents": [
+        "918e36b6d0d4ea1c25a017cd2ab061f86d6ead47"
+      ],
+      "subject": "docs: complete wgpu upgrade verification evidence",
+      "candidate_sha": "dda4ff0dc8f2c89b4064e632e1f9b79672025da6",
+      "status": "replayed",
+      "resolution": "Preserve source verification as historical provenance; write separate release-candidate verification and compatibility evidence."
+    }
+  ],
+  "replay_complete": true,
+  "replay_head": "dda4ff0dc8f2c89b4064e632e1f9b79672025da6",
+  "destination_updated": true,
+  "supplement": "Compatibility regression tests, exact production uniform layouts, browser log-filter correction, current documentation and candidate evidence follow the 13 mapped commits.",
+  "landed_candidate": "41dff9f7cb630700ddb5929edcc369aa1cd8ab73",
+  "acceptance": "2026-10-05: user approved continuation and landing after the explicit two-gate deferment question; see acceptance.md.",
+  "deferred_checks": [
+    "Linux/Wayland GLES",
+    "Actual native OS hide/suspend/restore and browser document visibility transitions"
+  ]
+}

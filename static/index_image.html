@@ -203,12 +203,12 @@
               <input type="number" id="mode" step="1" value="3" min="0" max="1">
             </div>
             <div>
-              <span id="index-label">index:</span>
+              <span id="index-label">mpr_index:</span>
               <input type="checkbox" id="change_index" />
               <input type="number" id="index" step="1.0" value="0.0">
             </div>
             <div>
-              <span id="mipSpan">mip:</span>
+              <span id="mipSpan">mip_index:</span>
               <input type="checkbox" id="change_mip" />
               <input type="number" id="mip" step="1.0" value="0.0">
             </div>
@@ -220,30 +220,6 @@
               <span id="mesh_index-label">mesh_index:</span>
               <input type="checkbox" id="change_mesh_index" />
               <input type="number" id="mesh_index" step="1.0" value="0.0">
-            </div>
-            <div>
-              <span id="crop_mesh-label">crop_mesh:</span>
-              <input type="checkbox" id="crop_mesh" />
-              <span id="save_mesh-label">save_mesh:</span>
-              <input type="checkbox" id="save_mesh" />
-            </div>
-            <div>
-              <span id="iso-min-label">Iso Min:</span>
-              <input type="number" id="iso-min" step="1.0" value="100.0"></br>
-              <span id="iso-max-label">Iso Max:</span>
-              <input type="number" id="iso-max" step="1.0" value="400.0">
-            </div>
-            <div>
-              <span id="roi-min-label">ROI Min:</span>
-              <input type="number" id="roi-min-x" step="1.0" value="-158.50882">
-              <input type="number" id="roi-min-y" step="1.0" value="-92.941345">
-              <input type="number" id="roi-min-z" step="1.0" value="-1160.3865">
-            </div>
-            <div>
-              <span id="roi-max-label">ROI Max:</span>
-              <input type="number" id="roi-max-x" step="1.0" value="134.81229">
-              <input type="number" id="roi-max-y" step="1.0" value="125.87259">
-              <input type="number" id="roi-max-z" step="1.0" value="-1035.0465">
             </div>
           </div>
           <div class="row" style="margin-top:8px">
@@ -329,43 +305,40 @@
           </div>
           <div class="grid" style="margin-top:8px">
             <div>
-              <label for="slice-input">slice</label>
+              <span id="slice">slice</span>
               <input type="number" id="slice-input" step="0.5" value="0.0">
-              <button id="slice-submit">应用</button>
             </div>
             <div>
-              <label for="slab-thickness-input">slab thickness</label>
+              <span id="slab-thickness-input">slab</span>
               <input type="number" id="slab-thickness" step="0.5" value="0.0">
-              <button id="slab-thickness-submit">应用</button>
             </div>
             <div>
-              <label for="scale-input">Scale</label>
+              <span id="scale">scale</span>
               <input type="number" id="scale-input" step="1.0" value="1.0">
-              <button id="scale-submit">应用</button>
             </div>
             <div>
-              <label for="translate-input">Translate</label>
+              <span id="aliasing">aliasing</span>
+              <input type="checkbox" id="aliasing-input">
+            </div>
+            <div>
+              <span id ="translate-input">translate</span>
               <div class="row">
                 <span id="trans-x-label">x:</span>
                 <input type="number" id="trans-x" step="10.0" value="0.0"></br>
                 <span id="trans-y-label">y:</span>
                 <input type="number" id="trans-y" step="10.0" value="0.0"></br>
               </div>
-              <button id="trans-submit">应用</button>
-              <button id="trans-get">获取</button>
+              <button id="trans-get">get</button>
             </div>
             <div>
-              <label>Window/Level</label>
               <div class="row">
-                <span id="window-label">width:</span>
+                <span id="window-level">Window/Level:</span>
+                <span id="window-label">W:</span>
                 <input type="number" id="window" step="10.0" value="0.0">
-                <span id="level-label">level:</span>
+                <span id="level-label">L:</span>
                 <input type="number" id="level" step="10.0" value="0.0">
               </div>
-              <div class="row" style="margin-top:6px">
-                <button id="winlev-submit">应用</button>
-                <button id="winlev-get">获取</button>
-              </div>
+              <button id="winlev-get">get</button>
             </div>
             <div>
               <label for="resize-input">Resize</label>
@@ -383,8 +356,8 @@
                 <input type="number" id="center-x" step="0.1" value="0.0" placeholder="x">
                 <input type="number" id="center-y" step="0.1" value="0.0" placeholder="y">
                 <input type="number" id="center-z" step="0.1" value="0.0" placeholder="z">
-              </div>
-              <button id="set-center">应用</button>
+              </div><br>
+              <button id="get-point">get point</button>
             </div>
             <div>
               <span id="mip-mode-label">MIP Mode:</span>
@@ -392,7 +365,9 @@
                 <option value="0">MIP</option>
                 <option value="1">MinIP</option>
                 <option value="2">AvgIP</option>
-              </select></br>
+              </select>
+            </div>
+            <div>
               <span id="mip-rotation-label">旋转:</span></br>
               <span id="mip-rotation-x-label">roll:</span><input type="number"  id="mip-rotation-x"
                 step="15" value="0" min="0" max="360">
@@ -406,23 +381,32 @@
         </fieldset>
 
         <fieldset class="pill">
-          <legend>3D 网格</legend>
+          <legend>3D</legend>
           <div class="grid">
             <div>
-              <span id="3d-scale-label">scale:</span>
-              <input type="number" id="3d-scale" step="0.1" value="1.0">
+              <span id="roi-min-label">ROI Min:</span>
+              <input type="number" id="roi-min-x" step="0.01" value="-79.29739379882812">
+              <input type="number" id="roi-min-y" step="0.01" value="-50.16448974609375">
+              <input type="number" id="roi-min-z" step="0.01" value="-1241.34130859375">
             </div>
             <div>
-              <span id="3d-pan-label">pan_x:</span>
-              <input type="number" id="3d-pan-x" step="0.1" value="0.0">
+              <span id="roi-max-label">ROI Max:</span>
+              <input type="number" id="roi-max-x" step="0.01" value="86.64703369140625">
+              <input type="number" id="roi-max-y" step="0.01" value="49.83551025390625">
+              <input type="number" id="roi-max-z" step="0.01" value="-978.4163208007812">
             </div>
-            <div>
-              <span id="3d-pan-label">pan_y:</span>
-              <input type="number" id="3d-pan-y" step="0.1" value="0.0">
-            </div>
+            <div><button id="crop-roi">ROI</button></div>
             <div>
               <span id="3d-opacity-label">opacity:</span>
               <input type="number" id="3d-opacity" step="0.1" value="1.0" min="0" max="1">
+            </div>
+            <div>
+              <span id="3d-mode-label">3D Mode:</span>
+              <select id="3d-mode">
+                <option value="0">ANGIO</option>
+                <option value="1">BONE</option>
+                <option value="2">SOFT</option>
+              </select>
             </div>
             <div>
               <span id="3d-rotation-label">angle:</span></br>
@@ -457,6 +441,14 @@
     const byId = (id) => document.getElementById(id);
     const deg2rad = (d) => d * Math.PI / 180;
     const rad2deg = (r) => r * 180 / Math.PI;
+    function bindInput(ids, handler) {
+      ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('input', handler);
+        el.addEventListener('change', handler); // 兼容 number / checkbox
+      });
+    }
 
     // ========= 状态管理 =========
     var repo;
@@ -511,8 +503,8 @@
     const info = {
       kv: 100.0,
       mAs: 70.0,
-      slope: 1612.903,
-      intercept: - 1016.129,
+      slope: 1.0,
+      intercept: 0.0,
       patient_position: "HFS",
       modality: "CT",
     }
@@ -574,20 +566,56 @@
       log("开始渲染！")
       if (!state.mhx) {
         alert('请先选择重建文件！');
+        return;
       }
 
-      await ensureWasm();
-      volume = await state.wasmModule.parse_common_files_wasm(state.files, infoUint8);
-      if (state.render_app == null) {
-        state.render_app = await state.wasmModule.get_render_app();
-        gl_canvas = state.render_app.get_glcanvas();
-        gl_canvas.load_data_from_ct_volume(volume);
-        gl_canvas = state.render_app.get_glcanvas();
-        state.render_app.run();
-      }
-      else {
-        console.log('render_app:', state.render_app);
-        gl_canvas.set_window_by_div_id('render_app', volume);
+      try {
+        await ensureWasm();
+        
+        // 计算预计文件大小 (在 analyze 按钮点击后 state.dim 才会被设置)
+        if (state.dim && state.dim[0] > 0 && state.dim[1] > 0 && state.dim[2] > 0) {
+          const estimatedSize = state.dim[0] * state.dim[1] * state.dim[2] * 2;
+          console.log("预计数据大小:", (estimatedSize / 1024 / 1024).toFixed(2), "MB");
+          log(`预计数据大小: ${(estimatedSize / 1024 / 1024).toFixed(2)} MB`);
+        }
+        
+        // 显示加载进度
+        byId("progress").value = 10;
+        log("正在读取文件...");
+        
+        volume = await state.wasmModule.parse_common_files_wasm(state.files, infoUint8);
+        
+        byId("progress").value = 50;
+        log("文件解析完成，正在创建纹理...");
+        
+        if (state.render_app == null) {
+          state.render_app = await state.wasmModule.get_render_app();
+          gl_canvas = state.render_app.get_glcanvas();
+          gl_canvas.load_data_from_ct_volume(volume);
+          gl_canvas = state.render_app.get_glcanvas();
+          state.render_app.run();
+        }
+        else {
+          console.log('render_app:', state.render_app);
+          gl_canvas.set_window_by_div_id('render_app', volume);
+        }
+        
+        byId("progress").value = 100;
+        log("渲染完成！", "ok");
+        
+      } catch (err) {
+        console.error("渲染错误详情:", err);
+        console.error("错误类型:", err.name);
+        
+        if (err.name === 'NotFoundError' || err.message.includes('could not be read')) {
+          log("❌ 文件读取失败：文件可能过大或已损坏。请尝试：1) 刷新页面重新选择 2) 检查文件是否被其他程序占用", "error");
+        } else if (err.message && err.message.includes('MHA')) {
+          log("❌ MHA解析错误：" + err.message, "error");
+        } else {
+          log("渲染失败：" + (err.message || err), "error");
+        }
+        
+        byId("progress").value = 0;
       }
     })
 
@@ -599,16 +627,11 @@
         ctx.fill();
         ctx.closePath();
     }
-    // 切层
-    byId('slice-submit').addEventListener('click', () => {
-      const sliceValue = byId('slice-input').value;
-      const input_index = byId('index-input');
 
-      const indexValue = parseInt(input_index.value);
-      if (isNaN(sliceValue)) {
-        alert('Please enter a valid number');
-        return;
-      }
+    // 切层
+    bindInput(['slice-input', 'index-input'], () => {
+      const sliceValue = byId('slice-input').value;
+      const indexValue = parseInt(byId('index-input').value);
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
@@ -616,15 +639,9 @@
       gl_canvas.set_slice_mm(indexValue, sliceValue);
     })
 
-    byId('slab-thickness-submit').addEventListener('click', () => {
+    bindInput(['slab-thickness', 'index-input'], () => {
       const thicknessValue = byId('slab-thickness').value;
-      const input_index = byId('index-input');
-
-      const indexValue = parseInt(input_index.value);
-      if (isNaN(thicknessValue)) {
-        alert('Please enter a valid number');
-        return;
-      }
+      const indexValue = parseInt(byId('index-input').value);
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
@@ -632,12 +649,27 @@
       gl_canvas.set_slab_thickness(indexValue, thicknessValue);
     })
 
-    byId('set-center').addEventListener('click', async () => {
+    bindInput(['center-x', 'center-y', 'center-z', 'index-input'], async () => {
       const x = parseFloat(byId('center-x').value);
       const y = parseFloat(byId('center-y').value);
       const z = parseFloat(byId('center-z').value);
-      const input_index = byId('index-input');
-      const indexValue = parseInt(input_index.value);
+      const indexValue = parseInt(byId('index-input').value);
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+      try {
+        const result = await gl_canvas.handle_view_click_get(indexValue, x, y, z);
+      } catch (e) {
+        console.error('handle_view_click error:', e);
+      }
+    })
+
+    byId('get-point').addEventListener('click', async () => {
+      const x = parseFloat(byId('center-x').value);
+      const y = parseFloat(byId('center-y').value);
+      const z = parseFloat(byId('center-z').value);
+      const indexValue = parseInt(byId('index-input').value);
       if ([x, y, z].some(v => Number.isNaN(v))) {
         alert('Please enter a valid number');
         return;
@@ -646,13 +678,9 @@
         alert('Please select a series first!');
         return;
       }
-      // Function-level comment: Request Rust to compute world/slice data and await the result Promise.
-      try {
-        const result = await gl_canvas.handle_view_click_get(indexValue, x, y, z);
-        console.log('handle_view_click:', result);
-      } catch (e) {
-        console.error('handle_view_click error:', e);
-      }
+      
+      const result = await gl_canvas.get_pixel_value_from_screen(indexValue, x, y);
+      console.log('get point:', result);
     });
 
     byId('points').addEventListener('click', () => {
@@ -688,15 +716,9 @@
         drawPoint(ctx, 600, 600);
     })
 
-    byId('scale-submit').addEventListener('click', () => {
-      const input = byId('scale-input');
-      scaleValue = parseFloat(input.value);
-      const input_index = byId('index-input');
-      const indexValue = parseInt(input_index.value);
-      if (isNaN(scaleValue)) {
-        alert('Please enter a valid number');
-        return;
-      }
+    bindInput(['scale-input', 'index-input'], () => {
+      const scaleValue = parseFloat(byId('scale-input').value);
+      const indexValue = parseInt(byId('index-input').value);
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
@@ -704,11 +726,20 @@
       gl_canvas.set_scale(indexValue, scaleValue);
     });
 
-    byId('trans-submit').addEventListener('click', () => {
+    byId('aliasing-input').addEventListener('change', () => {
+      const aliasing = byId('aliasing-input').checked;
+      const indexValue = parseInt(byId('index-input').value);
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
+      }
+      gl_canvas.set_aliasing(indexValue, aliasing);
+    })
+
+    bindInput(['trans-x', 'trans-y', 'index-input'], () => {
       let x = parseFloat(byId('trans-x').value);
       let y = parseFloat(byId('trans-y').value);
-      const input_index = byId('index-input');
-      const indexValue = parseInt(input_index.value);
+      const indexValue = parseInt(byId('index-input').value);
       console.log('translate:', x, y);
 
       if (!gl_canvas) {
@@ -719,18 +750,18 @@
       gl_canvas.set_pan(indexValue, x, y);
     });
 
-    byId('winlev-submit').addEventListener('click', () => {
+    bindInput(['window', 'level', 'index-input'], () => {
       const win = byId('window').value;
-      let lev = byId('level').value;
-      const input_index = byId('index-input');
-      const indexValue = parseInt(input_index.value);
+      const lev = byId('level').value;
+      const indexValue = parseInt(byId('index-input').value);
 
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
-      win && gl_canvas.set_window_width(indexValue, win);
-      lev && gl_canvas.set_window_level(indexValue, lev);
+
+      gl_canvas.set_window_width(indexValue, win);
+      gl_canvas.set_window_level(indexValue, lev);
     });
 
     byId('winlev-get').addEventListener('click', () => {
@@ -785,7 +816,7 @@
       console.log('oblique_rotation:', dx_deg, dy_deg, dz_deg);
 
       gl_canvas.set_oblique_rotation_radians(state.index, dx, dy, dz);
-      const rotation = JSON.parse(await gl_canvas.get_oblique_rotation(state.index))
+      const rotation = JSON.parse(await gl_canvas.get_rotation(state.index))
       console.log('oblique_rotation:', rotation);
     });
 
@@ -801,7 +832,7 @@
       const z = parseFloat(byId("quat-z").value) || 0;
       const w = parseFloat(byId("quat-w").value) || 0;
 
-      gl_canvas.set_oblique_rotation_quat(state.index, [x, y, z, w]);
+      gl_canvas.set_rotation_quat(state.index, [x, y, z, w]);
     });
 
     byId('oblique-reset-submit').addEventListener('click', async () => {
@@ -813,15 +844,15 @@
       const opt = byId('resetOptions').value;
       state.index = parseInt(byId('oblique-index').value, 10);
       if (opt == "T") {
-        gl_canvas.set_oblique_rotation_quat(state.index, [0, 0, 0, 1]);
+        gl_canvas.set_rotation_quat(state.index, [0, 0, 0, 1]);
         gl_canvas.set_oblique_rotation_radians(state.index, 0, 0, 0);
         state.oblique_rotation = [0, 0, 0]
       } else if (opt == "C") {
-        gl_canvas.set_oblique_rotation_quat(state.index, [0, 0, 0, 1]);
+        gl_canvas.set_rotation_quat(state.index, [0, 0, 0, 1]);
         gl_canvas.set_oblique_rotation_radians(state.index, deg2rad(-90), 0, 0);
         state.oblique_rotation = [0, 0, 0]
       } else if (opt == "S") {
-        gl_canvas.set_oblique_rotation_quat(state.index, [0, 0, 0, 1]);
+        gl_canvas.set_rotation_quat(state.index, [0, 0, 0, 1]);
         gl_canvas.set_oblique_rotation_radians(state.index, deg2rad(90), deg2rad(-180), deg2rad(-90));
         state.oblique_rotation = [0, 0, 0]
       }
@@ -852,22 +883,26 @@
       } else {
         state.index = null;
       }
-      const index_orientation = parseInt(byId('index-orientation').value, 10);
-      const sx = parseInt(byId('roi-min-x').value);
-      const sy = parseInt(byId('roi-min-y').value);
-      const sz = parseInt(byId('roi-min-z').value);
-      const lx = parseInt(byId('roi-max-x').value);
-      const ly = parseInt(byId('roi-max-y').value);
-      const lz = parseInt(byId('roi-max-z').value);
-      const checkbox3d = byId('save_mesh').checked;
-      const checkboxCrop = byId('crop_mesh').checked;
-      const iso_min = parseFloat(byId('iso-min').value);
-      const iso_max = parseFloat(byId('iso-max').value);
 
+      const index_orientation = parseInt(byId('index-orientation').value, 10);
       if (!gl_canvas) {
         alert('Please select a series first!');
         return;
       }
+
+      gl_canvas.set_render_mode(mode, state.mesh_index, state.index, state.mip, index_orientation)
+      state.oblique_rotation = [0, 0, 0]
+    });
+
+    byId('crop-roi').addEventListener('click', () => {
+      const sx = parseFloat(byId('roi-min-x').value);
+      const sy = parseFloat(byId('roi-min-y').value);
+      const sz = parseFloat(byId('roi-min-z').value);
+      const lx = parseFloat(byId('roi-max-x').value);
+      const ly = parseFloat(byId('roi-max-y').value);
+      const lz = parseFloat(byId('roi-max-z').value);
+      const indexValue = parseInt(byId('index-input').value, 10);
+      console.log("set_mesh_roi",indexValue, sx, sy, sz, lx, ly, lz);
 
       if ([sx, sy, sz, lx, ly, lz].some(v => Number.isNaN(v))) {
         alert('Please enter a valid number');
@@ -878,14 +913,13 @@
         alert('ROI min must be less than max');
         return;
       }
-
-      gl_canvas.set_render_mode(mode, checkbox3d, checkboxCrop, sx, sy, sz, lx, ly, lz, state.mesh_index, state.index, iso_min, iso_max, state.mip, index_orientation)
-      state.oblique_rotation = [0, 0, 0]
-
-      if (checkbox3d) {
-        gl_canvas.set_mesh_rotation(mesh_index, state.mesh_rotation);
+      
+      if (!gl_canvas) {
+        alert('Please select a series first!');
+        return;
       }
-    });
+      gl_canvas.set_mesh_roi(indexValue, sx, sy, sz, lx, ly, lz);
+    })
 
     byId('mip-submit-rot').addEventListener('click', () => {
       const indexValue = parseInt(byId('index-input').value, 10);
@@ -894,14 +928,26 @@
         return;
       }
 
-      const mip_mode = parseInt(byId('mip-mode').value, 10);
-      gl_canvas.set_mip_mode(indexValue, mip_mode);
-
       const rotation_x = parseFloat(byId('mip-rotation-x').value);
       const rotation_y = parseFloat(byId('mip-rotation-y').value);
       const rotation_z = parseFloat(byId('mip-rotation-z').value);
-      gl_canvas.set_mip_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
+      gl_canvas.set_rotation_angle_degrees(indexValue, rotation_x, rotation_y, rotation_z);
     })
+
+    byId('mip-mode').addEventListener('change', () => {
+      const indexValue = parseInt(byId('index-input').value, 10);
+      if (!gl_canvas) return;
+
+      const mip_mode = parseInt(byId('mip-mode').value, 10);
+      gl_canvas.set_mip_mode(indexValue, mip_mode);
+    });
+
+    byId('3d-mode').addEventListener('change', () => {
+      if (!gl_canvas) return;
+      const preset = parseInt(byId('3d-mode').value, 10);
+      console.log(preset);
+      gl_canvas.set_mesh_mode(state.index, preset);
+    });
 
     byId('3d-submit').addEventListener('click', async () => {
       const indexValue = parseInt(byId('index-input').value, 10);
@@ -909,27 +955,19 @@
         alert('Please select a series first!');
         return;
       }
-
       gl_canvas.set_mesh_rotation_enabled(indexValue, state.enable_rotation);
-
-      const scale = parseFloat(byId('3d-scale').value);
-      const pan_x = parseFloat(byId('3d-pan-x').value);
-      const pan_y = parseFloat(byId('3d-pan-y').value);
-      const opacity = parseFloat(byId('3d-opacity').value);
       const rotation_x = parseFloat(byId('3d-rotation-x').value);
       const rotation_y = parseFloat(byId('3d-rotation-y').value);
+      gl_canvas.set_rotation_degrees(indexValue, rotation_x, rotation_y);
+    });
 
-      gl_canvas.set_mesh_scale(indexValue, scale);
-      gl_canvas.set_mesh_pan(indexValue, pan_x, pan_y);
+    bindInput(['3d-opacity'], async () => {
+      const opacity = parseFloat(byId('3d-opacity').value);
       if (typeof gl_canvas.set_mesh_opacity === 'function') {
         gl_canvas.set_mesh_opacity(indexValue, Math.max(0, Math.min(1, opacity)));
       } else {
         log('mesh opacity 方法未导出，已跳过', 'warn');
       }
-
-      gl_canvas.set_mesh_rotation_angle_degrees(indexValue, rotation_x, rotation_y);
-      state.mesh_rotation = await gl_canvas.get_mesh_rotation(indexValue);
-      console.log('3d-submit:', state.mesh_rotation);
     });
 
     byId('3d-rot').addEventListener('click', () => {
@@ -1013,9 +1051,18 @@
         await ensureWasm();
         byId("progress").value = 0;
 
+        // 检查文件是否存在
+        if (!state.mhx) {
+          throw new Error("未选择MHA/MHX文件");
+        }
+        
+        console.log("开始读取文件:", state.mhx.name, "大小:", state.mhx.size, "字节");
+        
         // 读取MHX文件内容
         const mhxText = await state.mhx.text();
-        log(`读取MHX文件: ${state.mhx.name}`);
+        log(`读取MHX文件: ${state.mhx.name} (${mhxText.length} 字符)`);
+        
+        console.log("MHX文件头（前500字符）:", mhxText.substring(0, 500));
 
         // 解析MHX头信息
         const header = await parseMHXContent(mhxText);
@@ -1032,8 +1079,19 @@
         byId("progress").value = 100;
 
       } catch (err) {
-        log("解析失败：" + err.message, "error");
-        console.error(err);
+        console.error("详细错误:", err);
+        console.error("错误类型:", err.name);
+        console.error("错误消息:", err.message);
+        console.error("错误堆栈:", err.stack);
+        
+        // 针对 ERR_UPLOAD_FILE_CHANGED 错误的特殊处理
+        if (err.name === 'NotFoundError' || err.message.includes('could not be read')) {
+          log("❌ 文件读取失败：可能是文件过大或被占用。请尝试：1) 重新选择文件 2) 确保文件未被其他程序打开", "error");
+        } else if (err.name === 'SecurityError') {
+          log("❌ 安全错误：浏览器安全限制。请尝试使用HTTP服务器而非file://协议访问", "error");
+        } else {
+          log("解析失败：" + err.message, "error");
+        }
       }
     });
 
@@ -1141,7 +1199,10 @@
                 log("开始导出 MHA/MHX ...");
                 if (volume) {
                     console.log("开始将内存中的 DICOM 数据导出为 MHA...");
-                    // 调用我们刚写的 Rust WASM 方法
+                    const matrix = await gl_canvas.get_base_screen(0);
+                    console.log(matrix);
+                    
+                    // const mhaBytes = volume.export_mha_with_effects(true, 35.0, matrix);
                     const mhaBytes = volume.export_mha();
                     // 生成 Blob 并下载
                     const blob = new Blob([mhaBytes], { type: "application/octet-stream" });

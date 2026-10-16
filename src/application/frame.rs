@@ -34,6 +34,7 @@ impl FrameOutcome {
 pub(crate) enum Acquisition<T> {
     Usable { texture: T, suboptimal: bool },
     Failed(SurfaceFailureKind),
+    PreparationFailed(KeplerError),
 }
 
 impl Acquisition<wgpu::SurfaceTexture> {
@@ -89,6 +90,7 @@ pub(crate) fn execute(driver: &mut impl FrameDriver) -> KeplerResult<FrameOutcom
     let acquisition = driver.acquire();
     driver.check_fault()?;
     match acquisition {
+        Acquisition::PreparationFailed(error) => Err(error),
         Acquisition::Usable {
             texture,
             suboptimal,

@@ -130,7 +130,7 @@ mod tests {
     #[test]
     fn selects_successful_webgpu_without_attempting_gl() -> Result<(), BrowserBackendError> {
         let gl_attempts = Cell::new(0);
-        let selected = pollster::block_on(select_browser_candidate(
+        let selected = futures::executor::block_on(select_browser_candidate(
             BrowserBackendPreference::Auto,
             true,
             || async { Ok::<_, String>("webgpu candidate") },
@@ -149,7 +149,7 @@ mod tests {
     fn unavailable_webgpu_attempts_gl_once() -> Result<(), BrowserBackendError> {
         let webgpu_attempts = Cell::new(0);
         let gl_attempts = Cell::new(0);
-        let selected = pollster::block_on(select_browser_candidate(
+        let selected = futures::executor::block_on(select_browser_candidate(
             BrowserBackendPreference::Auto,
             false,
             || {
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn failed_webgpu_negotiation_falls_back_to_gl_once() -> Result<(), BrowserBackendError> {
         let gl_attempts = Cell::new(0);
-        let selected = pollster::block_on(select_browser_candidate(
+        let selected = futures::executor::block_on(select_browser_candidate(
             BrowserBackendPreference::Auto,
             true,
             || async { Err::<&str, _>("device request failed".to_string()) },
@@ -192,7 +192,7 @@ mod tests {
     #[test]
     fn reports_both_failed_candidates_without_retrying() {
         let gl_attempts = Cell::new(0);
-        let error = match pollster::block_on(select_browser_candidate(
+        let error = match futures::executor::block_on(select_browser_candidate(
             BrowserBackendPreference::Auto,
             true,
             || async { Err::<&str, _>("adapter request failed".to_string()) },
@@ -215,7 +215,7 @@ mod tests {
     #[test]
     fn forced_gl_skips_webgpu_detection_and_attempt() -> Result<(), BrowserBackendError> {
         let webgpu_attempts = Cell::new(0);
-        let selected = pollster::block_on(select_browser_candidate(
+        let selected = futures::executor::block_on(select_browser_candidate(
             BrowserBackendPreference::GlOnly,
             true,
             || {
@@ -262,7 +262,7 @@ mod tests {
     fn post_canvas_commit_failure_does_not_retry_another_backend() -> Result<(), BrowserBackendError>
     {
         let gl_attempts = Cell::new(0);
-        let candidate = pollster::block_on(select_browser_candidate(
+        let candidate = futures::executor::block_on(select_browser_candidate(
             BrowserBackendPreference::Auto,
             true,
             || async { Ok::<_, String>("webgpu candidate") },

@@ -39,3 +39,19 @@ yarn-debug.log*
 yarn-error.log*
 
 coverage/
+
+# AI agent workspace
+.workbuddy/
+.trae/
+.agents/
+.pi/ 
+.cline/
+.clinerules/
+.opencode/
+# 项目的"领域术语词典"（ubiquitous language）
+CONTEXT.md
+
+.github/
+
+# onnxruntime
+models/

@@ -1,0 +1,53 @@
+{
+  "candidate": {
+    "passed": 443,
+    "failed": 18,
+    "ignored": 19,
+    "failure_names": [
+      "core::window_level::tests::test_clamping",
+      "data::dicom::export_dicom::tests::build_ct_dicom_exports_checkerboard_volume",
+      "dicom_metadata_validation_tests::test_patient_position_anatomical_orientation_codes",
+      "mha_mhd_tests::test_create_pixel_data_float64_applies_slope_intercept",
+      "mha_mhd_tests::test_create_pixel_data_int32_clamps",
+      "mha_mhd_tests::test_create_pixel_data_uint8_converts",
+      "mha_mhd_tests::test_element_type_mapping_covers_metaio_set",
+      "mha_mhd_tests::test_mhd_2d_header_pads_to_3d",
+      "mha_mhd_tests::test_mhd_header_with_only_required_keys_parses",
+      "rendering::view::camera::tests::test_default_identity",
+      "rendering::view::camera::tests::test_orbit_accumulation",
+      "rendering::view::mesh::mesh_view::tests::test_rotation_accumulation",
+      "rendering::view::mesh::mesh_view::tests::test_rotation_angle_reset",
+      "rendering::view::mesh::mesh_view::tests::test_rotation_default_identity",
+      "rendering::view::mip::tests::test_mip_uniforms_size",
+      "rendering::view::mpr::mpr_view_wgpu_impl::tests::test_uniforms_frag_size_alignment",
+      "wasm_window_level_tests::test_window_level_clamping",
+      "wasm_window_level_tests::test_window_width_clamping"
+    ]
+  },
+  "release_platform_normalized": {
+    "passed": 343,
+    "failed": 18,
+    "ignored": 32,
+    "failure_names": [
+      "core::window_level::tests::test_clamping",
+      "data::dicom::export_dicom::tests::build_ct_dicom_exports_checkerboard_volume",
+      "dicom_metadata_validation_tests::test_patient_position_anatomical_orientation_codes",
+      "mha_mhd_tests::test_create_pixel_data_float64_applies_slope_intercept",
+      "mha_mhd_tests::test_create_pixel_data_int32_clamps",
+      "mha_mhd_tests::test_create_pixel_data_uint8_converts",
+      "mha_mhd_tests::test_element_type_mapping_covers_metaio_set",
+      "mha_mhd_tests::test_mhd_2d_header_pads_to_3d",
+      "mha_mhd_tests::test_mhd_header_with_only_required_keys_parses",
+      "rendering::view::camera::tests::test_default_identity",
+      "rendering::view::camera::tests::test_orbit_accumulation",
+      "rendering::view::mesh::mesh_view::tests::test_rotation_accumulation",
+      "rendering::view::mesh::mesh_view::tests::test_rotation_angle_reset",
+      "rendering::view::mesh::mesh_view::tests::test_rotation_default_identity",
+      "rendering::view::mip::tests::test_mip_uniforms_size",
+      "rendering::view::mpr::mpr_view_wgpu_impl::tests::test_uniforms_frag_size_alignment",
+      "wasm_window_level_tests::test_window_level_clamping",
+      "wasm_window_level_tests::test_window_width_clamping"
+    ]
+  },
+  "new_failure_names": []
+}

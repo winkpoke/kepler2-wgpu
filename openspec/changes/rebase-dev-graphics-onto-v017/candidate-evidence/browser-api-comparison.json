@@ -1,0 +1,6 @@
+{
+  "application_declarations_equal": true,
+  "excluded_lines": "readonly wasm_bindgen_* compiler-generated closure exports",
+  "baseline": "../baseline/release-browser-api.d.ts",
+  "candidate": "browser-api.d.ts"
+}

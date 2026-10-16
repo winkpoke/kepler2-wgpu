@@ -8,8 +8,6 @@ mod mesh_view_tests {
         mesh_view::{FallbackMode, MeshView},
         performance::QualityLevel,
     };
-    use std::f32::consts::FRAC_PI_2;
-    use wgpu::{Backends, DeviceDescriptor, Features, Instance, Limits};
 
     #[test]
     fn test_mesh_view_creation_success() {
