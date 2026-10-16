@@ -149,9 +149,19 @@ pub(super) fn apply(
         next[slot] = request.orientation_index;
     }
     let content = preparation.upload(model)?;
-    let (views, strategy) = prepare(vol, next, &request, |input| {
+    let (mut views, strategy) = prepare(vol, next, &request, |input| {
         preparation.create_view(&app_view.view_factory, content.clone(), input)
     })?;
+    // Content-only factories retain their public API; the canonical source owner
+    // supplies geometry before the prepared collection is published.
+    for view in &mut views {
+        if let Some(mesh) = view
+            .as_any_mut()
+            .downcast_mut::<crate::rendering::view::mesh::mesh_view::MeshView>()
+        {
+            mesh.set_volume_geometry(vol);
+        }
+    }
     // No returned failure can occur after this point.
     app_view.save_view_states();
     app_view.layout.replace_all_views(views, Some(strategy));

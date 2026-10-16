@@ -119,3 +119,9 @@ R8Uint segmentation overlays, DVR, spine/needle meshes, mesh overlays, marker
 controls, and OBJ exports. HTTP/WebSocket/CLI and browser bindings are separate
 contracts. The native compute owner and viewer renderer do not share devices.
 Release guidance snapshots are retained in `doc/archive/v017-guidance/`.
+
+## NIfTI ownership
+
+The [complete NIfTI importer](../fileio/nifti.md) owns format validation, scalar
+conversion and explicit geometry provenance for native and WASM callers.
+Consumers wrap CTVolume and present diagnostics; they do not reparse headers.

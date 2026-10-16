@@ -304,12 +304,10 @@ pub async fn parse_common_files_wasm(
     // Parse info parameters once
     let mut buf = vec![0u8; info.length() as usize];
     info.copy_to(&mut buf[..]);
-    let info_json = String::from_utf8(buf).map_err(|e| JsValue::from_str(&format!("UTF8 decode error: {}", e)))?;
-    let info: serde_json::Value = serde_json::from_str(&info_json).map_err(|e| JsValue::from_str(&format!("JSON parse error: {}", e)))?;
-    let slope = info["slope"].as_f64().map(|v| v as f32).ok_or(JsValue::from_str("Missing slope in info"))?;
-    let intercept = info["intercept"].as_f64().map(|v| v as f32).ok_or(JsValue::from_str("Missing intercept in info"))?;
-    log::info!("Medical imaging info: slope = {:?}, intercept = {:?}", slope, intercept);
-
+    let info_json = String::from_utf8(buf)
+        .map_err(|e| JsValue::from_str(&format!("UTF8 decode error: {}", e)))?;
+    let info: serde_json::Value = serde_json::from_str(&info_json)
+        .map_err(|e| JsValue::from_str(&format!("JSON parse error: {}", e)))?;
     // Collect and categorize medical imaging files
     let mut mha_files = Vec::new();
     let mut mhd_files = Vec::new();
@@ -344,6 +342,31 @@ pub async fn parse_common_files_wasm(
     }
 
     // Process files based on what's available
+    if mha_files.is_empty() && !nii_files.is_empty() {
+        let first = nii_files.remove(0);
+        let options = crate::data::medical_imaging::NiftiImportOptions::default();
+        if first.size() > options.max_input_bytes as f64 {
+            return Err(JsValue::from_str("NIfTI file exceeds input byte limit"));
+        }
+        let bytes = read_file_as_bytes(first).await?;
+        return crate::data::medical_imaging::import_nifti_bytes(&bytes, options)
+            .map(|imported| imported.volume)
+            .map_err(|e| JsValue::from_str(&e.to_string()));
+    }
+    let slope = info["slope"]
+        .as_f64()
+        .map(|v| v as f32)
+        .ok_or(JsValue::from_str("Missing slope in info"))?;
+    let intercept = info["intercept"]
+        .as_f64()
+        .map(|v| v as f32)
+        .ok_or(JsValue::from_str("Missing intercept in info"))?;
+    log::info!(
+        "Medical imaging info: slope = {:?}, intercept = {:?}",
+        slope,
+        intercept
+    );
+
     if !mha_files.is_empty() {
         // Process MHA files (self-contained)
         log::info!("Processing {} MHA file(s)", mha_files.len());
@@ -351,32 +374,6 @@ pub async fn parse_common_files_wasm(
         let bytes = read_file_as_bytes(first_mha).await?;
         let ct_volume = parse_mha_and_generate_ct(bytes, None, slope, intercept).await?;
         Ok(ct_volume)
-    } else if !nii_files.is_empty() {
-        log::info!("Processing {} NIfTI file(s)", nii_files.len());
-        let first_nii = nii_files.into_iter().next().unwrap();
-        let bytes = read_file_as_bytes(first_nii).await?;
-        let mv = NiftiParser::parse_bytes(&bytes)
-            .map_err(|e| JsValue::from_str(&format!("NIfTI parse error: {}", e)))?;
-        let mut dimensions = mv.metadata.dimensions;
-        let mut spacing = mv.metadata.spacing;
-        let mut offset = mv.metadata.offset;
-        if dimensions.len() != 3 {
-            dimensions.push(1);
-            spacing.push(1.0);
-            offset.push(0.0);
-        }
-        let orientation = mv.metadata.orientation.concat();
-        MedicalVolume::generate_ct_volume_mha(
-            [dimensions[0], dimensions[1], dimensions[2]],
-            mv.pixel_data.as_bytes().to_vec(),
-            mv.metadata.pixel_type,
-            spacing,
-            offset,
-            orientation,
-            slope,
-            intercept,
-        )
-        .map_err(|e| JsValue::from_str(&e))
     } else if !mhd_files.is_empty() && !raw_files.is_empty() {
         // Process MHD files (require separate data files)
         log::info!(

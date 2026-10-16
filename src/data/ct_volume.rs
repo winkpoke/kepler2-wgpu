@@ -11,7 +11,7 @@ use wasm_bindgen::prelude::*;
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[derive(Clone)]
 pub struct CTVolume {
-    pub(crate) dimensions: (usize, usize, usize), // (rows, columns, number of slices)
+    pub(crate) dimensions: (usize, usize, usize), // (width/x, height/y, depth/z)
     pub(crate) voxel_spacing: (f32, f32, f32),    // (spacing_x, spacing_y, spacing_z)
     pub(crate) voxel_data: Vec<i16>,              // 3D voxel data
     pub(crate) base: Base,
@@ -94,10 +94,18 @@ impl CTVolume {
         &self.base
     }
 
+    /// Read x-fastest voxel storage with per-axis bounds and checked indexing.
     pub fn get_voxel(&self, x: usize, y: usize, z: usize) -> Option<i16> {
-        let (rows, cols, _slices) = self.dimensions;
-        let idx = z * rows * cols + y * cols + x;
-        self.voxel_data.get(idx).copied()
+        let (width, height, depth) = self.dimensions;
+        if x >= width || y >= height || z >= depth {
+            return None;
+        }
+        let index = z
+            .checked_mul(height)?
+            .checked_add(y)?
+            .checked_mul(width)?
+            .checked_add(x)?;
+        self.voxel_data.get(index).copied()
     }
 
     /// Downsample XY plane by 2x using 2x2 average pooling.

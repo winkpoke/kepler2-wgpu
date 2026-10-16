@@ -124,6 +124,7 @@ pub struct MeshView {
     needle_unit: Option<Mesh>,
     oblique_planes: [ObliquePlaneUniform; 4],
     camera: Camera,
+    texture_to_world: Option<Mat4>,
     ball_enabled: bool,
     balls: [[f32; 4]; 4],
 }
@@ -153,6 +154,9 @@ impl MeshView {
             self.roi_max.to_vec(),
         ] {
             state.extend_from_slice(bytemuck::cast_slice(&value));
+        }
+        if let Some(matrix) = self.texture_to_world {
+            state.extend_from_slice(bytemuck::cast_slice(&matrix.to_cols_array()));
         }
         state.extend_from_slice(bytemuck::bytes_of(&self.spine_lighting));
         state.extend_from_slice(bytemuck::bytes_of(&self.needle_lighting));
@@ -221,6 +225,13 @@ impl MeshView {
         self.invalidation.invalidate();
     }
 
+    /// Attach source geometry without changing the legacy content-only factory API.
+    pub fn set_volume_geometry(&mut self, volume: &crate::data::ct_volume::CTVolume) {
+        self.texture_to_world =
+            Some(crate::core::geometry::GeometryBuilder::normalized_texture_to_world(volume));
+        self.invalidation.invalidate();
+    }
+
     pub fn new() -> Self {
         Self {
             invalidation: Default::default(),
@@ -259,6 +270,7 @@ impl MeshView {
             needle_unit: None,
             oblique_planes: [ObliquePlaneUniform::default(); 4],
             camera: Camera::new(),
+            texture_to_world: None,
             ball_enabled: false,
             balls: [[0.0; 4]; 4],
         }
@@ -732,7 +744,11 @@ impl MeshView {
         let d = vol_extent.depth_or_array_layers.max(1) as f32;
         let phys = Vec3::new(w, h, d * self.slab_thickness);
         let max_extent = phys.max_element().max(1e-6);
-        let volume_scale = phys / max_extent;
+        let volume_scale = if self.texture_to_world.is_some() {
+            Vec3::ONE
+        } else {
+            phys / max_extent
+        };
 
         let aspect_ratio = if self.dim.1 > 0 && self.dim.0 > 0 {
             self.dim.0 as f32 / self.dim.1 as f32
@@ -740,9 +756,12 @@ impl MeshView {
             1.0
         };
 
-        let view_projection = self.camera.view_projection_matrix(aspect_ratio);
-        let inv_view_projection = self.camera.inverse_view_projection_matrix(aspect_ratio);
-        let camera_position = self.camera.effective_position();
+        let model = self.texture_to_world.unwrap_or(Mat4::IDENTITY);
+        let view_projection = self.camera.view_projection_matrix(aspect_ratio) * model;
+        let inv_view_projection = view_projection.inverse();
+        let camera_position = model
+            .inverse()
+            .transform_point3(self.camera.effective_position());
 
         // Volume uniforms
         if let Some(vol_ctx) = &self.volume_ctx {
@@ -799,9 +818,11 @@ impl MeshView {
 
         // Spine mesh uniforms and lighting. The mesh MVP carries the clip-space
         // Y flip so meshes track the DVR volume's mirrored screen mapping.
-        let remap = Mat4::from_translation(Vec3::splat(0.5))
-            * Mat4::from_scale(Vec3::from(volume_scale))
-            * Mat4::from_translation(Vec3::splat(-0.5));
+        let remap = self.texture_to_world.unwrap_or_else(|| {
+            Mat4::from_translation(Vec3::splat(0.5))
+                * Mat4::from_scale(volume_scale)
+                * Mat4::from_translation(Vec3::splat(-0.5))
+        });
         let mesh_mvp = self.mesh_view_projection(aspect_ratio) * remap;
         if let Some(spine_ctx) = &self.spine_ctx {
             if let Ok(mut guard) = spine_ctx.lock() {

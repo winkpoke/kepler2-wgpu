@@ -288,6 +288,7 @@ impl ViewFactory for DefaultViewFactory {
         size: (u32, u32),
     ) -> Result<Box<dyn View>, Box<dyn std::error::Error>> {
         let mut mesh_view = MeshView::new();
+        mesh_view.set_volume_geometry(vol);
         mesh_view.set_rotation_enabled(false);
         info!("[DefaultViewFactory] Mesh rotation enabled");
 

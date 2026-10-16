@@ -1,5 +1,16 @@
 # Changelog
 
+## NIfTI import correctness (2026-10-16)
+
+- Centralize native/browser NIfTI-1 import with bounded gzip, endian-aware i16
+  scaling, clipping diagnostics and explicit coordinate-space provenance.
+- Preserve qform/sform and correct affine centring/inverses and texture centres;
+  source-aware DVR and MPR overlays share the resolved geometry.
+- Accept singleton extra dimensions and normalized small offsets; reject
+  unsupported time/vector data, malformed payloads and unsupported shear.
+- Browser volume pickers include both .nii and .nii.gz. See the
+  [import contract](fileio/nifti.md) for compatibility and verification limits.
+
 ## 2026-10-05 — Replay graphics improvements onto v0.17.0 (landed with platform deferments)
 
 - Replayed all 13 dev commits with their merge topology onto the release, retaining

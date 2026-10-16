@@ -43,26 +43,51 @@ impl ImageMetadata {
         self.dimensions.iter().product()
     }
 
-    /// Converts world coordinates to voxel indices
-    pub fn world_to_voxel(&self, world_pos: [f32; 3]) -> [f32; 3] {
-        let mut voxel_pos = [0.0; 3];
-
-        // Translate to origin
-        let translated = [
-            world_pos[0] - self.offset[0],
-            world_pos[1] - self.offset[1],
-            world_pos[2] - self.offset[2],
-        ];
-
-        // Apply inverse orientation and spacing
-        for i in 0..3 {
-            for j in 0..3 {
-                voxel_pos[i] += self.orientation[j][i] * translated[j];
-            }
-            voxel_pos[i] /= self.spacing[i];
+    /// Checked inverse of orientation * spacing, including general affine shear.
+    pub fn try_world_to_voxel(&self, world_pos: [f32; 3]) -> MedicalImagingResult<[f32; 3]> {
+        use glam::{Mat3, Vec3};
+        if self.spacing.len() < 3 || self.offset.len() < 3 {
+            return Err(MedicalImagingError::Validation(
+                "incomplete geometry".into(),
+            ));
         }
+        let linear = Mat3::from_cols(
+            Vec3::new(
+                self.orientation[0][0],
+                self.orientation[1][0],
+                self.orientation[2][0],
+            ) * self.spacing[0],
+            Vec3::new(
+                self.orientation[0][1],
+                self.orientation[1][1],
+                self.orientation[2][1],
+            ) * self.spacing[1],
+            Vec3::new(
+                self.orientation[0][2],
+                self.orientation[1][2],
+                self.orientation[2][2],
+            ) * self.spacing[2],
+        );
+        let determinant = linear.determinant();
+        if !linear.is_finite() || !determinant.is_finite() || determinant == 0.0 {
+            return Err(MedicalImagingError::Validation("non-finite or singular geometry".into()));
+        }
+        let inverse = linear.inverse();
+        let translated =
+            Vec3::from_array(world_pos) - Vec3::new(self.offset[0], self.offset[1], self.offset[2]);
+        let voxel = inverse * translated;
+        if !linear.is_finite() || !inverse.is_finite() || !voxel.is_finite() {
+            return Err(MedicalImagingError::Validation(
+                "non-finite or singular geometry".into(),
+            ));
+        }
+        Ok(voxel.to_array())
+    }
 
-        voxel_pos
+    /// Compatibility helper. Invalid geometry yields NaNs; checked callers should use
+    /// `try_world_to_voxel` to obtain the typed error.
+    pub fn world_to_voxel(&self, world_pos: [f32; 3]) -> [f32; 3] {
+        self.try_world_to_voxel(world_pos).unwrap_or([f32::NAN; 3])
     }
 
     /// Converts voxel indices to world coordinates

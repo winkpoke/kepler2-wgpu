@@ -439,23 +439,25 @@ impl MprView {
         let base_screen = base_screen_legacy.matrix;
         let base_uv = base_uv_legacy.matrix;
 
-        // Create screen-space transformation matrix
-        let transform_matrix_screen = base_uv.inverse()
+        // Match update_transform_matrix, applying world-to-texture exactly once.
+        let transform_matrix = base_uv.inverse()
             * base_screen
+            * Mat4::from_translation(-pan)
+            * Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0))
             * Mat4::from_scale(Vec3::splat(scale).with_z(1.0))
-            * Mat4::from_translation(-pan);
-
-        // Create final transformation matrix from screen to UV coordinates
-        let transform_matrix = base_uv.inverse() * transform_matrix_screen;
+            * Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
 
         // Create WGPU implementation with shared context
         let wgpu_impl = MprViewWgpuImpl::new(render_context, device, texture, transform_matrix);
         log::info!("Created MprView with orientation: {:?}, scale: {:?}, translate: {:?}, pos: {:?}, dim: {:?}",
             orientation, scale, pan, pos, dim);
 
-        let mm = vol.dimensions;
-        let sp = vol.voxel_spacing;
-        let (content_w_mm, content_h_mm) = ((mm.0 as f32 * sp.0), (mm.1 as f32 * sp.1));
+        // The screen base is a square physical plane; fitting raw XY dimensions
+        // would stretch coronal/sagittal and rotated volumes differently.
+        let (content_w_mm, content_h_mm) = (
+            base_screen.x_axis.truncate().length(),
+            base_screen.y_axis.truncate().length(),
+        );
         log::info!(
             "[{:?}]: Content size in mm: {:?}",
             orientation,
@@ -603,17 +605,9 @@ impl MprView {
     /// Return the UV space base matrix
     pub fn get_oblique_rotation_uv(&self) -> Vec3 {
         let screen_to_uv = self.base_uv.inverse() * self.base_screen;
-        let r_screen = Mat4::from_quat(self.oblique_rotation);
-        let r_uv = screen_to_uv * r_screen * screen_to_uv.inverse();
-
-        // Extract basis vectors and normalize to handle non-uniform scaling
-        let right = (r_uv * glam::Vec4::new(1.0, 0.0, 0.0, 0.0))
-            .truncate()
-            .normalize();
-        let up = (r_uv * glam::Vec4::new(0.0, 1.0, 0.0, 0.0))
-            .truncate()
-            .normalize();
-        let n = right.cross(up).normalize();
+        let right = screen_to_uv.x_axis.truncate().normalize();
+        let down = screen_to_uv.y_axis.truncate().normalize();
+        let n = right.cross(down).normalize();
         n
     }
 
@@ -634,21 +628,17 @@ impl MprView {
     pub(crate) fn compute_slice_plane_uv(
         base_uv: Mat4,
         base_screen: Mat4,
-        oblique_rotation: Quat,
+        _oblique_rotation: Quat,
         scale: f32,
         pan: Vec3,
         slice: f32,
     ) -> (Vec3, f32) {
         let screen_to_uv = base_uv.inverse() * base_screen;
-        let r_screen = Mat4::from_quat(oblique_rotation);
-        let r_uv = screen_to_uv * r_screen * screen_to_uv.inverse();
-        let right = (r_uv * glam::Vec4::new(1.0, 0.0, 0.0, 0.0))
-            .truncate()
-            .normalize();
-        let up = (r_uv * glam::Vec4::new(0.0, 1.0, 0.0, 0.0))
-            .truncate()
-            .normalize();
-        let normal = right.cross(up).normalize();
+        // base_screen already includes oblique rotation. Transport its actual
+        // in-plane axes, rather than conjugating identity into a fixed UV-Z normal.
+        let right = screen_to_uv.x_axis.truncate().normalize();
+        let down = screen_to_uv.y_axis.truncate().normalize();
+        let normal = right.cross(down).normalize();
 
         // UV-space position of the screen-center at the displayed depth
         // (`slice - pan.z` after `T_pan`), matching `mpr.wgsl` sampling.
@@ -740,26 +730,21 @@ impl MprView {
         scale: f32,
         pan: Vec3,
     ) -> Mat4 {
-        let y_flip = Mat4::from_translation(Vec3::new(0.0, 1.0, 0.0))
-            * Mat4::from_scale(Vec3::new(1.0, -1.0, 0.0));
         let t_pan = Mat4::from_translation(-pan);
         let t_center = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0));
         let s_scale = Mat4::from_scale(Vec3::splat(scale).with_z(1.0));
         let t_uncenter = Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
         let screen_to_uv =
             base_uv.inverse() * base_screen * t_pan * t_center * s_scale * t_uncenter;
-
-        // A * T(pan) * A^-1 == translation by A's linear part applied to pan.
-        // Composed left of M^-1 this doubles the pan reaching the mesh:
-        // M^-1 * T(A*pan) = Z^-1 * T(pan) * A^-1 * T(A*pan) = Z^-1 * T(2*pan) * A^-1.
-        let base = base_uv.inverse() * base_screen;
-        let pan_uv = Mat4::from_translation(base.transform_vector3(pan));
-
-        y_flip
-            * screen_to_uv.inverse()
-            * pan_uv
-            * Mat4::from_translation(Vec3::new(-1.0, -0.5, 0.0))
-            * Mat4::from_scale(Vec3::splat(2.0))
+        // UV vertex -> sampled screen coordinate -> NDC. Scaling by two belongs
+        // after the inverse, so both location and pan match the slice exactly.
+        let screen_to_clip = Mat4::from_cols(
+            glam::Vec4::new(2.0, 0.0, 0.0, 0.0),
+            glam::Vec4::new(0.0, -2.0, 0.0, 0.0),
+            glam::Vec4::ZERO,
+            glam::Vec4::new(-1.0, 1.0, 0.0, 1.0),
+        );
+        screen_to_clip * screen_to_uv.inverse()
     }
 
     pub fn set_aliasing(&mut self, aliasing: bool) {
@@ -1820,13 +1805,7 @@ mod tests {
         );
     }
 
-    /// Regression guard: the mesh overlay must pan at the same rate as the
-    /// slice image. The slice quad samples `uv = M * t`, so pan `p` moves
-    /// the volume image by `2 * p / scale` NDC units (texcoord span [0,1]
-    /// covers 2 NDC units). Feeding `M⁻¹` straight into the raster MVP
-    /// moves the mesh only `p / scale` — half the rate (the bug this
-    /// guards). Signs must match too: quad texcoord y is top-down, so a
-    /// positive pan.y moves both images toward −NDC.y.
+    /// Overlay pan follows the sampled image's screen-to-NDC factor of two.
     #[test]
     fn test_mesh_overlay_pan_rate_matches_slice() {
         let base_uv = fake_base_uv();
@@ -1858,25 +1837,13 @@ mod tests {
             );
         }
 
-        // Static layout invariance: at pan == 0 the correction term must be
-        // the identity, i.e. the same MVP the previous construction built.
-        let pan0 = MprView::compute_mesh_overlay_mvp(base_uv, base_screen, 1.0, Vec3::ZERO);
-        let y_flip = Mat4::from_translation(Vec3::new(0.0, 1.0, 0.0))
-            * Mat4::from_scale(Vec3::new(1.0, -1.0, 0.0));
-        let zoom = Mat4::from_translation(Vec3::new(0.5, 0.5, 0.0))
-            * Mat4::from_scale(Vec3::splat(1.0_f32).with_z(1.0))
-            * Mat4::from_translation(Vec3::new(-0.5, -0.5, 0.0));
-        let legacy = y_flip
-            * (base_uv.inverse() * base_screen * zoom).inverse()
-            * Mat4::from_translation(Vec3::new(-1.0, -0.5, 0.0))
-            * Mat4::from_scale(Vec3::splat(2.0));
-        for (a, b) in pan0
-            .to_cols_array()
-            .iter()
-            .zip(legacy.to_cols_array().iter())
-        {
-            assert!((a - b).abs() < 1e-6, "pan=0 MVP changed: {a} vs {b}");
-        }
+        // Check absolute location, independently of the previous erroneous MVP.
+        let screen_point = Vec3::new(0.2, 0.7, 0.0);
+        let uv = (base_uv.inverse() * base_screen).transform_point3(screen_point);
+        let mvp = MprView::compute_mesh_overlay_mvp(base_uv, base_screen, 1.0, Vec3::ZERO);
+        assert!(mvp
+            .transform_point3(uv)
+            .abs_diff_eq(Vec3::new(-0.6, -0.4, 0.0), 1e-5));
     }
 
     /// `compute_oblique_plane_from_uv` must land the slice on the needle

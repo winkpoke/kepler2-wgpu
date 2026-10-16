@@ -7,9 +7,6 @@ use crate::{
 };
 use glam::{Mat4, Vec3};
 
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-
 pub struct GeometryBuilder<'a> {
     #[allow(dead_code)]
     repo: Option<&'a DicomRepo>,
@@ -42,7 +39,7 @@ impl<'a> GeometryBuilder<'a> {
     ///
     /// # Arguments
     /// * `vol` - Reference to a `CTVolume` containing the dimensions, voxel spacing,
-    ///           and the transformation matrix mapping voxel indices to world space.
+    ///   and the transformation matrix mapping voxel indices to world space.
     ///
     /// # Returns
     /// A `Base` struct representing the transformation from normalized UV space to
@@ -50,10 +47,10 @@ impl<'a> GeometryBuilder<'a> {
     ///
     /// # Implementation Notes
     /// * The volume dimensions are used directly to ensure full coverage.
-    /// * A scaling matrix maps [0,1] UV coordinates to actual voxel index space.
+    /// * Texture centres (i+0.5)/N map to voxel-centre index i, including half-voxel boundaries.
     /// * The final transformation matrix is computed by multiplying the volume's
     ///   base matrix with the UV scaling matrix:
-    ///   `world_matrix = vol.base.matrix * scaling_matrix`.
+    ///   `world_matrix = vol.base.matrix * translate(-0.5) * scaling_matrix`.
     ///
     /// # Example
     /// ```rust,ignore
@@ -72,7 +69,8 @@ impl<'a> GeometryBuilder<'a> {
         let vol_matrix = vol.base.matrix;
 
         // Matrix multiplication in glam: result = A * B
-        let base_uv_matrix_glam = vol_matrix * scaling_matrix;
+        let base_uv_matrix_glam =
+            vol_matrix * Mat4::from_translation(Vec3::splat(-0.5)) * scaling_matrix;
 
         let base_uv = Base {
             label: "CT Volume: UV".to_string(),
@@ -82,200 +80,75 @@ impl<'a> GeometryBuilder<'a> {
         base_uv
     }
 
-    pub fn build_transverse_base(vol: &CTVolume) -> Base {
-        let (nx, ny, nz) = (
-            vol.dimensions.0 as f32,
-            vol.dimensions.1 as f32,
-            vol.dimensions.2 as f32,
-        );
+    /// Centre of voxel centres, transformed by the complete source affine.
+    pub fn volume_center(vol: &CTVolume) -> Vec3 {
+        let (x, y, z) = vol.dimensions;
+        vol.base.matrix.transform_point3(Vec3::new(
+            x.saturating_sub(1) as f32 * 0.5,
+            y.saturating_sub(1) as f32 * 0.5,
+            z.saturating_sub(1) as f32 * 0.5,
+        ))
+    }
 
-        let space = vol.voxel_spacing;
-        let col3 = vol.base.matrix.col(3);
-        let ox = col3.x;
-        let oy = col3.y;
-        let oz = col3.z;
+    /// Centred, uniformly normalized physical box for DVR and its UV-space overlays.
+    /// Original world translation is removed only for camera framing; axis directions
+    /// and relative physical lengths remain those of the source affine.
+    pub fn normalized_texture_to_world(vol: &CTVolume) -> Mat4 {
+        let uv = Self::build_uv_base(vol).matrix;
+        let extent =
+            uv.x_axis.truncate().abs() + uv.y_axis.truncate().abs() + uv.z_axis.truncate().abs();
+        let scale = extent.max_element().max(f32::EPSILON).recip();
+        Mat4::from_translation(Vec3::splat(0.5))
+            * Mat4::from_scale(Vec3::splat(scale))
+            * Mat4::from_translation(-Self::volume_center(vol))
+            * uv
+    }
 
-        // Use per-axis physical extents for accuracy
-        let (d_x, d_y, d_z) = (nx * space.0, ny * space.1, nz * space.2);
-
-        // Isotropic 3D scaling - use average of in-plane and slice extents
-        let d = (d_x + d_y + d_z) / 3.0;
-
-        let matrix_screen_glam = Mat4::from_cols_array(&[
-            // Screen X → world X (LR)
-            d,
-            0.0,
-            0.0,
-            ox + d_x / 2.0 - d / 2.0,
-            // Screen Y → world Y (AP) - no inversion needed for transverse
-            0.0,
-            d,
-            0.0,
-            oy + d_y / 2.0 - d / 2.0,
-            // Screen Z (slice) → world Z (SI)
-            0.0,
-            0.0,
-            d,
-            oz + d_z / 2.0,
-            // Homogeneous row
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-        ])
-        .transpose();
-
+    fn screen_base(vol: &CTVolume, right: Vec3, down: Vec3, normal: Vec3) -> Base {
+        let (x, y, z) = vol.dimensions;
+        let edges = [
+            vol.base.matrix.x_axis.truncate() * x as f32,
+            vol.base.matrix.y_axis.truncate() * y as f32,
+            vol.base.matrix.z_axis.truncate() * z as f32,
+        ];
+        // Projection of all box edges fits rotations/reflections without assuming axis alignment.
+        let extent = |axis: Vec3| edges.iter().map(|e| e.dot(axis).abs()).sum::<f32>();
+        let d = extent(right)
+            .max(extent(down))
+            .max(extent(normal))
+            .max(f32::EPSILON);
+        let center = Self::volume_center(vol);
         Base {
-            label: "CT Volume: screen".to_string(),
-            matrix: matrix_screen_glam,
+            label: "CT Volume: screen".into(),
+            matrix: Mat4::from_cols(
+                (right * d).extend(0.0),
+                (down * d).extend(0.0),
+                (normal * d).extend(0.0),
+                (center - (right + down) * (d * 0.5)).extend(1.0),
+            ),
         }
+    }
+
+    pub fn build_transverse_base(vol: &CTVolume) -> Base {
+        Self::screen_base(vol, Vec3::X, Vec3::Y, Vec3::Z)
     }
 
     pub fn build_coronal_base(vol: &CTVolume) -> Base {
-        let (nx, ny, nz) = (
-            vol.dimensions.0 as f32,
-            vol.dimensions.1 as f32,
-            vol.dimensions.2 as f32,
-        );
-
-        let space = vol.voxel_spacing;
-        let col3 = vol.base.matrix.col(3);
-        let ox = col3.x;
-        let oy = col3.y;
-        let oz = col3.z;
-        // let d = f32::max(nx * space.0, ny * space.1);
-        let (d_x, d_y, d_z) = (nx * space.0, ny * space.1, nz * space.2);
-
-        // Isotropic 3D scaling - use average of in-plane and slice extents
-        let d = (d_x + d_y + d_z) / 3.0;
-
-        let matrix_screen_glam = Mat4::from_cols_array(&[
-            // Screen X → world X (LR)
-            d,
-            0.0,
-            0.0,
-            ox + d_x / 2.0 - d / 2.0,
-            // Screen Z (slice) → world Y (AP)
-            0.0,
-            0.0,
-            d,
-            oy + d_y / 2.0,
-            // Screen Y → world Z (SI), inverted for screen Y-down
-            0.0,
-            -d,
-            0.0,
-            oz + d_z / 2.0 + d / 2.0,
-            // Homogeneous row
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-        ])
-        .transpose();
-
-        Base {
-            label: "CT Volume: screen".to_string(),
-            matrix: matrix_screen_glam,
-        }
+        Self::screen_base(vol, Vec3::X, -Vec3::Z, Vec3::Y)
     }
 
     pub fn build_sagittal_base(vol: &CTVolume) -> Base {
-        let (nx, ny, nz) = (
-            vol.dimensions.0 as f32,
-            vol.dimensions.1 as f32,
-            vol.dimensions.2 as f32,
-        );
-
-        let space = vol.voxel_spacing;
-        let col3 = vol.base.matrix.col(3);
-        let ox = col3.x;
-        let oy = col3.y;
-        let oz = col3.z;
-        // Use per-axis physical extents (mm)
-        let (d_x, d_y, d_z) = (nx * space.0, ny * space.1, nz * space.2);
-
-        // Isotropic 3D scaling - use average of in-plane and slice extents
-        let d = (d_x + d_y + d_z) / 3.0;
-
-        // Screen X → world Y (AP)
-        // Screen Y → world Z (SI), inverted for screen Y-down
-        // Screen Z (slice) → world X (LR)
-        let matrix_screen_glam = Mat4::from_cols_array(&[
-            // world X row
-            0.0,
-            0.0,
-            d,
-            ox + d_x / 2.0,
-            // world Y row
-            d,
-            0.0,
-            0.0,
-            oy + d_y / 2.0 - d / 2.0,
-            // world Z row
-            0.0,
-            -d,
-            0.0,
-            oz + d_z / 2.0 + d / 2.0,
-            // homogeneous row
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-        ])
-        .transpose();
-
-        Base {
-            label: "CT Volume: screen".to_string(),
-            matrix: matrix_screen_glam,
-        }
+        Self::screen_base(vol, Vec3::Y, -Vec3::Z, Vec3::X)
     }
 
     pub fn build_oblique_base(vol: &CTVolume) -> Base {
-        let (nx, ny, nz) = (
-            vol.dimensions.0 as f32,
-            vol.dimensions.1 as f32,
-            vol.dimensions.2 as f32,
-        );
-
-        let space = vol.voxel_spacing;
-        let col3 = vol.base.matrix.col(3);
-        let ox = col3.x;
-        let oy = col3.y;
-        let oz = col3.z;
-        let d = f32::max(nx * space.0, ny * space.1);
-        let m_screen = [
-            0.0,
-            0.0,
-            d / 2.0,
-            (ox + nx * space.0) / 2.0 - d / 2.0,
-            d,
-            0.0,
-            0.0,
-            oy,
-            0.0,
-            -d,
-            0.0,
-            oz + nz * space.2 / 2.0 + d / 2.0,
-            0.0,
-            0.0,
-            0.0,
-            1.0,
-        ];
-        let rotation = [
-            0.9330, 0.2500, -0.2588, 0.0, -0.1853, 0.9504, 0.2500, 0.0, 0.3085, -0.1853, 0.9330,
-            0.0, 0.0, 0.0, 0.0, 1.0,
-        ];
-
-        let matrix_screen_glam = Mat4::from_cols_array(&m_screen).transpose();
-        let matrix_rot_glam = Mat4::from_cols_array(&rotation).transpose();
-
-        // Original was: matrix_rot * matrix_screen
-        let final_matrix = matrix_rot_glam * matrix_screen_glam;
-
-        Base {
-            label: "CT Volume: screen".to_string(),
-            matrix: final_matrix,
-        }
+        let rotation = glam::Quat::from_euler(glam::EulerRot::XYZ, 0.25, -0.25, 0.25);
+        Self::screen_base(
+            vol,
+            rotation * Vec3::X,
+            rotation * Vec3::Y,
+            rotation * Vec3::Z,
+        )
     }
 }
 
@@ -290,152 +163,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_uv_base() {
-        let base0 = Base {
-            label: "world coordinate".to_string(),
-            matrix: Mat4::IDENTITY,
-        };
-
-        let volume_1 = crate::ct_volume::CTVolume {
-            dimensions: (512, 512, 100),
-            voxel_spacing: (0.5, 0.5, 1.0),
-            voxel_data: vec![-1024; 512 * 512 * 100],
-            base: base0,
-        };
-
-        let result = GeometryBuilder::build_uv_base(&volume_1);
-        assert!(result.label == "CT Volume: UV");
-        // Access via col(i)[j] for Mat4
-        assert_eq!(result.matrix.col(0)[0], 512.0);
-        assert_eq!(result.matrix.col(1)[1], 512.0);
-        assert_eq!(result.matrix.col(2)[2], 100.0);
-    }
-
-    #[test]
-    fn test_transverse_base() {
-        let m = [
-            0., 0., 0., -507.812, 0., 0., 0., -507.8125, 0., 0., 0., -923.5, 0., 0., 0., 1.,
-        ];
-        let base0 = Base {
-            label: "world coordinate".to_string(),
-            matrix: Mat4::from_cols_array(&m).transpose(), // from_cols_array reads as col-major, but m is row-major
-        };
-
-        let volume_1 = crate::ct_volume::CTVolume {
-            dimensions: (512, 512, 100),
-            voxel_spacing: (1.0, 1.0, 1.0),
-            voxel_data: vec![-1024; 512 * 512 * 100],
-            base: base0,
-        };
-
-        let result = GeometryBuilder::build_transverse_base(&volume_1);
-        assert!(result.label == "CT Volume: screen");
-        let (nx, ny, nz) = (
-            volume_1.dimensions.0 as f32,
-            volume_1.dimensions.1 as f32,
-            volume_1.dimensions.2 as f32,
+    fn screen_centres_and_texture_centres_share_the_full_affine() {
+        let affine = Mat4::from_translation(Vec3::new(10.0, -20.0, 30.0))
+            * Mat4::from_rotation_z(0.7)
+            * Mat4::from_scale(Vec3::new(-0.5, 0.75, 2.0));
+        let vol = CTVolume::new(
+            (8, 6, 4),
+            (0.5, 0.75, 2.0),
+            vec![0; 192],
+            Base {
+                label: "fixture".into(),
+                matrix: affine,
+            },
         );
-        let (dx, dy, dz) = (
-            nx * volume_1.voxel_spacing.0,
-            ny * volume_1.voxel_spacing.1,
-            nz * volume_1.voxel_spacing.2,
-        );
-        let d = (dx + dy + dz) / 3.0;
-
-        assert!((result.matrix.col(0)[0] - d).abs() < 1e-6);
-        // oy + dy/2 - d/2
-        let expected_y = -507.8125 + dy / 2.0 - d / 2.0;
-        assert!((result.matrix.col(3)[1] - expected_y).abs() < 1e-6);
-    }
-
-    #[test]
-    fn test_coronal_base() {
-        let m = [
-            0., 0., 0., 10., 0., 0., 0., 5., 0., 0., 0., 3., 0., 0., 0., 1.,
-        ];
-        let base0 = Base {
-            label: "world coordinate".to_string(),
-            matrix: Mat4::from_cols_array(&m).transpose(),
-        };
-
-        let volume_1 = crate::ct_volume::CTVolume {
-            dimensions: (512, 512, 100),
-            voxel_spacing: (0.5, 0.5, 1.0),
-            voxel_data: vec![-1024; 512 * 512 * 100],
-            base: base0,
-        };
-
-        let result = GeometryBuilder::build_coronal_base(&volume_1);
-        let (nx, ny, nz) = (
-            volume_1.dimensions.0 as f32,
-            volume_1.dimensions.1 as f32,
-            volume_1.dimensions.2 as f32,
-        );
-        let (dx, dy, dz) = (
-            nx * volume_1.voxel_spacing.0,
-            ny * volume_1.voxel_spacing.1,
-            nz * volume_1.voxel_spacing.2,
-        );
-        let d = (dx + dy + dz) / 3.0;
-        assert!((result.matrix.col(1)[2] + d).abs() < 1e-6);
-        assert_eq!(result.matrix.col(3)[1], (5.0 + dy / 2.0));
-    }
-
-    #[test]
-    fn test_sagittal_base() {
-        let m = [
-            0., 0., 0., 10., 0., 0., 0., 5., 0., 0., 0., 3., 0., 0., 0., 1.,
-        ];
-        let base0 = Base {
-            label: "world coordinate".to_string(),
-            matrix: Mat4::from_cols_array(&m).transpose(),
-        };
-
-        let volume_1 = crate::ct_volume::CTVolume {
-            dimensions: (512, 512, 100),
-            voxel_spacing: (0.5, 0.5, 1.0),
-            voxel_data: vec![-1024; 512 * 512 * 100],
-            base: base0,
-        };
-
-        let result = GeometryBuilder::build_sagittal_base(&volume_1);
-        assert!(result.label == "CT Volume: screen");
-        let (nx, ny, nz) = (
-            volume_1.dimensions.0 as f32,
-            volume_1.dimensions.1 as f32,
-            volume_1.dimensions.2 as f32,
-        );
-        let (dx, dy, dz) = (
-            nx * volume_1.voxel_spacing.0,
-            ny * volume_1.voxel_spacing.1,
-            nz * volume_1.voxel_spacing.2,
-        );
-        let d = (dx + dy + dz) / 3.0;
-        assert!((result.matrix.col(0)[1] - d).abs() < 1e-6);
-        let expected_z = 3.0 + dz / 2.0 + d / 2.0;
-        assert!((result.matrix.col(3)[2] - expected_z).abs() < 1e-6);
-    }
-
-    #[test]
-    fn test_oblique_base() {
-        let base0 = Base {
-            label: "world coordinate".to_string(),
-            matrix: Mat4::IDENTITY,
-        };
-
-        let volume_1 = crate::ct_volume::CTVolume {
-            dimensions: (512, 512, 100),
-            voxel_spacing: (0.5, 0.5, 1.0),
-            voxel_data: vec![-1024; 512 * 512 * 100],
-            base: base0,
-        };
-
-        let result = GeometryBuilder::build_oblique_base(&volume_1);
-        // data[row][col] -> columns[col][row]
-        // Mat4 stores col-major. col(i)[j] is j-th element of i-th column.
-        assert!((result.matrix.col(2)[0] - 119.424).abs() < 1e-3);
-        assert!((result.matrix.col(2)[1] - -23.7184).abs() < 1e-3);
-        assert!((result.matrix.col(2)[2] - 39.488).abs() < 1e-3);
-        assert!((result.matrix.col(2)[3] - 0.0).abs() < 1e-3);
+        let center = affine.transform_point3(Vec3::new(3.5, 2.5, 1.5));
+        let uv = GeometryBuilder::build_uv_base(&vol).matrix;
+        assert!(uv
+            .transform_point3(Vec3::splat(0.5))
+            .abs_diff_eq(center, 1e-5));
+        for build in [
+            GeometryBuilder::build_transverse_base,
+            GeometryBuilder::build_coronal_base,
+            GeometryBuilder::build_sagittal_base,
+            GeometryBuilder::build_oblique_base,
+        ] {
+            let screen = build(&vol).matrix;
+            assert!(screen
+                .transform_point3(Vec3::new(0.5, 0.5, 0.0))
+                .abs_diff_eq(center, 1e-5));
+            assert!((uv.inverse() * screen)
+                .transform_point3(Vec3::new(0.5, 0.5, 0.0))
+                .abs_diff_eq(Vec3::splat(0.5), 1e-5));
+        }
+        let first = uv.transform_point3(Vec3::new(0.5 / 8.0, 0.5 / 6.0, 0.5 / 4.0));
+        assert!(first.abs_diff_eq(affine.transform_point3(Vec3::ZERO), 1e-5));
     }
 }
