@@ -28,3 +28,10 @@ pub use dicom_repo::*;
 
 mod export_dicom;
 pub use export_dicom::*;
+
+mod rtstruct;
+pub use rtstruct::*;
+
+
+mod rtdose;
+pub use rtdose::{read_rt_dose, rt_sop_class, MAX_RTDOSE_BYTES, RTDOSE_SOP_CLASS_UID};

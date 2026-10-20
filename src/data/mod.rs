@@ -16,3 +16,9 @@ pub use ct_volume::*;
 pub use crate::application::app_model::AppModel;
 
 // AppModel moved to src/application/app_model.rs
+
+pub mod structures;
+
+pub mod dose;
+
+pub mod slice;

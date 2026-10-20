@@ -11,3 +11,7 @@ pub mod view;
 // Re-exports for convenience
 pub use core::*;
 pub use view::*;
+
+pub mod contour;
+
+pub mod dose;

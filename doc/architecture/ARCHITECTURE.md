@@ -125,3 +125,18 @@ Release guidance snapshots are retained in `doc/archive/v017-guidance/`.
 The [complete NIfTI importer](../fileio/nifti.md) owns format validation, scalar
 conversion and explicit geometry provenance for native and WASM callers.
 Consumers wrap CTVolume and present diagnostics; they do not reparse headers.
+
+## Original contours
+
+The [RTSTRUCT contour interface](../rendering/contours.md) separates original
+patient-space structures and bounded DICOM decoding from reusable GPU strokes.
+Hosts own I/O scheduling, association workflow, UI and their graphics lifecycle;
+Kepler owns geometry validation, identity checks and the host-pass renderer.
+
+## Dose grids and host overlays
+
+`data::dose` owns authoritative original dose samples and physical frame geometry;
+`data::dicom::rtdose` owns bounded RTDOSE decoding. `rendering::dose` owns the
+independent host-device GPU color wash. Shared `data::slice::SlicePlane` preserves
+the contour `StructurePlane` interface. Host association, revision guards and UI
+stay outside Kepler. See [dose rendering](../rendering/dose.md).

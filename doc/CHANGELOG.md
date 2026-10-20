@@ -1,5 +1,20 @@
 # Changelog
 
+## RTDOSE color wash (2026-10-20)
+- Added bounded uncompressed multiframe PHYSICAL RTDOSE import in GY/RELATIVE units with exact u16/u32 samples and f64 scaling/geometry.
+- Added independent R32Float GPU color wash with manual physical-grid interpolation, explicit nonuniform/descending frame support and transparent out-of-domain pixels.
+- Shared SlicePlane with contours while preserving the public StructurePlane alias. No existing CT encoding or constructor changed.
+- See [dose rendering](rendering/dose.md) and the [approved change](../openspec/changes/add-rtdose-color-wash/proposal.md) for scope and acceptance limits.
+
+## RTSTRUCT source-plane outlines (2026-10-19)
+
+- Add bounded original-contour import, explicit CT-reference association and an
+  egui-independent host-owned GPU outline renderer. Preserve overlapping ROIs,
+  LPS coordinates and XOR semantics without rasterization.
+- Outlines appear only on matching physical planes; reconstruction, fill, meshes,
+  registration and editing/export are not part of this delivery.
+
+
 ## NIfTI import correctness (2026-10-16)
 
 - Centralize native/browser NIfTI-1 import with bounded gzip, endian-aware i16
