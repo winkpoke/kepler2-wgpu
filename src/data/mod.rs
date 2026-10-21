@@ -20,5 +20,6 @@ pub use crate::application::app_model::AppModel;
 pub mod structures;
 
 pub mod dose;
+pub mod dvh;
 
 pub mod slice;

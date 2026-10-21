@@ -80,6 +80,7 @@ pub struct DoseGrid {
     samples: DoseSamples,
     scaling: f64,
     maximum: f64,
+    dvhs: Option<super::dvh::DvhSet>,
 }
 fn invalid(message: &str) -> KeplerError {
     KeplerError::Validation(message.into())
@@ -137,6 +138,7 @@ impl DoseGrid {
             samples,
             scaling,
             maximum,
+            dvhs: None,
         })
     }
     pub fn metadata(&self) -> &DoseMetadata {
@@ -156,6 +158,14 @@ impl DoseGrid {
     }
     pub fn maximum(&self) -> f64 {
         self.maximum
+    }
+    /// Imported source DVHs and their diagnostics, if present. These are not recalculated.
+    pub fn dvhs(&self) -> Option<&super::dvh::DvhSet> {
+        self.dvhs.as_ref()
+    }
+    pub(crate) fn with_dvhs(mut self, dvhs: Option<super::dvh::DvhSet>) -> Self {
+        self.dvhs = dvhs;
+        self
     }
     pub fn gpu_bytes(&self) -> usize {
         self.samples.len() * 4
@@ -258,16 +268,14 @@ mod tests {
         assert_eq!(grid.scaling(), 0.001);
         let mut g = grid.geometry().clone();
         g.frame_offsets[2] = 2.;
-        assert!(
-            DoseGrid::new(
-                grid.metadata().clone(),
-                g,
-                [2, 2, 3],
-                DoseSamples::U16(vec![0; 12]),
-                1.
-            )
-            .is_err()
-        );
+        assert!(DoseGrid::new(
+            grid.metadata().clone(),
+            g,
+            [2, 2, 3],
+            DoseSamples::U16(vec![0; 12]),
+            1.
+        )
+        .is_err());
         Ok(())
     }
 }

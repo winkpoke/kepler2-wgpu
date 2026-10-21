@@ -1,5 +1,14 @@
 # Changelog
 
+## Imported cumulative DVH review (2026-10-21)
+- Added optional bounded CUMULATIVE PHYSICAL DVH import from the RTDOSE dataset
+  already decoded for dose pixels, with exact structure/ROI references and
+  independent diagnostics. Existing DoseGrid constructors remain compatible.
+- Added f64 Vx/Dx bin queries with explicit units, right-edge plateau convention,
+  unavailable tails, source statistics and no implicit prescription normalization.
+- Added synthetic metric, reference, contribution, numeric and admission tests.
+  See [imported DVHs](fileio/dvh.md) for contracts and validation limits.
+
 ## RTDOSE color wash (2026-10-20)
 - Added bounded uncompressed multiframe PHYSICAL RTDOSE import in GY/RELATIVE units with exact u16/u32 samples and f64 scaling/geometry.
 - Added independent R32Float GPU color wash with manual physical-grid interpolation, explicit nonuniform/descending frame support and transparent out-of-domain pixels.

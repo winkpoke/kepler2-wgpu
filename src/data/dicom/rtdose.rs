@@ -217,6 +217,7 @@ pub fn read_rt_dose(bytes: &[u8]) -> KeplerResult<DoseGrid> {
     if !["PLAN_OVERVIEW", "RECORD"].contains(&summation_type.as_str()) && plans.is_empty() {
         return Err(invalid("dose is missing referenced RT Plan"));
     }
+    let dvhs = super::rtdvh::read(&o);
     DoseGrid::new(
         DoseMetadata {
             sop_instance_uid: uid(&o, "SOPInstanceUID")?,
@@ -236,6 +237,7 @@ pub fn read_rt_dose(bytes: &[u8]) -> KeplerResult<DoseGrid> {
         samples,
         scaling[0],
     )
+    .map(|grid| grid.with_dvhs(dvhs))
 }
 #[cfg(test)]
 #[path = "rtdose_tests.rs"]

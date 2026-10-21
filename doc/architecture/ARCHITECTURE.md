@@ -140,3 +140,13 @@ Kepler owns geometry validation, identity checks and the host-pass renderer.
 independent host-device GPU color wash. Shared `data::slice::SlicePlane` preserves
 the contour `StructurePlane` interface. Host association, revision guards and UI
 stay outside Kepler. See [dose rendering](../rendering/dose.md).
+
+## Imported DVH data
+
+`data::dvh` owns validated cumulative source histograms, explicit ROI contributions,
+units and f64 bin-derived Vx/Dx metrics. `data::dicom::rtdvh` decodes optional
+histograms from the already-decoded RTDOSE dataset. `DoseGrid::dvhs()` is additive;
+malformed or unsupported optional curves have independent diagnostics without
+discarding valid dose pixels. Hosts own curve plots, selection, workers and
+source/plan association workflow. ROI reconstruction and local DVH recalculation
+remain separate capabilities. See the [imported DVH contract](../fileio/dvh.md).

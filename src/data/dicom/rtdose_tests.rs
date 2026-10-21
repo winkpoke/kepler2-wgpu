@@ -1,6 +1,160 @@
 use super::*;
-use dicom_core::{DataElement, PrimitiveValue, Tag, VR, value::DataSetSequence};
+use dicom_core::{value::DataSetSequence, DataElement, PrimitiveValue, Tag, VR};
 use dicom_object::FileMetaTableBuilder;
+fn dvh_item() -> InMemDicomObject {
+    let mut o = InMemDicomObject::new_empty();
+    for (tag, vr, value) in [
+        (Tag(0x3004, 1), VR::CS, "CUMULATIVE"),
+        (Tag(0x3004, 2), VR::CS, "GY"),
+        (Tag(0x3004, 4), VR::CS, "PHYSICAL"),
+        (Tag(0x3004, 0x52), VR::DS, "0.5"),
+        (Tag(0x3004, 0x54), VR::CS, "CM3"),
+        (Tag(0x3004, 0x56), VR::IS, "4"),
+        (Tag(0x3004, 0x58), VR::DS, "2\\100\\3\\100\\5\\50\\10\\0"),
+        (Tag(0x3004, 0x70), VR::DS, "0.8"),
+        (Tag(0x3004, 0x72), VR::DS, "10"),
+        (Tag(0x3004, 0x74), VR::DS, "3.7"),
+    ] {
+        put(&mut o, tag, vr, value);
+    }
+    let mut roi = InMemDicomObject::new_empty();
+    put(&mut roi, Tag(0x3006, 0x84), VR::IS, "1");
+    put(&mut roi, Tag(0x3004, 0x62), VR::CS, "INCLUDED");
+    o.put(DataElement::new(
+        Tag(0x3004, 0x60),
+        VR::SQ,
+        DataSetSequence::from(vec![roi]),
+    ));
+    o
+}
+fn with_dvhs(mut o: InMemDicomObject, curves: Vec<InMemDicomObject>) -> InMemDicomObject {
+    let mut structures = InMemDicomObject::new_empty();
+    put(
+        &mut structures,
+        Tag(8, 0x1150),
+        VR::UI,
+        crate::data::dicom::RTSTRUCT_SOP_CLASS_UID,
+    );
+    put(&mut structures, Tag(8, 0x1155), VR::UI, "1.2.3.300");
+    o.put(DataElement::new(
+        Tag(0x300c, 0x60),
+        VR::SQ,
+        DataSetSequence::from(vec![structures]),
+    ));
+    o.put(DataElement::new(
+        Tag(0x3004, 0x50),
+        VR::SQ,
+        DataSetSequence::from(curves),
+    ));
+    o
+}
+#[test]
+fn optional_dvh_accumulates_scaled_widths_and_keeps_recorded_statistics() -> KeplerResult<()> {
+    let bytes = serialized(
+        with_dvhs(fixture(16, "0\\2\\7", false), vec![dvh_item()]),
+        "1.2.840.10008.1.2.1",
+    );
+    let grid = read_rt_dose(&bytes)?;
+    let dvhs = grid.dvhs().ok_or_else(|| invalid("DVH missing"))?;
+    assert!(dvhs.issues.is_empty());
+    let curve = &dvhs.curves[0];
+    assert_eq!(
+        curve.points(),
+        [[1., 100.], [2.5, 100.], [5., 50.], [10., 0.]]
+    );
+    assert_eq!(curve.statistics().mean, Some(3.7));
+    assert_eq!(curve.dose_at_percent(95.), Some(2.75));
+    assert_eq!(curve.volume_at(6.), Some(40.));
+    assert_eq!(grid.samples().len(), 12);
+    Ok(())
+}
+#[test]
+fn optional_dvh_errors_preserve_dose_pixels_and_other_curves() -> KeplerResult<()> {
+    for mode in 0..6 {
+        let mut bad = dvh_item();
+        match mode {
+            0 => put(&mut bad, Tag(0x3004, 1), VR::CS, "DIFFERENTIAL"),
+            1 => put(&mut bad, Tag(0x3004, 0x56), VR::IS, "65537"),
+            2 => put(&mut bad, Tag(0x3004, 0x52), VR::DS, "0"),
+            3 => put(
+                &mut bad,
+                Tag(0x3004, 0x58),
+                VR::DS,
+                "2\\100\\3\\101\\5\\50\\10\\0",
+            ),
+            4 => put(
+                &mut bad,
+                Tag(0x3004, 0x58),
+                VR::DS,
+                "2\\100\\0\\100\\5\\50\\10\\0",
+            ),
+            _ => put(
+                &mut bad,
+                Tag(0x3004, 0x58),
+                VR::DS,
+                "2\\100\\3\\NaN\\5\\50\\10\\0",
+            ),
+        }
+        let grid = read_rt_dose(&serialized(
+            with_dvhs(fixture(16, "0\\2\\7", false), vec![bad, dvh_item()]),
+            "1.2.840.10008.1.2.1",
+        ))?;
+        assert_eq!(grid.samples().len(), 12);
+        let dvhs = grid.dvhs().ok_or_else(|| invalid("DVH missing"))?;
+        assert_eq!(dvhs.curves.len(), 1, "mode {mode}");
+        assert_eq!(dvhs.issues.len(), 1, "mode {mode}");
+        assert_eq!(dvhs.issues[0].item, Some(1));
+    }
+    Ok(())
+}
+
+#[test]
+fn optional_dvh_preserves_composite_roi_contributions_and_percent_units() -> KeplerResult<()> {
+    use crate::data::dvh::{DvhContribution, DvhVolumeUnits};
+    let mut item = dvh_item();
+    put(&mut item, Tag(0x3004, 0x54), VR::CS, "PERCENT");
+    let mut refs = item
+        .element_by_name("DVHReferencedROISequence")
+        .map_err(|_| invalid("refs"))?
+        .items()
+        .ok_or_else(|| invalid("refs"))?
+        .to_vec();
+    let mut excluded = refs[0].clone();
+    put(&mut excluded, Tag(0x3006, 0x84), VR::IS, "2");
+    put(&mut excluded, Tag(0x3004, 0x62), VR::CS, "EXCLUDED");
+    refs.push(excluded);
+    item.put(DataElement::new(
+        Tag(0x3004, 0x60),
+        VR::SQ,
+        DataSetSequence::from(refs),
+    ));
+    let grid = read_rt_dose(&serialized(
+        with_dvhs(fixture(16, "0\\2\\7", false), vec![item]),
+        "1.2.840.10008.1.2.1",
+    ))?;
+    let source = grid.dvhs().ok_or_else(|| invalid("dvhs"))?;
+    assert!(source.issues.is_empty());
+    assert_eq!(source.curves[0].volume_units(), DvhVolumeUnits::Percent);
+    assert_eq!(source.curves[0].volume_cm3(), None);
+    assert_eq!(
+        source.curves[0].references()[1].contribution,
+        DvhContribution::Excluded
+    );
+    Ok(())
+}
+
+#[test]
+fn excessive_dvh_collection_does_not_reject_the_dose_grid() -> KeplerResult<()> {
+    let grid = read_rt_dose(&serialized(
+        with_dvhs(fixture(16, "0\\2\\7", false), vec![dvh_item(); 257]),
+        "1.2.840.10008.1.2.1",
+    ))?;
+    let source = grid.dvhs().ok_or_else(|| invalid("dvhs"))?;
+    assert!(source.curves.is_empty());
+    assert_eq!(source.issues.len(), 1);
+    assert_eq!(grid.samples().len(), 12);
+    Ok(())
+}
 fn put(o: &mut InMemDicomObject, t: Tag, vr: VR, v: &str) {
     let value = if vr == VR::US {
         PrimitiveValue::U16(vec![v.parse().expect("US")].into())
