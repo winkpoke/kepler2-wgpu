@@ -1,5 +1,10 @@
 # Changelog
 
+## Beam's-eye review core (2026-10-21)
+- Added reusable f64 beam projection, physical texture mapping and bounded original contour/leaf geometry.
+- Added cached qualitative GPU DRR and host-pass aperture/MLC/contour rendering, sharing the existing CT texture and device.
+- Kept GUI, associations and clinical approval outside the core; see [BEV rendering](rendering/bev.md).
+
 ## Imported cumulative DVH review (2026-10-21)
 - Added optional bounded CUMULATIVE PHYSICAL DVH import from the RTDOSE dataset
   already decoded for dose pixels, with exact structure/ROI references and

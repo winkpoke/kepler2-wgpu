@@ -23,3 +23,5 @@ pub mod dose;
 pub mod dvh;
 
 pub mod slice;
+
+pub mod bev;
