@@ -19,3 +19,5 @@ pub mod dose;
 pub mod bev;
 
 pub mod bev_overlay;
+
+pub mod beam;

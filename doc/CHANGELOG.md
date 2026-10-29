@@ -1,5 +1,13 @@
 # Changelog
 
+## Plan beam arrangement — 2026-10-24
+
+- Added validated, [bounded MPR beam batches](rendering/beam-arrangement.md) with independent beam and pane buffers.
+- Promoted divergent aperture/slice intersections into `data::beam`.
+- Added projected arc orientation guides and a distinct recorded-envelope BEV outline.
+- Existing BEV rendering, CT allocation and signed decoder remain shared.
+
+
 ## Beam's-eye review core (2026-10-21)
 - Added reusable f64 beam projection, physical texture mapping and bounded original contour/leaf geometry.
 - Added cached qualitative GPU DRR and host-pass aperture/MLC/contour rendering, sharing the existing CT texture and device.

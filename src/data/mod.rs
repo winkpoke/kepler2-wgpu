@@ -25,3 +25,5 @@ pub mod dvh;
 pub mod slice;
 
 pub mod bev;
+
+pub mod beam;

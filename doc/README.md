@@ -6,6 +6,7 @@
 - [Architecture](architecture/ARCHITECTURE.md): current ownership and subsystem map.
 - [Conventions](agents/CONVENTIONS.md): non-obvious Rust/platform conventions.
 - [Build and verification](agents/BUILD.md): authoritative executable command matrix.
+- [Plan beam arrangement](rendering/beam-arrangement.md): batched MPR beam geometry and recorded envelopes.
 - [Rendering](agents/RENDERING.md) and [voxel encoding](rendering/volume-encoding.md): GPU contracts.
 - [wgpu 30 / Winit 0.30 migration](rendering/wgpu30-migration.md): Rust errors/pass lifetimes and unchanged caller startup.
 - [Testing](testing/README.md): fixtures, regressions, coverage, and evidence limits.

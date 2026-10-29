@@ -39,6 +39,13 @@ impl BevOverlayScene {
         }
         Ok(())
     }
+    /// Union of recorded geometric openings; dashed outline, never a fluence map.
+    pub fn envelope(&mut self, edges: impl IntoIterator<Item = [DVec2; 2]>) -> KeplerResult<()> {
+        for [a, b] in edges {
+            self.item(a, b, [0.83, 0.86, 0.90, 0.85], [1.2, 0., 7., 0.])?;
+        }
+        Ok(())
+    }
     pub fn jaws(&mut self, jaws: [f64; 4], effective: bool) -> KeplerResult<()> {
         let [x1, x2, y1, y2] = jaws;
         let points = [
