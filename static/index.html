@@ -3221,6 +3221,275 @@
             });
         });
 
+        
+        /* ====================================================================
+         十八、鼠标视图交互（3D Slicer 风格）
+         左键拖拽=旋转 · 滚轮=切层 · 中键拖拽=平移 · 右键拖拽=缩放
+         ==================================================================== */
+
+        /** 交互灵敏度常量（可按手感微调）。 */
+        const NAV = {
+            ROT_MPR_RAD: 0.005,   // MPR 切片内旋转：弧度/像素（绕切片法线）
+            ROT_ORBIT_DEG: 0.25,  // MIP/Mesh 轨道旋转：度/像素
+            ZOOM_PER_PX: 0.005,   // 右键拖拽缩放灵敏度（纵向）
+            SLICE_MM: 1.0,        // 滚轮每格切层步长（mm）
+            ZOOM_MIN: 0.05,
+            ZOOM_MAX: 20,
+        };
+
+        /** 鼠标导航状态：拖拽会话 + 每视图缩放/平移/切层缓存。 */
+        const mouseNav = {
+            drag: null,             // { action, index, vtype, lastX, lastY, viewW, viewH, startPan }
+            scaleByView: new Map(), // viewIndex -> 最近一次 set_scale 的绝对值
+            panByView: new Map(),   // viewIndex -> 最近一次 set_pan 的绝对值 [x, y]（兜底）
+            sliceByView: new Map(), // viewIndex -> 最近一次 set_slice_mm 的绝对值
+        };
+
+        /**
+         * 读取当前布局（与左侧 mode 输入框一致），几何完全镜像 Rust 侧
+         * view_layout_transition::prepare + layout.rs 的三种策略，
+         * 因此无需 Rust 命中测试接口即可定位鼠标所在视图。
+         * rect(index, W, H) 返回 CSS 像素矩形。
+         */
+        function currentLayout() {
+            const mode = parseInt(byId('mode')?.value, 10) || 3;
+            if (mode <= 2) {
+                // OneCellLayout：单视图铺满
+                return {
+                    count: 1,
+                    rect(i, W, H) { return { x: 0, y: 0, w: W, h: H }; },
+                };
+            }
+            if (mode === 4) {
+                // LargeLeft3RightLayout：左侧 70% 大图 + 右侧 3 个横条
+                return {
+                    count: 4,
+                    rect(i, W, H) {
+                        if (i === 0) return { x: 0, y: 0, w: 0.7 * W, h: H };
+                        const sh = H / 3;
+                        return { x: 0.7 * W, y: (i - 1) * sh, w: 0.3 * W, h: sh };
+                    },
+                };
+            }
+            // mode 3：GridLayout 2x2，spacing 2（物理像素，CSS 侧按同比例）
+            return {
+                count: 4,
+                rect(i, W, H) {
+                    const sp = 2;
+                    const cw = Math.max(1, (W - sp) / 2);
+                    const ch = Math.max(1, (H - sp) / 2);
+                    return {
+                        x: (i % 2) * (cw + sp),
+                        y: Math.floor(i / 2) * (ch + sp),
+                        w: cw, h: ch,
+                    };
+                },
+            };
+        }
+
+        /**
+         * 推断某槽位的视图类型（镜像 prepare() 的槽位替换逻辑）。
+         * state.mip / state.mesh_index 只在用户点过 "apply view" 后才有值，
+         * 未设置时按纯 MPR 网格处理（与默认行为一致）。
+         */
+        function viewTypeAt(index) {
+            const mode = parseInt(byId('mode')?.value, 10) || 3;
+            if (mode === 1) return 'mip';
+            if (mode === 2) return 'mesh';
+            if (index === state.mesh_index) return 'mesh';
+            if (index === state.mip) return 'mip';
+            return 'mpr';
+        }
+
+        /** 命中测试：按镜像的布局几何返回鼠标所在视图索引。 */
+        function hitTestView(canvas, clientX, clientY) {
+            const hostRect = canvas.getBoundingClientRect();
+            const layout = currentLayout();
+            const x = clientX - hostRect.left;
+            const y = clientY - hostRect.top;
+            for (let i = 0; i < layout.count; i++) {
+                const r = layout.rect(i, hostRect.width, hostRect.height);
+                if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h) return i;
+            }
+            return state.indexValue ?? 0;
+        }
+
+        /**
+         * 给画布挂上鼠标交互。画布由 WASM 在首次渲染后才创建，
+         * 因此轮询等待；挂载成功后幂等跳过。
+         */
+        function attachMouseNavigation() {
+            const host = document.getElementById('wasm-example');
+            if (!host) return;
+            const canvas = host.querySelector('canvas');
+            if (!canvas) { setTimeout(attachMouseNavigation, 500); return; }
+            if (canvas.dataset.mouseNav) return;
+            canvas.dataset.mouseNav = '1';
+
+            // 右键缩放 / 中键平移：屏蔽默认菜单与中键自动滚动
+            canvas.addEventListener('contextmenu', e => e.preventDefault());
+            canvas.addEventListener('auxclick', e => e.preventDefault());
+
+            canvas.addEventListener('pointerdown', e => {
+                if (!gl_canvas) return;
+                e.preventDefault();
+                canvas.setPointerCapture(e.pointerId);
+                // 3D Slicer 映射：左键旋转 / 中键平移 / 右键缩放
+                const action = e.button === 0 ? 'rotate' : (e.button === 1 ? 'pan' : 'zoom');
+                const index = hitTestView(canvas, e.clientX, e.clientY);
+                const hostRect = canvas.getBoundingClientRect();
+                const r = currentLayout().rect(index, hostRect.width, hostRect.height);
+                mouseNav.drag = {
+                    action,
+                    index,
+                    vtype: viewTypeAt(index),
+                    lastX: e.clientX,
+                    lastY: e.clientY,
+                    viewW: Math.max(1, r.w),
+                    viewH: Math.max(1, r.h),
+                    startPan: null,   // null = 尚未就绪（等待 get_pan 返回）
+                    t0: performance.now(),
+                };
+                if (action === 'pan') beginPanSession(index);
+                canvas.style.cursor =
+                    action === 'rotate' ? 'grabbing' : (action === 'pan' ? 'move' : 'zoom-in');
+            });
+
+            /** 平移会话初始化：读当前 pan 起点（仅 MPR 返回有效值）。 */
+            async function beginPanSession(index) {
+                try {
+                    const pan = await gl_canvas.get_pan(index);
+                    if (pan && Number.isFinite(pan[0]) && Number.isFinite(pan[1])) {
+                        if (mouseNav.drag && mouseNav.drag.index === index
+                            && mouseNav.drag.startPan === null) {
+                            mouseNav.drag.startPan = [pan[0], pan[1]];
+                        }
+                    }
+                } catch (e) { /* 保留 null，走 panByView 兜底 */ }
+            }
+
+            canvas.addEventListener('pointermove', e => {
+                const d = mouseNav.drag;
+                if (!d || !gl_canvas) return;
+                const dx = e.clientX - d.lastX;
+                const dy = e.clientY - d.lastY;
+                d.lastX = e.clientX;
+                d.lastY = e.clientY;
+
+                if (d.action === 'rotate') {
+                    if (d.vtype === 'mpr') {
+                        // 切片内旋转（绕切片法线，弧度制）
+                        gl_canvas.set_oblique_rotation_radians(d.index, 0, 0, dx * NAV.ROT_MPR_RAD);
+                    } else {
+                        // MIP/Mesh 轨道旋转（度制，与 3d-rotation 输入框同通道）
+                        gl_canvas.set_rotation_degrees(d.index, dx * NAV.ROT_ORBIT_DEG, dy * NAV.ROT_ORBIT_DEG);
+                    }
+                    return;
+                }
+
+                if (d.action === 'pan') {
+                    if (d.startPan === null) {
+                        // MPR：get_pan 异步返回真实起点前不发任何 set_pan，
+                        // 否则第一帧会误以 [0,0] 为起点导致图像跳回原点。
+                        // 超过 200ms 仍无响应（接口异常）则退回 JS 兜底值。
+                        if (d.vtype === 'mpr' && performance.now() - d.t0 < 200) return;
+                        d.startPan = mouseNav.panByView.get(d.index) ?? [0, 0];
+                    }
+                    let px, py;
+                    if (d.vtype === 'mesh') {
+                        // Mesh 相机 pan 为世界单位（ortho 可见宽度 = 1/zoom，
+                        // 场景归一化到单位尺度，pan 合理范围 0..1）：
+                        // +x 图像向右，+y 图像向上。跟手：拖满一屏 = 可见宽度
+                        const z = mouseNav.scaleByView.get(d.index)
+                            ?? (num('scale-input', 1.0) || 1.0);
+                        px = d.startPan[0] + dx / (z * d.viewW);
+                        py = d.startPan[1] - dy / (z * d.viewH);
+                    } else {
+                        // MPR/MIP：pan 单位 = 归一化视图空间(0..1, y 向下)。
+                        // 图像跟手公式（见 mpr_view.rs
+                        // test_mesh_overlay_pan_rate_matches_slice：图像位移 NDC =
+                        // 2*pan/scale）→ Δpan = scale · 像素位移/视图尺寸
+                        const s = mouseNav.scaleByView.get(d.index)
+                            ?? (num('scale-input', 1.0) || 1.0);
+                        px = d.startPan[0] + (s * dx) / d.viewW;
+                        py = d.startPan[1] + (s * dy) / d.viewH;
+                    }
+                    mouseNav.panByView.set(d.index, [px, py]);
+                    gl_canvas.set_pan(d.index, px, py);
+                    const tx = byId('trans-x'), ty = byId('trans-y');
+                    if (tx) tx.value = px.toFixed(2);
+                    if (ty) ty.value = py.toFixed(2);
+                    return;
+                }
+
+                // ---- 缩放（右键拖拽）：纵向拖动，向上放大 ----
+                let s = mouseNav.scaleByView.get(d.index)
+                    ?? (num('scale-input', 1.0) || 1.0);
+                s *= Math.exp(-dy * NAV.ZOOM_PER_PX);
+                s = Math.min(NAV.ZOOM_MAX, Math.max(NAV.ZOOM_MIN, s));
+                mouseNav.scaleByView.set(d.index, s);
+                gl_canvas.set_scale(d.index, s);
+                const scaleInput = byId('scale-input');
+                if (scaleInput) scaleInput.value = s.toFixed(2);
+            });
+
+            const endDrag = e => {
+                if (!mouseNav.drag) return;
+                const d = mouseNav.drag;
+                mouseNav.drag = null;
+                try { canvas.releasePointerCapture(e.pointerId); } catch (_) { /* noop */ }
+                canvas.style.cursor = 'grab';
+                // [临时诊断] 松开后 150ms 回读 Rust 侧 pan，确认状态是否被外部重置
+                if (d.action === 'pan') {
+                    setTimeout(() => {
+                        gl_canvas.get_pan(d.index).then(p => {
+                            log(`[diag] 松开后 Rust pan(view${d.index}) = (${Number(p[0]).toFixed(3)}, ${Number(p[1]).toFixed(3)}, ${Number(p[2]).toFixed(3)})`, 'warn');
+                        }).catch(err => log(`[diag] get_pan 失败: ${err}`, 'error'));
+                    }, 150);
+                }
+            };
+            canvas.addEventListener('pointerup', endDrag);
+            canvas.addEventListener('pointercancel', endDrag);
+
+            // 滚轮 = 切层（3D Slicer 风格）：向上滚 = 切层 +1 步
+            canvas.addEventListener('wheel', e => {
+                if (!gl_canvas) return;
+                e.preventDefault();
+                const index = hitTestView(canvas, e.clientX, e.clientY);
+                let slice = mouseNav.sliceByView.get(index);
+                if (slice === undefined) slice = num('slice-input', 0.0) || 0.0;
+                slice += (e.deltaY < 0 ? 1 : -1) * NAV.SLICE_MM;
+                mouseNav.sliceByView.set(index, slice);
+                gl_canvas.set_slice_mm(index, slice);
+                const sliceInput = byId('slice-input');
+                if (sliceInput) sliceInput.value = slice.toFixed(1);
+            }, { passive: false });
+
+            canvas.style.cursor = 'grab';
+            log('Mouse navigation (Slicer): left=rotate / wheel=slice / middle=pan / right=zoom', 'success');
+
+            // ---- [临时诊断] 定位"松开中键图像复位"来源，排查后可整体删除 ----
+            // 1) 包一层间谍：谁在调 set_pan / set_translate / set_render_mode（重建视图=复位）
+            ['set_pan', 'set_translate_in_screen_coord', 'set_render_mode'].forEach(name => {
+                const orig = gl_canvas[name]?.bind(gl_canvas);
+                if (!orig) return;
+                let seq = 0;
+                gl_canvas[name] = (...args) => {
+                    const pretty = args.map(a => typeof a === 'number' ? a.toFixed(3) : String(a)).join(', ');
+                    log(`[diag] ${name}(${pretty}) #${++seq}`, 'warn');
+                    return orig(...args);
+                };
+            });
+            // 2) 事件间谍：松开瞬间浏览器到底派发了哪些事件
+            ['pointerup', 'mouseup', 'auxclick', 'pointercancel', 'contextmenu', 'resize'].forEach(t => {
+                window.addEventListener(t, e => {
+                    if (e.target === canvas) log(`[diag] event ${t} btn=${e.button ?? '-'}`, 'warn');
+                }, true);
+            });
+        }
+
+        attachMouseNavigation();
+
         /* 启动：检测后端服务器状态 */
         checkServer();
     </script>
