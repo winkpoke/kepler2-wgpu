@@ -35,3 +35,12 @@ Checks: `cargo test --locked --lib data::bev` and native
 `cargo test --locked --test bev_rendering_tests`. The latter uses the existing
 fail-closed headless GPU helper. Native/WASM type checks and synthetic host UI
 are separate from Windows/browser runtime and clinical acceptance.
+
+## Contour capacity update — 2026-11-02
+
+Filtered projection applies its point budget only to eligible ROI indices. The viewer
+can request 500,000 source points without truncation. The overlay retains a hard
+524,288-item bound (24 MiB at 48 bytes/item), including machine geometry. The GPU
+instance buffer starts at 48 bytes and grows on demand, retaining its high-water
+capacity until the context is dropped. Memory admission may conservatively reserve
+the maximum. Source coordinates and quantitative data are unchanged.

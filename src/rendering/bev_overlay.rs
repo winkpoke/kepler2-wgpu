@@ -7,7 +7,8 @@ use bytemuck::{Pod, Zeroable};
 use glam::DVec2;
 use std::sync::Arc;
 
-const MAX_ITEMS: usize = 106_000;
+// 500,000 contour segments plus recorded envelope, aperture, jaws and leaf bodies.
+const MAX_ITEMS: usize = 524_288;
 pub const BEV_OVERLAY_BYTES: u64 = MAX_ITEMS as u64 * 48;
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -120,6 +121,7 @@ impl BevOverlayScene {
 
 /// One small instance buffer/context per host device and explicit attachment format.
 pub struct BevOverlayContext {
+    device: wgpu::Device,
     pipeline: wgpu::RenderPipeline,
     binding: wgpu::BindGroup,
     uniform: wgpu::Buffer,
@@ -159,7 +161,7 @@ impl BevOverlayContext {
         });
         let items = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("bev-overlay-items"),
-            size: BEV_OVERLAY_BYTES,
+            size: 48,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -202,6 +204,7 @@ impl BevOverlayContext {
             cache: None,
         });
         Self {
+            device: device.clone(),
             pipeline,
             binding,
             uniform,
@@ -237,6 +240,15 @@ impl BevOverlayContext {
             .as_ref()
             .is_some_and(|last| Arc::ptr_eq(last, scene))
         {
+            let needed = scene.items.len() as u64 * 48;
+            if needed > self.items.size() {
+                self.items = self.device.create_buffer(&wgpu::BufferDescriptor {
+                    label: Some("bev-overlay-items"),
+                    size: needed.next_power_of_two().min(BEV_OVERLAY_BYTES),
+                    usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+            }
             if !scene.items.is_empty() {
                 queue.write_buffer(&self.items, 0, bytemuck::cast_slice(&scene.items));
             }
@@ -256,5 +268,31 @@ impl BevOverlayContext {
             pass.set_vertex_buffer(0, self.items.slice(..));
             pass.draw(0..6, 0..self.count);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn full_contours_leave_room_for_machine_geometry_and_remain_bounded() -> KeplerResult<()> {
+        let edge = [DVec2::ZERO, DVec2::ONE];
+        let mut scene = BevOverlayScene::default();
+        scene.roi(
+            &ProjectedRoi {
+                index: 0,
+                segments: vec![edge; 500_000],
+            },
+            [255, 0, 0],
+            false,
+        )?;
+        scene.envelope(std::iter::repeat_n(edge, 16_384))?;
+        scene.aperture(std::iter::repeat_n(edge, 2_048))?;
+        scene.jaws([-10., 10., -10., 10.], false)?;
+        let remaining = MAX_ITEMS - scene.items.len();
+        scene.aperture(std::iter::repeat_n(edge, remaining))?;
+        assert!(scene.aperture([edge]).is_err());
+        assert_eq!(scene.items.len(), MAX_ITEMS);
+        Ok(())
     }
 }

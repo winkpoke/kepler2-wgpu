@@ -234,8 +234,23 @@ pub fn project_contours(
     selected: Option<usize>,
     point_limit: usize,
 ) -> KeplerResult<Vec<ProjectedRoi>> {
+    project_contours_filtered(
+        set,
+        beam,
+        |i| selected.is_none_or(|index| index == i),
+        point_limit,
+    )
+}
+
+/// Project only eligible ROI indices, applying the input-point budget after filtering.
+/// The predicate must return the same result for each index throughout the call.
+pub fn project_contours_filtered(
+    set: &super::structures::StructureSet,
+    beam: &BeamProjection,
+    eligible: impl Fn(usize) -> bool,
+    point_limit: usize,
+) -> KeplerResult<Vec<ProjectedRoi>> {
     beam.validate()?;
-    let eligible = |i: usize| selected.is_none_or(|index| index == i);
     let count = set
         .rois
         .iter()
@@ -244,9 +259,10 @@ pub fn project_contours(
         .flat_map(|(_, roi)| roi.contours.iter())
         .try_fold(0usize, |sum, c| sum.checked_add(c.points().len()));
     if count.is_none_or(|count| count > point_limit) {
-        return Err(invalid(
-            "projected contours exceed the display point limit; select a smaller ROI",
-        ));
+        return Err(invalid(&format!(
+            "projected contours exceed the display point limit ({} requested; {point_limit} allowed); hide structures or select a smaller ROI",
+            count.map_or_else(|| "overflow".into(), |count| count.to_string())
+        )));
     }
     let mut result = Vec::new();
     for (index, roi) in set.rois.iter().enumerate().filter(|(i, _)| eligible(*i)) {
@@ -404,6 +420,44 @@ mod tests {
         assert!(project_contours(&set, &beam, Some(0), 2).is_err());
         let ap = BeamProjection::new(DVec3::ZERO, DVec3::X, DVec3::Z, -DVec3::Y, 1000.)?;
         assert_eq!(ap.edge_directions(), ["R", "L", "S", "I"]);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+    use crate::data::structures::{Contour, ContourKind, StructureRoi, StructureSet};
+    #[test]
+    fn visible_roi_budget_accepts_import_maximum_and_excludes_hidden_points() -> KeplerResult<()> {
+        let contour = Contour::new(
+            ContourKind::OpenNonplanar,
+            (0..500_000)
+                .map(|i| DVec3::new(f64::from(i % 100), 0., 0.))
+                .collect(),
+            vec![],
+        )?;
+        let roi = StructureRoi {
+            number: 1,
+            name: "synthetic".into(),
+            frame_of_reference_uid: "synthetic".into(),
+            color: [1, 2, 3],
+            contours: vec![contour],
+        };
+        let set = StructureSet {
+            sop_instance_uid: "synthetic".into(),
+            label: "synthetic".into(),
+            referenced_series: vec![],
+            rois: vec![roi.clone(), roi],
+        };
+        let beam = BeamProjection::new(DVec3::ZERO, DVec3::X, DVec3::Y, DVec3::Z, 1000.)?;
+        let visible = project_contours_filtered(&set, &beam, |i| i == 1, 500_000)?;
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].index, 1);
+        assert_eq!(visible[0].segments.len(), 499_999);
+        assert!(project_contours(&set, &beam, None, 500_000).is_err());
+        assert!(project_contours(&set, &beam, Some(1), 499_999).is_err());
+        assert!(project_contours_filtered(&set, &beam, |_| false, 0)?.is_empty());
         Ok(())
     }
 }

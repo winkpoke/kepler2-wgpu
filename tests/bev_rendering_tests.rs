@@ -211,6 +211,37 @@ fn bev_gpu_overlay_draws_physical_aperture_on_the_host_pass() -> TestResult {
             |pass| context.render(pass),
         )
     });
+    // Grow past the former cap, then shrink the scene without retaining stale draws.
+    let mut large = BevOverlayScene::default();
+    large.roi(
+        &kepler_wgpu::data::bev::ProjectedRoi {
+            index: 0,
+            segments: vec![[DVec2::splat(1000.), DVec2::splat(1001.)]; 500_000],
+        },
+        [255, 0, 0],
+        false,
+    )?;
+    for scene in [large, BevOverlayScene::default()] {
+        gpu.validated("BEV overlay buffer growth", || {
+            context
+                .prepare(
+                    &gpu.queue,
+                    &Arc::new(scene),
+                    DetectorRect::new(DVec2::new(-16., 16.), DVec2::splat(32.)).unwrap(),
+                    [64., 64.],
+                )
+                .unwrap();
+            headless_gpu::render_offscreen(
+                &gpu,
+                64,
+                64,
+                wgpu::TextureFormat::Rgba8Unorm,
+                false,
+                |pass| context.render(pass),
+            )
+        })
+        .assert_pixel_near(22, 32, [255, 0, 255, 0], 0);
+    }
     image.assert_pixel_near(22, 32, [92, 222, 235, 255], 20);
     image.assert_pixel_near(41, 32, [92, 222, 235, 255], 20);
     image.assert_pixel_near(32, 32, [255, 0, 255, 0], 0);

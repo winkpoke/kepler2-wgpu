@@ -1,5 +1,11 @@
 # Changelog
 
+## BEV contour budget — 2026-11-02
+
+- Added ROI filtering before contour budget validation, preserving the existing projection API.
+- Raised overlay capacity to 524,288 items for 500,000 contour points plus machine geometry.
+- Overlay buffers grow on demand; budget errors include requested and allowed counts.
+
 ## Plan beam arrangement — 2026-10-24
 
 - Added validated, [bounded MPR beam batches](rendering/beam-arrangement.md) with independent beam and pane buffers.
