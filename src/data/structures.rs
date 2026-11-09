@@ -159,7 +159,7 @@ impl StructureSet {
                 .iter()
                 .any(|r| r.frame_of_reference_uid != image.frame_of_reference_uid)
         {
-            return Err(fail("structure and CT Frame of Reference do not match"));
+            return Err(fail("structure and reference image frames do not match"));
         }
         let matching: Vec<_> = self
             .referenced_series
@@ -170,7 +170,7 @@ impl StructureSet {
             })
             .collect();
         if !self.referenced_series.is_empty() && matching.is_empty() {
-            return Err(fail("structure references a different CT series"));
+            return Err(fail("structure references a different image series"));
         }
         let available: std::collections::HashSet<_> = image.image_uids.iter().collect();
         if matching
@@ -185,7 +185,7 @@ impl StructureSet {
             .any(|uid| !available.contains(uid))
         {
             return Err(fail(
-                "structure references images absent from the loaded CT",
+                "structure references instances absent from the loaded image series",
             ));
         }
         Ok(())

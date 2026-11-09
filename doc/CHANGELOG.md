@@ -1,5 +1,10 @@
 # Changelog
 
+## Classic MR series import — 2026-11-09
+
+- Added bounded import of uncompressed classic MR stacks with preserved signal
+  values, validated patient geometry and DICOM frame, series and instance IDs.
+
 ## BEV contour budget — 2026-11-02
 
 - Added ROI filtering before contour budget validation, preserving the existing projection API.
