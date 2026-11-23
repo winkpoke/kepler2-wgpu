@@ -1,5 +1,4 @@
 use crate::server::ai_model::BackendPreference;
-use crate::server::handlers::{CalibrationResult, Circle};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -83,27 +82,13 @@ pub enum WsMessage {
     SegmentCancelled {
         task_id: String,
     },
-    Slice {
-        slice: usize,
-        width: usize,
-        height: usize,
-        data: Vec<u16>,
-    },
-    CircleAccepted {
-        slice: usize,
-        circle: Circle,
-    },
-    Progress {
-        stage: String,
-        progress: f32,
-    },
-    CalibrationResult {
-        result: CalibrationResult,
-    },
-    Finished,
     #[serde(rename = "hv_frame")]
     HvFrame {
         line: String,
+    },
+    #[serde(rename = "plc_status")]
+    PlcStatus {
+        snapshot: serde_json::Value,
     },
 }
 
@@ -131,16 +116,6 @@ pub enum WsClientCommand {
     SegmentProgressQuery {
         task_id: String,
     },
-    LoadSlice {
-        slice: usize,
-        width: usize,
-        height: usize,
-    },
-    ConfirmCircle {
-        slice: usize,
-        circle: Circle,
-    },
-    RunCalibration,
     /// Kick off an HV device calibration run
     #[serde(rename = "start_calib")]
     StartCalib,

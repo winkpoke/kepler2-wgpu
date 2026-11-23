@@ -44,6 +44,7 @@ pub fn create_router(state: ServerState) -> Router {
         .route("/hv/disconnect", post(handlers::hv_disconnect))
         .route("/hv/status", get(handlers::hv_status))
         .route("/hv/send", post(handlers::hv_send))
+        .merge(crate::server::plc_api::router())
         .fallback_service(ServeDir::new("static"))
         .with_state(state)
         .layer(cors)

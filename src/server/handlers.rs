@@ -9,9 +9,8 @@
 //! 3. Volume upload & DICOM export
 //! 4. Needle parameters (position / orientation / offset)
 //! 5. AI segmentation endpoints
-//! 6. Mask-picker & CBCT calibration data types
-//! 7. WebSocket connection, command dispatch and calibration pipeline
-//! 8. HV serial device control
+//! 6. WebSocket connection and command dispatch
+//! 7. HV serial device control
 
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
@@ -615,97 +614,7 @@ pub async fn segment_result_raw(
 }
 
 // ============================================================================
-// 6. Mask-picker & CBCT calibration data types
-// ============================================================================
-
-/// A user-confirmed circle in an axial slice, expressed in pixel coordinates.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-pub struct Circle {
-    pub width: f32,
-    pub height: f32,
-    pub x1: f32,
-    pub y1: f32,
-    pub radius_1: f32,
-    pub x2: f32,
-    pub y2: f32,
-    pub radius_2: f32,
-}
-
-/// Result of the CBCT calibration solve (coefficients + linear-algebra diagnostics).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CalibrationResult {
-    pub c: [f64; 5],
-    pub a: [f64; 5],
-    pub b: [[f64; 5]; 5],
-    pub condition_number: f64,
-    pub determinant: f64,
-    pub singular_values: [f64; 5],
-}
-
-/// Attenuation coefficient of water, used as the reference value for the water
-/// region of the calibration mask.
-pub const WATER_MU: f32 = 0.27;
-
-/// Pixel-wise masks derived from a confirmed [`Circle`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MaskData {
-    pub w: Vec<f32>,
-    pub t: Vec<f32>,
-    pub mask: Vec<u8>,
-    pub water_mask: Vec<bool>,
-    pub air_mask: Vec<bool>,
-}
-
-/// Build a binary mask from the user's confirmed circle.
-///
-/// The inner disk (`radius_1`) is tagged as water, the annulus between
-/// `radius_1` and `radius_2` as air. Returns the mask so the caller can also
-/// forward it to the calibration stage.
-fn build_circle_mask(width: usize, height: usize, circle: Circle) -> MaskData {
-    let len = width * height;
-    let mut w = vec![0.0f32; len];
-    let mut t = vec![0.0f32; len];
-    let mut mask = vec![0u8; len];
-    let mut water_mask = vec![false; len];
-    let mut air_mask = vec![false; len];
-
-    let water_radius2 = circle.radius_1 * circle.radius_1;
-    let air_radius2 = circle.radius_2 * circle.radius_2;
-
-    for y in 0..height {
-        for x in 0..width {
-            let dx = x as f32 - circle.x1;
-            let dy = y as f32 - circle.y1;
-            let dist2 = dx * dx + dy * dy;
-            let index = y * width + x;
-
-            if dist2 <= water_radius2 {
-                water_mask[index] = true;
-                w[index] = 1.0;
-                t[index] = WATER_MU;
-                mask[index] = 1;
-            }
-
-            if dist2 >= water_radius2 && dist2 <= air_radius2 {
-                air_mask[index] = true;
-                w[index] = 1.0;
-                t[index] = 0.0;
-                mask[index] = 2;
-            }
-        }
-    }
-
-    MaskData {
-        w,
-        t,
-        mask,
-        water_mask,
-        air_mask,
-    }
-}
-
-// ============================================================================
-// 7. WebSocket connection & command dispatch
+// 6. WebSocket connection & command dispatch
 // ============================================================================
 
 /// Minimal client message used only for the `ping` keep-alive handshake.
@@ -831,15 +740,6 @@ async fn dispatch_text(socket: &mut WebSocket, state: &ServerState, text: &str) 
                     });
                 }
             }
-            WsClientCommand::LoadSlice { slice, width, height } => {
-                handle_load_slice(socket, state, slice, width, height).await;
-            }
-            WsClientCommand::ConfirmCircle { slice, circle } => {
-                handle_confirm_circle(socket, state, slice, circle).await;
-            }
-            WsClientCommand::RunCalibration => {
-                handle_run_calibration(socket, state).await;
-            }
             WsClientCommand::StartCalib => {
                 // parking_lot guard lives only inside this sync block — it is released before any `.await` below.
                 let res = {
@@ -856,9 +756,27 @@ async fn dispatch_text(socket: &mut WebSocket, state: &ServerState, text: &str) 
             }
             WsClientCommand::SendCmd { payload } => {
                 log::info!("WS: send_cmd payload={payload}");
+                // STM32 固件的 PC 命令表只认"意图命令"（MODE/SET/FOOT/…），
+                // 其余文本会被固件 dispatch 的兜底分支直接 NAK 掉，根本到不了高压。
+                // 高压协议原文（FLK?/MA?/KV120/FLF2/…）必须包上 SEND 前缀，
+                // 走固件 controller.rs 的 SEND 调试直通（原样组帧转发给高压）。
+                const FW_INTENTS: [&str; 14] = [
+                    "MODE", "SET", "FOOT", "CAL", "TUBE", "ILOCK", "LINK", "DET",
+                    "SCAN", "AX", "RESET", "SEND", "PING", "STATUS",
+                ];
+                let first = payload
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .to_ascii_uppercase();
+                let line = if FW_INTENTS.contains(&first.as_str()) {
+                    payload.clone()
+                } else {
+                    format!("SEND {payload}")
+                };
                 let res = {
                     let mut hv = state.hv.lock();
-                    hv.send_lin(&payload)
+                    hv.send_lin(&line)
                 };
                 if let Err(e) = res {
                     send_error(socket, format!("CMD_ERROR: {e}")).await;
@@ -878,147 +796,8 @@ async fn dispatch_text(socket: &mut WebSocket, state: &ServerState, text: &str) 
     }
 }
 
-/// Handle `LoadSlice { slice, width, height }`: read the requested axial slice
-/// out of the cached CT volume and send it back as a [`WsMessage::Slice`].
-pub async fn handle_load_slice(
-    socket: &mut WebSocket,
-    state: &ServerState,
-    slice: usize,
-    width: usize,
-    height: usize,
-) {
-    let data = match state.get_ct_slice(slice) {
-        Ok(data) => data,
-        Err(err) => {
-            send_error(socket, err.to_string()).await;
-            return;
-        }
-    };
-    let message = WsMessage::Slice {
-        slice,
-        width,
-        height,
-        data,
-    };
-    send_json(socket, &message).await;
-}
-
-/// Handle `ConfirmCircle { slice, circle }`: stash the circle (and the mask it
-/// implies) in `ServerState`, then acknowledge the client.
-pub async fn handle_confirm_circle(
-    socket: &mut WebSocket,
-    state: &ServerState,
-    slice: usize,
-    circle: Circle,
-) {
-    let width = circle.width as usize;
-    let height = circle.height as usize;
-    let mask = build_circle_mask(width, height, circle);
-    state.set_mask_data(Some(mask));
-    state.set_mask_circle(Some(circle));
-    send_json(socket, &WsMessage::CircleAccepted { slice, circle }).await;
-}
-
-/// Handle `RunCalibration`: spawn the calibration pipeline onto a Tokio task so
-/// the WebSocket receive loop keeps processing other commands while it runs.
-pub async fn handle_run_calibration(socket: &mut WebSocket, state: &ServerState) {
-    // Pull the current mask / circle out of shared state up front so the
-    // spawned task can run with a self-contained snapshot.
-    let (circle, mask) = match (state.mask_circle(), state.mask_data()) {
-        (Some(c), Some(m)) => (c, m),
-        _ => {
-            send_error(
-                socket,
-                "no confirmed circle yet — please confirm a circle first".to_string(),
-            )
-            .await;
-            return;
-        }
-    };
-
-    // Acknowledge that the request has been accepted.
-    send_json(
-        socket,
-        &WsMessage::Progress {
-            stage: "Starting calibration".to_string(),
-            progress: 0.0,
-        },
-    )
-    .await;
-
-    let tx = state.ws_tx.clone();
-    tokio::spawn(async move {
-        run_calibration_pipeline(tx, circle, mask).await;
-    });
-}
-
-/// Calibration pipeline executed on a background Tokio task. The real algorithm
-/// lives behind [`compute_calibration`]; this wrapper just turns its progress
-/// into [`WsMessage::Progress`] updates on the broadcast channel so every
-/// connected client can observe them.
-async fn run_calibration_pipeline(
-    tx: broadcast::Sender<WsMessage>,
-    circle: Circle,
-    mask: MaskData,
-) {
-    let stages: &[(&str, f32)] = &[
-        ("Creating masks", 0.1),
-        ("Computing a", 0.3),
-        ("Computing B", 0.5),
-        ("SVD", 0.8),
-    ];
-
-    for (stage, progress) in stages {
-        let _ = tx.send(WsMessage::Progress {
-            stage: (*stage).to_string(),
-            progress: *progress,
-        });
-        // Cooperative yield so progress messages flush promptly even if
-        // each stage is currently a no-op stub.
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-    }
-
-    match compute_calibration(&circle, &mask) {
-        Ok(result) => {
-            let _ = tx.send(WsMessage::CalibrationResult { result });
-        }
-        Err(e) => {
-            log::error!("calibration failed: {e}");
-            let _ = tx.send(WsMessage::Error {
-                message: format!("calibration failed: {e}"),
-            });
-        }
-    }
-
-    let _ = tx.send(WsMessage::Finished);
-}
-
-/// Placeholder for the actual CBCT calibration. Returns a zero-initialised
-/// result so the wire protocol is fully exercised end-to-end. The real
-/// algorithm (water/air regression, SVD, etc.) will replace this body in a
-/// follow-up change.
-fn compute_calibration(circle: &Circle, _mask: &MaskData) -> Result<CalibrationResult, String> {
-    log::info!(
-        "compute_calibration(stub): circle=(x1={:.2}, y1={:.2}, r1={:.2}, x2={:.2}, y2={:.2}, r2={:.2})",
-        circle.x1,
-        circle.y1,
-        circle.radius_1,
-        circle.x2,
-        circle.y2,
-        circle.radius_2
-    );
-    Ok(CalibrationResult {
-        c: [0.0; 5],
-        a: [0.0; 5],
-        b: [[0.0; 5]; 5],
-        condition_number: 0.0,
-        determinant: 0.0,
-        singular_values: [0.0; 5],
-    })
-}
-
 // ============================================================================
-// 8. HV serial device control
+// 7. HV serial device control
 // ============================================================================
 
 /// JSON body for `POST /hv/connect`.

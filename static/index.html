@@ -1024,9 +1024,19 @@
                         <button class="btn" id="hv-set-exposure">SET</button>
                     </div>
                     <div class="hv-row">
-                        <input type="text" id="hv-manual" class="hv-manual" placeholder="如 PING / STATUS">
+                        <input type="text" id="hv-manual" class="hv-manual" placeholder="如 MA? / FLK? / KV120 / FLF2（高压协议命令）">
                         <button class="btn" id="hv-manual-send">Send</button>
                     </div>
+                    <div class="hv-row">
+                        <span class="hv-label">版本探测</span>
+                        <button class="btn" data-hv-query="MA?" title="MA025(3位)=中文版 / MA01600(5位)=英文版，只查询不设置">MA?</button>
+                        <button class="btn" data-hv-query="MS?" title="同 MA?：位数判版本，只查询不设置">MS?</button>
+                        <button class="btn" data-hv-query="FLK?" title="确认透视管电压位数/单位">FLK?</button>
+                        <button class="btn" data-hv-query="FLM?" title="FLM025=25mA(中文) 还是 FLM035=3.5mA(英文)，结合版本判单位">FLM?</button>
+                        <button class="btn btn-primary" id="hv-probe-all" title="依次发送 MA?/MS?/FLK?/FLM?（只发查询命令，不发设置命令）">自动探测</button>
+                    </div>
+                    <!-- 探测结果：固件版本判定 + 各参数位数/单位解读 -->
+                    <div id="hv-probe-result" style="display:none;font-family:monospace;font-size:11px;line-height:1.7;color:#333;padding:4px 0 0 2px"></div>
                     <div class="hv-row">
                         <button class="btn" data-hv-mode="DR">DR</button>
                         <button class="btn" data-hv-mode="FLU">Fluoro</button>
@@ -1036,7 +1046,7 @@
                         <button class="btn btn-primary" id="hv-open-calib">自动校准</button>
                         <button class="btn" id="hv-reset">重置</button>
                         <button class="btn" id="hv-ilock">手术室门<span id="hv-ilock-text">闭合</span></button>
-                        <button class="btn"  onclick="toggleHvLink()">高压链路：<span id="hvlink_text">仿真(USART3)</span></button>
+                        <button class="btn" id="btn-toggle-hvlink">高压链路：<span id="hvlink_text">仿真(USART3)</span></button>
                     </div>
                     <div class="hv-status">
                         <div>模式/状态 <b><span id="hv-link-state">-</span></b></div>
@@ -1063,13 +1073,57 @@
                     </div>
                 </div>
 
-                <!-- C-arm -->
+                <!-- PLC（Modbus TCP：C-arm 五轴 / 联锁 / CBCT 扫描几何） -->
                 <div class="needle-card">
-                    <div class="hv-title">C-arm</div>
+                    <div class="hv-title">PLC (Modbus TCP)
+                        <button class="btn" id="plc-connect" style="float:right;padding:2px 8px;font-size:11px">连接</button>
+                    </div>
+                    <div class="hv-status">
+                        <div>设备状态 <b><span id="plc-state">离线</span></b></div>
+                        <div class="hv-muted">联锁: <span id="plc-interlock">-</span>
+                            | 系统状态: <span id="plc-sys">-</span>
+                            | 模式: <span id="plc-mode">-</span></div>
+                        <div class="hv-led-row">曝光中<span id="plc-led-xr" class="hv-led"></span></div>
+                    </div>
+                    <!-- 五轴控制行：data-plc-move/-home 由 JS 循环绑定；行程按 Sheet4 机械定义，最终以 PLC 生效值为准 -->
+                    <div class="hv-row" style="margin-top:6px">
+                        <span class="hv-label" style="min-width:88px">AX1 旋转</span>
+                        <input type="number" id="plc-ax1-pos" value="0" step="0.1" title="扫描旋转 ±110°">
+                        <button class="btn" data-plc-move="1">SET</button>
+                        <button class="btn" data-plc-home="1">回零</button>
+                        <span class="hv-muted">实际 <span id="plc-ax1-actual">-</span> | <span id="plc-ax1-result">-</span></span>
+                    </div>
                     <div class="hv-row">
-                        <span class="hv-label">Angle</span>
-                        <input type="number" id="hv-angle" value="0">
-                        <button class="btn" id="hv-set-angle">SET</button>
+                        <span class="hv-label" style="min-width:88px">AX2 侧转</span>
+                        <input type="number" id="plc-ax2-pos" value="0" step="0.1" title="侧转 ±180°">
+                        <button class="btn" data-plc-move="2">SET</button>
+                        <button class="btn" data-plc-home="2">回零</button>
+                        <span class="hv-muted">实际 <span id="plc-ax2-actual">-</span> | <span id="plc-ax2-result">-</span></span>
+                    </div>
+                    <div class="hv-row">
+                        <span class="hv-label" style="min-width:88px">AX3 升降</span>
+                        <input type="number" id="plc-ax3-pos" value="0" step="0.1" title="上下升降 0~300mm">
+                        <button class="btn" data-plc-move="3">SET</button>
+                        <button class="btn" data-plc-home="3">回零</button>
+                        <span class="hv-muted">实际 <span id="plc-ax3-actual">-</span> | <span id="plc-ax3-result">-</span></span>
+                    </div>
+                    <div class="hv-row">
+                        <span class="hv-label" style="min-width:88px">AX4 摆角</span>
+                        <input type="number" id="plc-ax4-pos" value="0" step="0.1" title="±20°">
+                        <button class="btn" data-plc-move="4">SET</button>
+                        <button class="btn" data-plc-home="4">回零</button>
+                        <span class="hv-muted">实际 <span id="plc-ax4-actual">-</span> | <span id="plc-ax4-result">-</span></span>
+                    </div>
+                    <div class="hv-row">
+                        <span class="hv-label" style="min-width:88px">AX5 平移</span>
+                        <input type="number" id="plc-ax5-pos" value="0" step="0.1" title="前后平移 0~200mm">
+                        <button class="btn" data-plc-move="5">SET</button>
+                        <button class="btn" data-plc-home="5">回零</button>
+                        <span class="hv-muted">实际 <span id="plc-ax5-actual">-</span> | <span id="plc-ax5-result">-</span></span>
+                    </div>
+                    <div class="hv-row">
+                        <button class="btn" id="plc-stop-all">全停（ALL_AXES_STOP）</button>
+                        <button class="btn" id="plc-machine-reset">整机回位</button>
                     </div>
                 </div>
 
@@ -1474,7 +1528,6 @@
                             break;
                         case 'error':            // 服务器错误日志
                             log(`Server error: ${msg.message}`, 'error');
-                            handleMaskWsError(msg.message);
                             handleHvError(msg.message);
                             break;
                         case 'heartbeat':        // 心跳（忽略）
@@ -1484,12 +1537,8 @@
                         case 'segment_complete': handleSegmentComplete(msg); break;
                         case 'segment_failed':   handleSegmentFailed(msg); break;
                         case 'needle_set':       handleNeedleSet(msg); break;  // 后端回写的针位置
-                        case 'slice':            handleMaskSlice(msg); break;
-                        case 'circle_accepted':  handleMaskCircleAccepted(msg); break;
-                        case 'progress':         handleMaskProgress(msg); break;
-                        case 'calibration_result': handleMaskCalibrationResult(msg); break;
-                        case 'finished':         handleMaskFinished(msg); break;
                         case 'hv_frame':         handleHvFrame(msg.line); break;  // HV/STM32 串口帧
+                        case 'plc_status':       handlePlcStatus(msg.snapshot); break;  // PLC Modbus 状态推送（300ms）
                     }
                 } catch (e) {
                     // 忽略格式错误的消息
@@ -2955,7 +3004,10 @@
             fault: '-',       // ERR 故障码（已闩锁，需 RESET 清除）
             deny: '-',        // DENY 拒绝原因（未闩锁，仅提示）
             ilock: false,     // 互锁是否断开
-            hvlink: "SIM",    // 高压链路：SIM=USART3 走仿真器 / REAL=USART1 接真机（由 $LINK )
+            hvlink: "SIM",    // 高压链路：SIM=USART3 走仿真器 / REAL=USART2(PD5/PD6) 接真机（由 $LINK 上报回填）
+            probe: {
+                version: null, // 高压固件版本：'CN'=中文版(1 mA·ms/kV 步进) / 'EN'=英文版(0.1 步进)，由 MA?/MS? 应答位数判定
+            },
         };
 
         /** 脚闸仿真按钮 -> 实际下发的意图文本。 */
@@ -2980,6 +3032,7 @@
          * 下发一条设备命令。后端只认两种强类型帧：
          *   { type: 'start_calib' }                    —— 校准开始（仅 MCU 链路）
          *   { type: 'send_cmd', payload: '<intent>' }  —— 其余意图（MODE/SET/FOOT/DET_/RESET/ILOCK）
+         *                                                及高压协议原文（MA?/FLK?/KV120/FLF2…，后端原样透传）
          * @param {string} type  'START_CALIB' 或意图文本本身
          * @param {string|null} payload 显式 payload（缺省用 type）
          * @returns {boolean} 是否已成功写入 socket
@@ -3014,13 +3067,29 @@
             if (el) el.textContent = stmState.ilock ? '断开' : '闭合';
         }
 
-        function toggleHvLink(){
-            cmd("LINK " + (state.hvlink === "REAL" ? "SIM" : "REAL"))
+        function toggleHvLink() {
+            // 如果当前是 REAL，目标就是 SIM；反之亦然
+            const targetLink = (stmState.hvlink === "REAL") ? "SIM" : "REAL";
+
+            // 发送指令通知后端/MCU 切换
+            hvCmd("LINK " + targetLink);
         }
 
-        function updateHvLink(){
-            let el = document.getElementById("hvlink_text")
-            if (el) el.textContent = state.hvlink === "REAL" ? "实测(USART1)" : "仿真(USART3)"
+        function updateHvLink() {
+            const el = document.getElementById("hvlink_text");
+            if (!el) return;
+            if (stmState.hvlink === "REAL") {
+                el.textContent = "实测(USART2/DB9)";
+                el.style.color = "#00c853"; // 绿色高亮实测
+            } else {
+                el.textContent = "仿真(USART3)";
+                el.style.color = "#1565c0"; // 蓝色高亮仿真
+            }
+        }
+
+        const toggleBtn = document.getElementById("btn-toggle-hvlink");
+        if (toggleBtn) {
+            toggleBtn.addEventListener("click", toggleHvLink);
         }
 
         /** 刷新「模式/状态」与「安全」两行文本。 */
@@ -3040,12 +3109,73 @@
             }
         }
 
+        /** PDF 通讯协议 ST 状态码 → 中文说明。 */
+        const HV_ST_TEXT = {
+            '001': '初始化阶段', '002': '待机阶段', '003': 'RAD准备阶段', '004': 'RAD就绪阶段',
+            '005': 'RAD曝光阶段', '006': '校准阶段', '007': '残留阶段', '008': '错误阶段',
+            '009': '透视准备状态', '010': '透视状态', '011': '脉冲透视状态',
+        };
+
+        /** 探测结果区：追加一行判定文本（最多保留 6 行，防刷屏）。 */
+        function hvShowProbe(text) {
+            const el = document.getElementById('hv-probe-result');
+            if (!el) return;
+            el.style.display = 'block';
+            const row = document.createElement('div');
+            row.textContent = text;
+            el.appendChild(row);
+            while (el.children.length > 6) el.removeChild(el.firstChild);
+        }
+
+        /**
+         * 解析高压发生器对查询命令的直接应答（MA?/MS?/FLK?/FLM?/ST?）。
+         * 位数判版本（MA?/MS? 最可靠）：
+         *   MA025   (3位) = 中文版，1 mA·ms/kV 步进
+         *   MA01600 (5位) = 英文版，0.1 步进
+         * FLM 单位立判：中文版 FLM025=25mA(1mA)；英文版 FLM035=3.5mA(0.1mA)；版本未定时两种候选都列出。
+         * @returns {boolean} 该行是否为协议应答（已处理）
+         */
+        function hvParseQuery(line) {
+            const s = line.trim();
+            let m = s.match(/^(MA|MS|FLK|FLM)(\d+)$/);
+            if (m) {
+                const key = m[1];
+                const digits = m[2];
+                const n = parseInt(digits, 10);
+                const unit = { MA: 'mA', MS: 'ms', FLK: 'kV', FLM: 'mA' }[key];
+                // 只有 MA/MS 的位数用来判定版本（FLK/FLM 不反推，避免 FLM035=3.5mA 误判）
+                if ((key === 'MA' || key === 'MS') && stmState.probe.version == null) {
+                    stmState.probe.version = (digits.length === 5) ? 'EN' : 'CN';
+                }
+                const ver = stmState.probe.version;
+                let valTxt;
+                if (ver === 'CN')       valTxt = n + ' ' + unit + '（1' + unit + ' 步进，中文版）';
+                else if (ver === 'EN')  valTxt = (n / 10) + ' ' + unit + '（0.1' + unit + ' 步进，英文版）';
+                else                    valTxt = n + ' ' + unit + ' 或 ' + (n / 10) + ' ' + unit + '（版本未定）';
+                hvShowProbe(key + digits + ' → ' + valTxt + '　[' + digits.length + '位]');
+                hvLog('RX ' + key + digits + ' = ' + valTxt + ' [' + digits.length + '位]', 'success');
+                return true;
+            }
+            m = s.match(/^ST(\d{3})$/);
+            if (m) {
+                const txt = HV_ST_TEXT[m[1]] || '未知状态';
+                hvShowProbe('ST' + m[1] + ' → ' + txt);
+                hvLog('RX 高压状态: ST' + m[1] + ' ' + txt, 'success');
+                return true;
+            }
+            return false;
+        }
+
         /**
          * 解析一条来自 STM32 的上行 BODY（后端 lin.rs 已剥掉 `$…*HH\n` 并校验过）。
-         * 支持：STATE / DENY / ERR / FAULT CLEAR / WARN / ILOCK / CAL / DET_*
+         * 支持：STATE / DENY / ERR / FAULT CLEAR / WARN / ILOCK / CAL / DET_*，
+         * 以及高压发生器协议应答 MA/MS/FLK/FLM/ST（hvParseQuery）。
          */
         function hvParse(line) {
             if (line.startsWith('TX: ')) return;   // 本机下行回显，不参与状态判定
+
+            // 高压发生器协议应答（MA025 / FLK120 / ST002 …），优先于 STM32 帧判定
+            if (hvParseQuery(line)) return;
 
             if (line.startsWith('STATE ')) {
                 const s = line.slice(6).trim();
@@ -3108,7 +3238,7 @@
             if (line.startsWith("LINK ")) {
                 stmState.hvlink = line.slice(5).trim()
                 updateHvLink()
-                updateLinkState()
+                hvUpdateLinkState()
             }
 
             if (line.includes('DET_LINK')) hvLed('hv-led-link', 'green');
@@ -3134,6 +3264,119 @@
             if (el) el.textContent = 'Error';
             hvLog(message, 'error');
         }
+
+        // ----- PLC（Modbus TCP）-----
+        const PLC_CONNECTED = { value: false };
+
+        // PLC 状态/结果编码
+        const PLC_SYS_STATE   = ['空闲', '准备', '就绪', '运动', '曝光', '故障'];
+        const PLC_INTERLOCK   = ['急停', '碰撞', '限位', '门未关'];
+        const PLC_AX_RESULT   = ['空置', '受理', '执行中', '完成', '拒绝', '失败/取消'];
+        const PLC_MODE        = ['-', 'CBCT', 'DR', 'FLU', '维护'];
+        const PLC_AXES = [
+            { n: 1, unit: '°'  },
+            { n: 2, unit: '°'  },
+            { n: 3, unit: 'mm' },
+            { n: 4, unit: '°'  },
+            { n: 5, unit: 'mm' },
+        ];
+
+        // PLC REST 封装：POST JSON，结果写设备日志
+        async function plcApi(path, body) {
+            try {
+                const resp = await fetch(`${SERVER_URL}${path}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body || {}),
+                });
+                const data = await resp.json();
+                if (data.ok) {
+                    hvLog(`PLC ${path} ok` + (data.command_id != null ? ` cmd=${data.command_id}` : ''), 'success');
+                } else {
+                    hvLog(`PLC ${path} 失败: ${data.error}`, 'error');
+                }
+                return data;
+            } catch (e) {
+                hvLog(`PLC ${path} 请求异常: ${e.message}`, 'error');
+                return { ok: false };
+            }
+        }
+
+        function plcSetLed(id, on) {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.className = 'hv-led ' + (on ? 'red' : 'off');
+        }
+
+        /** WS `plc_status`（300ms 推送）：刷新状态灯 / 联锁 / 五轴实际值与命令结果。 */
+        function handlePlcStatus(s) {
+            if (!s) return;
+            PLC_CONNECTED.value = !!s.connected;
+
+            const stateEl = document.getElementById('plc-state');
+            if (stateEl) {
+                stateEl.textContent = s.connected ? '在线' : '离线';
+                stateEl.className = s.connected ? '' : 'hv-muted';
+            }
+
+            const ilockEl = document.getElementById('plc-interlock');
+            if (ilockEl) ilockEl.textContent = PLC_INTERLOCK[s.interlock] ?? s.interlock;
+            const sysEl = document.getElementById('plc-sys');
+            if (sysEl) sysEl.textContent = PLC_SYS_STATE[s.system_state] ?? s.system_state;
+            const modeEl = document.getElementById('plc-mode');
+            if (modeEl) modeEl.textContent = PLC_MODE[s.actual_mode] ?? s.actual_mode;
+
+            plcSetLed('plc-led-xr', s.system_state === 4); // SYSTEM_STATE::Exposing
+
+            // 五轴回读：s.axes 为后端 AX1~AX5 快照数组（顺序即轴号）
+            (s.axes || []).forEach((ax, i) => {
+                const meta = PLC_AXES[i];
+                if (!ax || !meta) return;
+                const actualEl = document.getElementById(`plc-ax${meta.n}-actual`);
+                if (actualEl) {
+                    actualEl.textContent = ax.feedback_valid
+                        ? `${ax.actual_position.toFixed(1)}${meta.unit}`
+                        : '无效';
+                }
+                const resEl = document.getElementById(`plc-ax${meta.n}-result`);
+                if (resEl) resEl.textContent = PLC_AX_RESULT[ax.result] ?? ax.result;
+            });
+        }
+
+        document.getElementById('plc-connect').addEventListener('click', async () => {
+            const btn = document.getElementById('plc-connect');
+            if (PLC_CONNECTED.value) {
+                await plcApi('/plc/disconnect');
+                PLC_CONNECTED.value = false;
+                btn.textContent = '连接';
+            } else {
+                // 默认连本机 plc_sim（127.0.0.1:1502）。后端 plc_connect 支持 req.addr
+                // 覆盖环境变量，因此无需再设 PLC_ADDR/PLC_PORT。连真实 PLC 时改这里的
+                // addr/port，或移除这两个字段并改为服务端环境变量配置。
+                const r = await plcApi('/plc/connect', { addr: '127.0.0.1', port: 1502 });
+                if (r.ok) btn.textContent = '断开';
+            }
+        });
+
+        // 五轴 SET / 回零：data-plc-move="n" → /plc/axis/n/move（绝对定位，PLC 端做 COMMIT 闭环）
+        document.querySelectorAll('[data-plc-move]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const n = btn.dataset.plcMove;
+                const v = parseFloat(document.getElementById(`plc-ax${n}-pos`).value);
+                if (Number.isNaN(v)) return;
+                plcApi(`/plc/axis/${n}/move`, { position: v });
+            });
+        });
+
+        document.querySelectorAll('[data-plc-home]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const n = btn.dataset.plcHome;
+                plcApi(`/plc/axis/${n}/home`);
+            });
+        });
+
+        document.getElementById('plc-stop-all').addEventListener('click', () => plcApi('/plc/all-stop'));
+        document.getElementById('plc-machine-reset').addEventListener('click', () => plcApi('/plc/reset'));
 
         // ----- 按钮绑定 -----
         document.querySelectorAll('[data-hv-mode]').forEach(btn => {
@@ -3164,15 +3407,32 @@
             if (c) hvCmd(c);
         });
 
+        // Send 输入框：回车等同点击 Send，方便连续敲协议命令
+        document.getElementById('hv-manual').addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter') return;
+            const c = document.getElementById('hv-manual').value.trim();
+            if (c) hvCmd(c);
+        });
+
+        // ----- 高压协议版本探测：只发查询命令（?），不发任何设置命令 -----
+        const HV_PROBE_CMDS = ['MA?', 'MS?', 'FLK?', 'FLM?'];
+        document.querySelectorAll('[data-hv-query]').forEach(btn => {
+            btn.addEventListener('click', () => hvCmd(btn.dataset.hvQuery));
+        });
+        document.getElementById('hv-probe-all').addEventListener('click', async () => {
+            const box = document.getElementById('hv-probe-result');
+            if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+            stmState.probe.version = null;          // 清空旧判定，重新探测
+            for (const q of HV_PROBE_CMDS) {
+                if (!hvCmd(q)) return;              // WebSocket 断开即中止
+                await new Promise(r => setTimeout(r, 300));   // 逐条发，留出应答间隔
+            }
+        });
+
         document.getElementById('hv-reset').addEventListener('click', () => hvCmd('RESET'));
 
         document.getElementById('hv-ilock').addEventListener('click', () => {
             hvCmd('ILOCK ' + (stmState.ilock ? '0' : '1'));
-        });
-
-        document.getElementById('hv-set-angle').addEventListener('click', () => {
-            // C 臂现在接的是 PLC，参数通道待定；先不往高压链路发，避免污染 LIN 报文
-            hvLog('C-arm 角度暂不由本链路下发（C 臂接 PLC，通道待定）', 'warn');
         });
 
         document.getElementById('hv-log-clear').addEventListener('click', () => {

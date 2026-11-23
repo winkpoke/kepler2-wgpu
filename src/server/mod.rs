@@ -9,6 +9,7 @@ pub mod ai_handler;
 pub mod segment_engine;
 pub mod model_manager;
 pub mod backend;
+pub mod plc_api;
 pub mod resample;
 pub mod orientation;
 mod ws;

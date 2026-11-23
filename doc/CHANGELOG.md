@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-11-19 — Remove the unused CBCT mask-picker calibration WebSocket workflow
+
+- Removed the CBCT mask-picker / calibration wire protocol that had no live
+  client: client commands `LoadSlice`, `ConfirmCircle`, `RunCalibration` and
+  server events `Slice`, `CircleAccepted`, `Progress`, `CalibrationResult`,
+  `Finished` in `src/server/ws.rs`. The frontend neither sent these commands
+  nor defined the `handleMask*` receivers, and the server event names were
+  PascalCase while the client switch expected snake_case, so the flow was inert.
+- Removed the supporting implementation in `src/server/handlers.rs`
+  (`Circle`, `CalibrationResult`, `MaskData`, `WATER_MU`, `build_circle_mask`,
+  and the load/confirm/calibrate handlers plus the stub calibration pipeline)
+  and the stale `mask_circle` / `mask_data` state and helpers in
+  `src/server/state.rs`. `ServerState::ct_volume`, `set_ct_volume` and
+  `ct_volume` are retained for the GPU volume smoke-test endpoint.
+- Removed the dead `handleMask*` dispatch cases in `static/index.html`. The
+  baseline public-API snapshot under `openspec/changes/` is left untouched as
+  historical evidence; this removal is a breaking wire-protocol change.
+
 ## 2026-10-05 — Replay graphics improvements onto v0.17.0 (landed with platform deferments)
 
 - Replayed all 13 dev commits with their merge topology onto the release, retaining
